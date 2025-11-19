@@ -5,9 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import Auth from "./pages/Auth";
-import Admin from "./pages/Admin";
 import Sales from "./pages/Sales";
+import Admin from "./pages/Admin";
+import Reports from "./pages/Reports";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
@@ -72,6 +73,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["vendedor"]}>
                   <Sales />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Reports />
                 </ProtectedRoute>
               }
             />

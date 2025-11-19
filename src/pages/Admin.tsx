@@ -9,7 +9,7 @@ import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
-import { LogOut } from "lucide-react";
+import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
   const [activeView, setActiveView] = useState<"overview" | "products" | "predictions">("overview");
@@ -25,10 +25,16 @@ export default function Admin() {
       <div className="container mx-auto p-6 space-y-6 animate-fade-in">
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold gradient-text">Panel de Administración</h1>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Salir
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/reports")}>
+              <FileText className="w-4 h-4 mr-2" />
+              Reportes
+            </Button>
+            <Button variant="outline" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Salir
+            </Button>
+          </div>
         </div>
 
         <DashboardHeader activeView={activeView} setActiveView={setActiveView} />
