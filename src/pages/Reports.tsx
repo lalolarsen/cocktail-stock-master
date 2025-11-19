@@ -31,7 +31,7 @@ type Sale = {
   total_amount: number;
   point_of_sale: string;
   is_cancelled: boolean;
-  profiles: {
+  seller: {
     full_name: string | null;
     email: string;
   };
@@ -60,8 +60,13 @@ export default function Reports() {
       const { data, error } = await supabase
         .from("sales")
         .select(`
-          *,
-          profiles(full_name, email),
+          id,
+          sale_number,
+          created_at,
+          total_amount,
+          point_of_sale,
+          is_cancelled,
+          seller_id,
           sale_items(
             quantity,
             unit_price,
@@ -74,7 +79,27 @@ export default function Reports() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setSales(data || []);
+
+      // Fetch seller profiles separately
+      const sellerIds = [...new Set(data?.map((s) => s.seller_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", sellerIds);
+
+      const profilesMap = new Map(
+        profiles?.map((p) => [p.id, p]) || []
+      );
+
+      const salesWithSellers = data?.map((sale) => ({
+        ...sale,
+        seller: profilesMap.get(sale.seller_id) || {
+          full_name: null,
+          email: "Usuario desconocido",
+        },
+      }));
+
+      setSales(salesWithSellers || []);
     } catch (error) {
       console.error("Error fetching sales:", error);
     } finally {
@@ -279,7 +304,7 @@ export default function Reports() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {sale.profiles.full_name || sale.profiles.email}
+                        {sale.seller.full_name || sale.seller.email}
                       </TableCell>
                       <TableCell>{sale.point_of_sale}</TableCell>
                       <TableCell>
