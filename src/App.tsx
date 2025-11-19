@@ -53,7 +53,7 @@ const App = () => {
               path="/"
               element={
                 isAuthenticated ? (
-                  <Navigate to="/auth" replace />
+                  <Navigate to="/admin" replace />
                 ) : (
                   <Navigate to="/auth" replace />
                 )
