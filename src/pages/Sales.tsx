@@ -15,15 +15,6 @@ type Cocktail = {
   name: string;
   price: number;
   category: string;
-  ingredients?: Array<{
-    product_id: string;
-    quantity: number;
-    products: {
-      name: string;
-      unit: string;
-      current_stock: number;
-    };
-  }>;
 };
 
 type CartItem = {
@@ -47,14 +38,7 @@ export default function Sales() {
   const fetchCocktails = async () => {
     const { data, error } = await supabase
       .from("cocktails")
-      .select(`
-        *,
-        ingredients:cocktail_ingredients(
-          product_id,
-          quantity,
-          products(name, unit, current_stock)
-        )
-      `)
+      .select("*")
       .order("name");
 
     if (error) {
@@ -88,16 +72,6 @@ export default function Sales() {
   };
 
   const addToCart = (cocktail: Cocktail) => {
-    // Validate stock availability
-    const hasStock = cocktail.ingredients?.every(
-      (ing) => ing.products.current_stock >= ing.quantity
-    );
-
-    if (!hasStock) {
-      toast.error("Stock insuficiente para este cocktail");
-      return;
-    }
-
     const existing = cart.find((item) => item.cocktail.id === cocktail.id);
     if (existing) {
       setCart(
@@ -110,7 +84,7 @@ export default function Sales() {
     } else {
       setCart([...cart, { cocktail, quantity: 1 }]);
     }
-    toast.success(`${cocktail.name} agregado al carrito`);
+    toast.success(`${cocktail.name} agregado`);
   };
 
   const removeFromCart = (cocktailId: string) => {
@@ -231,67 +205,26 @@ export default function Sales() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Cocktails List */}
           <Card className="lg:col-span-2 p-6">
-            <h2 className="text-xl font-semibold mb-4">Cocteles Disponibles</h2>
+            <h2 className="text-xl font-semibold mb-4">Menú de Cocteles</h2>
             <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pr-4">
-                {cocktails.map((cocktail) => {
-                  const hasStock = cocktail.ingredients?.every(
-                    (ing) => ing.products.current_stock >= ing.quantity
-                  );
-                  
-                  return (
-                    <Card
-                      key={cocktail.id}
-                      className={`p-4 transition-all ${
-                        hasStock
-                          ? "hover:shadow-lg cursor-pointer hover:border-primary/50"
-                          : "opacity-60 cursor-not-allowed"
-                      }`}
-                      onClick={() => hasStock && addToCart(cocktail)}
-                    >
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-semibold">{cocktail.name}</h3>
-                            <Badge variant="outline" className="mt-1">
-                              {cocktail.category}
-                            </Badge>
-                          </div>
-                          <div className="text-lg font-bold text-primary">
-                            ${cocktail.price}
-                          </div>
-                        </div>
-                        
-                        {cocktail.ingredients && cocktail.ingredients.length > 0 && (
-                          <div className="text-sm space-y-1">
-                            <p className="text-muted-foreground font-medium">Ingredientes:</p>
-                            {cocktail.ingredients.map((ing, idx) => (
-                              <div
-                                key={idx}
-                                className={`flex justify-between ${
-                                  ing.products.current_stock < ing.quantity
-                                    ? "text-destructive"
-                                    : "text-muted-foreground"
-                                }`}
-                              >
-                                <span>• {ing.products.name}</span>
-                                <span className="font-mono">
-                                  {ing.quantity} {ing.products.unit}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {!hasStock && (
-                          <Badge variant="destructive" className="w-full justify-center">
-                            Sin Stock
-                          </Badge>
-                        )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pr-4">
+                {cocktails.map((cocktail) => (
+                  <Card
+                    key={cocktail.id}
+                    className="p-4 hover:shadow-lg transition-all cursor-pointer hover:border-primary/50 hover:scale-105"
+                    onClick={() => addToCart(cocktail)}
+                  >
+                    <div className="text-center space-y-2">
+                      <h3 className="font-semibold text-lg">{cocktail.name}</h3>
+                      <Badge variant="secondary" className="text-xs">
+                        {cocktail.category}
+                      </Badge>
+                      <div className="text-2xl font-bold text-primary">
+                        ${cocktail.price}
                       </div>
-                    </Card>
-                  );
-                })}
+                    </div>
+                  </Card>
+                ))}
               </div>
             </ScrollArea>
           </Card>
