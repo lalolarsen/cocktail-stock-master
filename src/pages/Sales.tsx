@@ -33,7 +33,23 @@ export default function Sales() {
   useEffect(() => {
     fetchCocktails();
     fetchRecentSales();
+    fetchUserPointOfSale();
   }, []);
+
+  const fetchUserPointOfSale = async () => {
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) return;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("point_of_sale")
+      .eq("id", session.session.user.id)
+      .single();
+
+    if (!error && data?.point_of_sale) {
+      setPointOfSale(data.point_of_sale);
+    }
+  };
 
   const fetchCocktails = async () => {
     const { data, error } = await supabase
@@ -284,15 +300,14 @@ export default function Sales() {
                 </ScrollArea>
 
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="pointOfSale">Punto de Venta</Label>
-                    <Input
-                      id="pointOfSale"
-                      placeholder="Ej: Barra Principal"
-                      value={pointOfSale}
-                      onChange={(e) => setPointOfSale(e.target.value)}
-                    />
-                  </div>
+                  {pointOfSale && (
+                    <div className="space-y-2">
+                      <Label>Punto de Venta</Label>
+                      <div className="px-3 py-2 border rounded-md bg-muted">
+                        {pointOfSale}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
