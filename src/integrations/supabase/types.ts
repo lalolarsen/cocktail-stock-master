@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      cocktail_ingredients: {
+        Row: {
+          cocktail_id: string
+          created_at: string | null
+          id: string
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          cocktail_id: string
+          created_at?: string | null
+          id?: string
+          product_id: string
+          quantity: number
+        }
+        Update: {
+          cocktail_id?: string
+          created_at?: string | null
+          id?: string
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cocktail_ingredients_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cocktail_ingredients_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cocktails: {
+        Row: {
+          category: string
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          price: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          price?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          price?: number
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
@@ -47,6 +113,102 @@ export type Database = {
           name?: string
           unit?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          cocktail_id: string
+          created_at: string | null
+          id: string
+          quantity: number
+          sale_id: string
+          subtotal: number
+          unit_price: number
+        }
+        Insert: {
+          cocktail_id: string
+          created_at?: string | null
+          id?: string
+          quantity: number
+          sale_id: string
+          subtotal: number
+          unit_price: number
+        }
+        Update: {
+          cocktail_id?: string
+          created_at?: string | null
+          id?: string
+          quantity?: number
+          sale_id?: string
+          subtotal?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_cancelled: boolean | null
+          point_of_sale: string
+          sale_number: string
+          seller_id: string
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_cancelled?: boolean | null
+          point_of_sale: string
+          sale_number: string
+          seller_id: string
+          total_amount?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_cancelled?: boolean | null
+          point_of_sale?: string
+          sale_number?: string
+          seller_id?: string
+          total_amount?: number
         }
         Relationships: []
       }
@@ -155,14 +317,39 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "vendedor"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
       product_category:
         | "con_alcohol"
@@ -297,6 +484,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "vendedor"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
       product_category: [
         "con_alcohol",
