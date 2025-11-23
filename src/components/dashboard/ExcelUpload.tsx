@@ -13,15 +13,27 @@ export const ExcelUpload = () => {
     const templateData = [
       {
         nombre: "Ron Bacardi 750ml",
-        cantidad: 10
+        categoria: "con_alcohol",
+        cantidad: 750,
+        unidad: "ml"
       },
       {
         nombre: "Vodka Absolut 750ml",
-        cantidad: 5
+        categoria: "con_alcohol",
+        cantidad: 750,
+        unidad: "ml"
       },
       {
-        nombre: "Gin Bombay 750ml",
-        cantidad: 8
+        nombre: "Azúcar",
+        categoria: "otros",
+        cantidad: 1000,
+        unidad: "g"
+      },
+      {
+        nombre: "Jugo de Naranja",
+        categoria: "sin_alcohol",
+        cantidad: 1000,
+        unidad: "ml"
       }
     ];
 
@@ -31,13 +43,15 @@ export const ExcelUpload = () => {
 
     worksheet["!cols"] = [
       { wch: 30 }, // nombre
-      { wch: 10 }  // cantidad
+      { wch: 15 }, // categoria
+      { wch: 10 }, // cantidad
+      { wch: 10 }  // unidad
     ];
 
     XLSX.writeFile(workbook, "plantilla_stock.xlsx");
     
     toast.success("Plantilla descargada", {
-      description: "Usa este formato para actualizar el stock"
+      description: "Categorías válidas: con_alcohol, sin_alcohol, mixers, garnish, otros. Unidades: ml, g"
     });
   };
 
@@ -52,14 +66,26 @@ export const ExcelUpload = () => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet) as Array<{
         nombre: string;
+        categoria?: string;
         cantidad: number;
+        unidad?: string;
       }>;
 
       let created = 0;
       let updated = 0;
+      const validCategories = ["con_alcohol", "sin_alcohol", "mixers", "garnish", "otros"];
+      const validUnits = ["ml", "g"];
 
       for (const row of jsonData) {
         if (!row.nombre || !row.cantidad) continue;
+
+        const category = row.categoria && validCategories.includes(row.categoria) 
+          ? row.categoria 
+          : "otros";
+        
+        const unit = row.unidad && validUnits.includes(row.unidad)
+          ? row.unidad
+          : "ml";
 
         // Buscar producto por nombre
         const { data: existingProduct } = await supabase
@@ -90,8 +116,8 @@ export const ExcelUpload = () => {
               name: row.nombre,
               code: codeData,
               current_stock: row.cantidad,
-              category: "con_alcohol",
-              unit: "ml",
+              category: category as any,
+              unit: unit,
               minimum_stock: 5
             });
           
