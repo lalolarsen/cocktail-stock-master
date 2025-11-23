@@ -16,28 +16,32 @@ export const ExcelUpload = () => {
         categoria: "con_alcohol",
         cantidad: 750,
         medida: "ml",
-        unidades: 3
+        unidades: 3,
+        costo_unitario: 25.50
       },
       {
         nombre: "Vodka Absolut 750ml",
         categoria: "con_alcohol",
         cantidad: 750,
         medida: "ml",
-        unidades: 2
+        unidades: 2,
+        costo_unitario: 32.00
       },
       {
         nombre: "Azúcar",
         categoria: "otros",
         cantidad: 1000,
         medida: "g",
-        unidades: 1
+        unidades: 1,
+        costo_unitario: 3.50
       },
       {
         nombre: "Jugo de Naranja",
         categoria: "sin_alcohol",
         cantidad: 1000,
         medida: "ml",
-        unidades: 4
+        unidades: 4,
+        costo_unitario: 5.00
       }
     ];
 
@@ -50,7 +54,8 @@ export const ExcelUpload = () => {
       { wch: 15 }, // categoria
       { wch: 10 }, // cantidad
       { wch: 10 }, // medida
-      { wch: 10 }  // unidades
+      { wch: 10 }, // unidades
+      { wch: 15 }  // costo_unitario
     ];
 
     XLSX.writeFile(workbook, "plantilla_stock.xlsx");
@@ -75,6 +80,7 @@ export const ExcelUpload = () => {
         cantidad: number;
         medida?: string;
         unidades?: number;
+        costo_unitario?: number;
       }>;
 
       let created = 0;
@@ -105,12 +111,18 @@ export const ExcelUpload = () => {
           .maybeSingle();
 
         if (existingProduct) {
-          // Actualizar stock existente
+          // Actualizar stock existente y costo si se proporciona
+          const updateData: any = {
+            current_stock: existingProduct.current_stock + totalQuantity
+          };
+          
+          if (row.costo_unitario !== undefined && row.costo_unitario > 0) {
+            updateData.cost_per_unit = row.costo_unitario;
+          }
+          
           await supabase
             .from("products")
-            .update({
-              current_stock: existingProduct.current_stock + totalQuantity
-            })
+            .update(updateData)
             .eq("id", existingProduct.id);
           
           updated++;
@@ -128,7 +140,8 @@ export const ExcelUpload = () => {
               current_stock: totalQuantity,
               category: category as any,
               unit: unit,
-              minimum_stock: 5
+              minimum_stock: 5,
+              cost_per_unit: row.costo_unitario && row.costo_unitario > 0 ? row.costo_unitario : null
             });
           
           created++;
