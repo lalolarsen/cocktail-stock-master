@@ -17,7 +17,7 @@ export const ExcelUpload = () => {
         cantidad: 750,
         medida: "ml",
         unidades: 3,
-        costo_unitario: 25.50
+        costo_unitario: 12000
       },
       {
         nombre: "Vodka Absolut 750ml",
@@ -25,7 +25,7 @@ export const ExcelUpload = () => {
         cantidad: 750,
         medida: "ml",
         unidades: 2,
-        costo_unitario: 32.00
+        costo_unitario: 15000
       },
       {
         nombre: "Azúcar",
@@ -33,7 +33,7 @@ export const ExcelUpload = () => {
         cantidad: 1000,
         medida: "g",
         unidades: 1,
-        costo_unitario: 3.50
+        costo_unitario: 1500
       },
       {
         nombre: "Jugo de Naranja",
@@ -41,7 +41,7 @@ export const ExcelUpload = () => {
         cantidad: 1000,
         medida: "ml",
         unidades: 4,
-        costo_unitario: 5.00
+        costo_unitario: 2500
       }
     ];
 

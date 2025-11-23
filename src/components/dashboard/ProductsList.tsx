@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Wine, Droplet, Citrus, Leaf, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { formatCLP } from "@/lib/currency";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -270,7 +271,7 @@ export const ProductsList = () => {
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Mínimo: {product.minimum_stock} {product.unit}</span>
-                    <span>Valor: ${(product.current_stock * product.cost_per_unit).toFixed(2)}</span>
+                    <span>Valor: {formatCLP(product.current_stock * (product.cost_per_unit || 0))}</span>
                   </div>
                 </div>
               </div>
