@@ -83,6 +83,7 @@ export type Database = {
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
+          code: string
           cost_per_unit: number | null
           created_at: string | null
           current_stock: number
@@ -94,6 +95,7 @@ export type Database = {
         }
         Insert: {
           category: Database["public"]["Enums"]["product_category"]
+          code: string
           cost_per_unit?: number | null
           created_at?: string | null
           current_stock?: number
@@ -105,6 +107,7 @@ export type Database = {
         }
         Update: {
           category?: Database["public"]["Enums"]["product_category"]
+          code?: string
           cost_per_unit?: number | null
           created_at?: string | null
           current_stock?: number
@@ -343,6 +346,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_product_code: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
