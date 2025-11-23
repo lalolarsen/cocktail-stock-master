@@ -13,19 +13,19 @@ export const CocktailsExcelUpload = () => {
     const templateData = [
       {
         nombre: "Gin Tonic",
-        precio: 8.50,
+        precio: 6500,
         categoria: "Clásicos",
         descripcion: "Gin premium con tónica y limón"
       },
       {
         nombre: "Mojito",
-        precio: 9.00,
+        precio: 7000,
         categoria: "Refrescantes",
         descripcion: "Ron blanco, menta, lima y azúcar"
       },
       {
         nombre: "Piña Colada",
-        precio: 10.00,
+        precio: 8000,
         categoria: "Tropicales",
         descripcion: "Ron, crema de coco y jugo de piña"
       }

@@ -9,6 +9,7 @@ import { Loader2, ShoppingCart, X, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatCLP } from "@/lib/currency";
 
 type Cocktail = {
   id: string;
@@ -236,7 +237,7 @@ export default function Sales() {
                         {cocktail.category}
                       </Badge>
                       <div className="text-2xl font-bold text-primary">
-                        ${cocktail.price}
+                        {formatCLP(cocktail.price)}
                       </div>
                     </div>
                   </Card>
@@ -270,7 +271,7 @@ export default function Sales() {
                             {item.cocktail.name}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            ${item.cocktail.price} c/u
+                            {formatCLP(item.cocktail.price)} c/u
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -313,7 +314,7 @@ export default function Sales() {
                     <div className="flex justify-between items-center mb-4">
                       <span className="font-semibold">Total:</span>
                       <span className="text-2xl font-bold text-primary">
-                        ${calculateTotal().toFixed(2)}
+                        {formatCLP(calculateTotal())}
                       </span>
                     </div>
 
@@ -352,8 +353,7 @@ export default function Sales() {
                   <div>
                     <p className="font-semibold">{sale.sale_number}</p>
                     <p className="text-sm text-muted-foreground">
-                      {sale.point_of_sale} • $
-                      {sale.total_amount.toFixed(2)}
+                      {sale.point_of_sale} • {formatCLP(sale.total_amount)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

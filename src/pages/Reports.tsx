@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { formatCLP } from "@/lib/currency";
 import {
   Table,
   TableBody,
@@ -230,7 +231,7 @@ export default function Reports() {
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Total Ventas</p>
                 <p className="text-3xl font-bold text-primary">
-                  ${totals.totalSales.toFixed(2)}
+                  {formatCLP(totals.totalSales)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {totals.count} ventas activas
@@ -244,7 +245,7 @@ export default function Reports() {
                   Ventas Canceladas
                 </p>
                 <p className="text-3xl font-bold text-destructive">
-                  ${totals.totalCancelled.toFixed(2)}
+                  {formatCLP(totals.totalCancelled)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {sales.length - totals.count} canceladas
@@ -256,7 +257,7 @@ export default function Reports() {
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Total General</p>
                 <p className="text-3xl font-bold">
-                  ${(totals.totalSales + totals.totalCancelled).toFixed(2)}
+                  {formatCLP(totals.totalSales + totals.totalCancelled)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {sales.length} transacciones
@@ -317,7 +318,7 @@ export default function Reports() {
                         </div>
                       </TableCell>
                       <TableCell className="font-semibold">
-                        ${sale.total_amount.toFixed(2)}
+                        {formatCLP(sale.total_amount)}
                       </TableCell>
                       <TableCell>
                         {sale.is_cancelled ? (
