@@ -15,25 +15,29 @@ export const ExcelUpload = () => {
         nombre: "Ron Bacardi 750ml",
         categoria: "con_alcohol",
         cantidad: 750,
-        unidad: "ml"
+        medida: "ml",
+        unidades: 3
       },
       {
         nombre: "Vodka Absolut 750ml",
         categoria: "con_alcohol",
         cantidad: 750,
-        unidad: "ml"
+        medida: "ml",
+        unidades: 2
       },
       {
         nombre: "Azúcar",
         categoria: "otros",
         cantidad: 1000,
-        unidad: "g"
+        medida: "g",
+        unidades: 1
       },
       {
         nombre: "Jugo de Naranja",
         categoria: "sin_alcohol",
         cantidad: 1000,
-        unidad: "ml"
+        medida: "ml",
+        unidades: 4
       }
     ];
 
@@ -45,13 +49,14 @@ export const ExcelUpload = () => {
       { wch: 30 }, // nombre
       { wch: 15 }, // categoria
       { wch: 10 }, // cantidad
-      { wch: 10 }  // unidad
+      { wch: 10 }, // medida
+      { wch: 10 }  // unidades
     ];
 
     XLSX.writeFile(workbook, "plantilla_stock.xlsx");
     
     toast.success("Plantilla descargada", {
-      description: "Categorías válidas: con_alcohol, sin_alcohol, mixers, garnish, otros. Unidades: ml, g"
+      description: "Categorías válidas: con_alcohol, sin_alcohol, mixers, garnish, otros. Medidas: ml, g"
     });
   };
 
@@ -68,7 +73,8 @@ export const ExcelUpload = () => {
         nombre: string;
         categoria?: string;
         cantidad: number;
-        unidad?: string;
+        medida?: string;
+        unidades?: number;
       }>;
 
       let created = 0;
@@ -83,9 +89,13 @@ export const ExcelUpload = () => {
           ? row.categoria 
           : "otros";
         
-        const unit = row.unidad && validUnits.includes(row.unidad)
-          ? row.unidad
+        const unit = row.medida && validUnits.includes(row.medida)
+          ? row.medida
           : "ml";
+
+        // Calcular cantidad total: cantidad * unidades
+        const units = row.unidades && row.unidades > 0 ? row.unidades : 1;
+        const totalQuantity = row.cantidad * units;
 
         // Buscar producto por nombre
         const { data: existingProduct } = await supabase
@@ -99,7 +109,7 @@ export const ExcelUpload = () => {
           await supabase
             .from("products")
             .update({
-              current_stock: existingProduct.current_stock + row.cantidad
+              current_stock: existingProduct.current_stock + totalQuantity
             })
             .eq("id", existingProduct.id);
           
@@ -115,7 +125,7 @@ export const ExcelUpload = () => {
             .insert({
               name: row.nombre,
               code: codeData,
-              current_stock: row.cantidad,
+              current_stock: totalQuantity,
               category: category as any,
               unit: unit,
               minimum_stock: 5
