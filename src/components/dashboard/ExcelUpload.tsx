@@ -61,7 +61,7 @@ export const ExcelUpload = () => {
     XLSX.writeFile(workbook, "plantilla_stock.xlsx");
     
     toast.success("Plantilla descargada", {
-      description: "Categorías válidas: con_alcohol, sin_alcohol, mixers, garnish, otros. Medidas: ml, g"
+      description: "El costo_unitario es el precio total por producto (ej: $2500 por botella de 1000ml). El sistema calculará automáticamente el costo por ml o g."
     });
   };
 
@@ -102,6 +102,12 @@ export const ExcelUpload = () => {
         // Calcular cantidad total: cantidad * unidades
         const units = row.unidades && row.unidades > 0 ? row.unidades : 1;
         const totalQuantity = row.cantidad * units;
+        
+        // Calcular costo por unidad de medida (ml o g)
+        // Si costo_unitario es 2500 por una botella de 1000ml, entonces cost_per_unit = 2500/1000 = 2.5 pesos/ml
+        const costPerUnit = row.costo_unitario && row.costo_unitario > 0 && row.cantidad > 0
+          ? row.costo_unitario / row.cantidad
+          : null;
 
         // Buscar producto por nombre
         const { data: existingProduct } = await supabase
@@ -116,8 +122,8 @@ export const ExcelUpload = () => {
             current_stock: existingProduct.current_stock + totalQuantity
           };
           
-          if (row.costo_unitario !== undefined && row.costo_unitario > 0) {
-            updateData.cost_per_unit = row.costo_unitario;
+          if (costPerUnit !== null) {
+            updateData.cost_per_unit = costPerUnit;
           }
           
           await supabase
@@ -141,7 +147,7 @@ export const ExcelUpload = () => {
               category: category as any,
               unit: unit,
               minimum_stock: 5,
-              cost_per_unit: row.costo_unitario && row.costo_unitario > 0 ? row.costo_unitario : null
+              cost_per_unit: costPerUnit
             });
           
           created++;
