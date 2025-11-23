@@ -9,6 +9,7 @@ import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
+import { CocktailsExcelUpload } from "@/components/dashboard/CocktailsExcelUpload";
 import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
@@ -48,7 +49,10 @@ export default function Admin() {
               </div>
               <AlertsPanel />
             </div>
-            <ExcelUpload />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ExcelUpload />
+              <CocktailsExcelUpload />
+            </div>
           </div>
         )}
 
