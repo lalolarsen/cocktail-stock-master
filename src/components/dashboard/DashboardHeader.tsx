@@ -1,9 +1,9 @@
-import { Wine, Package, TrendingUp } from "lucide-react";
+import { Wine, Package, TrendingUp, Martini } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DashboardHeaderProps {
-  activeView: "overview" | "products" | "predictions";
-  setActiveView: (view: "overview" | "products" | "predictions") => void;
+  activeView: "overview" | "products" | "predictions" | "menu";
+  setActiveView: (view: "overview" | "products" | "predictions" | "menu") => void;
 }
 
 export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderProps) => {
@@ -35,6 +35,14 @@ export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderPr
           >
             <Package className="mr-2 h-4 w-4" />
             Productos
+          </Button>
+          <Button
+            variant={activeView === "menu" ? "default" : "outline"}
+            className={activeView === "menu" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white" : ""}
+            onClick={() => setActiveView("menu")}
+          >
+            <Martini className="mr-2 h-4 w-4" />
+            Menú
           </Button>
           <Button
             variant={activeView === "predictions" ? "default" : "outline"}
