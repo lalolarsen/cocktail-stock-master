@@ -20,12 +20,14 @@ const Index = () => {
         {activeView === "overview" && (
           <div className="space-y-6 slide-in-up">
             <StatsCards />
-            <ProfitChart />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ConsumptionChart />
+            <div className="grid grid-cols-1 gap-6">
+              <ProfitChart />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <ConsumptionChart />
+                </div>
+                <AlertsPanel />
               </div>
-              <AlertsPanel />
             </div>
             <ExcelUpload />
           </div>
