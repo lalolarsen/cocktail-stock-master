@@ -9,8 +9,8 @@ import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
-import { CocktailsExcelUpload } from "@/components/dashboard/CocktailsExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
+import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
@@ -44,16 +44,16 @@ export default function Admin() {
         {activeView === "overview" && (
           <div className="space-y-6">
             <StatsCards />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ConsumptionChart />
+            <div className="grid grid-cols-1 gap-6">
+              <ProfitChart />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <ConsumptionChart />
+                </div>
+                <AlertsPanel />
               </div>
-              <AlertsPanel />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ExcelUpload />
-              <CocktailsExcelUpload />
-            </div>
+            <ExcelUpload />
           </div>
         )}
 
