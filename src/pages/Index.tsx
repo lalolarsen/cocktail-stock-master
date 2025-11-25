@@ -6,9 +6,10 @@ import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
+import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 
 const Index = () => {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu">("overview");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
@@ -37,6 +38,12 @@ const Index = () => {
         {activeView === "predictions" && (
           <div className="slide-in-up">
             <PredictionsPanel />
+          </div>
+        )}
+
+        {activeView === "menu" && (
+          <div className="slide-in-up">
+            <CocktailsMenu />
           </div>
         )}
       </div>
