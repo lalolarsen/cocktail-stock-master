@@ -35,16 +35,16 @@ export const ProfitChart = () => {
           total_amount,
           created_at,
           is_cancelled,
-          sale_items!inner (
+          sale_items (
             id,
             quantity,
             cocktail_id,
-            cocktails!inner (
+            cocktails (
               id,
               name,
-              cocktail_ingredients!inner (
+              cocktail_ingredients (
                 quantity,
-                products!inner (
+                products (
                   cost_per_unit
                 )
               )
@@ -55,7 +55,11 @@ export const ProfitChart = () => {
         .gte("created_at", thirtyDaysAgo.toISOString())
         .order("created_at", { ascending: true });
 
-      console.log("Sales query result:", { sales, salesError });
+      console.log("Sales query result:", { 
+        salesCount: sales?.length, 
+        salesError,
+        firstSale: sales?.[0]
+      });
 
       if (salesError) {
         console.error("Error en consulta de ventas:", salesError);
