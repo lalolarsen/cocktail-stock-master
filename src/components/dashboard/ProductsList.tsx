@@ -56,6 +56,13 @@ const categoryLabels = {
   unidades: "Unidades",
 };
 
+// Helper function to get the correct unit display
+const getUnitDisplay = (category: string, unit: string) => {
+  if (category === "unidades") return "unidades";
+  if (category === "gramos") return "g";
+  return unit;
+};
+
 export const ProductsList = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,7 +265,7 @@ export const ProductsList = () => {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Stock actual</span>
                     <span className="font-semibold">
-                      {product.current_stock} {product.unit}
+                      {product.current_stock} {getUnitDisplay(product.category, product.unit)}
                     </span>
                   </div>
                   <Progress
@@ -266,7 +273,7 @@ export const ProductsList = () => {
                     className="h-2"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Mínimo: {product.minimum_stock} {product.unit}</span>
+                    <span>Mínimo: {product.minimum_stock} {getUnitDisplay(product.category, product.unit)}</span>
                     <span>Valor: {formatCLP(product.current_stock * (product.cost_per_unit || 0))}</span>
                   </div>
                 </div>
@@ -318,7 +325,13 @@ export const ProductsList = () => {
               <Label htmlFor="edit-category">Categoría</Label>
               <Select
                 value={editForm.category}
-                onValueChange={(value) => setEditForm({ ...editForm, category: value })}
+                onValueChange={(value) => {
+                  // Sincronizar la unidad con la categoría
+                  let newUnit = "ml";
+                  if (value === "gramos") newUnit = "g";
+                  if (value === "unidades") newUnit = "unidad";
+                  setEditForm({ ...editForm, category: value, unit: newUnit });
+                }}
               >
                 <SelectTrigger id="edit-category">
                   <SelectValue />
@@ -366,6 +379,7 @@ export const ProductsList = () => {
                   <SelectContent>
                     <SelectItem value="ml">ml</SelectItem>
                     <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="unidad">unidad</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
