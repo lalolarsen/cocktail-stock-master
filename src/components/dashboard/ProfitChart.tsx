@@ -35,16 +35,16 @@ export const ProfitChart = () => {
           total_amount,
           created_at,
           is_cancelled,
-          sale_items (
+          sale_items!inner (
             id,
             quantity,
             cocktail_id,
-            cocktails (
+            cocktails!inner (
               id,
               name,
-              cocktail_ingredients (
+              cocktail_ingredients!inner (
                 quantity,
-                products (
+                products!inner (
                   cost_per_unit
                 )
               )
@@ -55,7 +55,12 @@ export const ProfitChart = () => {
         .gte("created_at", thirtyDaysAgo.toISOString())
         .order("created_at", { ascending: true });
 
-      if (salesError) throw salesError;
+      console.log("Sales query result:", { sales, salesError });
+
+      if (salesError) {
+        console.error("Error en consulta de ventas:", salesError);
+        throw salesError;
+      }
 
       // Agrupar por fecha y calcular ganancias
       const profitByDate = new Map<string, { ingresos: number; costos: number }>();
@@ -90,13 +95,15 @@ export const ProfitChart = () => {
         ganancias: values.ingresos - values.costos,
       }));
 
+      console.log("Chart data:", chartData);
+
       setData(chartData);
       
       // Calcular ganancia total
       const total = chartData.reduce((sum, item) => sum + item.ganancias, 0);
       setTotalProfit(total);
     } catch (error) {
-      console.error("Error fetching profit data:", error);
+      console.error("Error completo al obtener datos de ganancias:", error);
     } finally {
       setLoading(false);
     }
