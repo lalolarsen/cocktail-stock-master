@@ -5,6 +5,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, DollarSign } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DateRange } from "react-day-picker";
+import { Button } from "@/components/ui/button";
 
 interface ProfitData {
   date: string;
@@ -17,16 +20,30 @@ export const ProfitChart = () => {
   const [data, setData] = useState<ProfitData[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalProfit, setTotalProfit] = useState(0);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return {
+      from: thirtyDaysAgo,
+      to: new Date(),
+    };
+  });
 
   useEffect(() => {
-    fetchProfitData();
-  }, []);
+    if (dateRange?.from && dateRange?.to) {
+      fetchProfitData();
+    }
+  }, [dateRange]);
 
   const fetchProfitData = async () => {
+    if (!dateRange?.from || !dateRange?.to) return;
+
     try {
-      // Obtener ventas de los últimos 30 días
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const startDate = new Date(dateRange.from);
+      startDate.setHours(0, 0, 0, 0);
+      
+      const endDate = new Date(dateRange.to);
+      endDate.setHours(23, 59, 59, 999);
 
       const { data: sales, error: salesError } = await supabase
         .from("sales")
@@ -47,7 +64,8 @@ export const ProfitChart = () => {
           )
         `)
         .eq("is_cancelled", false)
-        .gte("created_at", thirtyDaysAgo.toISOString())
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
         .order("created_at", { ascending: true });
 
       if (salesError) throw salesError;
@@ -116,19 +134,42 @@ export const ProfitChart = () => {
     );
   }
 
+  const resetToLast30Days = () => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    setDateRange({
+      from: thirtyDaysAgo,
+      to: new Date(),
+    });
+  };
+
   return (
     <Card className="glass-effect shadow-elegant">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            <span className="text-xl">Ganancias (Últimos 30 días)</span>
+            <span className="text-xl">Gráfico de Ganancias</span>
           </CardTitle>
-          <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <span className="text-lg font-bold text-primary">
-              {formatCLP(totalProfit)}
-            </span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetToLast30Days}
+              className="whitespace-nowrap"
+            >
+              Últimos 30 días
+            </Button>
+            <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg">
+              <DollarSign className="h-5 w-5 text-primary" />
+              <span className="text-lg font-bold text-primary">
+                {formatCLP(totalProfit)}
+              </span>
+            </div>
           </div>
         </div>
       </CardHeader>

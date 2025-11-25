@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DateRange } from "react-day-picker";
+import { Button } from "@/components/ui/button";
 
 interface ChartData {
   date: string;
@@ -13,18 +16,37 @@ interface ChartData {
 export const ConsumptionChart = () => {
   const [data, setData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return {
+      from: thirtyDaysAgo,
+      to: new Date(),
+    };
+  });
 
   useEffect(() => {
-    fetchChartData();
-  }, []);
+    if (dateRange?.from && dateRange?.to) {
+      fetchChartData();
+    }
+  }, [dateRange]);
 
   const fetchChartData = async () => {
+    if (!dateRange?.from || !dateRange?.to) return;
+
     try {
+      const startDate = new Date(dateRange.from);
+      startDate.setHours(0, 0, 0, 0);
+      
+      const endDate = new Date(dateRange.to);
+      endDate.setHours(23, 59, 59, 999);
+
       const { data: movements, error } = await supabase
         .from("stock_movements")
         .select("*")
-        .order("created_at", { ascending: true })
-        .limit(30);
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .order("created_at", { ascending: true });
 
       if (error) throw error;
 
@@ -68,12 +90,37 @@ export const ConsumptionChart = () => {
     );
   }
 
+  const resetToLast30Days = () => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    setDateRange({
+      from: thirtyDaysAgo,
+      to: new Date(),
+    });
+  };
+
   return (
     <Card className="glass-effect shadow-elegant">
       <CardHeader>
-        <CardTitle className="text-2xl bg-gradient-to-r from-secondary to-secondary-glow bg-clip-text text-transparent">
-          Consumo y Reposición
-        </CardTitle>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <CardTitle className="text-2xl bg-gradient-to-r from-secondary to-secondary-glow bg-clip-text text-transparent">
+            Consumo y Reposición
+          </CardTitle>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetToLast30Days}
+              className="whitespace-nowrap"
+            >
+              Últimos 30 días
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
