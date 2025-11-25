@@ -7,6 +7,7 @@ import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
+import { ProfitChart } from "@/components/dashboard/ProfitChart";
 
 const Index = () => {
   const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu">("overview");
@@ -19,6 +20,7 @@ const Index = () => {
         {activeView === "overview" && (
           <div className="space-y-6 slide-in-up">
             <StatsCards />
+            <ProfitChart />
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
                 <ConsumptionChart />
