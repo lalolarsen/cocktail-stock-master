@@ -13,33 +13,29 @@ export const ExcelUpload = () => {
     const templateData = [
       {
         nombre: "Ron Bacardi 750ml",
-        categoria: "con_alcohol",
+        categoria: "ml",
         cantidad: 750,
-        medida: "ml",
         unidades: 3,
         costo_unitario: 12000
       },
       {
         nombre: "Vodka Absolut 750ml",
-        categoria: "con_alcohol",
+        categoria: "ml",
         cantidad: 750,
-        medida: "ml",
         unidades: 2,
         costo_unitario: 15000
       },
       {
         nombre: "Azúcar",
-        categoria: "otros",
+        categoria: "gramos",
         cantidad: 1000,
-        medida: "g",
         unidades: 1,
         costo_unitario: 1500
       },
       {
         nombre: "Jugo de Naranja",
-        categoria: "sin_alcohol",
+        categoria: "ml",
         cantidad: 1000,
-        medida: "ml",
         unidades: 4,
         costo_unitario: 2500
       }
@@ -53,7 +49,6 @@ export const ExcelUpload = () => {
       { wch: 30 }, // nombre
       { wch: 15 }, // categoria
       { wch: 10 }, // cantidad
-      { wch: 10 }, // medida
       { wch: 10 }, // unidades
       { wch: 15 }  // costo_unitario
     ];
@@ -61,7 +56,7 @@ export const ExcelUpload = () => {
     XLSX.writeFile(workbook, "plantilla_stock.xlsx");
     
     toast.success("Plantilla descargada", {
-      description: "El costo_unitario es el precio total por producto (ej: $2500 por botella de 1000ml). El sistema calculará automáticamente el costo por ml o g."
+      description: "Categorías válidas: ml, gramos, unidades. El costo_unitario es el precio total por producto. El sistema calculará automáticamente el costo por unidad."
     });
   };
 
@@ -78,26 +73,23 @@ export const ExcelUpload = () => {
         nombre: string;
         categoria?: string;
         cantidad: number;
-        medida?: string;
         unidades?: number;
         costo_unitario?: number;
       }>;
 
       let created = 0;
       let updated = 0;
-      const validCategories = ["con_alcohol", "sin_alcohol", "mixers", "garnish", "otros"];
-      const validUnits = ["ml", "g"];
+      const validCategories = ["ml", "gramos", "unidades"];
 
       for (const row of jsonData) {
         if (!row.nombre || !row.cantidad) continue;
 
         const category = row.categoria && validCategories.includes(row.categoria) 
           ? row.categoria 
-          : "otros";
-        
-        const unit = row.medida && validUnits.includes(row.medida)
-          ? row.medida
           : "ml";
+        
+        // La unidad de base de datos depende de la categoría
+        const unit = category === "gramos" ? "g" : category === "ml" ? "ml" : "unidad";
 
         // Calcular cantidad total: cantidad * unidades
         const units = row.unidades && row.unidades > 0 ? row.unidades : 1;
