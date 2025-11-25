@@ -45,19 +45,15 @@ interface Product {
 }
 
 const categoryIcons = {
-  con_alcohol: Wine,
-  sin_alcohol: Droplet,
-  mixers: Droplet,
-  garnish: Citrus,
-  otros: Leaf,
+  ml: Droplet,
+  gramos: Leaf,
+  unidades: Wine,
 };
 
 const categoryLabels = {
-  con_alcohol: "Con Alcohol",
-  sin_alcohol: "Sin Alcohol",
-  mixers: "Mixers",
-  garnish: "Guarniciones",
-  otros: "Otros",
+  ml: "Mililitros",
+  gramos: "Gramos",
+  unidades: "Unidades",
 };
 
 export const ProductsList = () => {
@@ -328,11 +324,9 @@ export const ProductsList = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="con_alcohol">Con Alcohol</SelectItem>
-                  <SelectItem value="sin_alcohol">Sin Alcohol</SelectItem>
-                  <SelectItem value="mixers">Mixers</SelectItem>
-                  <SelectItem value="garnish">Guarniciones</SelectItem>
-                  <SelectItem value="otros">Otros</SelectItem>
+                  <SelectItem value="ml">Mililitros</SelectItem>
+                  <SelectItem value="gramos">Gramos</SelectItem>
+                  <SelectItem value="unidades">Unidades</SelectItem>
                 </SelectContent>
               </Select>
             </div>
