@@ -226,7 +226,16 @@ export default function Sales() {
   };
 
   const handlePinCancel = () => {
-    window.location.href = "/auth";
+    void (async () => {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.error("Error signing out:", e);
+      }
+
+      // Hard redirect to ensure we fully leave /sales after logout
+      window.location.assign("/auth");
+    })();
   };
 
   if (!isVerified) {
