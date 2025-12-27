@@ -36,13 +36,22 @@ export const PredictionsPanel = () => {
     try {
       const { data, error } = await supabase.functions.invoke("predict-consumption");
 
-      if (error) throw error;
+      if (error) {
+        console.error("Function error:", error);
+        throw new Error(error.message || "Error en la función");
+      }
+
+      if (data?.error) {
+        console.error("API error:", data.error);
+        throw new Error(data.error);
+      }
 
       setPredictions(data);
       toast.success("Predicciones generadas con éxito");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error generating predictions:", error);
-      toast.error("Error al generar predicciones");
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      toast.error(`Error al generar predicciones: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
