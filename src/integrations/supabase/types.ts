@@ -126,6 +126,7 @@ export type Database = {
           full_name: string | null
           id: string
           point_of_sale: string | null
+          worker_pin: string | null
         }
         Insert: {
           created_at?: string | null
@@ -133,6 +134,7 @@ export type Database = {
           full_name?: string | null
           id: string
           point_of_sale?: string | null
+          worker_pin?: string | null
         }
         Update: {
           created_at?: string | null
@@ -140,6 +142,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           point_of_sale?: string | null
+          worker_pin?: string | null
         }
         Relationships: []
       }

@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
+import WorkerPinDialog from "@/components/WorkerPinDialog";
 
 type Cocktail = {
   id: string;
@@ -29,6 +30,8 @@ export default function Sales() {
   const [pointOfSale, setPointOfSale] = useState("");
   const [loading, setLoading] = useState(false);
   const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [isVerified, setIsVerified] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -207,6 +210,26 @@ export default function Sales() {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  const handlePinVerified = () => {
+    setIsVerified(true);
+    setShowPinDialog(false);
+  };
+
+  const handlePinCancel = () => {
+    setShowPinDialog(false);
+    navigate("/auth");
+  };
+
+  if (!isVerified) {
+    return (
+      <WorkerPinDialog
+        open={showPinDialog}
+        onVerified={handlePinVerified}
+        onCancel={handlePinCancel}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
