@@ -12,16 +12,47 @@ import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
+import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
   const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers">("overview");
+  const [isVerified, setIsVerified] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(true);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  const handlePinVerified = () => {
+    setIsVerified(true);
+    setShowPinDialog(false);
+  };
+
+  const handlePinCancel = () => {
+    void (async () => {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.error("Error signing out:", e);
+      }
+      window.location.assign("/auth");
+    })();
+  };
+
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        <WorkerPinDialog
+          open={showPinDialog}
+          onVerified={handlePinVerified}
+          onCancel={handlePinCancel}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
