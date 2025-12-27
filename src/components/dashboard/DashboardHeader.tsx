@@ -1,9 +1,9 @@
-import { Wine, Package, TrendingUp, Martini } from "lucide-react";
+import { Wine, Package, TrendingUp, Martini, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DashboardHeaderProps {
-  activeView: "overview" | "products" | "predictions" | "menu";
-  setActiveView: (view: "overview" | "products" | "predictions" | "menu") => void;
+  activeView: "overview" | "products" | "predictions" | "menu" | "workers";
+  setActiveView: (view: "overview" | "products" | "predictions" | "menu" | "workers") => void;
 }
 
 export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderProps) => {
@@ -19,7 +19,7 @@ export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderPr
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant={activeView === "overview" ? "default" : "outline"}
             className="primary-gradient text-primary-foreground hover:opacity-90 transition-smooth"
@@ -51,6 +51,14 @@ export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderPr
           >
             <TrendingUp className="mr-2 h-4 w-4" />
             Predicciones
+          </Button>
+          <Button
+            variant={activeView === "workers" ? "default" : "outline"}
+            className={activeView === "workers" ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white" : ""}
+            onClick={() => setActiveView("workers")}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            Trabajadores
           </Button>
         </div>
       </div>

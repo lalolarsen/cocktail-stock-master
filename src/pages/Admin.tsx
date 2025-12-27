@@ -11,10 +11,11 @@ import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
+import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers">("overview");
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -72,6 +73,12 @@ export default function Admin() {
         {activeView === "menu" && (
           <div className="space-y-6">
             <CocktailsMenu />
+          </div>
+        )}
+
+        {activeView === "workers" && (
+          <div className="space-y-6">
+            <WorkersManagement />
           </div>
         )}
       </div>

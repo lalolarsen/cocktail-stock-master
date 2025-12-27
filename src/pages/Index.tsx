@@ -8,9 +8,10 @@ import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
+import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 
 const Index = () => {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers">("overview");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
@@ -48,6 +49,12 @@ const Index = () => {
         {activeView === "menu" && (
           <div className="slide-in-up">
             <CocktailsMenu />
+          </div>
+        )}
+
+        {activeView === "workers" && (
+          <div className="slide-in-up">
+            <WorkersManagement />
           </div>
         )}
       </div>
