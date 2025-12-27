@@ -72,9 +72,14 @@ export default function WorkerPinDialog({ open, onVerified, onCancel }: WorkerPi
     }
   };
 
+  const handleCancel = () => {
+    setPin("");
+    onCancel();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleCancel()}>
+      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-5 h-5" />
@@ -100,7 +105,7 @@ export default function WorkerPinDialog({ open, onVerified, onCancel }: WorkerPi
           </div>
 
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={onCancel} disabled={loading}>
+            <Button variant="outline" onClick={handleCancel} disabled={loading}>
               Cancelar
             </Button>
             <Button onClick={handleVerify} disabled={loading}>
