@@ -32,13 +32,22 @@ export default function Sales() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [isVerified, setIsVerified] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(true);
+  const [shouldRedirect, setShouldRedirect] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchCocktails();
-    fetchRecentSales();
-    fetchUserPointOfSale();
-  }, []);
+    if (shouldRedirect) {
+      navigate("/auth", { replace: true });
+    }
+  }, [shouldRedirect, navigate]);
+
+  useEffect(() => {
+    if (isVerified) {
+      fetchCocktails();
+      fetchRecentSales();
+      fetchUserPointOfSale();
+    }
+  }, [isVerified]);
 
   const fetchUserPointOfSale = async () => {
     const { data: session } = await supabase.auth.getSession();
@@ -218,7 +227,7 @@ export default function Sales() {
 
   const handlePinCancel = () => {
     setShowPinDialog(false);
-    navigate("/auth");
+    setShouldRedirect(true);
   };
 
   if (!isVerified) {
