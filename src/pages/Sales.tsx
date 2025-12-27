@@ -226,17 +226,18 @@ export default function Sales() {
   };
 
   const handlePinCancel = () => {
-    setShowPinDialog(false);
-    setShouldRedirect(true);
+    window.location.href = "/auth";
   };
 
   if (!isVerified) {
     return (
-      <WorkerPinDialog
-        open={showPinDialog}
-        onVerified={handlePinVerified}
-        onCancel={handlePinCancel}
-      />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        <WorkerPinDialog
+          open={showPinDialog}
+          onVerified={handlePinVerified}
+          onCancel={handlePinCancel}
+        />
+      </div>
     );
   }
 
