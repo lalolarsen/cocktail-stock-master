@@ -1,4 +1,4 @@
-import { Wine, Package, TrendingUp, Martini, Users, Calendar, LogOut, FileText } from "lucide-react";
+import { Wine, Package, TrendingUp, Martini, Users, Calendar, LogOut, FileText, Receipt } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -59,6 +59,12 @@ const menuItems = [
     value: "workers" as ViewType, 
     icon: Users,
     gradient: "from-violet-500 to-purple-500"
+  },
+  { 
+    title: "Declaración de Gastos", 
+    value: "expenses" as ViewType, 
+    icon: Receipt,
+    gradient: "from-rose-500 to-pink-500"
   },
 ];
 
