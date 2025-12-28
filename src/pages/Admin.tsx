@@ -14,7 +14,7 @@ import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
-import { JornadaConfig } from "@/components/dashboard/JornadaConfig";
+import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { LogOut, FileText } from "lucide-react";
 
@@ -114,7 +114,7 @@ export default function Admin() {
         {activeView === "workers" && (
           <div className="space-y-6">
             <WorkersManagement />
-            <JornadaConfig />
+            <JornadaManagement />
             <ActivityPanel />
           </div>
         )}
