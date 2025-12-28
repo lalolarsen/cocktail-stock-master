@@ -13,6 +13,8 @@ import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
+import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
+import { JornadaConfig } from "@/components/dashboard/JornadaConfig";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { LogOut, FileText } from "lucide-react";
 
@@ -76,6 +78,7 @@ export default function Admin() {
 
         {activeView === "overview" && (
           <div className="space-y-6">
+            <JornadaStatus />
             <StatsCards />
             <div className="grid grid-cols-1 gap-6">
               <ProfitChart />
@@ -111,6 +114,7 @@ export default function Admin() {
         {activeView === "workers" && (
           <div className="space-y-6">
             <WorkersManagement />
+            <JornadaConfig />
             <ActivityPanel />
           </div>
         )}
