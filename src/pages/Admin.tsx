@@ -19,7 +19,7 @@ import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { LogOut, FileText } from "lucide-react";
 
 export default function Admin() {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers" | "jornadas">("overview");
   const [isVerified, setIsVerified] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(true);
   const navigate = useNavigate();
@@ -114,8 +114,13 @@ export default function Admin() {
         {activeView === "workers" && (
           <div className="space-y-6">
             <WorkersManagement />
-            <JornadaManagement />
             <ActivityPanel />
+          </div>
+        )}
+
+        {activeView === "jornadas" && (
+          <div className="space-y-6">
+            <JornadaManagement />
           </div>
         )}
       </div>
