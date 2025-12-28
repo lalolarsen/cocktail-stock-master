@@ -40,6 +40,17 @@ export default function Auth() {
     }
   };
 
+  const recordLogin = async (userId: string) => {
+    try {
+      await supabase.from("login_history").insert({
+        user_id: userId,
+        user_agent: navigator.userAgent,
+      });
+    } catch (error) {
+      console.error("Error recording login:", error);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -54,6 +65,8 @@ export default function Auth() {
         if (error) throw error;
 
         if (data.user) {
+          // Record login history
+          await recordLogin(data.user.id);
           await checkUserRole(data.user.id);
         }
       } else {

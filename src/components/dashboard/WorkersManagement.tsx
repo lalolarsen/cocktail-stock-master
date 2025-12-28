@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Users, Key, Save, Plus, UserPlus, Trash2 } from "lucide-react";
+import { Loader2, Users, Key, Save, Plus, UserPlus, Trash2, History, Clock } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -40,6 +40,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 interface Worker {
   id: string;
@@ -59,11 +62,20 @@ interface NewWorker {
   role: "admin" | "vendedor";
 }
 
+interface LoginRecord {
+  id: string;
+  login_at: string;
+  user_agent: string | null;
+}
+
 export function WorkersManagement() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingPins, setEditingPins] = useState<Record<string, string>>({});
   const [editingPointOfSale, setEditingPointOfSale] = useState<Record<string, string>>({});
+  const [selectedWorkerHistory, setSelectedWorkerHistory] = useState<Worker | null>(null);
+  const [loginHistory, setLoginHistory] = useState<LoginRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -280,6 +292,29 @@ export function WorkersManagement() {
     }
   };
 
+  const fetchLoginHistory = async (worker: Worker) => {
+    setSelectedWorkerHistory(worker);
+    setLoadingHistory(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("login_history")
+        .select("id, login_at, user_agent")
+        .eq("user_id", worker.id)
+        .order("login_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      setLoginHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching login history:", error);
+      toast.error("Error al cargar historial de inicios de sesión");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const getRoleBadge = (role: string | null) => {
     switch (role) {
       case "admin":
@@ -289,6 +324,15 @@ export function WorkersManagement() {
       default:
         return <Badge variant="outline">Sin rol</Badge>;
     }
+  };
+
+  const formatUserAgent = (ua: string | null) => {
+    if (!ua) return "Desconocido";
+    if (ua.includes("Mobile")) return "📱 Móvil";
+    if (ua.includes("Windows")) return "💻 Windows";
+    if (ua.includes("Mac")) return "🖥️ Mac";
+    if (ua.includes("Linux")) return "🐧 Linux";
+    return "🌐 Navegador";
   };
 
   if (loading) {
@@ -479,6 +523,14 @@ export function WorkersManagement() {
                     <div className="flex gap-2 justify-end">
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => fetchLoginHistory(worker)}
+                        title="Ver historial de sesiones"
+                      >
+                        <History className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
                         onClick={() => saveWorkerChanges(worker.id)}
                         disabled={
                           (!editingPins[worker.id] && !editingPointOfSale[worker.id]) || 
@@ -543,6 +595,55 @@ export function WorkersManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Login History Dialog */}
+      <Dialog open={!!selectedWorkerHistory} onOpenChange={() => setSelectedWorkerHistory(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5" />
+              Historial de Inicios de Sesión
+            </DialogTitle>
+            <DialogDescription>
+              {selectedWorkerHistory?.full_name || selectedWorkerHistory?.email}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="ml-2">Cargando historial...</span>
+            </div>
+          ) : loginHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>No hay registros de inicio de sesión</p>
+            </div>
+          ) : (
+            <ScrollArea className="h-[300px] pr-4">
+              <div className="space-y-2">
+                {loginHistory.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {format(new Date(record.login_at), "dd MMM yyyy, HH:mm", { locale: es })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatUserAgent(record.user_agent)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
