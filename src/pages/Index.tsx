@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ProductsList } from "@/components/dashboard/ProductsList";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
@@ -10,62 +9,92 @@ import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
+import { AppSidebar } from "@/components/AppSidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Menu } from "lucide-react";
+
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas";
 
 const Index = () => {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers" | "jornadas">("overview");
+  const [activeView, setActiveView] = useState<ViewType>("overview");
+
+  const getViewTitle = () => {
+    switch (activeView) {
+      case "overview": return "Panel General";
+      case "products": return "Productos";
+      case "menu": return "Menú";
+      case "jornadas": return "Jornadas";
+      case "predictions": return "Predicciones";
+      case "workers": return "Trabajadores";
+      default: return "Dashboard";
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
-      <div className="container mx-auto p-4 md:p-8 space-y-6">
-        <DashboardHeader activeView={activeView} setActiveView={setActiveView} />
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full bg-gradient-to-br from-background via-muted to-background">
+        <AppSidebar activeView={activeView} setActiveView={setActiveView} />
         
-        {activeView === "overview" && (
-          <div className="space-y-6 slide-in-up">
-            <StatsCards />
-            <div className="grid grid-cols-1 gap-6">
-              <ProfitChart />
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <ConsumptionChart />
-                </div>
-                <AlertsPanel />
-              </div>
+        <main className="flex-1 overflow-auto">
+          <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
+            <div className="flex items-center gap-4">
+              <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
+                <Menu className="w-5 h-5" />
+              </SidebarTrigger>
+              <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
             </div>
-            <ExcelUpload />
-          </div>
-        )}
+          </header>
 
-        {activeView === "products" && (
-          <div className="slide-in-up">
-            <ProductsList />
-          </div>
-        )}
+          <div className="p-4 md:p-8 space-y-6">
+            {activeView === "overview" && (
+              <div className="space-y-6 slide-in-up">
+                <StatsCards />
+                <div className="grid grid-cols-1 gap-6">
+                  <ProfitChart />
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2">
+                      <ConsumptionChart />
+                    </div>
+                    <AlertsPanel />
+                  </div>
+                </div>
+                <ExcelUpload />
+              </div>
+            )}
 
-        {activeView === "predictions" && (
-          <div className="slide-in-up">
-            <PredictionsPanel />
-          </div>
-        )}
+            {activeView === "products" && (
+              <div className="slide-in-up">
+                <ProductsList />
+              </div>
+            )}
 
-        {activeView === "menu" && (
-          <div className="slide-in-up">
-            <CocktailsMenu />
-          </div>
-        )}
+            {activeView === "predictions" && (
+              <div className="slide-in-up">
+                <PredictionsPanel />
+              </div>
+            )}
 
-        {activeView === "workers" && (
-          <div className="slide-in-up">
-            <WorkersManagement />
-          </div>
-        )}
+            {activeView === "menu" && (
+              <div className="slide-in-up">
+                <CocktailsMenu />
+              </div>
+            )}
 
-        {activeView === "jornadas" && (
-          <div className="slide-in-up">
-            <JornadaManagement />
+            {activeView === "workers" && (
+              <div className="slide-in-up">
+                <WorkersManagement />
+              </div>
+            )}
+
+            {activeView === "jornadas" && (
+              <div className="slide-in-up">
+                <JornadaManagement />
+              </div>
+            )}
           </div>
-        )}
+        </main>
       </div>
-    </div>
+    </SidebarProvider>
   );
 };
 
