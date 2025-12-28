@@ -9,9 +9,10 @@ import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
+import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 
 const Index = () => {
-  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "products" | "predictions" | "menu" | "workers" | "jornadas">("overview");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
@@ -55,6 +56,12 @@ const Index = () => {
         {activeView === "workers" && (
           <div className="slide-in-up">
             <WorkersManagement />
+          </div>
+        )}
+
+        {activeView === "jornadas" && (
+          <div className="slide-in-up">
+            <JornadaManagement />
           </div>
         )}
       </div>
