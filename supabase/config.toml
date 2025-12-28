@@ -2,3 +2,6 @@ project_id = "rboiblptylnsgcciutrk"
 
 [functions.predict-consumption]
 verify_jwt = false
+
+[functions.manage-jornadas]
+verify_jwt = false
