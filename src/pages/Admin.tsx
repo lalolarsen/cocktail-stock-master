@@ -12,6 +12,7 @@ import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
+import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { LogOut, FileText } from "lucide-react";
 
@@ -110,6 +111,7 @@ export default function Admin() {
         {activeView === "workers" && (
           <div className="space-y-6">
             <WorkersManagement />
+            <ActivityPanel />
           </div>
         )}
       </div>
