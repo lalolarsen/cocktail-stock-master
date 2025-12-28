@@ -12,12 +12,13 @@ import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
+import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
 
 export default function Admin() {
   const [activeView, setActiveView] = useState<ViewType>("overview");
@@ -60,6 +61,7 @@ export default function Admin() {
       case "jornadas": return "Jornadas";
       case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
+      case "expenses": return "Declaración de Gastos";
       default: return "Panel de Administración";
     }
   };
@@ -126,6 +128,12 @@ export default function Admin() {
             {activeView === "jornadas" && (
               <div className="space-y-6">
                 <JornadaManagement />
+              </div>
+            )}
+
+            {activeView === "expenses" && (
+              <div className="space-y-6">
+                <ExpenseDeclaration />
               </div>
             )}
           </div>

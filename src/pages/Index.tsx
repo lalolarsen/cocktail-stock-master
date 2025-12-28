@@ -9,11 +9,12 @@ import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
+import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
 
 const Index = () => {
   const [activeView, setActiveView] = useState<ViewType>("overview");
@@ -26,6 +27,7 @@ const Index = () => {
       case "jornadas": return "Jornadas";
       case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
+      case "expenses": return "Declaración de Gastos";
       default: return "Dashboard";
     }
   };
@@ -89,6 +91,12 @@ const Index = () => {
             {activeView === "jornadas" && (
               <div className="slide-in-up">
                 <JornadaManagement />
+              </div>
+            )}
+
+            {activeView === "expenses" && (
+              <div className="slide-in-up">
+                <ExpenseDeclaration />
               </div>
             )}
           </div>
