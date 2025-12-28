@@ -80,10 +80,74 @@ export type Database = {
         }
         Relationships: []
       }
+      jornada_config: {
+        Row: {
+          activo: boolean
+          created_at: string
+          dia_semana: number
+          hora_apertura: string
+          hora_cierre: string
+          id: string
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          dia_semana: number
+          hora_apertura: string
+          hora_cierre: string
+          id?: string
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          dia_semana?: number
+          hora_apertura?: string
+          hora_cierre?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      jornadas: {
+        Row: {
+          created_at: string
+          estado: string
+          fecha: string
+          hora_apertura: string | null
+          hora_cierre: string | null
+          id: string
+          numero_jornada: number
+          semana_inicio: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          estado?: string
+          fecha: string
+          hora_apertura?: string | null
+          hora_cierre?: string | null
+          id?: string
+          numero_jornada: number
+          semana_inicio: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          estado?: string
+          fecha?: string
+          hora_apertura?: string | null
+          hora_cierre?: string | null
+          id?: string
+          numero_jornada?: number
+          semana_inicio?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       login_history: {
         Row: {
           id: string
           ip_address: string | null
+          jornada_id: string | null
           login_at: string
           user_agent: string | null
           user_id: string
@@ -91,6 +155,7 @@ export type Database = {
         Insert: {
           id?: string
           ip_address?: string | null
+          jornada_id?: string | null
           login_at?: string
           user_agent?: string | null
           user_id: string
@@ -98,11 +163,20 @@ export type Database = {
         Update: {
           id?: string
           ip_address?: string | null
+          jornada_id?: string | null
           login_at?: string
           user_agent?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "login_history_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {
@@ -220,6 +294,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_cancelled: boolean | null
+          jornada_id: string | null
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -229,6 +304,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
+          jornada_id?: string | null
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -238,12 +314,21 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
+          jornada_id?: string | null
           point_of_sale?: string
           sale_number?: string
           seller_id?: string
           total_amount?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sales_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_alerts: {
         Row: {
@@ -251,6 +336,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_read: boolean | null
+          jornada_id: string | null
           message: string
           product_id: string | null
         }
@@ -259,6 +345,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_read?: boolean | null
+          jornada_id?: string | null
           message: string
           product_id?: string | null
         }
@@ -267,10 +354,18 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_read?: boolean | null
+          jornada_id?: string | null
           message?: string
           product_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_alerts_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_alerts_product_id_fkey"
             columns: ["product_id"]
@@ -284,6 +379,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          jornada_id: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes: string | null
           product_id: string | null
@@ -292,6 +388,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          jornada_id?: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
           product_id?: string | null
@@ -300,12 +397,20 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          jornada_id?: string | null
           movement_type?: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
           product_id?: string | null
           quantity?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_movements_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_movements_product_id_fkey"
             columns: ["product_id"]
@@ -374,6 +479,7 @@ export type Database = {
     }
     Functions: {
       generate_product_code: { Args: never; Returns: string }
+      get_active_jornada: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
