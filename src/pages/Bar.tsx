@@ -1,14 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Loader2, LogOut, QrCode, CheckCircle2, XCircle, AlertCircle, Keyboard } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 
 type RedemptionResult = {
   success: boolean;
@@ -20,19 +18,30 @@ type RedemptionResult = {
   redeemed_at?: string;
 };
 
+type ScanState = "scanning" | "processing" | "success" | "error" | "manual";
+
+const QR_PREFIX = "PICKUP:";
+const TOKEN_MIN_LENGTH = 12;
+const TOKEN_MAX_LENGTH = 20;
+const COOLDOWN_MS = 5000;
+const SUCCESS_DISMISS_MS = 2500;
+const ERROR_DISMISS_MS = 3000;
+
 export default function Bar() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
+  const [scanState, setScanState] = useState<ScanState>("scanning");
   const [manualToken, setManualToken] = useState("");
-  const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [pointOfSale, setPointOfSale] = useState<string>("");
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const lastScannedRef = useRef<{ token: string; timestamp: number } | null>(null);
+  const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
 
+  // Fetch user info on mount
   useEffect(() => {
     const fetchUserInfo = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -51,76 +60,62 @@ export default function Bar() {
     fetchUserInfo();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-      }
-    };
+  // Parse QR data and extract token
+  const parseQRData = useCallback((data: string): { valid: boolean; token: string; error?: string } => {
+    const trimmed = data.trim().toUpperCase();
+    
+    if (!trimmed.startsWith(QR_PREFIX)) {
+      return { valid: false, token: "", error: "QR_INVALID" };
+    }
+    
+    const token = trimmed.substring(QR_PREFIX.length);
+    
+    if (token.length < TOKEN_MIN_LENGTH || token.length > TOKEN_MAX_LENGTH) {
+      return { valid: false, token: "", error: "QR_INVALID" };
+    }
+    
+    // Check alphanumeric + safe chars
+    if (!/^[A-Z0-9_-]+$/i.test(token)) {
+      return { valid: false, token: "", error: "QR_INVALID" };
+    }
+    
+    return { valid: true, token };
   }, []);
 
-  const startScanner = () => {
-    setScanning(true);
-    setResult(null);
-    setManualMode(false);
-
-    setTimeout(() => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
+  // Check cooldown for duplicate scans
+  const isDuplicate = useCallback((token: string): boolean => {
+    const now = Date.now();
+    if (lastScannedRef.current) {
+      const { token: lastToken, timestamp } = lastScannedRef.current;
+      if (lastToken === token && now - timestamp < COOLDOWN_MS) {
+        return true;
       }
-
-      scannerRef.current = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        false
-      );
-
-      scannerRef.current.render(
-        (decodedText) => {
-          if (scannerRef.current) {
-            scannerRef.current.clear().catch(console.error);
-          }
-          setScanning(false);
-          redeemToken(decodedText);
-        },
-        (errorMessage) => {
-          // Ignore scan errors
-        }
-      );
-    }, 100);
-  };
-
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      scannerRef.current.clear().catch(console.error);
     }
-    setScanning(false);
-  };
+    lastScannedRef.current = { token, timestamp: now };
+    return false;
+  }, []);
 
-  const redeemToken = async (token: string) => {
-    if (!token.trim()) {
-      toast.error("Ingresa un código válido");
-      return;
-    }
-
-    setProcessing(true);
+  // Redeem token via backend
+  const redeemToken = useCallback(async (token: string) => {
+    setScanState("processing");
     setResult(null);
 
     try {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
-        p_token: token.trim(),
+        p_token: token,
       });
 
       if (error) throw error;
 
       const resultData = data as RedemptionResult;
       setResult(resultData);
+      setScanState(resultData.success ? "success" : "error");
 
-      if (resultData.success) {
-        toast.success("¡Entregado correctamente!");
-      } else {
-        toast.error(resultData.message);
-      }
+      // Auto-dismiss after timeout
+      const timeout = resultData.success ? SUCCESS_DISMISS_MS : ERROR_DISMISS_MS;
+      dismissTimerRef.current = setTimeout(() => {
+        resumeScanning();
+      }, timeout);
     } catch (error: any) {
       console.error("Redemption error:", error);
       setResult({
@@ -128,19 +123,183 @@ export default function Bar() {
         error_code: "SYSTEM_ERROR",
         message: error.message || "Error al procesar el código",
       });
-      toast.error("Error al procesar el código");
-    } finally {
-      setProcessing(false);
-      setManualToken("");
+      setScanState("error");
+      
+      dismissTimerRef.current = setTimeout(() => {
+        resumeScanning();
+      }, ERROR_DISMISS_MS);
     }
-  };
+  }, []);
 
+  // Handle QR scan
+  const handleScan = useCallback((decodedText: string) => {
+    const parsed = parseQRData(decodedText);
+    
+    if (!parsed.valid) {
+      // Show quick invalid QR feedback
+      setResult({
+        success: false,
+        error_code: "QR_INVALID",
+        message: "Código QR no válido",
+      });
+      setScanState("error");
+      
+      dismissTimerRef.current = setTimeout(() => {
+        resumeScanning();
+      }, ERROR_DISMISS_MS);
+      return;
+    }
+
+    if (isDuplicate(parsed.token)) {
+      return; // Silently ignore duplicates
+    }
+
+    // Pause scanner and process
+    pauseScanner();
+    redeemToken(parsed.token);
+  }, [parseQRData, isDuplicate, redeemToken]);
+
+  // Start camera scanner
+  const startScanner = useCallback(async () => {
+    if (scannerRef.current) return;
+
+    try {
+      const scanner = new Html5Qrcode("qr-reader", { verbose: false });
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 15,
+          qrbox: { width: 280, height: 280 },
+          aspectRatio: 1,
+          disableFlip: false,
+        },
+        (decodedText) => handleScan(decodedText),
+        () => {} // Ignore scan errors
+      );
+    } catch (error) {
+      console.error("Camera error:", error);
+      toast.error("No se pudo acceder a la cámara");
+      setScanState("manual");
+    }
+  }, [handleScan]);
+
+  // Pause scanner (don't destroy, just pause)
+  const pauseScanner = useCallback(() => {
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.pause(true);
+      } catch (e) {
+        // Scanner might not be running
+      }
+    }
+  }, []);
+
+  // Resume scanner
+  const resumeScanning = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+    
+    setResult(null);
+    setManualToken("");
+    setScanState("scanning");
+
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.resume();
+      } catch (e) {
+        // Restart if resume fails
+        startScanner();
+      }
+    } else {
+      startScanner();
+    }
+  }, [startScanner]);
+
+  // Stop scanner completely
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current = null;
+      } catch (e) {
+        // Already stopped
+      }
+    }
+  }, []);
+
+  // Initialize scanner on mount
+  useEffect(() => {
+    if (isVerified && scanState === "scanning") {
+      const timer = setTimeout(() => startScanner(), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isVerified, startScanner]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) {
+        clearTimeout(dismissTimerRef.current);
+      }
+      stopScanner();
+    };
+  }, [stopScanner]);
+
+  // Handle manual entry
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    redeemToken(manualToken);
+    const input = manualToken.trim().toUpperCase();
+    
+    if (!input) {
+      toast.error("Ingresa un código");
+      return;
+    }
+
+    // Try with prefix first, then without
+    let tokenToRedeem = input;
+    if (!input.startsWith(QR_PREFIX)) {
+      // Assume user entered just the token
+      if (input.length >= TOKEN_MIN_LENGTH && input.length <= TOKEN_MAX_LENGTH) {
+        tokenToRedeem = input;
+      } else {
+        setResult({
+          success: false,
+          error_code: "QR_INVALID",
+          message: "Código inválido",
+        });
+        setScanState("error");
+        dismissTimerRef.current = setTimeout(resumeScanning, ERROR_DISMISS_MS);
+        return;
+      }
+    } else {
+      tokenToRedeem = input.substring(QR_PREFIX.length);
+    }
+
+    if (isDuplicate(tokenToRedeem)) {
+      toast.warning("Código ya procesado recientemente");
+      return;
+    }
+
+    redeemToken(tokenToRedeem);
+  };
+
+  const switchToManual = () => {
+    pauseScanner();
+    setScanState("manual");
+  };
+
+  const switchToCamera = () => {
+    setManualToken("");
+    setScanState("scanning");
+    resumeScanning();
   };
 
   const handleLogout = async () => {
+    await stopScanner();
     await supabase.auth.signOut();
     navigate("/auth");
   };
@@ -157,15 +316,26 @@ export default function Bar() {
     })();
   };
 
-  const resetState = () => {
-    setResult(null);
-    setManualToken("");
-    setManualMode(false);
+  const getItemCount = () => {
+    if (!result?.items) return 0;
+    return result.items.reduce((sum, item) => sum + item.quantity, 0);
+  };
+
+  const getErrorTitle = (errorCode?: string) => {
+    switch (errorCode) {
+      case "ALREADY_REDEEMED": return "YA CANJEADO";
+      case "TOKEN_EXPIRED": return "EXPIRADO";
+      case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
+      case "SALE_CANCELLED": return "VENTA CANCELADA";
+      case "QR_INVALID": return "QR INVÁLIDO";
+      case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
+      default: return "ERROR";
+    }
   };
 
   if (!isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <WorkerPinDialog
           open={showPinDialog}
           onVerified={handlePinVerified}
@@ -175,144 +345,139 @@ export default function Bar() {
     );
   }
 
+  // Full-screen success state
+  if (scanState === "success" && result?.success) {
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-600 text-white p-6 cursor-pointer"
+        onClick={resumeScanning}
+      >
+        <CheckCircle2 className="w-32 h-32 mb-6 animate-pulse" />
+        <h1 className="text-5xl font-black mb-4 tracking-tight">ENTREGADO</h1>
+        <p className="text-3xl font-bold mb-2">{result.sale_number}</p>
+        <p className="text-2xl opacity-90">{getItemCount()} {getItemCount() === 1 ? "item" : "items"}</p>
+        <p className="mt-8 text-lg opacity-70">Toca para continuar</p>
+      </div>
+    );
+  }
+
+  // Full-screen error state
+  if (scanState === "error" && result) {
+    const isWarning = result.error_code === "ALREADY_REDEEMED";
+    return (
+      <div 
+        className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 cursor-pointer ${
+          isWarning ? "bg-yellow-500 text-black" : "bg-red-600 text-white"
+        }`}
+        onClick={resumeScanning}
+      >
+        {isWarning ? (
+          <AlertCircle className="w-32 h-32 mb-6" />
+        ) : (
+          <XCircle className="w-32 h-32 mb-6" />
+        )}
+        <h1 className="text-4xl font-black mb-4 tracking-tight text-center">
+          {getErrorTitle(result.error_code)}
+        </h1>
+        <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
+        <p className="mt-8 text-lg opacity-70">Toca para continuar</p>
+      </div>
+    );
+  }
+
+  // Full-screen processing state
+  if (scanState === "processing") {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
+        <Loader2 className="w-24 h-24 animate-spin text-primary mb-6" />
+        <h2 className="text-2xl font-bold text-foreground">Validando...</h2>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900/10 via-background to-purple-600/5 p-4">
-      <div className="max-w-lg mx-auto space-y-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-purple-500">Portal Barra</h1>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Salir
-            </Button>
-          </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card">
+        <div className="flex flex-col">
+          <h1 className="text-lg font-bold text-primary">Barra</h1>
           {(userName || pointOfSale) && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {userName && <span className="font-medium">{userName}</span>}
-              {userName && pointOfSale && <span>•</span>}
-              {pointOfSale && <span>{pointOfSale}</span>}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              {userName}{userName && pointOfSale && " • "}{pointOfSale}
+            </p>
           )}
         </div>
+        <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <LogOut className="w-4 h-4" />
+        </Button>
+      </div>
 
-        {/* Result Display */}
-        {result && (
-          <Card className={`p-6 ${result.success ? "border-green-500 bg-green-500/10" : "border-destructive bg-destructive/10"}`}>
-            <div className="text-center space-y-4">
-              {result.success ? (
-                <>
-                  <CheckCircle2 className="w-20 h-20 mx-auto text-green-500" />
-                  <h2 className="text-3xl font-bold text-green-500">ENTREGADO</h2>
-                  <div className="space-y-2">
-                    <p className="text-lg font-semibold">{result.sale_number}</p>
-                    <div className="space-y-1">
-                      {result.items?.map((item, index) => (
-                        <p key={index} className="text-muted-foreground">
-                          {item.quantity}x {item.name}
-                        </p>
-                      ))}
-                    </div>
-                    <p className="text-xl font-bold text-primary">
-                      {formatCLP(result.total_amount || 0)}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {result.error_code === "ALREADY_REDEEMED" ? (
-                    <AlertCircle className="w-20 h-20 mx-auto text-yellow-500" />
-                  ) : (
-                    <XCircle className="w-20 h-20 mx-auto text-destructive" />
-                  )}
-                  <h2 className="text-2xl font-bold text-destructive">
-                    {result.error_code === "ALREADY_REDEEMED"
-                      ? "YA CANJEADO"
-                      : result.error_code === "TOKEN_EXPIRED"
-                      ? "EXPIRADO"
-                      : result.error_code === "PAYMENT_NOT_CONFIRMED"
-                      ? "PAGO NO CONFIRMADO"
-                      : result.error_code === "SALE_CANCELLED"
-                      ? "VENTA CANCELADA"
-                      : "ERROR"}
-                  </h2>
-                  <p className="text-muted-foreground">{result.message}</p>
-                </>
-              )}
-              <Button onClick={resetState} size="lg" className="w-full mt-4">
-                Escanear Otro
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {scanState === "scanning" && (
+          <>
+            {/* Scanner viewport - takes most of the screen */}
+            <div className="flex-1 relative bg-black">
+              <div id="qr-reader" className="w-full h-full" />
+              {/* Overlay with scanning hint */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-72 h-72 border-4 border-white/50 rounded-2xl" />
+              </div>
+            </div>
+            
+            {/* Manual entry button */}
+            <div className="p-4 bg-card border-t border-border">
+              <Button 
+                variant="outline" 
+                onClick={switchToManual} 
+                className="w-full h-14 text-lg"
+              >
+                <Keyboard className="w-5 h-5 mr-2" />
+                Ingresar Código Manual
               </Button>
             </div>
-          </Card>
+          </>
         )}
 
-        {/* Scanner UI */}
-        {!result && !processing && (
-          <Card className="p-6">
-            {scanning ? (
-              <div className="space-y-4">
-                <div id="qr-reader" className="w-full" />
-                <Button variant="outline" onClick={stopScanner} className="w-full">
-                  Cancelar
-                </Button>
+        {scanState === "manual" && (
+          <div className="flex-1 flex flex-col p-6">
+            <form onSubmit={handleManualSubmit} className="flex-1 flex flex-col gap-6">
+              <div className="flex-1 flex flex-col justify-center">
+                <label className="text-lg font-semibold mb-3 text-foreground">
+                  Código de Retiro
+                </label>
+                <Input
+                  value={manualToken}
+                  onChange={(e) => setManualToken(e.target.value.toUpperCase())}
+                  placeholder="Ej: ABC123XYZ456"
+                  autoFocus
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  inputMode="text"
+                  className="h-16 text-2xl text-center font-mono tracking-wider uppercase"
+                />
               </div>
-            ) : manualMode ? (
-              <form onSubmit={handleManualSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Código de Retiro</label>
-                  <Input
-                    value={manualToken}
-                    onChange={(e) => setManualToken(e.target.value)}
-                    placeholder="Ingresa el código..."
-                    autoFocus
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setManualMode(false)}
-                    className="flex-1"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" className="flex-1" disabled={!manualToken.trim()}>
-                    Validar
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <div className="space-y-4">
-                <div className="text-center py-8">
-                  <QrCode className="w-24 h-24 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
-                    Escanea el código QR del cliente
-                  </p>
-                </div>
-                <Button onClick={startScanner} size="lg" className="w-full">
-                  <QrCode className="w-5 h-5 mr-2" />
-                  Iniciar Escaneo
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setManualMode(true)}
-                  className="w-full"
+              
+              <div className="space-y-3">
+                <Button 
+                  type="submit" 
+                  className="w-full h-16 text-xl font-bold"
+                  disabled={!manualToken.trim()}
                 >
-                  <Keyboard className="w-5 h-5 mr-2" />
-                  Ingresar Código Manual
+                  Validar Código
+                </Button>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={switchToCamera}
+                  className="w-full h-14 text-lg"
+                >
+                  <Camera className="w-5 h-5 mr-2" />
+                  Volver a Cámara
                 </Button>
               </div>
-            )}
-          </Card>
-        )}
-
-        {/* Processing State */}
-        {processing && (
-          <Card className="p-6">
-            <div className="text-center py-8">
-              <Loader2 className="w-16 h-16 mx-auto animate-spin text-primary" />
-              <p className="mt-4 text-muted-foreground">Validando código...</p>
-            </div>
-          </Card>
+            </form>
+          </div>
         )}
       </div>
     </div>
