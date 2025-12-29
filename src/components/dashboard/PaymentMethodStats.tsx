@@ -1,8 +1,15 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, CreditCard, Banknote, Smartphone, TrendingUp } from "lucide-react";
+import { Loader2, CreditCard, Banknote, Smartphone, TrendingUp, Calendar } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   PieChart,
   Pie,
@@ -16,6 +23,8 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 interface PaymentStats {
   method: string;
@@ -25,6 +34,13 @@ interface PaymentStats {
   percentage: number;
   color: string;
   icon: React.ElementType;
+}
+
+interface Jornada {
+  id: string;
+  numero_jornada: number;
+  fecha: string;
+  estado: string;
 }
 
 const PAYMENT_CONFIG = {
@@ -39,17 +55,45 @@ export function PaymentMethodStats() {
   const [loading, setLoading] = useState(true);
   const [totalSales, setTotalSales] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
+  const [jornadas, setJornadas] = useState<Jornada[]>([]);
+  const [selectedJornada, setSelectedJornada] = useState<string>("all");
+
+  useEffect(() => {
+    fetchJornadas();
+  }, []);
 
   useEffect(() => {
     fetchPaymentStats();
-  }, []);
+  }, [selectedJornada]);
+
+  const fetchJornadas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("jornadas")
+        .select("id, numero_jornada, fecha, estado")
+        .order("fecha", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setJornadas(data || []);
+    } catch (error) {
+      console.error("Error fetching jornadas:", error);
+    }
+  };
 
   const fetchPaymentStats = async () => {
+    setLoading(true);
     try {
-      const { data: sales, error } = await supabase
+      let query = supabase
         .from("sales")
         .select("total_amount, payment_method")
         .eq("is_cancelled", false);
+
+      if (selectedJornada !== "all") {
+        query = query.eq("jornada_id", selectedJornada);
+      }
+
+      const { data: sales, error } = await query;
 
       if (error) throw error;
 
@@ -93,6 +137,11 @@ export function PaymentMethodStats() {
     }
   };
 
+  const formatJornadaLabel = (jornada: Jornada) => {
+    const fecha = format(new Date(jornada.fecha), "dd MMM", { locale: es });
+    return `Jornada ${jornada.numero_jornada} - ${fecha}`;
+  };
+
   if (loading) {
     return (
       <Card className="p-6">
@@ -113,6 +162,34 @@ export function PaymentMethodStats() {
 
   return (
     <div className="space-y-6">
+      {/* Jornada Filter */}
+      <Card className="p-4">
+        <div className="flex items-center gap-3">
+          <Calendar className="w-5 h-5 text-muted-foreground" />
+          <div className="flex-1">
+            <Select value={selectedJornada} onValueChange={setSelectedJornada}>
+              <SelectTrigger className="w-full md:w-[300px]">
+                <SelectValue placeholder="Seleccionar jornada" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las jornadas</SelectItem>
+                {jornadas.map((jornada) => (
+                  <SelectItem key={jornada.id} value={jornada.id}>
+                    {formatJornadaLabel(jornada)}
+                    {jornada.estado === "activa" && " (Activa)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {selectedJornada !== "all" && (
+            <span className="text-sm text-muted-foreground">
+              Filtrando por jornada específica
+            </span>
+          )}
+        </div>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat) => {
