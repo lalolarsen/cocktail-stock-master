@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -98,10 +98,129 @@ export default function Documents() {
   const [selectedDocument, setSelectedDocument] = useState<SalesDocument | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // Ref to track current documents for realtime updates without closure issues
+  const documentsRef = useRef<SalesDocument[]>([]);
+  const selectedDocumentRef = useRef<SalesDocument | null>(null);
+
+  // Keep refs in sync
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
+  useEffect(() => {
+    selectedDocumentRef.current = selectedDocument;
+  }, [selectedDocument]);
+
   useEffect(() => {
     fetchInvoicingConfig();
     fetchDocuments();
   }, [activeTab]);
+
+  // Realtime subscription for sales_documents changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('sales-documents-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sales_documents',
+        },
+        async (payload) => {
+          console.log('[Realtime] sales_documents change:', payload.eventType, payload.new);
+
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const updatedDoc = payload.new as any;
+            
+            // Fetch the full document with sale data to update correctly
+            const { data: fullDoc } = await supabase
+              .from('sales_documents')
+              .select(`
+                *,
+                sale:sales (
+                  sale_number,
+                  total_amount,
+                  point_of_sale,
+                  created_at,
+                  seller_id,
+                  jornada:jornadas (
+                    fecha,
+                    numero_jornada
+                  ),
+                  sale_items (
+                    quantity,
+                    unit_price,
+                    subtotal,
+                    cocktails (
+                      name
+                    )
+                  )
+                )
+              `)
+              .eq('id', updatedDoc.id)
+              .maybeSingle();
+
+            if (fullDoc) {
+              const typedDoc = fullDoc as SalesDocument;
+              
+              // Update document in list
+              setDocuments(prev => {
+                const existingIndex = prev.findIndex(d => d.id === typedDoc.id);
+                if (existingIndex >= 0) {
+                  // Update existing document
+                  const updated = [...prev];
+                  updated[existingIndex] = typedDoc;
+                  return updated;
+                } else {
+                  // New document - add to list
+                  return [typedDoc, ...prev];
+                }
+              });
+
+              // Update selected document if it's the one that changed
+              if (selectedDocumentRef.current?.id === typedDoc.id) {
+                setSelectedDocument(typedDoc);
+              }
+
+              // Show toast for status transitions
+              if (payload.eventType === 'UPDATE') {
+                const oldStatus = (payload.old as any)?.status;
+                const newStatus = updatedDoc.status;
+                
+                if (oldStatus !== newStatus) {
+                  if (newStatus === 'issued') {
+                    toast.success(`Documento ${typedDoc.folio || typedDoc.id.slice(0, 8)} emitido`, {
+                      description: typedDoc.sale?.sale_number,
+                    });
+                  } else if (newStatus === 'failed') {
+                    toast.error(`Documento ${typedDoc.id.slice(0, 8)} falló`, {
+                      description: typedDoc.error_message || 'Error desconocido',
+                    });
+                  }
+                }
+              }
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id;
+            if (deletedId) {
+              setDocuments(prev => prev.filter(d => d.id !== deletedId));
+              if (selectedDocumentRef.current?.id === deletedId) {
+                setDrawerOpen(false);
+                setSelectedDocument(null);
+              }
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const fetchInvoicingConfig = async () => {
     try {
