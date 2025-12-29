@@ -5,12 +5,20 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, X, LogOut } from "lucide-react";
+import { Loader2, ShoppingCart, X, LogOut, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
+import { issueDocument, type DocumentType } from "@/lib/invoicing";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Cocktail = {
   id: string;
@@ -33,6 +41,7 @@ export default function Sales() {
   const [isVerified, setIsVerified] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(true);
   const [shouldRedirect, setShouldRedirect] = useState(false);
+  const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -152,6 +161,8 @@ export default function Sales() {
 
     setLoading(true);
 
+    let saleId: string | null = null;
+
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.user) throw new Error("No autenticado");
@@ -172,6 +183,7 @@ export default function Sales() {
         .single();
 
       if (saleError) throw saleError;
+      saleId = sale.id;
 
       // Create sale items
       const saleItems = cart.map((item) => ({
@@ -188,9 +200,50 @@ export default function Sales() {
 
       if (itemsError) throw itemsError;
 
-      toast.success(`Venta ${saleNumber} registrada exitosamente`);
+      // Issue electronic document
+      const invoiceResponse = await issueDocument({
+        saleId: sale.id,
+        saleNumber,
+        totalAmount,
+        documentType,
+        pointOfSale,
+        items: cart.map((item) => ({
+          name: item.cocktail.name,
+          quantity: item.quantity,
+          unitPrice: item.cocktail.price,
+          subtotal: item.cocktail.price * item.quantity,
+        })),
+      });
+
+      if (!invoiceResponse.success) {
+        // Rollback: delete sale items and sale
+        await supabase.from("sale_items").delete().eq("sale_id", sale.id);
+        await supabase.from("sales").delete().eq("id", sale.id);
+        throw new Error(invoiceResponse.errorMessage || "Error al emitir documento");
+      }
+
+      // Create sales_document record
+      const { error: docError } = await supabase
+        .from("sales_documents")
+        .insert({
+          sale_id: sale.id,
+          document_type: documentType,
+          folio: invoiceResponse.folio,
+          status: "issued",
+          pdf_url: invoiceResponse.pdfUrl,
+          issued_at: invoiceResponse.issuedAt,
+        });
+
+      if (docError) {
+        // Rollback: delete sale items and sale
+        await supabase.from("sale_items").delete().eq("sale_id", sale.id);
+        await supabase.from("sales").delete().eq("id", sale.id);
+        throw new Error("Error al registrar documento electrónico");
+      }
+
+      const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
+      toast.success(`Venta ${saleNumber} registrada. ${docLabel}: ${invoiceResponse.folio}`);
       setCart([]);
-      setPointOfSale("");
       fetchRecentSales();
     } catch (error: any) {
       toast.error(error.message || "Error al procesar la venta");
@@ -352,6 +405,25 @@ export default function Sales() {
                     </div>
                   )}
 
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Tipo de Documento
+                    </Label>
+                    <Select
+                      value={documentType}
+                      onValueChange={(value: DocumentType) => setDocumentType(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="boleta">Boleta Electrónica</SelectItem>
+                        <SelectItem value="factura">Factura Electrónica</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
                       <span className="font-semibold">Total:</span>
@@ -372,7 +444,10 @@ export default function Sales() {
                           Procesando...
                         </>
                       ) : (
-                        "Procesar Venta"
+                        <>
+                          <FileText className="mr-2 h-4 w-4" />
+                          Procesar Venta
+                        </>
                       )}
                     </Button>
                   </div>
