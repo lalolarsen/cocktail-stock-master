@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -67,13 +67,15 @@ const menuItems = [
     icon: FileText,
     gradient: "from-sky-500 to-blue-500"
   },
-  { 
-    title: "Documentos", 
-    value: "documents" as ViewType, 
-    icon: FileCheck,
-    gradient: "from-indigo-500 to-purple-500"
-  },
 ];
+
+// Separate link item for external navigation
+const documentsLink = {
+  title: "Documentos",
+  icon: FileCheck,
+  gradient: "from-indigo-500 to-purple-500",
+  path: "/admin/documents",
+};
 
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
   const navigate = useNavigate();
@@ -91,6 +93,10 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
+  };
+
+  const handleDocumentsClick = () => {
+    navigate(documentsLink.path);
   };
 
   return (
@@ -135,6 +141,19 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                   </SidebarMenuItem>
                 );
               })}
+              
+              {/* Documents link - navigates to separate page */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={handleDocumentsClick}
+                  tooltip={documentsLink.title}
+                  className="transition-all duration-200 hover:bg-muted/50"
+                >
+                  <documentsLink.icon className="w-5 h-5" />
+                  <span>{documentsLink.title}</span>
+                  {!isCollapsed && <ExternalLink className="w-3 h-3 ml-auto opacity-50" />}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
