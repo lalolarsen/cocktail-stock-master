@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -14,21 +13,19 @@ import {
   RefreshCw,
   Download,
   Copy,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  XCircle,
   FileText,
   User,
   Calendar,
   CreditCard,
   MapPin,
   ShoppingCart,
+  RefreshCcw,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
+import { DocumentStatusBadge, getErrorSummary } from "./DocumentStatusBadge";
 
 interface SaleItem {
   name: string;
@@ -43,7 +40,7 @@ interface SalesDocument {
   document_type: "boleta" | "factura";
   provider: string;
   provider_ref: string | null;
-  status: "pending" | "issued" | "failed" | "cancelled";
+  status: "pending" | "processing" | "issued" | "failed" | "cancelled";
   folio: string | null;
   pdf_url: string | null;
   error_message: string | null;
@@ -52,6 +49,7 @@ interface SalesDocument {
   next_retry_at: string | null;
   issued_at: string | null;
   created_at: string;
+  updated_at?: string;
   sale: {
     sale_number: string;
     total_amount: number;
@@ -97,41 +95,6 @@ export function DocumentDetailsDrawer({
     return format(new Date(dateStr), "dd MMM yyyy HH:mm", { locale: es });
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "issued":
-        return (
-          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Emitido
-          </Badge>
-        );
-      case "failed":
-        return (
-          <Badge variant="destructive">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Fallido
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
-            <Clock className="w-3 h-3 mr-1" />
-            Pendiente
-          </Badge>
-        );
-      case "cancelled":
-        return (
-          <Badge variant="secondary">
-            <XCircle className="w-3 h-3 mr-1" />
-            Cancelado
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copiado al portapapeles`);
@@ -167,7 +130,7 @@ export function DocumentDetailsDrawer({
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Estado</span>
-                  {getStatusBadge(document.status)}
+                  <DocumentStatusBadge status={document.status} />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Tipo</span>
@@ -228,6 +191,13 @@ export function DocumentDetailsDrawer({
                   </div>
                 )}
                 <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <RefreshCcw className="w-3 h-3" />
+                    Última actualización
+                  </span>
+                  <span className="text-sm">{formatDate(document.updated_at || document.created_at)}</span>
+                </div>
+                <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Reintentos</span>
                   <Badge variant="outline">{document.retry_count}</Badge>
                 </div>
@@ -243,10 +213,17 @@ export function DocumentDetailsDrawer({
                     <span className="text-sm">{formatDate(document.next_retry_at)}</span>
                   </div>
                 )}
-                {document.error_message && (
+                {document.status === "failed" && (
                   <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
                     <p className="text-sm text-destructive font-medium mb-1">Error</p>
-                    <p className="text-sm text-destructive/80">{document.error_message}</p>
+                    <p className="text-sm text-destructive/80 font-medium">
+                      {getErrorSummary(document.error_message)}
+                    </p>
+                    {document.error_message && document.error_message.length > 50 && (
+                      <p className="text-xs text-destructive/60 mt-2 font-mono">
+                        {document.error_message}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

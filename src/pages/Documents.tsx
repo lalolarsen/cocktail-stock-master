@@ -26,16 +26,14 @@ import {
   Loader2,
   RefreshCw,
   FileText,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
   Search,
   Download,
   ArrowLeft,
   Eye,
   FileCheck,
   Hourglass,
-  XCircle,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { retryDocument } from "@/lib/invoicing";
@@ -43,6 +41,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { DocumentDetailsDrawer } from "@/components/dashboard/DocumentDetailsDrawer";
+import { DocumentStatusBadge, getErrorSummary } from "@/components/dashboard/DocumentStatusBadge";
 
 interface SalesDocument {
   id: string;
@@ -50,7 +49,7 @@ interface SalesDocument {
   document_type: "boleta" | "factura";
   provider: string;
   provider_ref: string | null;
-  status: "pending" | "issued" | "failed" | "cancelled";
+  status: "pending" | "processing" | "issued" | "failed" | "cancelled";
   folio: string | null;
   pdf_url: string | null;
   error_message: string | null;
@@ -59,6 +58,7 @@ interface SalesDocument {
   next_retry_at: string | null;
   issued_at: string | null;
   created_at: string;
+  updated_at?: string;
   sale: {
     sale_number: string;
     total_amount: number;
@@ -351,41 +351,6 @@ export default function Documents() {
     return retryingKeys.has(idempotencyKey);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "issued":
-        return (
-          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Emitido
-          </Badge>
-        );
-      case "failed":
-        return (
-          <Badge variant="destructive">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Fallido
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
-            <Clock className="w-3 h-3 mr-1" />
-            Pendiente
-          </Badge>
-        );
-      case "cancelled":
-        return (
-          <Badge variant="secondary">
-            <XCircle className="w-3 h-3 mr-1" />
-            Cancelado
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "-";
     return format(new Date(dateStr), "dd MMM yyyy HH:mm", { locale: es });
@@ -529,7 +494,6 @@ export default function Documents() {
                 setSelectedDocument(doc);
                 setDrawerOpen(true);
               }}
-              getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
               showIssuedDate
@@ -546,7 +510,6 @@ export default function Documents() {
                 setSelectedDocument(doc);
                 setDrawerOpen(true);
               }}
-              getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
             />
@@ -562,7 +525,6 @@ export default function Documents() {
                 setSelectedDocument(doc);
                 setDrawerOpen(true);
               }}
-              getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
               showRetryInfo
@@ -593,7 +555,6 @@ interface DocumentsTableProps {
   isRetrying: (doc: SalesDocument) => boolean;
   onRetry: (doc: SalesDocument) => void;
   onRowClick: (doc: SalesDocument) => void;
-  getStatusBadge: (status: string) => React.ReactNode;
   formatDate: (date: string | null) => string;
   isReadOnly: boolean;
   showRetryInfo?: boolean;
@@ -606,7 +567,6 @@ function DocumentsTable({
   isRetrying,
   onRetry,
   onRowClick,
-  getStatusBadge,
   formatDate,
   isReadOnly,
   showRetryInfo,
@@ -674,7 +634,7 @@ function DocumentsTable({
                     {doc.document_type}
                   </Badge>
                 </TableCell>
-                <TableCell>{getStatusBadge(doc.status)}</TableCell>
+                <TableCell><DocumentStatusBadge status={doc.status} /></TableCell>
                 <TableCell>
                   {doc.folio ? (
                     <span className="font-mono text-sm bg-muted px-2 py-1 rounded">
@@ -714,7 +674,7 @@ function DocumentsTable({
                           className="text-sm text-destructive max-w-[200px] truncate block cursor-help"
                           title={doc.error_message}
                         >
-                          {doc.error_message}
+                          {getErrorSummary(doc.error_message)}
                         </span>
                       ) : (
                         "-"
