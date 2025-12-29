@@ -165,6 +165,30 @@ export type Database = {
           },
         ]
       }
+      invoicing_config: {
+        Row: {
+          active_provider: string
+          config: Json | null
+          created_at: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          active_provider?: string
+          config?: Json | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          active_provider?: string
+          config?: Json | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       jornada_config: {
         Row: {
           activo: boolean
@@ -427,6 +451,8 @@ export type Database = {
           id: string
           issued_at: string | null
           pdf_url: string | null
+          provider: string
+          provider_ref: string | null
           sale_id: string
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
@@ -439,6 +465,8 @@ export type Database = {
           id?: string
           issued_at?: string | null
           pdf_url?: string | null
+          provider?: string
+          provider_ref?: string | null
           sale_id: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
@@ -451,6 +479,8 @@ export type Database = {
           id?: string
           issued_at?: string | null
           pdf_url?: string | null
+          provider?: string
+          provider_ref?: string | null
           sale_id?: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
