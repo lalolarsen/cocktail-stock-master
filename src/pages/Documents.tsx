@@ -74,7 +74,8 @@ export default function Documents() {
   const { role, isReadOnly } = useUserRole();
   const [documents, setDocuments] = useState<SalesDocument[]>([]);
   const [loading, setLoading] = useState(true);
-  const [retrying, setRetrying] = useState<string | null>(null);
+  // Track retrying by idempotency key (provider:saleId:documentType) to prevent duplicates
+  const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("issued");
   const [searchQuery, setSearchQuery] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState<string>("all");
@@ -147,18 +148,37 @@ export default function Documents() {
     }
   };
 
-  const handleRetry = async (documentId: string) => {
+  const handleRetry = async (doc: SalesDocument) => {
     if (isReadOnly) {
       toast.error("No tienes permisos para reintentar documentos");
       return;
     }
     
-    setRetrying(documentId);
+    // Create deterministic idempotency key to prevent concurrent retries
+    const idempotencyKey = `${doc.provider}:${doc.sale_id}:${doc.document_type}`;
+    
+    // Check if already retrying this document
+    if (retryingKeys.has(idempotencyKey)) {
+      toast.warning("Ya se está procesando este documento");
+      return;
+    }
+    
+    // Add to retrying set
+    setRetryingKeys(prev => new Set(prev).add(idempotencyKey));
+    
     try {
-      const result = await retryDocument(documentId);
+      const result = await retryDocument(doc.id);
 
       if (result.success) {
         toast.success(`Documento emitido: ${result.folio}`);
+        // Update document in local state immediately
+        setDocuments(prev => prev.map(d => 
+          d.id === doc.id 
+            ? { ...d, status: 'issued' as const, folio: result.folio || null, pdf_url: result.pdfUrl || null }
+            : d
+        ));
+      } else if (result.isPending) {
+        toast.info("El documento ya está siendo procesado");
       } else {
         toast.error(result.errorMessage || "Error al reintentar");
       }
@@ -167,8 +187,19 @@ export default function Documents() {
     } catch (error) {
       toast.error("Error al reintentar emisión");
     } finally {
-      setRetrying(null);
+      // Remove from retrying set
+      setRetryingKeys(prev => {
+        const next = new Set(prev);
+        next.delete(idempotencyKey);
+        return next;
+      });
     }
+  };
+
+  // Helper to check if a document is currently being retried
+  const isRetrying = (doc: SalesDocument): boolean => {
+    const idempotencyKey = `${doc.provider}:${doc.sale_id}:${doc.document_type}`;
+    return retryingKeys.has(idempotencyKey);
   };
 
   const getStatusBadge = (status: string) => {
@@ -343,7 +374,7 @@ export default function Documents() {
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
-              retrying={retrying}
+              isRetrying={isRetrying}
               onRetry={handleRetry}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
@@ -356,7 +387,7 @@ export default function Documents() {
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
-              retrying={retrying}
+              isRetrying={isRetrying}
               onRetry={handleRetry}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
@@ -368,7 +399,7 @@ export default function Documents() {
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
-              retrying={retrying}
+              isRetrying={isRetrying}
               onRetry={handleRetry}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
@@ -385,8 +416,8 @@ export default function Documents() {
 interface DocumentsTableProps {
   documents: SalesDocument[];
   loading: boolean;
-  retrying: string | null;
-  onRetry: (id: string) => void;
+  isRetrying: (doc: SalesDocument) => boolean;
+  onRetry: (doc: SalesDocument) => void;
   getStatusBadge: (status: string) => React.ReactNode;
   formatDate: (date: string | null) => string;
   isReadOnly: boolean;
@@ -397,7 +428,7 @@ interface DocumentsTableProps {
 function DocumentsTable({
   documents,
   loading,
-  retrying,
+  isRetrying,
   onRetry,
   getStatusBadge,
   formatDate,
@@ -520,10 +551,10 @@ function DocumentsTable({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => onRetry(doc.id)}
-                        disabled={retrying === doc.id}
+                        onClick={() => onRetry(doc)}
+                        disabled={isRetrying(doc)}
                       >
-                        {retrying === doc.id ? (
+                        {isRetrying(doc) ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <>
