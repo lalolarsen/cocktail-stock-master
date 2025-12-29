@@ -449,10 +449,14 @@ export type Database = {
           error_message: string | null
           folio: string | null
           id: string
+          idempotency_key: string | null
           issued_at: string | null
+          last_attempt_at: string | null
+          next_retry_at: string | null
           pdf_url: string | null
           provider: string
           provider_ref: string | null
+          retry_count: number
           sale_id: string
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
@@ -463,10 +467,14 @@ export type Database = {
           error_message?: string | null
           folio?: string | null
           id?: string
+          idempotency_key?: string | null
           issued_at?: string | null
+          last_attempt_at?: string | null
+          next_retry_at?: string | null
           pdf_url?: string | null
           provider?: string
           provider_ref?: string | null
+          retry_count?: number
           sale_id: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
@@ -477,10 +485,14 @@ export type Database = {
           error_message?: string | null
           folio?: string | null
           id?: string
+          idempotency_key?: string | null
           issued_at?: string | null
+          last_attempt_at?: string | null
+          next_retry_at?: string | null
           pdf_url?: string | null
           provider?: string
           provider_ref?: string | null
+          retry_count?: number
           sale_id?: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string

@@ -37,6 +37,7 @@ export default function Sales() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pointOfSale, setPointOfSale] = useState("");
   const [loading, setLoading] = useState(false);
+  const [issuingDocument, setIssuingDocument] = useState(false);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   // Sellers already verified PIN during login, so skip the dialog
   const [isVerified, setIsVerified] = useState(true);
@@ -162,6 +163,7 @@ export default function Sales() {
     }
 
     setLoading(true);
+    setIssuingDocument(true);
 
     let saleId: string | null = null;
 
@@ -223,6 +225,7 @@ export default function Sales() {
       toast.error(error.message || "Error al procesar la venta");
     } finally {
       setLoading(false);
+      setIssuingDocument(false);
     }
   };
 
@@ -449,14 +452,14 @@ export default function Sales() {
 
                     <Button
                       onClick={processSale}
-                      disabled={loading}
+                      disabled={loading || issuingDocument}
                       className="w-full"
                       size="lg"
                     >
                       {loading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Procesando...
+                          {issuingDocument ? "Emitiendo documento..." : "Procesando..."}
                         </>
                       ) : (
                         <>

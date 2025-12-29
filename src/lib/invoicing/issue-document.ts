@@ -1,7 +1,6 @@
-// Core document issuance logic - provider agnostic
+// Client-side invoicing service - calls Edge Function for secure provider execution
 import { supabase } from '@/integrations/supabase/client';
-import { getProvider } from './providers';
-import type { DocumentType, SaleData, ProviderType, InvoicingConfig } from './types';
+import type { DocumentType } from './types';
 
 interface IssueDocumentResult {
   success: boolean;
@@ -9,79 +8,44 @@ interface IssueDocumentResult {
   folio?: string;
   pdfUrl?: string;
   errorMessage?: string;
+  isExisting?: boolean;
+  isPending?: boolean;
 }
 
 /**
- * Issues an electronic document for a sale.
- * This is the ONLY function that should be called from the POS.
- * It handles provider detection, document creation, and result persistence.
+ * Issues an electronic document for a sale via Edge Function.
+ * This ensures provider API keys are never exposed to the client.
+ * 
+ * Features:
+ * - Idempotent: Returns existing document if already issued
+ * - Concurrency safe: Prevents duplicate pending documents
+ * - Retry support: Failed documents can be retried safely
  */
 export async function issueDocument(
   saleId: string,
-  documentType: DocumentType
+  documentType: DocumentType,
+  isRetry: boolean = false
 ): Promise<IssueDocumentResult> {
   try {
-    // 1. Load sale data with items
-    const saleData = await loadSaleData(saleId);
-    if (!saleData) {
-      return { success: false, errorMessage: 'Venta no encontrada' };
-    }
-
-    // 2. Get active provider from config
-    const config = await getInvoicingConfig();
-    const provider = getProvider(config.activeProvider, config.config);
-
-    // 3. Create pending document record
-    const { data: doc, error: docError } = await supabase
-      .from('sales_documents')
-      .insert({
-        sale_id: saleId,
-        document_type: documentType,
-        provider: config.activeProvider,
-        status: 'pending',
-      })
-      .select('id')
-      .single();
-
-    if (docError || !doc) {
-      console.error('Error creating document record:', docError);
-      return { success: false, errorMessage: 'Error al crear registro de documento' };
-    }
-
-    // 4. Call provider adapter
-    const result = await provider.issue({
-      sale: saleData,
-      documentType,
+    const { data, error } = await supabase.functions.invoke('issue-document', {
+      body: {
+        saleId,
+        documentType,
+        isRetry,
+      },
     });
 
-    // 5. Update document with result
-    const updateData = result.success
-      ? {
-          status: 'issued' as const,
-          folio: result.folio,
-          pdf_url: result.pdfUrl,
-          provider_ref: result.providerRef,
-          issued_at: result.issuedAt,
-        }
-      : {
-          status: 'failed' as const,
-          error_message: result.errorMessage,
-        };
+    if (error) {
+      console.error('Error calling issue-document function:', error);
+      return {
+        success: false,
+        errorMessage: error.message || 'Error al conectar con el servicio de facturación',
+      };
+    }
 
-    await supabase
-      .from('sales_documents')
-      .update(updateData)
-      .eq('id', doc.id);
-
-    return {
-      success: result.success,
-      documentId: doc.id,
-      folio: result.folio,
-      pdfUrl: result.pdfUrl,
-      errorMessage: result.errorMessage,
-    };
+    return data as IssueDocumentResult;
   } catch (error) {
-    console.error('Error in issueDocument:', error);
+    console.error('Unexpected error in issueDocument:', error);
     return {
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Error desconocido',
@@ -89,57 +53,40 @@ export async function issueDocument(
   }
 }
 
-async function loadSaleData(saleId: string): Promise<SaleData | null> {
-  const { data: sale, error: saleError } = await supabase
-    .from('sales')
-    .select(`
-      id,
-      sale_number,
-      total_amount,
-      point_of_sale,
-      sale_items (
-        quantity,
-        unit_price,
-        subtotal,
-        cocktail:cocktails (name)
-      )
-    `)
-    .eq('id', saleId)
-    .single();
+/**
+ * Retry a failed document issuance.
+ * Only works for documents with status 'failed'.
+ */
+export async function retryDocument(documentId: string): Promise<IssueDocumentResult> {
+  try {
+    // First get the document details
+    const { data: doc, error: fetchError } = await supabase
+      .from('sales_documents')
+      .select('sale_id, document_type, status')
+      .eq('id', documentId)
+      .single();
 
-  if (saleError || !sale) {
-    console.error('Error loading sale:', saleError);
-    return null;
+    if (fetchError || !doc) {
+      return {
+        success: false,
+        errorMessage: 'Documento no encontrado',
+      };
+    }
+
+    if (doc.status !== 'failed') {
+      return {
+        success: false,
+        errorMessage: `No se puede reintentar un documento con estado: ${doc.status}`,
+      };
+    }
+
+    // Call issue with retry flag
+    return issueDocument(doc.sale_id, doc.document_type as DocumentType, true);
+  } catch (error) {
+    console.error('Error in retryDocument:', error);
+    return {
+      success: false,
+      errorMessage: error instanceof Error ? error.message : 'Error desconocido',
+    };
   }
-
-  return {
-    id: sale.id,
-    saleNumber: sale.sale_number,
-    totalAmount: Number(sale.total_amount),
-    pointOfSale: sale.point_of_sale,
-    items: (sale.sale_items || []).map((item: { quantity: number; unit_price: number; subtotal: number; cocktail: { name: string } | null }) => ({
-      name: item.cocktail?.name || 'Producto',
-      quantity: item.quantity,
-      unitPrice: Number(item.unit_price),
-      subtotal: Number(item.subtotal),
-    })),
-  };
-}
-
-async function getInvoicingConfig(): Promise<InvoicingConfig> {
-  const { data, error } = await supabase
-    .from('invoicing_config')
-    .select('active_provider, config')
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) {
-    console.warn('No invoicing config found, using mock provider');
-    return { activeProvider: 'mock', config: {} };
-  }
-
-  return {
-    activeProvider: data.active_provider as ProviderType,
-    config: (data.config as Record<string, unknown>) || {},
-  };
 }
