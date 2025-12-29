@@ -5,12 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, X, LogOut, FileText, CreditCard, Banknote, Smartphone } from "lucide-react";
+import { Loader2, ShoppingCart, X, LogOut, FileText, CreditCard, Banknote, Smartphone, QrCode } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
+import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import {
   Select,
@@ -45,6 +46,15 @@ export default function Sales() {
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "debit" | "credit" | "transfer">("cash");
+  // Pickup QR state
+  const [showPickupQR, setShowPickupQR] = useState(false);
+  const [pickupQRData, setPickupQRData] = useState<{
+    token: string;
+    saleNumber: string;
+    expiresAt: string;
+    items: Array<{ name: string; quantity: number; price: number }>;
+    total: number;
+  } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -165,6 +175,14 @@ export default function Sales() {
     setLoading(true);
     setIssuingDocument(true);
 
+    // Store cart items for QR display before clearing
+    const cartItemsForQR = cart.map((item) => ({
+      name: item.cocktail.name,
+      quantity: item.quantity,
+      price: item.cocktail.price,
+    }));
+    const totalForQR = calculateTotal();
+
     let saleId: string | null = null;
 
     try {
@@ -174,7 +192,7 @@ export default function Sales() {
       const saleNumber = `V-${Date.now()}`;
       const totalAmount = calculateTotal();
 
-      // Create sale
+      // Create sale with payment_status = 'paid' (simulating instant payment for now)
       const { data: sale, error: saleError } = await supabase
         .from("sales")
         .insert({
@@ -183,6 +201,7 @@ export default function Sales() {
           total_amount: totalAmount,
           point_of_sale: pointOfSale,
           payment_method: paymentMethod,
+          payment_status: "paid",
         })
         .select()
         .single();
@@ -206,17 +225,37 @@ export default function Sales() {
       if (itemsError) throw itemsError;
 
       // Issue electronic document (provider-agnostic)
-      // The issueDocument function handles provider detection, document creation, and persistence
       const docResult = await issueDocument(sale.id, documentType);
-
-      // Sale remains valid even if document fails - just notify the user
       const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
       
       if (docResult.success) {
         toast.success(`Venta ${saleNumber} registrada. ${docLabel}: ${docResult.folio}`);
       } else {
-        // Document failed but sale is still valid
         toast.warning(`Venta ${saleNumber} registrada. ${docLabel} pendiente: ${docResult.errorMessage}`);
+      }
+
+      // Generate pickup QR token
+      const { data: tokenResult, error: tokenError } = await supabase.rpc(
+        "generate_pickup_token",
+        { p_sale_id: sale.id }
+      );
+
+      if (tokenError) {
+        console.error("Error generating pickup token:", tokenError);
+        toast.warning("Venta registrada pero no se pudo generar QR de retiro");
+      } else if (tokenResult) {
+        const result = tokenResult as { success: boolean; token?: string; sale_number?: string; expires_at?: string };
+        if (result.success && result.token) {
+          // Show pickup QR dialog
+          setPickupQRData({
+            token: result.token,
+            saleNumber: result.sale_number || saleNumber,
+            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+            items: cartItemsForQR,
+            total: totalForQR,
+          });
+          setShowPickupQR(true);
+        }
       }
 
       setCart([]);
@@ -242,6 +281,42 @@ export default function Sales() {
       fetchRecentSales();
     } catch (error: any) {
       toast.error(error.message || "Error al cancelar venta");
+    }
+  };
+
+  const reprintQR = async (sale: any) => {
+    try {
+      const { data: tokenResult, error: tokenError } = await supabase.rpc(
+        "generate_pickup_token",
+        { p_sale_id: sale.id }
+      );
+
+      if (tokenError) throw tokenError;
+      
+      if (tokenResult) {
+        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; error_code?: string; message?: string };
+        if (result.success && result.token) {
+          // Build items from sale_items
+          const items = (sale.sale_items || []).map((item: any) => ({
+            name: item.cocktails?.name || "Item",
+            quantity: item.quantity,
+            price: item.unit_price,
+          }));
+
+          setPickupQRData({
+            token: result.token,
+            saleNumber: sale.sale_number,
+            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+            items,
+            total: sale.total_amount,
+          });
+          setShowPickupQR(true);
+        } else {
+          toast.error(result.message || "No se pudo generar QR");
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Error al generar QR");
     }
   };
 
@@ -495,13 +570,23 @@ export default function Sales() {
                     {sale.is_cancelled ? (
                       <Badge variant="destructive">Cancelada</Badge>
                     ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => cancelSale(sale.id)}
-                      >
-                        Cancelar
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => reprintQR(sale)}
+                        >
+                          <QrCode className="w-4 h-4 mr-1" />
+                          QR
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => cancelSale(sale.id)}
+                        >
+                          Cancelar
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -510,6 +595,22 @@ export default function Sales() {
           </Card>
         )}
       </div>
+
+      {/* Pickup QR Dialog */}
+      {showPickupQR && pickupQRData && (
+        <PickupQRDialog
+          open={showPickupQR}
+          onClose={() => {
+            setShowPickupQR(false);
+            setPickupQRData(null);
+          }}
+          token={pickupQRData.token}
+          saleNumber={pickupQRData.saleNumber}
+          expiresAt={pickupQRData.expiresAt}
+          items={pickupQRData.items}
+          total={pickupQRData.total}
+        />
+      )}
     </div>
   );
 }
