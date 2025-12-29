@@ -30,6 +30,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       return <Navigate to="/sales" replace />;
     } else if (role === "gerencia") {
       return <Navigate to="/gerencia" replace />;
+    } else if (role === "bar") {
+      return <Navigate to="/bar" replace />;
     }
   }
 

@@ -287,6 +287,53 @@ export type Database = {
           },
         ]
       }
+      pickup_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          issued_at: string
+          metadata: Json | null
+          redeemed_at: string | null
+          redeemed_by: string | null
+          sale_id: string
+          status: Database["public"]["Enums"]["pickup_token_status"]
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          metadata?: Json | null
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          sale_id: string
+          status?: Database["public"]["Enums"]["pickup_token_status"]
+          token: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          metadata?: Json | null
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          sale_id?: string
+          status?: Database["public"]["Enums"]["pickup_token_status"]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_tokens_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
@@ -405,6 +452,7 @@ export type Database = {
           is_cancelled: boolean | null
           jornada_id: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: string
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -416,6 +464,7 @@ export type Database = {
           is_cancelled?: boolean | null
           jornada_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -427,6 +476,7 @@ export type Database = {
           is_cancelled?: boolean | null
           jornada_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           point_of_sale?: string
           sale_number?: string
           seller_id?: string
@@ -655,6 +705,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
       has_role: {
@@ -664,6 +715,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      redeem_pickup_token: { Args: { p_token: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "vendedor" | "gerencia" | "bar"
@@ -671,6 +723,7 @@ export type Database = {
       document_type: "boleta" | "factura"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
       payment_method: "cash" | "debit" | "credit" | "transfer"
+      pickup_token_status: "issued" | "redeemed" | "expired" | "cancelled"
       product_category: "ml" | "gramos" | "unidades"
     }
     CompositeTypes: {
@@ -804,6 +857,7 @@ export const Constants = {
       document_type: ["boleta", "factura"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
       payment_method: ["cash", "debit", "credit", "transfer"],
+      pickup_token_status: ["issued", "redeemed", "expired", "cancelled"],
       product_category: ["ml", "gramos", "unidades"],
     },
   },
