@@ -14,13 +14,14 @@ import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { PaymentMethodStats } from "@/components/dashboard/PaymentMethodStats";
+import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -30,7 +31,7 @@ export default function Admin() {
   const [showPinDialog, setShowPinDialog] = useState(false);
 
   // Restrict gerencia from accessing certain views
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents"];
   
   const handleViewChange = (view: ViewType) => {
     // Gerencia cannot access workers or jornadas management
@@ -77,6 +78,7 @@ export default function Admin() {
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
       case "reports": return "Reportes";
+      case "documents": return "Documentos Electrónicos";
       default: return "Panel de Administración";
     }
   };
@@ -156,6 +158,12 @@ export default function Admin() {
             {activeView === "reports" && (
               <div className="space-y-6">
                 <ReportsPanel />
+              </div>
+            )}
+
+            {activeView === "documents" && (
+              <div className="space-y-6">
+                <DocumentsRetryPanel />
               </div>
             )}
           </div>

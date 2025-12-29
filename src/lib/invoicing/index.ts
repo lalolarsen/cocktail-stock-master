@@ -1,6 +1,5 @@
 // Main entry point for invoicing module
-export { issueDocument } from './issue-document';
-export { getProvider, isProviderImplemented } from './providers';
+export { issueDocument, retryDocument } from './issue-document';
 export type {
   DocumentType,
   DocumentStatus,
