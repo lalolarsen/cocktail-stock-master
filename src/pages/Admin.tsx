@@ -13,6 +13,7 @@ import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
+import { PaymentMethodStats } from "@/components/dashboard/PaymentMethodStats";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -105,8 +106,9 @@ export default function Admin() {
           <div className="p-6 space-y-6 animate-fade-in">
             {activeView === "overview" && (
               <div className="space-y-6">
-                <JornadaStatus />
+                {!isReadOnly && <JornadaStatus />}
                 <StatsCards />
+                {isReadOnly && <PaymentMethodStats />}
                 <div className="grid grid-cols-1 gap-6">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
