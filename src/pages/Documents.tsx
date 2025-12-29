@@ -40,6 +40,70 @@ import { retryDocument } from "@/lib/invoicing";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+// Helper to export documents to CSV
+const exportToCSV = (documents: SalesDocument[], dateRange?: { from?: Date; to?: Date }) => {
+  if (documents.length === 0) {
+    toast.error("No hay documentos para exportar");
+    return;
+  }
+
+  const headers = [
+    "Fecha Creación",
+    "Nº Venta",
+    "Tipo",
+    "Proveedor",
+    "Ref. Proveedor",
+    "Estado",
+    "Total",
+    "Reintentos",
+    "Error"
+  ];
+
+  const statusLabels: Record<string, string> = {
+    pending: "Pendiente",
+    processing: "Procesando",
+    issued: "Emitido",
+    failed: "Fallido",
+    cancelled: "Anulado"
+  };
+
+  const rows = documents.map(doc => [
+    doc.created_at ? format(new Date(doc.created_at), "yyyy-MM-dd HH:mm:ss") : "",
+    doc.sale?.sale_number || "",
+    doc.document_type === "boleta" ? "Boleta" : "Factura",
+    doc.provider || "",
+    doc.provider_ref || doc.folio || "",
+    statusLabels[doc.status] || doc.status,
+    doc.sale?.total_amount?.toString() || "0",
+    doc.retry_count?.toString() || "0",
+    doc.error_message?.replace(/"/g, '""') || ""
+  ]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+  ].join("\n");
+
+  // Generate filename with date range
+  const fromDate = dateRange?.from 
+    ? format(dateRange.from, "yyyy-MM-dd") 
+    : format(new Date(), "yyyy-MM-dd");
+  const toDate = dateRange?.to 
+    ? format(dateRange.to, "yyyy-MM-dd") 
+    : format(new Date(), "yyyy-MM-dd");
+  const filename = `documentos_${fromDate}_to_${toDate}.csv`;
+
+  // Download file
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+
+  toast.success(`Exportados ${documents.length} documentos`);
+};
 import { DocumentDetailsDrawer } from "@/components/dashboard/DocumentDetailsDrawer";
 import { DocumentStatusBadge, getErrorSummary } from "@/components/dashboard/DocumentStatusBadge";
 
@@ -479,6 +543,16 @@ export default function Documents() {
               </Select>
               <Button variant="outline" size="icon" onClick={fetchDocuments}>
                 <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => exportToCSV(filteredDocuments)}
+                disabled={filteredDocuments.length === 0}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Exportar
               </Button>
             </div>
           </div>
