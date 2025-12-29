@@ -3,10 +3,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, Clock, Play, Square, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, Calendar, Clock, Play, Square, RefreshCw, Banknote } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
+import { CashReconciliationDialog } from "./CashReconciliationDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface Jornada {
   id: string;
@@ -22,6 +33,9 @@ export function JornadaStatus() {
   const [activeJornada, setActiveJornada] = useState<Jornada | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [showReconciliation, setShowReconciliation] = useState(false);
+  const [showOpeningDialog, setShowOpeningDialog] = useState(false);
+  const [openingCash, setOpeningCash] = useState("");
 
   useEffect(() => {
     fetchActiveJornada();
@@ -66,60 +80,98 @@ export function JornadaStatus() {
     }
   };
 
-  const manualOpenClose = async (action: "open" | "close") => {
+  const handleOpenJornada = () => {
+    setOpeningCash("");
+    setShowOpeningDialog(true);
+  };
+
+  const confirmOpenJornada = async () => {
+    const opening = parseFloat(openingCash) || 0;
     setSyncing(true);
+    setShowOpeningDialog(false);
+    
     try {
       const now = new Date();
       const currentTime = now.toTimeString().slice(0, 5);
       const today = now.toISOString().split("T")[0];
 
-      if (action === "open") {
-        // Get week start (Monday)
-        const daysSinceMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - daysSinceMonday);
-        const weekStartStr = weekStart.toISOString().split("T")[0];
+      // Get week start (Monday)
+      const daysSinceMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - daysSinceMonday);
+      const weekStartStr = weekStart.toISOString().split("T")[0];
 
-        // Get last jornada number this week
-        const { data: weekJornadas } = await supabase
-          .from("jornadas")
-          .select("numero_jornada")
-          .eq("semana_inicio", weekStartStr)
-          .order("numero_jornada", { ascending: false });
+      // Get last jornada number this week
+      const { data: weekJornadas } = await supabase
+        .from("jornadas")
+        .select("numero_jornada")
+        .eq("semana_inicio", weekStartStr)
+        .order("numero_jornada", { ascending: false });
 
-        const lastNum = weekJornadas?.[0]?.numero_jornada || 0;
+      const lastNum = weekJornadas?.[0]?.numero_jornada || 0;
 
-        const { error } = await supabase
-          .from("jornadas")
-          .insert({
-            numero_jornada: lastNum + 1,
-            semana_inicio: weekStartStr,
-            fecha: today,
-            hora_apertura: currentTime,
-            estado: "activa",
-          });
+      // Create jornada
+      const { data: newJornada, error } = await supabase
+        .from("jornadas")
+        .insert({
+          numero_jornada: lastNum + 1,
+          semana_inicio: weekStartStr,
+          fecha: today,
+          hora_apertura: currentTime,
+          estado: "activa",
+        })
+        .select()
+        .single();
 
-        if (error) throw error;
-        toast.success("Jornada abierta manualmente");
-      } else {
-        if (!activeJornada) {
-          toast.error("No hay jornada activa para cerrar");
-          return;
-        }
+      if (error) throw error;
 
-        const { error } = await supabase
-          .from("jornadas")
-          .update({ estado: "cerrada", hora_cierre: currentTime })
-          .eq("id", activeJornada.id);
+      // Create cash register record with opening cash
+      const { error: cashError } = await supabase
+        .from("cash_registers")
+        .insert({
+          jornada_id: newJornada.id,
+          opening_cash: opening,
+        });
 
-        if (error) throw error;
-        toast.success("Jornada cerrada manualmente");
-      }
+      if (cashError) throw cashError;
 
+      toast.success("Jornada abierta con caja inicial: $" + opening.toLocaleString());
       fetchActiveJornada();
     } catch (error) {
       console.error("Error:", error);
-      toast.error("Error al " + (action === "open" ? "abrir" : "cerrar") + " jornada");
+      toast.error("Error al abrir jornada");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleCloseJornada = () => {
+    if (!activeJornada) {
+      toast.error("No hay jornada activa para cerrar");
+      return;
+    }
+    setShowReconciliation(true);
+  };
+
+  const handleReconciliationComplete = async () => {
+    setShowReconciliation(false);
+    setSyncing(true);
+    
+    try {
+      const currentTime = new Date().toTimeString().slice(0, 5);
+      
+      const { error } = await supabase
+        .from("jornadas")
+        .update({ estado: "cerrada", hora_cierre: currentTime })
+        .eq("id", activeJornada!.id);
+
+      if (error) throw error;
+      
+      toast.success("Jornada cerrada exitosamente");
+      fetchActiveJornada();
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Error al cerrar jornada");
     } finally {
       setSyncing(false);
     }
@@ -197,7 +249,7 @@ export function JornadaStatus() {
           {(!activeJornada || activeJornada.estado !== "activa") && (
             <Button
               size="sm"
-              onClick={() => manualOpenClose("open")}
+              onClick={handleOpenJornada}
               disabled={syncing}
             >
               <Play className="w-4 h-4 mr-1" />
@@ -209,7 +261,7 @@ export function JornadaStatus() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => manualOpenClose("close")}
+              onClick={handleCloseJornada}
               disabled={syncing}
             >
               <Square className="w-4 h-4 mr-1" />
@@ -218,6 +270,60 @@ export function JornadaStatus() {
           )}
         </div>
       </div>
+
+      {/* Opening Cash Dialog */}
+      <Dialog open={showOpeningDialog} onOpenChange={setShowOpeningDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="w-5 h-5" />
+              Apertura de Caja
+            </DialogTitle>
+            <DialogDescription>
+              Ingresa el efectivo inicial para esta jornada
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="opening-cash">Efectivo Inicial</Label>
+              <Input
+                id="opening-cash"
+                type="number"
+                placeholder="0"
+                value={openingCash}
+                onChange={(e) => setOpeningCash(e.target.value)}
+                min="0"
+                step="1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowOpeningDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmOpenJornada} disabled={syncing}>
+              {syncing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Abriendo...
+                </>
+              ) : (
+                "Abrir Jornada"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cash Reconciliation Dialog */}
+      {activeJornada && (
+        <CashReconciliationDialog
+          open={showReconciliation}
+          onClose={() => setShowReconciliation(false)}
+          onReconciled={handleReconciliationComplete}
+          jornadaId={activeJornada.id}
+        />
+      )}
     </Card>
   );
 }
