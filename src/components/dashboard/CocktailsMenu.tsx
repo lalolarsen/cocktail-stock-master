@@ -62,7 +62,11 @@ interface Product {
   unit: string;
 }
 
-export const CocktailsMenu = () => {
+interface CocktailsMenuProps {
+  isReadOnly?: boolean;
+}
+
+export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   const [cocktails, setCocktails] = useState<CocktailWithIngredients[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -345,10 +349,12 @@ export const CocktailsMenu = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold gradient-text">Menú de Cócteles</h2>
-        <Button onClick={handleAddClick} className="primary-gradient">
-          <Plus className="w-4 h-4 mr-2" />
-          Agregar Cóctel
-        </Button>
+        {!isReadOnly && (
+          <Button onClick={handleAddClick} className="primary-gradient">
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar Cóctel
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -360,24 +366,26 @@ export const CocktailsMenu = () => {
                   <Wine className="h-5 w-5 text-primary" />
                   <CardTitle className="text-xl">{cocktail.name}</CardTitle>
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleEditClick(cocktail)}
-                    className="h-8 w-8"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleDeleteClick(cocktail)}
-                    className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                {!isReadOnly && (
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => handleEditClick(cocktail)}
+                      className="h-8 w-8"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => handleDeleteClick(cocktail)}
+                      className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <Badge variant="secondary" className="w-fit">
                 {cocktail.category}

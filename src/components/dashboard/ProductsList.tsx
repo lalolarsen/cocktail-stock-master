@@ -63,7 +63,11 @@ const getUnitDisplay = (category: string, unit: string) => {
   return unit;
 };
 
-export const ProductsList = () => {
+interface ProductsListProps {
+  isReadOnly?: boolean;
+}
+
+export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -242,22 +246,26 @@ export const ProductsList = () => {
                     >
                       {status.label}
                     </Badge>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => handleEditClick(product)}
-                      className="h-8 w-8"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => handleDeleteClick(product)}
-                      className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!isReadOnly && (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handleEditClick(product)}
+                          className="h-8 w-8"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handleDeleteClick(product)}
+                          className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
 

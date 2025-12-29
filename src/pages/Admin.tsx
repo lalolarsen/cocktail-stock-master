@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ProductsList } from "@/components/dashboard/ProductsList";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
@@ -16,14 +17,27 @@ import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Menu } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Menu, Eye } from "lucide-react";
 
 type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
 
 export default function Admin() {
+  const { role, isReadOnly } = useUserRole();
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isVerified, setIsVerified] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(true);
+
+  // Restrict gerencia from accessing certain views
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "predictions", "menu", "expenses"];
+  
+  const handleViewChange = (view: ViewType) => {
+    // Gerencia cannot access workers or jornadas management
+    if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
+      return;
+    }
+    setActiveView(view);
+  };
 
   const handlePinVerified = () => {
     setIsVerified(true);
@@ -69,7 +83,7 @@ export default function Admin() {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <AppSidebar activeView={activeView} setActiveView={setActiveView} />
+        <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
         
         <main className="flex-1 overflow-auto">
           {/* Header with sidebar trigger */}
@@ -79,6 +93,12 @@ export default function Admin() {
                 <Menu className="w-5 h-5" />
               </SidebarTrigger>
               <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
+              {isReadOnly && (
+                <Badge variant="secondary" className="flex items-center gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                  <Eye className="w-3 h-3" />
+                  Gerencia – solo lectura
+                </Badge>
+              )}
             </div>
           </header>
 
@@ -96,13 +116,13 @@ export default function Admin() {
                     <AlertsPanel />
                   </div>
                 </div>
-                <ExcelUpload />
+                {!isReadOnly && <ExcelUpload />}
               </div>
             )}
 
             {activeView === "products" && (
               <div className="space-y-6">
-                <ProductsList />
+                <ProductsList isReadOnly={isReadOnly} />
               </div>
             )}
 
@@ -114,7 +134,7 @@ export default function Admin() {
 
             {activeView === "menu" && (
               <div className="space-y-6">
-                <CocktailsMenu />
+                <CocktailsMenu isReadOnly={isReadOnly} />
               </div>
             )}
 
