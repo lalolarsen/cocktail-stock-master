@@ -59,7 +59,7 @@ interface NewWorker {
   full_name: string;
   point_of_sale: string;
   worker_pin: string;
-  role: "admin" | "vendedor" | "gerencia";
+  role: "admin" | "vendedor" | "gerencia" | "bar";
 }
 
 interface LoginRecord {
@@ -323,6 +323,8 @@ export function WorkersManagement() {
         return <Badge variant="secondary">Vendedor</Badge>;
       case "gerencia":
         return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">Gerencia</Badge>;
+      case "bar":
+        return <Badge className="bg-purple-500/10 text-purple-600 border-purple-500/20">Barra</Badge>;
       default:
         return <Badge variant="outline">Sin rol</Badge>;
     }
@@ -434,7 +436,7 @@ export function WorkersManagement() {
                 <Label htmlFor="new-role">Rol *</Label>
                 <Select
                   value={newWorker.role}
-                  onValueChange={(value: "admin" | "vendedor" | "gerencia") => 
+                  onValueChange={(value: "admin" | "vendedor" | "gerencia" | "bar") => 
                     setNewWorker({ ...newWorker, role: value })
                   }
                 >
@@ -444,6 +446,7 @@ export function WorkersManagement() {
                   <SelectContent>
                     <SelectItem value="vendedor">Vendedor</SelectItem>
                     <SelectItem value="gerencia">Gerencia</SelectItem>
+                    <SelectItem value="bar">Barra</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
                   </SelectContent>
                 </Select>
