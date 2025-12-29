@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, X, LogOut, FileText } from "lucide-react";
+import { Loader2, ShoppingCart, X, LogOut, FileText, CreditCard, Banknote, Smartphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,6 +43,7 @@ export default function Sales() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "debit" | "credit" | "transfer">("cash");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -179,6 +180,7 @@ export default function Sales() {
           seller_id: session.session.user.id,
           total_amount: totalAmount,
           point_of_sale: pointOfSale,
+          payment_method: paymentMethod,
         })
         .select()
         .single();
@@ -405,6 +407,47 @@ export default function Sales() {
                       </div>
                     </div>
                   )}
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Banknote className="w-4 h-4" />
+                      Método de Pago
+                    </Label>
+                    <Select
+                      value={paymentMethod}
+                      onValueChange={(value: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar método" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">
+                          <span className="flex items-center gap-2">
+                            <Banknote className="w-4 h-4" />
+                            Efectivo
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="debit">
+                          <span className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4" />
+                            Débito
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="credit">
+                          <span className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4" />
+                            Crédito
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="transfer">
+                          <span className="flex items-center gap-2">
+                            <Smartphone className="w-4 h-4" />
+                            Transferencia
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">

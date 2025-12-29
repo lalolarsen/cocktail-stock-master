@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      cash_registers: {
+        Row: {
+          closing_cash: number | null
+          created_at: string
+          difference: number | null
+          expected_cash: number | null
+          id: string
+          jornada_id: string
+          opening_cash: number
+          updated_at: string
+        }
+        Insert: {
+          closing_cash?: number | null
+          created_at?: string
+          difference?: number | null
+          expected_cash?: number | null
+          id?: string
+          jornada_id: string
+          opening_cash?: number
+          updated_at?: string
+        }
+        Update: {
+          closing_cash?: number | null
+          created_at?: string
+          difference?: number | null
+          expected_cash?: number | null
+          id?: string
+          jornada_id?: string
+          opening_cash?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_registers_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: true
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cocktail_ingredients: {
         Row: {
           cocktail_id: string
@@ -339,6 +380,7 @@ export type Database = {
           id: string
           is_cancelled: boolean | null
           jornada_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -349,6 +391,7 @@ export type Database = {
           id?: string
           is_cancelled?: boolean | null
           jornada_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
           point_of_sale: string
           sale_number: string
           seller_id: string
@@ -359,6 +402,7 @@ export type Database = {
           id?: string
           is_cancelled?: boolean | null
           jornada_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
           point_of_sale?: string
           sale_number?: string
           seller_id?: string
@@ -584,6 +628,7 @@ export type Database = {
       document_status: "pending" | "issued" | "failed" | "cancelled"
       document_type: "boleta" | "factura"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
+      payment_method: "cash" | "debit" | "credit" | "transfer"
       product_category: "ml" | "gramos" | "unidades"
     }
     CompositeTypes: {
@@ -716,6 +761,7 @@ export const Constants = {
       document_status: ["pending", "issued", "failed", "cancelled"],
       document_type: ["boleta", "factura"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
+      payment_method: ["cash", "debit", "credit", "transfer"],
       product_category: ["ml", "gramos", "unidades"],
     },
   },
