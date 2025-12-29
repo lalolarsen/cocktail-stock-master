@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import { issueDocument, type DocumentType } from "@/lib/invoicing";
+import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import {
   Select,
   SelectContent,
@@ -203,49 +203,20 @@ export default function Sales() {
 
       if (itemsError) throw itemsError;
 
-      // Issue electronic document
-      const invoiceResponse = await issueDocument({
-        saleId: sale.id,
-        saleNumber,
-        totalAmount,
-        documentType,
-        pointOfSale,
-        items: cart.map((item) => ({
-          name: item.cocktail.name,
-          quantity: item.quantity,
-          unitPrice: item.cocktail.price,
-          subtotal: item.cocktail.price * item.quantity,
-        })),
-      });
+      // Issue electronic document (provider-agnostic)
+      // The issueDocument function handles provider detection, document creation, and persistence
+      const docResult = await issueDocument(sale.id, documentType);
 
-      if (!invoiceResponse.success) {
-        // Rollback: delete sale items and sale
-        await supabase.from("sale_items").delete().eq("sale_id", sale.id);
-        await supabase.from("sales").delete().eq("id", sale.id);
-        throw new Error(invoiceResponse.errorMessage || "Error al emitir documento");
-      }
-
-      // Create sales_document record
-      const { error: docError } = await supabase
-        .from("sales_documents")
-        .insert({
-          sale_id: sale.id,
-          document_type: documentType,
-          folio: invoiceResponse.folio,
-          status: "issued",
-          pdf_url: invoiceResponse.pdfUrl,
-          issued_at: invoiceResponse.issuedAt,
-        });
-
-      if (docError) {
-        // Rollback: delete sale items and sale
-        await supabase.from("sale_items").delete().eq("sale_id", sale.id);
-        await supabase.from("sales").delete().eq("id", sale.id);
-        throw new Error("Error al registrar documento electrónico");
-      }
-
+      // Sale remains valid even if document fails - just notify the user
       const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
-      toast.success(`Venta ${saleNumber} registrada. ${docLabel}: ${invoiceResponse.folio}`);
+      
+      if (docResult.success) {
+        toast.success(`Venta ${saleNumber} registrada. ${docLabel}: ${docResult.folio}`);
+      } else {
+        // Document failed but sale is still valid
+        toast.warning(`Venta ${saleNumber} registrada. ${docLabel} pendiente: ${docResult.errorMessage}`);
+      }
+
       setCart([]);
       fetchRecentSales();
     } catch (error: any) {
