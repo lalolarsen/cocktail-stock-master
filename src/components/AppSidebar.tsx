@@ -1,5 +1,5 @@
 import { Wine, Package, TrendingUp, Martini, Users, Calendar, LogOut, FileText, Receipt } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -66,6 +66,12 @@ const menuItems = [
     value: "expenses" as ViewType, 
     icon: Receipt,
     gradient: "from-rose-500 to-pink-500"
+  },
+  { 
+    title: "Reportes", 
+    value: "reports" as ViewType, 
+    icon: FileText,
+    gradient: "from-sky-500 to-blue-500"
   },
 ];
 
@@ -129,24 +135,6 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                   </SidebarMenuItem>
                 );
               })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Acciones</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => navigate("/reports")}
-                  tooltip="Reportes"
-                  className="hover:bg-muted/50"
-                >
-                  <FileText className="w-5 h-5" />
-                  <span>Reportes</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

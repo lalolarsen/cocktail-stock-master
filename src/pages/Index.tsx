@@ -10,14 +10,19 @@ import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
+import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
 
 const Index = () => {
   const [activeView, setActiveView] = useState<ViewType>("overview");
+
+  const handleViewChange = (view: ViewType) => {
+    setActiveView(view);
+  };
 
   const getViewTitle = () => {
     switch (activeView) {
@@ -28,6 +33,7 @@ const Index = () => {
       case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
+      case "reports": return "Reportes";
       default: return "Dashboard";
     }
   };
@@ -35,7 +41,7 @@ const Index = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-to-br from-background via-muted to-background">
-        <AppSidebar activeView={activeView} setActiveView={setActiveView} />
+        <AppSidebar activeView={activeView} setActiveView={handleViewChange} />
         
         <main className="flex-1 overflow-auto">
           <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
@@ -97,6 +103,12 @@ const Index = () => {
             {activeView === "expenses" && (
               <div className="slide-in-up">
                 <ExpenseDeclaration />
+              </div>
+            )}
+
+            {activeView === "reports" && (
+              <div className="slide-in-up">
+                <ReportsPanel />
               </div>
             )}
           </div>

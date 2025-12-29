@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import Sales from "./pages/Sales";
 import Admin from "./pages/Admin";
-import Reports from "./pages/Reports";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -63,7 +62,15 @@ const App = () => {
             <Route
               path="/admin"
               element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/gerencia"
+              element={
+                <ProtectedRoute allowedRoles={["gerencia"]}>
                   <Admin />
                 </ProtectedRoute>
               }
@@ -73,14 +80,6 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["vendedor"]}>
                   <Sales />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <Reports />
                 </ProtectedRoute>
               }
             />
