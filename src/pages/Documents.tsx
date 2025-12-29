@@ -42,12 +42,14 @@ import { retryDocument } from "@/lib/invoicing";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { DocumentDetailsDrawer } from "@/components/dashboard/DocumentDetailsDrawer";
 
 interface SalesDocument {
   id: string;
   sale_id: string;
   document_type: "boleta" | "factura";
   provider: string;
+  provider_ref: string | null;
   status: "pending" | "issued" | "failed" | "cancelled";
   folio: string | null;
   pdf_url: string | null;
@@ -62,6 +64,19 @@ interface SalesDocument {
     total_amount: number;
     point_of_sale: string;
     created_at: string;
+    seller_id: string;
+    jornada?: {
+      fecha: string;
+      numero_jornada: number;
+    } | null;
+    sale_items?: Array<{
+      quantity: number;
+      unit_price: number;
+      subtotal: number;
+      cocktails: {
+        name: string;
+      } | null;
+    }>;
   } | null;
 }
 
@@ -80,6 +95,8 @@ export default function Documents() {
   const [searchQuery, setSearchQuery] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState<string>("all");
   const [activeProvider, setActiveProvider] = useState<string>("mock");
+  const [selectedDocument, setSelectedDocument] = useState<SalesDocument | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     fetchInvoicingConfig();
@@ -129,7 +146,20 @@ export default function Documents() {
             sale_number,
             total_amount,
             point_of_sale,
-            created_at
+            created_at,
+            seller_id,
+            jornada:jornadas (
+              fecha,
+              numero_jornada
+            ),
+            sale_items (
+              quantity,
+              unit_price,
+              subtotal,
+              cocktails (
+                name
+              )
+            )
           )
         `)
         .in("status", statuses)
@@ -376,6 +406,10 @@ export default function Documents() {
               loading={loading}
               isRetrying={isRetrying}
               onRetry={handleRetry}
+              onRowClick={(doc) => {
+                setSelectedDocument(doc);
+                setDrawerOpen(true);
+              }}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
@@ -389,6 +423,10 @@ export default function Documents() {
               loading={loading}
               isRetrying={isRetrying}
               onRetry={handleRetry}
+              onRowClick={(doc) => {
+                setSelectedDocument(doc);
+                setDrawerOpen(true);
+              }}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
@@ -401,6 +439,10 @@ export default function Documents() {
               loading={loading}
               isRetrying={isRetrying}
               onRetry={handleRetry}
+              onRowClick={(doc) => {
+                setSelectedDocument(doc);
+                setDrawerOpen(true);
+              }}
               getStatusBadge={getStatusBadge}
               formatDate={formatDate}
               isReadOnly={isReadOnly}
@@ -408,6 +450,19 @@ export default function Documents() {
             />
           </TabsContent>
         </Tabs>
+
+        {/* Document Details Drawer */}
+        <DocumentDetailsDrawer
+          document={selectedDocument}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          onRetry={(doc) => {
+            handleRetry(doc);
+            setDrawerOpen(false);
+          }}
+          isRetrying={selectedDocument ? isRetrying(selectedDocument) : false}
+          isReadOnly={isReadOnly}
+        />
       </main>
     </div>
   );
@@ -418,6 +473,7 @@ interface DocumentsTableProps {
   loading: boolean;
   isRetrying: (doc: SalesDocument) => boolean;
   onRetry: (doc: SalesDocument) => void;
+  onRowClick: (doc: SalesDocument) => void;
   getStatusBadge: (status: string) => React.ReactNode;
   formatDate: (date: string | null) => string;
   isReadOnly: boolean;
@@ -430,6 +486,7 @@ function DocumentsTable({
   loading,
   isRetrying,
   onRetry,
+  onRowClick,
   getStatusBadge,
   formatDate,
   isReadOnly,
@@ -483,7 +540,11 @@ function DocumentsTable({
           </TableHeader>
           <TableBody>
             {documents.map((doc) => (
-              <TableRow key={doc.id}>
+              <TableRow 
+                key={doc.id} 
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => onRowClick(doc)}
+              >
                 <TableCell>
                   <span className="font-mono font-medium">
                     {doc.sale?.sale_number || "-"}
@@ -545,7 +606,7 @@ function DocumentsTable({
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDate(doc.created_at)}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
                     {doc.status === "failed" && !isReadOnly && (
                       <Button
