@@ -3,10 +3,8 @@ import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ProductsList } from "@/components/dashboard/ProductsList";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
-import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
-import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
@@ -15,7 +13,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
 
 const Index = () => {
   const [activeView, setActiveView] = useState<ViewType>("overview");
@@ -30,7 +28,6 @@ const Index = () => {
       case "products": return "Productos";
       case "menu": return "Menú";
       case "jornadas": return "Jornadas";
-      case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
       case "reports": return "Reportes";
@@ -58,7 +55,6 @@ const Index = () => {
               <div className="space-y-6 slide-in-up">
                 <StatsCards />
                 <div className="grid grid-cols-1 gap-6">
-                  <ProfitChart />
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
                       <ConsumptionChart />
@@ -73,12 +69,6 @@ const Index = () => {
             {activeView === "products" && (
               <div className="slide-in-up">
                 <ProductsList />
-              </div>
-            )}
-
-            {activeView === "predictions" && (
-              <div className="slide-in-up">
-                <PredictionsPanel />
               </div>
             )}
 

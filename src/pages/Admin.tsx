@@ -5,10 +5,8 @@ import { StatsCards } from "@/components/dashboard/StatsCards";
 import { ProductsList } from "@/components/dashboard/ProductsList";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
-import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
-import { ProfitChart } from "@/components/dashboard/ProfitChart";
 import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
@@ -21,7 +19,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -31,7 +29,7 @@ export default function Admin() {
   const [showPinDialog, setShowPinDialog] = useState(false);
 
   // Restrict gerencia from accessing certain views
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "predictions", "menu", "expenses", "reports"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports"];
   
   const handleViewChange = (view: ViewType) => {
     // Gerencia cannot access workers or jornadas management
@@ -75,7 +73,6 @@ export default function Admin() {
       case "products": return "Productos";
       case "menu": return "Menú";
       case "jornadas": return "Jornadas";
-      case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
       case "reports": return "Reportes";
@@ -111,7 +108,6 @@ export default function Admin() {
                 <JornadaStatus />
                 <StatsCards />
                 <div className="grid grid-cols-1 gap-6">
-                  <ProfitChart />
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
                       <ConsumptionChart />
@@ -129,11 +125,6 @@ export default function Admin() {
               </div>
             )}
 
-            {activeView === "predictions" && (
-              <div className="space-y-6">
-                <PredictionsPanel />
-              </div>
-            )}
 
             {activeView === "menu" && (
               <div className="space-y-6">

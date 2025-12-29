@@ -38,8 +38,9 @@ export default function Sales() {
   const [pointOfSale, setPointOfSale] = useState("");
   const [loading, setLoading] = useState(false);
   const [recentSales, setRecentSales] = useState<any[]>([]);
-  const [isVerified, setIsVerified] = useState(false);
-  const [showPinDialog, setShowPinDialog] = useState(true);
+  // Sellers already verified PIN during login, so skip the dialog
+  const [isVerified, setIsVerified] = useState(true);
+  const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const navigate = useNavigate();
