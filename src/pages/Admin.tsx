@@ -26,8 +26,9 @@ type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
   const [activeView, setActiveView] = useState<ViewType>("overview");
-  const [isVerified, setIsVerified] = useState(false);
-  const [showPinDialog, setShowPinDialog] = useState(true);
+  // Admin and gerencia already verified PIN during login, so skip the dialog
+  const [isVerified, setIsVerified] = useState(true);
+  const [showPinDialog, setShowPinDialog] = useState(false);
 
   // Restrict gerencia from accessing certain views
   const allowedViewsForGerencia: ViewType[] = ["overview", "products", "predictions", "menu", "expenses", "reports"];
