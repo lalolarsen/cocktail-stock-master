@@ -32,9 +32,10 @@ export default function Auth() {
       .eq("user_id", userId);
 
     if (roles && roles.length > 0) {
-      if (roles[0].role === "admin") {
+      const role = roles[0].role;
+      if (role === "admin" || role === "gerencia") {
         navigate("/admin");
-      } else if (roles[0].role === "vendedor") {
+      } else if (role === "vendedor") {
         navigate("/sales");
       }
     }
