@@ -23,15 +23,18 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   }
 
   if (role && !allowedRoles.includes(role)) {
-    // Redirect based on user's actual role
-    if (role === "admin") {
-      return <Navigate to="/admin" replace />;
-    } else if (role === "vendedor") {
-      return <Navigate to="/sales" replace />;
-    } else if (role === "gerencia") {
-      return <Navigate to="/gerencia" replace />;
-    } else if (role === "bar") {
-      return <Navigate to="/bar" replace />;
+    // Redirect based on user's actual role to their appropriate portal
+    switch (role) {
+      case "admin":
+        return <Navigate to="/admin" replace />;
+      case "gerencia":
+        return <Navigate to="/gerencia" replace />;
+      case "vendedor":
+        return <Navigate to="/sales" replace />;
+      case "bar":
+        return <Navigate to="/bar" replace />;
+      default:
+        return <Navigate to="/auth" replace />;
     }
   }
 

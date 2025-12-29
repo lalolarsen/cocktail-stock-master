@@ -28,8 +28,28 @@ export default function Bar() {
   const [manualToken, setManualToken] = useState("");
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<RedemptionResult | null>(null);
+  const [userName, setUserName] = useState<string>("");
+  const [pointOfSale, setPointOfSale] = useState<string>("");
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name, point_of_sale")
+          .eq("id", user.id)
+          .single();
+        if (profile) {
+          setUserName(profile.full_name || "");
+          setPointOfSale(profile.point_of_sale || "");
+        }
+      }
+    };
+    fetchUserInfo();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -156,14 +176,23 @@ export default function Bar() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900/10 via-background to-purple-600/5 p-4">
       <div className="max-w-lg mx-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold gradient-text">Barra - Retiro QR</h1>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Salir
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-purple-500">Portal Barra</h1>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Salir
+            </Button>
+          </div>
+          {(userName || pointOfSale) && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {userName && <span className="font-medium">{userName}</span>}
+              {userName && pointOfSale && <span>•</span>}
+              {pointOfSale && <span>{pointOfSale}</span>}
+            </div>
+          )}
         </div>
 
         {/* Result Display */}
