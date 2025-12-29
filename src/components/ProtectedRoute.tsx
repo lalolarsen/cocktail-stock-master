@@ -1,10 +1,10 @@
 import { Navigate } from "react-router-dom";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useUserRole, AppRole } from "@/hooks/useUserRole";
 import { Loader2 } from "lucide-react";
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
-  allowedRoles: ("admin" | "vendedor")[];
+  allowedRoles: AppRole[];
 };
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -28,6 +28,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       return <Navigate to="/admin" replace />;
     } else if (role === "vendedor") {
       return <Navigate to="/sales" replace />;
+    } else if (role === "gerencia") {
+      return <Navigate to="/admin" replace />;
     }
   }
 

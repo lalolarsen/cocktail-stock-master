@@ -21,6 +21,7 @@ type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "
 interface AppSidebarProps {
   activeView: ViewType;
   setActiveView: (view: ViewType) => void;
+  isReadOnly?: boolean;
 }
 
 const menuItems = [
@@ -68,10 +69,18 @@ const menuItems = [
   },
 ];
 
-export function AppSidebar({ activeView, setActiveView }: AppSidebarProps) {
+export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
   const navigate = useNavigate();
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+
+  // Views restricted for gerencia (read-only users)
+  const restrictedViews: ViewType[] = ["workers", "jornadas"];
+  
+  // Filter menu items based on role
+  const visibleMenuItems = isReadOnly 
+    ? menuItems.filter(item => !restrictedViews.includes(item.value))
+    : menuItems;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -101,7 +110,7 @@ export function AppSidebar({ activeView, setActiveView }: AppSidebarProps) {
           <SidebarGroupLabel>Navegación</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
+              {visibleMenuItems.map((item) => {
                 const isActive = activeView === item.value;
                 return (
                   <SidebarMenuItem key={item.value}>

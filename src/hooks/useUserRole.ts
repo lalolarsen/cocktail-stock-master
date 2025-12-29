@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 
+export type AppRole = "admin" | "vendedor" | "gerencia";
+
 export function useUserRole() {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<"admin" | "vendedor" | null>(null);
+  const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function useUserRole() {
         .single();
 
       if (error) throw error;
-      setRole(data?.role as "admin" | "vendedor");
+      setRole(data?.role as AppRole);
     } catch (error) {
       console.error("Error fetching user role:", error);
       setRole(null);
@@ -52,5 +54,11 @@ export function useUserRole() {
     }
   };
 
-  return { user, role, loading };
+  // Helper to check if current role is read-only (gerencia)
+  const isReadOnly = role === "gerencia";
+  
+  // Helper to check if user can modify data
+  const canModify = role === "admin";
+
+  return { user, role, loading, isReadOnly, canModify };
 }
