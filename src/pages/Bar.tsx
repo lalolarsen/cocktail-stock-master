@@ -551,12 +551,35 @@ export default function Bar() {
               </p>
             </div>
             
-            {/* Debug panel */}
-            {debugMode && lastRawScan && (
-              <div className="bg-black border-t border-green-500/30 px-4 py-2">
-                <p className="text-xs text-green-400 font-mono break-all">
-                  RAW: {lastRawScan}
-                </p>
+            {/* Enhanced Debug panel */}
+            {debugMode && (
+              <div className="bg-black border-t border-green-500/30 px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-green-400 font-semibold">DEBUG MODE</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs text-green-400 hover:text-green-300"
+                    onClick={() => {
+                      const parsed = lastRawScan ? parseQRToken(lastRawScan) : { valid: false, token: "" };
+                      const debugText = `RAW: ${lastRawScan || "(none)"}\nPARSED: ${parsed.token || "(invalid)"}\nVALID: ${parsed.valid}`;
+                      navigator.clipboard.writeText(debugText);
+                      toast.success("Debug info copiado");
+                    }}
+                  >
+                    Copiar Debug
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-green-400/80 font-mono break-all">
+                    <span className="text-green-500">RAW:</span> {lastRawScan || "(esperando escaneo)"}
+                  </p>
+                  {lastRawScan && (
+                    <p className="text-xs text-green-400/80 font-mono break-all">
+                      <span className="text-green-500">PARSED:</span> {parseQRToken(lastRawScan).token || "(inválido)"}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
             

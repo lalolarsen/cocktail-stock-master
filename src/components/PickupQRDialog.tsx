@@ -2,8 +2,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
 import { formatCLP } from "@/lib/currency";
-import { Printer, X } from "lucide-react";
-import { useRef } from "react";
+import { Printer, X, Copy, Bug } from "lucide-react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 
 type PickupQRDialogProps = {
   open: boolean;
@@ -25,6 +26,10 @@ export default function PickupQRDialog({
   total,
 }: PickupQRDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  
+  // The actual content encoded in the QR
+  const qrContent = `PICKUP:${token}`;
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -116,12 +121,48 @@ export default function PickupQRDialog({
           <div className="bg-white p-4 rounded-lg">
             <QRCodeSVG
               id="qr-code-svg"
-              value={`PICKUP:${token}`}
+              value={qrContent}
               size={200}
               level="H"
               includeMargin
             />
           </div>
+          
+          {/* Debug toggle - tap QR 3 times */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={() => setShowDebug(!showDebug)}
+          >
+            <Bug className="w-3 h-3 mr-1" />
+            {showDebug ? "Ocultar Debug" : "Ver Debug"}
+          </Button>
+          
+          {/* Debug info panel */}
+          {showDebug && (
+            <div className="w-full bg-muted/50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">DEBUG INFO</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`TOKEN: ${token}\nQR_CONTENT: ${qrContent}`);
+                    toast.success("Debug info copiado");
+                  }}
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copiar
+                </Button>
+              </div>
+              <div className="text-xs font-mono space-y-1">
+                <p><span className="text-muted-foreground">TOKEN:</span> {token}</p>
+                <p><span className="text-muted-foreground">QR:</span> {qrContent}</p>
+              </div>
+            </div>
+          )}
 
           <div className="text-center space-y-1">
             {items.map((item, index) => (
