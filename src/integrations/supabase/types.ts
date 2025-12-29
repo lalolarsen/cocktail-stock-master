@@ -374,6 +374,53 @@ export type Database = {
           },
         ]
       }
+      sales_documents: {
+        Row: {
+          created_at: string
+          document_type: Database["public"]["Enums"]["document_type"]
+          error_message: string | null
+          folio: string | null
+          id: string
+          issued_at: string | null
+          pdf_url: string | null
+          sale_id: string
+          status: Database["public"]["Enums"]["document_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: Database["public"]["Enums"]["document_type"]
+          error_message?: string | null
+          folio?: string | null
+          id?: string
+          issued_at?: string | null
+          pdf_url?: string | null
+          sale_id: string
+          status?: Database["public"]["Enums"]["document_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: Database["public"]["Enums"]["document_type"]
+          error_message?: string | null
+          folio?: string | null
+          id?: string
+          issued_at?: string | null
+          pdf_url?: string | null
+          sale_id?: string
+          status?: Database["public"]["Enums"]["document_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_documents_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: true
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_alerts: {
         Row: {
           alert_type: string
@@ -534,6 +581,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "vendedor"
+      document_status: "pending" | "issued" | "failed" | "cancelled"
+      document_type: "boleta" | "factura"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
       product_category: "ml" | "gramos" | "unidades"
     }
@@ -664,6 +713,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "vendedor"],
+      document_status: ["pending", "issued", "failed", "cancelled"],
+      document_type: ["boleta", "factura"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
       product_category: ["ml", "gramos", "unidades"],
     },
