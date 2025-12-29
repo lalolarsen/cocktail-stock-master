@@ -12,6 +12,7 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -68,6 +69,20 @@ export default function Auth() {
         if (error) throw error;
 
         if (data.user) {
+          // Verify PIN
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("worker_pin")
+            .eq("id", data.user.id)
+            .single();
+
+          if (profileError) throw new Error("Error al verificar el PIN");
+          
+          if (profile?.worker_pin && profile.worker_pin !== pin) {
+            await supabase.auth.signOut();
+            throw new Error("PIN incorrecto");
+          }
+
           // Record login history
           await recordLogin(data.user.id);
           await checkUserRole(data.user.id);
@@ -145,6 +160,21 @@ export default function Auth() {
               minLength={6}
             />
           </div>
+
+          {isLogin && (
+            <div className="space-y-2">
+              <Label htmlFor="pin">PIN de trabajador</Label>
+              <Input
+                id="pin"
+                type="password"
+                placeholder="••••"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+                maxLength={6}
+              />
+            </div>
+          )}
 
           <Button
             type="submit"
