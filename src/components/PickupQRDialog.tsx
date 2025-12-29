@@ -116,7 +116,7 @@ export default function PickupQRDialog({
           <div className="bg-white p-4 rounded-lg">
             <QRCodeSVG
               id="qr-code-svg"
-              value={token}
+              value={`PICKUP:${token}`}
               size={200}
               level="H"
               includeMargin
