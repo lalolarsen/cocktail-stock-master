@@ -15,6 +15,7 @@ import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { PaymentMethodStats } from "@/components/dashboard/PaymentMethodStats";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
+import { InvoicingAlertsWidget } from "@/components/dashboard/InvoicingAlertsWidget";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -116,7 +117,10 @@ export default function Admin() {
                     <div className="lg:col-span-2">
                       <ConsumptionChart />
                     </div>
-                    <AlertsPanel />
+                    <div className="space-y-6">
+                      <InvoicingAlertsWidget />
+                      <AlertsPanel />
+                    </div>
                   </div>
                 </div>
                 {!isReadOnly && <ExcelUpload />}

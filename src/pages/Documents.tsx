@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Card } from "@/components/ui/card";
@@ -150,12 +150,18 @@ interface InvoicingConfig {
 
 export default function Documents() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { role, isReadOnly } = useUserRole();
   const [documents, setDocuments] = useState<SalesDocument[]>([]);
   const [loading, setLoading] = useState(true);
   // Track retrying by idempotency key (provider:saleId:documentType) to prevent duplicates
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState("issued");
+  
+  // Read initial tab from URL query param, default to "issued"
+  const initialTab = searchParams.get('tab') || 'issued';
+  const [activeTab, setActiveTab] = useState(
+    ['issued', 'pending', 'failed'].includes(initialTab) ? initialTab : 'issued'
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState<string>("all");
   const [activeProvider, setActiveProvider] = useState<string>("mock");
