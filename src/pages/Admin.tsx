@@ -14,13 +14,14 @@ import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
+import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses";
+type ViewType = "overview" | "products" | "predictions" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -29,7 +30,7 @@ export default function Admin() {
   const [showPinDialog, setShowPinDialog] = useState(true);
 
   // Restrict gerencia from accessing certain views
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "predictions", "menu", "expenses"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "predictions", "menu", "expenses", "reports"];
   
   const handleViewChange = (view: ViewType) => {
     // Gerencia cannot access workers or jornadas management
@@ -76,6 +77,7 @@ export default function Admin() {
       case "predictions": return "Predicciones";
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
+      case "reports": return "Reportes";
       default: return "Panel de Administración";
     }
   };
@@ -138,14 +140,14 @@ export default function Admin() {
               </div>
             )}
 
-            {activeView === "workers" && (
+            {activeView === "workers" && !isReadOnly && (
               <div className="space-y-6">
                 <WorkersManagement />
                 <ActivityPanel />
               </div>
             )}
 
-            {activeView === "jornadas" && (
+            {activeView === "jornadas" && !isReadOnly && (
               <div className="space-y-6">
                 <JornadaManagement />
               </div>
@@ -154,6 +156,12 @@ export default function Admin() {
             {activeView === "expenses" && (
               <div className="space-y-6">
                 <ExpenseDeclaration />
+              </div>
+            )}
+
+            {activeView === "reports" && (
+              <div className="space-y-6">
+                <ReportsPanel />
               </div>
             )}
           </div>
