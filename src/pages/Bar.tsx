@@ -18,26 +18,92 @@ type RedemptionResult = {
   redeemed_at?: string;
 };
 
-type ScanState = "scanning" | "processing" | "success" | "error" | "manual";
+type ScanState = "idle" | "scanning" | "processing" | "success" | "error" | "manual";
 
-const QR_PREFIX = "PICKUP:";
-const TOKEN_LENGTH = 16; // UUID hex format: 16 chars
+// Timing constants
 const COOLDOWN_MS = 5000;
-const SUCCESS_DISMISS_MS = 2500;
-const ERROR_DISMISS_MS = 3000;
+const SUCCESS_DISMISS_MS = 2000;
+const ERROR_DISMISS_MS = 2500;
+const PROCESSING_TIMEOUT_MS = 8000;
+
+/**
+ * Universal QR token parser - handles multiple formats:
+ * - Plain hex token: "9f3a1c7b6e2d4a9f"
+ * - Prefixed token: "PICKUP:9f3a1c7b6e2d4a9f"
+ * - URL with token query: "https://app.com/bar?token=9f3a1c7b6e2d4a9f"
+ * - URL with /r/ path: "https://app.com/r/9f3a1c7b6e2d4a9f"
+ * - Any URL containing hex token
+ */
+function parseQRToken(raw: string): { valid: boolean; token: string; error?: string } {
+  const trimmed = raw.trim();
+  let token = "";
+
+  // Case A: URL with token= query param
+  if (trimmed.includes("token=")) {
+    const match = trimmed.match(/[?&]token=([a-f0-9]+)/i);
+    if (match) token = match[1];
+  }
+  // Case B: URL with /r/<token> path
+  else if (trimmed.includes("/r/")) {
+    const match = trimmed.match(/\/r\/([a-f0-9]+)/i);
+    if (match) token = match[1];
+  }
+  // Case C: PICKUP: prefix
+  else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
+    token = trimmed.substring(7);
+  }
+  // Case D: Plain hex token - extract first hex match 12-64 chars
+  else {
+    const match = trimmed.match(/[a-f0-9]{12,64}/i);
+    if (match) token = match[0];
+  }
+
+  // Normalize to lowercase and validate
+  token = token.toLowerCase();
+  
+  if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token)) {
+    return { valid: true, token };
+  }
+
+  return { valid: false, token: "", error: "QR_INVALID" };
+}
+
+/**
+ * Map backend error codes to user-friendly Spanish titles
+ */
+function getErrorTitle(errorCode?: string): string {
+  switch (errorCode) {
+    case "ALREADY_REDEEMED": return "YA CANJEADO";
+    case "TOKEN_EXPIRED": return "EXPIRADO";
+    case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
+    case "SALE_CANCELLED": return "VENTA CANCELADA";
+    case "QR_INVALID": return "QR INVÁLIDO";
+    case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
+    case "TIMEOUT": return "TIEMPO AGOTADO";
+    case "SYSTEM_ERROR": return "ERROR DE SISTEMA";
+    default: return "ERROR";
+  }
+}
 
 export default function Bar() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
-  const [scanState, setScanState] = useState<ScanState>("scanning");
+  const [scanState, setScanState] = useState<ScanState>("idle");
   const [manualToken, setManualToken] = useState("");
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [pointOfSale, setPointOfSale] = useState<string>("");
   
+  // Debug mode state (tap header 5 times to enable)
+  const [debugMode, setDebugMode] = useState(false);
+  const [lastRawScan, setLastRawScan] = useState("");
+  const debugTapCountRef = useRef(0);
+  const debugTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const lastScannedRef = useRef<{ token: string; timestamp: number } | null>(null);
   const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
 
   // Fetch user info on mount
@@ -59,46 +125,75 @@ export default function Bar() {
     fetchUserInfo();
   }, []);
 
-  // Parse QR data and extract token
-  const parseQRData = useCallback((data: string): { valid: boolean; token: string; error?: string } => {
-    const trimmed = data.trim().toUpperCase();
-    
-    if (!trimmed.startsWith(QR_PREFIX)) {
-      return { valid: false, token: "", error: "QR_INVALID" };
-    }
-    
-    const token = trimmed.substring(QR_PREFIX.length);
-    
-    // Validate hex token (16 chars)
-    if (token.length !== TOKEN_LENGTH || !/^[A-F0-9]+$/i.test(token)) {
-      return { valid: false, token: "", error: "QR_INVALID" };
-    }
-    
-    return { valid: true, token };
-  }, []);
-
   // Check cooldown for duplicate scans
   const isDuplicate = useCallback((token: string): boolean => {
     const now = Date.now();
+    const storageKey = `lastScan_${token}`;
+    
+    // Check ref
     if (lastScannedRef.current) {
       const { token: lastToken, timestamp } = lastScannedRef.current;
       if (lastToken === token && now - timestamp < COOLDOWN_MS) {
         return true;
       }
     }
+    
+    // Check sessionStorage for cross-component safety
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored && now - parseInt(stored) < COOLDOWN_MS) {
+        return true;
+      }
+      sessionStorage.setItem(storageKey, now.toString());
+    } catch (e) {
+      // sessionStorage not available
+    }
+    
     lastScannedRef.current = { token, timestamp: now };
     return false;
   }, []);
 
+  // Clear all timers
+  const clearAllTimers = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+      processingTimeoutRef.current = null;
+    }
+  }, []);
+
   // Redeem token via backend
   const redeemToken = useCallback(async (token: string) => {
+    clearAllTimers();
     setScanState("processing");
     setResult(null);
+
+    // Set processing timeout fail-safe
+    processingTimeoutRef.current = setTimeout(() => {
+      setResult({
+        success: false,
+        error_code: "TIMEOUT",
+        message: "Tiempo de espera agotado - reintenta",
+      });
+      setScanState("error");
+      dismissTimerRef.current = setTimeout(() => {
+        resumeScanning();
+      }, ERROR_DISMISS_MS);
+    }, PROCESSING_TIMEOUT_MS);
 
     try {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
       });
+
+      // Clear processing timeout since we got a response
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+        processingTimeoutRef.current = null;
+      }
 
       if (error) throw error;
 
@@ -112,6 +207,12 @@ export default function Bar() {
         resumeScanning();
       }, timeout);
     } catch (error: any) {
+      // Clear processing timeout
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+        processingTimeoutRef.current = null;
+      }
+      
       console.error("Redemption error:", error);
       setResult({
         success: false,
@@ -124,14 +225,22 @@ export default function Bar() {
         resumeScanning();
       }, ERROR_DISMISS_MS);
     }
-  }, []);
+  }, [clearAllTimers]);
 
-  // Handle QR scan
+  // Handle QR scan - only process when in scanning state
   const handleScan = useCallback((decodedText: string) => {
-    const parsed = parseQRData(decodedText);
+    // Store raw scan for debug mode
+    setLastRawScan(decodedText);
+    
+    // CRITICAL: Only process if in scanning state
+    if (scanState !== "scanning") {
+      return;
+    }
+
+    const parsed = parseQRToken(decodedText);
     
     if (!parsed.valid) {
-      // Show quick invalid QR feedback
+      // Show quick invalid QR feedback but DON'T freeze camera
       setResult({
         success: false,
         error_code: "QR_INVALID",
@@ -152,9 +261,9 @@ export default function Bar() {
     // Pause scanner and process
     pauseScanner();
     redeemToken(parsed.token);
-  }, [parseQRData, isDuplicate, redeemToken]);
+  }, [scanState, isDuplicate, redeemToken]);
 
-  // Start camera scanner
+  // Start camera scanner with mobile-optimized settings
   const startScanner = useCallback(async () => {
     if (scannerRef.current) return;
 
@@ -165,14 +274,20 @@ export default function Bar() {
       await scanner.start(
         { facingMode: "environment" },
         {
-          fps: 15,
-          qrbox: { width: 280, height: 280 },
+          fps: 10, // Lower FPS for better stability on mobile
+          qrbox: { width: 250, height: 250 },
           aspectRatio: 1,
           disableFlip: false,
+          // @ts-ignore - experimentalFeatures exists but not in types
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true // Use native API when available
+          }
         },
         (decodedText) => handleScan(decodedText),
         () => {} // Ignore scan errors
       );
+      
+      setScanState("scanning");
     } catch (error) {
       console.error("Camera error:", error);
       toast.error("No se pudo acceder a la cámara");
@@ -191,28 +306,26 @@ export default function Bar() {
     }
   }, []);
 
-  // Resume scanner
+  // Resume scanner - central reset function
   const resumeScanning = useCallback(() => {
-    if (dismissTimerRef.current) {
-      clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = null;
-    }
-    
+    clearAllTimers();
     setResult(null);
     setManualToken("");
-    setScanState("scanning");
 
     if (scannerRef.current) {
       try {
         scannerRef.current.resume();
+        setScanState("scanning");
       } catch (e) {
         // Restart if resume fails
+        setScanState("idle");
         startScanner();
       }
     } else {
+      setScanState("idle");
       startScanner();
     }
-  }, [startScanner]);
+  }, [clearAllTimers, startScanner]);
 
   // Stop scanner completely
   const stopScanner = useCallback(async () => {
@@ -228,58 +341,49 @@ export default function Bar() {
 
   // Initialize scanner on mount
   useEffect(() => {
-    if (isVerified && scanState === "scanning") {
+    if (isVerified && scanState === "idle") {
       const timer = setTimeout(() => startScanner(), 300);
       return () => clearTimeout(timer);
     }
-  }, [isVerified, startScanner]);
+  }, [isVerified, scanState, startScanner]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (dismissTimerRef.current) {
-        clearTimeout(dismissTimerRef.current);
-      }
+      clearAllTimers();
       stopScanner();
     };
-  }, [stopScanner]);
+  }, [clearAllTimers, stopScanner]);
 
-  // Handle manual entry
+  // Handle manual entry - uses same parseQRToken function
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const input = manualToken.trim().toUpperCase();
+    const input = manualToken.trim();
     
     if (!input) {
       toast.error("Ingresa un código");
       return;
     }
 
-    // Try with prefix first, then without
-    let tokenToRedeem = input;
-    if (!input.startsWith(QR_PREFIX)) {
-      // Assume user entered just the token (16 char hex)
-      if (input.length === TOKEN_LENGTH && /^[A-F0-9]+$/i.test(input)) {
-        tokenToRedeem = input;
-      } else {
-        setResult({
-          success: false,
-          error_code: "QR_INVALID",
-          message: "Código inválido",
-        });
-        setScanState("error");
-        dismissTimerRef.current = setTimeout(resumeScanning, ERROR_DISMISS_MS);
-        return;
-      }
-    } else {
-      tokenToRedeem = input.substring(QR_PREFIX.length);
+    const parsed = parseQRToken(input);
+    
+    if (!parsed.valid) {
+      setResult({
+        success: false,
+        error_code: "QR_INVALID",
+        message: "Código inválido - debe ser hexadecimal de 12-64 caracteres",
+      });
+      setScanState("error");
+      dismissTimerRef.current = setTimeout(resumeScanning, ERROR_DISMISS_MS);
+      return;
     }
 
-    if (isDuplicate(tokenToRedeem)) {
+    if (isDuplicate(parsed.token)) {
       toast.warning("Código ya procesado recientemente");
       return;
     }
 
-    redeemToken(tokenToRedeem);
+    redeemToken(parsed.token);
   };
 
   const switchToManual = () => {
@@ -289,7 +393,6 @@ export default function Bar() {
 
   const switchToCamera = () => {
     setManualToken("");
-    setScanState("scanning");
     resumeScanning();
   };
 
@@ -316,15 +419,22 @@ export default function Bar() {
     return result.items.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const getErrorTitle = (errorCode?: string) => {
-    switch (errorCode) {
-      case "ALREADY_REDEEMED": return "YA CANJEADO";
-      case "TOKEN_EXPIRED": return "EXPIRADO";
-      case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
-      case "SALE_CANCELLED": return "VENTA CANCELADA";
-      case "QR_INVALID": return "QR INVÁLIDO";
-      case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
-      default: return "ERROR";
+  // Debug mode toggle - tap header 5 times within 2 seconds
+  const handleHeaderTap = () => {
+    debugTapCountRef.current++;
+    
+    if (debugTapTimerRef.current) {
+      clearTimeout(debugTapTimerRef.current);
+    }
+    
+    if (debugTapCountRef.current >= 5) {
+      setDebugMode(prev => !prev);
+      toast.info(debugMode ? "Debug mode OFF" : "Debug mode ON");
+      debugTapCountRef.current = 0;
+    } else {
+      debugTapTimerRef.current = setTimeout(() => {
+        debugTapCountRef.current = 0;
+      }, 2000);
     }
   };
 
@@ -380,12 +490,19 @@ export default function Bar() {
     );
   }
 
-  // Full-screen processing state
+  // Full-screen processing state with cancel option
   if (scanState === "processing") {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
         <Loader2 className="w-24 h-24 animate-spin text-primary mb-6" />
         <h2 className="text-2xl font-bold text-foreground">Validando...</h2>
+        <Button 
+          variant="ghost" 
+          onClick={resumeScanning}
+          className="mt-8 text-muted-foreground"
+        >
+          Cancelar y volver a escanear
+        </Button>
       </div>
     );
   }
@@ -394,8 +511,8 @@ export default function Bar() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card">
-        <div className="flex flex-col">
-          <h1 className="text-lg font-bold text-primary">Barra</h1>
+        <div className="flex flex-col" onClick={handleHeaderTap}>
+          <h1 className="text-lg font-bold text-primary select-none">Barra</h1>
           {(userName || pointOfSale) && (
             <p className="text-xs text-muted-foreground">
               {userName}{userName && pointOfSale && " • "}{pointOfSale}
@@ -409,16 +526,39 @@ export default function Bar() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {scanState === "scanning" && (
+        {(scanState === "scanning" || scanState === "idle") && (
           <>
             {/* Scanner viewport - takes most of the screen */}
             <div className="flex-1 relative bg-black">
               <div id="qr-reader" className="w-full h-full" />
               {/* Overlay with scanning hint */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-72 h-72 border-4 border-white/50 rounded-2xl" />
+                <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
               </div>
+              
+              {/* Loading indicator when idle */}
+              {scanState === "idle" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                  <Loader2 className="w-12 h-12 animate-spin text-white" />
+                </div>
+              )}
             </div>
+            
+            {/* Hint text for mobile */}
+            <div className="bg-black px-4 py-2">
+              <p className="text-center text-sm text-white/70">
+                Sube el brillo del celular del cliente si falla la lectura
+              </p>
+            </div>
+            
+            {/* Debug panel */}
+            {debugMode && lastRawScan && (
+              <div className="bg-black border-t border-green-500/30 px-4 py-2">
+                <p className="text-xs text-green-400 font-mono break-all">
+                  RAW: {lastRawScan}
+                </p>
+              </div>
+            )}
             
             {/* Manual entry button */}
             <div className="p-4 bg-card border-t border-border">
@@ -443,14 +583,16 @@ export default function Bar() {
                 </label>
                 <Input
                   value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value.toUpperCase())}
-                  placeholder="Ej: ABC123XYZ456"
+                  onChange={(e) => setManualToken(e.target.value)}
+                  placeholder="Ej: 9f3a1c7b6e2d4a9f"
                   autoFocus
                   autoComplete="off"
-                  autoCapitalize="characters"
                   inputMode="text"
-                  className="h-16 text-2xl text-center font-mono tracking-wider uppercase"
+                  className="h-16 text-2xl text-center font-mono tracking-wider"
                 />
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Ingresa el código hexadecimal del QR
+                </p>
               </div>
               
               <div className="space-y-3">
