@@ -21,8 +21,7 @@ type RedemptionResult = {
 type ScanState = "scanning" | "processing" | "success" | "error" | "manual";
 
 const QR_PREFIX = "PICKUP:";
-const TOKEN_MIN_LENGTH = 12;
-const TOKEN_MAX_LENGTH = 20;
+const TOKEN_LENGTH = 16; // UUID hex format: 16 chars
 const COOLDOWN_MS = 5000;
 const SUCCESS_DISMISS_MS = 2500;
 const ERROR_DISMISS_MS = 3000;
@@ -70,12 +69,8 @@ export default function Bar() {
     
     const token = trimmed.substring(QR_PREFIX.length);
     
-    if (token.length < TOKEN_MIN_LENGTH || token.length > TOKEN_MAX_LENGTH) {
-      return { valid: false, token: "", error: "QR_INVALID" };
-    }
-    
-    // Check alphanumeric + safe chars
-    if (!/^[A-Z0-9_-]+$/i.test(token)) {
+    // Validate hex token (16 chars)
+    if (token.length !== TOKEN_LENGTH || !/^[A-F0-9]+$/i.test(token)) {
       return { valid: false, token: "", error: "QR_INVALID" };
     }
     
@@ -262,8 +257,8 @@ export default function Bar() {
     // Try with prefix first, then without
     let tokenToRedeem = input;
     if (!input.startsWith(QR_PREFIX)) {
-      // Assume user entered just the token
-      if (input.length >= TOKEN_MIN_LENGTH && input.length <= TOKEN_MAX_LENGTH) {
+      // Assume user entered just the token (16 char hex)
+      if (input.length === TOKEN_LENGTH && /^[A-F0-9]+$/i.test(input)) {
         tokenToRedeem = input;
       } else {
         setResult({

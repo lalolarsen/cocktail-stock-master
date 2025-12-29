@@ -310,7 +310,7 @@ export type Database = {
           redeemed_by?: string | null
           sale_id: string
           status?: Database["public"]["Enums"]["pickup_token_status"]
-          token: string
+          token?: string
         }
         Update: {
           created_at?: string
