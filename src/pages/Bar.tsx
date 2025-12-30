@@ -179,6 +179,51 @@ export default function Bar() {
     setScannerReady(false);
   }, [clearAllTimers]);
 
+  // FORCE FULL RESET: Hard stop scanner, clear everything, remount after 300ms delay
+  // This works even if scanner is in a loop
+  const forceFullReset = useCallback(() => {
+    console.log("[Bar] forceFullReset triggered");
+    
+    // 1. Clear all timers immediately
+    clearAllTimers();
+    
+    // 2. Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // 3. Stop scanner instance directly
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.stop();
+      } catch (e) {
+        // Already stopped or error
+      }
+      scannerRef.current = null;
+    }
+    
+    // 4. Reset ALL refs and state atomically
+    redeemInFlightRef.current = false;
+    scanLatchRef.current = false;
+    lastTokenRef.current = "";  // Clear last token
+    lastTokenAtRef.current = 0; // Clear cooldown
+    
+    // 5. Disable scanner (unmount component)
+    setScannerEnabled(false);
+    setScannerReady(false);
+    setResult(null);
+    setScanState("idle");
+    setLastRawScan("");
+    setLastParsedToken("");
+    
+    // 6. After 300ms delay, increment session and re-enable
+    setTimeout(() => {
+      setScannerSessionId(prev => prev + 1);
+      setScannerEnabled(true);
+    }, 300);
+  }, [clearAllTimers]);
+
   // Process token via backend - SINGLE FLIGHT
   const processToken = useCallback(async (token: string, rawScan: string) => {
     // Store for debug
@@ -520,7 +565,7 @@ export default function Bar() {
     return (
       <div 
         className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-600 text-white p-6"
-        onClick={handleManualReset}
+        onClick={forceFullReset}
       >
         <CheckCircle2 className="w-32 h-32 mb-6 animate-pulse" />
         <h1 className="text-5xl font-black mb-4 tracking-tight">ENTREGADO</h1>
@@ -528,11 +573,11 @@ export default function Bar() {
         <p className="text-2xl opacity-90">{getItemCount()} {getItemCount() === 1 ? "item" : "items"}</p>
         
         <Button 
-          onClick={(e) => { e.stopPropagation(); handleManualReset(); }}
+          onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
           variant="secondary"
-          className="mt-8 h-14 px-8 text-lg font-bold bg-white/20 hover:bg-white/30 text-white border-0"
+          className="mt-8 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-green-700 border-0 shadow-lg"
         >
-          <RefreshCw className="w-5 h-5 mr-2" />
+          <RefreshCw className="w-6 h-6 mr-3" />
           Escanear Siguiente
         </Button>
         
@@ -549,7 +594,7 @@ export default function Bar() {
         className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 ${
           isWarning ? "bg-yellow-500 text-black" : "bg-red-600 text-white"
         }`}
-        onClick={handleManualReset}
+        onClick={forceFullReset}
       >
         {isWarning ? (
           <AlertCircle className="w-32 h-32 mb-6" />
@@ -574,13 +619,13 @@ export default function Bar() {
         )}
         
         <Button 
-          onClick={(e) => { e.stopPropagation(); handleManualReset(); }}
+          onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
           variant="secondary"
-          className={`mt-8 h-14 px-8 text-lg font-bold border-0 ${
-            isWarning ? "bg-black/20 hover:bg-black/30 text-black" : "bg-white/20 hover:bg-white/30 text-white"
+          className={`mt-8 h-16 px-10 text-xl font-bold border-0 shadow-lg ${
+            isWarning ? "bg-white hover:bg-white/90 text-yellow-700" : "bg-white hover:bg-white/90 text-red-700"
           }`}
         >
-          <RefreshCw className="w-5 h-5 mr-2" />
+          <RefreshCw className="w-6 h-6 mr-3" />
           Escanear Siguiente
         </Button>
         
@@ -603,11 +648,12 @@ export default function Bar() {
         )}
         
         <Button 
-          variant="ghost" 
-          onClick={handleManualReset}
-          className="mt-8 text-muted-foreground"
+          variant="outline" 
+          onClick={forceFullReset}
+          className="mt-8 h-14 px-8 text-lg font-semibold"
         >
-          Cancelar
+          <RefreshCw className="w-5 h-5 mr-2" />
+          Escanear Siguiente
         </Button>
       </div>
     );
@@ -712,12 +758,24 @@ export default function Bar() {
               </div>
             )}
             
+            {/* PROMINENT Escanear siguiente button - always visible in idle */}
+            <div className="p-4 bg-primary">
+              <Button 
+                onClick={forceFullReset}
+                variant="secondary"
+                className="w-full h-16 text-xl font-bold bg-white hover:bg-white/90 text-primary shadow-lg"
+              >
+                <RefreshCw className="w-6 h-6 mr-3" />
+                Escanear Siguiente
+              </Button>
+            </div>
+            
             {/* Manual entry button */}
-            <div className="p-4 bg-card border-t border-border">
+            <div className="px-4 pb-4 bg-card border-t border-border">
               <Button 
                 variant="outline" 
                 onClick={switchToManual} 
-                className="w-full h-14 text-lg"
+                className="w-full h-12 text-base"
               >
                 <Keyboard className="w-5 h-5 mr-2" />
                 Ingresar Código Manual
