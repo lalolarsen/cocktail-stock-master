@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import Sales from "./pages/Sales";
 import Admin from "./pages/Admin";
 import Documents from "./pages/Documents";
+import PickupTokens from "./pages/PickupTokens";
 import Bar from "./pages/Bar";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -74,6 +75,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
                   <Documents />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/pickup-tokens"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+                  <PickupTokens />
                 </ProtectedRoute>
               }
             />

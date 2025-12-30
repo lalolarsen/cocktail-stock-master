@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, RefreshCw, Search, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
 
 type PickupToken = {
   id: string;
@@ -95,22 +93,19 @@ export default function PickupTokens() {
   };
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <AppSidebar onViewChange={() => {}} activeView="tokens" />
-        <main className="flex-1 p-6">
-          <div className="flex items-center gap-4 mb-6">
-            <SidebarTrigger />
-            <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Volver
-            </Button>
-            <h1 className="text-2xl font-bold">Tokens de Retiro (Debug)</h1>
-            <Button variant="outline" size="sm" onClick={fetchTokens} disabled={loading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Actualizar
-            </Button>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Volver
+          </Button>
+          <h1 className="text-2xl font-bold">Tokens de Retiro (Debug)</h1>
+          <Button variant="outline" size="sm" onClick={fetchTokens} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+        </div>
 
           <Card>
             <CardHeader>
@@ -184,8 +179,7 @@ export default function PickupTokens() {
               )}
             </CardContent>
           </Card>
-        </main>
+        </div>
       </div>
-    </SidebarProvider>
   );
 }
