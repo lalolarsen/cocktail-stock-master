@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -69,13 +69,21 @@ const menuItems = [
   },
 ];
 
-// Separate link item for external navigation
-const documentsLink = {
-  title: "Documentos",
-  icon: FileCheck,
-  gradient: "from-indigo-500 to-purple-500",
-  path: "/admin/documents",
-};
+// External link items for separate pages
+const externalLinks = [
+  {
+    title: "Documentos",
+    icon: FileCheck,
+    gradient: "from-indigo-500 to-purple-500",
+    path: "/admin/documents",
+  },
+  {
+    title: "Auditoría Retiros",
+    icon: QrCode,
+    gradient: "from-orange-500 to-red-500",
+    path: "/admin/pickups",
+  },
+];
 
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
   const navigate = useNavigate();
@@ -95,8 +103,8 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     navigate("/auth");
   };
 
-  const handleDocumentsClick = () => {
-    navigate(documentsLink.path);
+  const handleExternalNavigation = (path: string) => {
+    navigate(path);
   };
 
   return (
@@ -142,18 +150,20 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                 );
               })}
               
-              {/* Documents link - navigates to separate page */}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={handleDocumentsClick}
-                  tooltip={documentsLink.title}
-                  className="transition-all duration-200 hover:bg-muted/50"
-                >
-                  <documentsLink.icon className="w-5 h-5" />
-                  <span>{documentsLink.title}</span>
-                  {!isCollapsed && <ExternalLink className="w-3 h-3 ml-auto opacity-50" />}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {/* External links - navigate to separate pages */}
+              {externalLinks.map((link) => (
+                <SidebarMenuItem key={link.path}>
+                  <SidebarMenuButton
+                    onClick={() => handleExternalNavigation(link.path)}
+                    tooltip={link.title}
+                    className="transition-all duration-200 hover:bg-muted/50"
+                  >
+                    <link.icon className="w-5 h-5" />
+                    <span>{link.title}</span>
+                    {!isCollapsed && <ExternalLink className="w-3 h-3 ml-auto opacity-50" />}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
