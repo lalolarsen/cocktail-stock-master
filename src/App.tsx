@@ -9,6 +9,7 @@ import Sales from "./pages/Sales";
 import Admin from "./pages/Admin";
 import Documents from "./pages/Documents";
 import PickupTokens from "./pages/PickupTokens";
+import PickupRedemptions from "./pages/PickupRedemptions";
 import Bar from "./pages/Bar";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -83,6 +84,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
                   <PickupTokens />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/pickups"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+                  <PickupRedemptions />
                 </ProtectedRoute>
               }
             />

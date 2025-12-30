@@ -287,6 +287,57 @@ export type Database = {
           },
         ]
       }
+      pickup_redemptions_log: {
+        Row: {
+          bartender_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          pickup_token_id: string | null
+          pos_id: string | null
+          redeemed_at: string
+          result: Database["public"]["Enums"]["redemption_result"]
+          sale_id: string | null
+        }
+        Insert: {
+          bartender_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          pickup_token_id?: string | null
+          pos_id?: string | null
+          redeemed_at?: string
+          result: Database["public"]["Enums"]["redemption_result"]
+          sale_id?: string | null
+        }
+        Update: {
+          bartender_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          pickup_token_id?: string | null
+          pos_id?: string | null
+          redeemed_at?: string
+          result?: Database["public"]["Enums"]["redemption_result"]
+          sale_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_redemptions_log_pickup_token_id_fkey"
+            columns: ["pickup_token_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_tokens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_redemptions_log_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickup_tokens: {
         Row: {
           created_at: string
@@ -609,6 +660,7 @@ export type Database = {
           jornada_id: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes: string | null
+          pickup_token_id: string | null
           product_id: string | null
           quantity: number
         }
@@ -618,6 +670,7 @@ export type Database = {
           jornada_id?: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
+          pickup_token_id?: string | null
           product_id?: string | null
           quantity: number
         }
@@ -627,6 +680,7 @@ export type Database = {
           jornada_id?: string | null
           movement_type?: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
+          pickup_token_id?: string | null
           product_id?: string | null
           quantity?: number
         }
@@ -636,6 +690,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_pickup_token_id_fkey"
+            columns: ["pickup_token_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_tokens"
             referencedColumns: ["id"]
           },
           {
@@ -725,6 +786,16 @@ export type Database = {
       payment_method: "cash" | "debit" | "credit" | "transfer"
       pickup_token_status: "issued" | "redeemed" | "expired" | "cancelled"
       product_category: "ml" | "gramos" | "unidades"
+      redemption_result:
+        | "success"
+        | "already_redeemed"
+        | "expired"
+        | "invalid"
+        | "unpaid"
+        | "cancelled"
+        | "not_found"
+        | "stock_error"
+        | "timeout"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -859,6 +930,17 @@ export const Constants = {
       payment_method: ["cash", "debit", "credit", "transfer"],
       pickup_token_status: ["issued", "redeemed", "expired", "cancelled"],
       product_category: ["ml", "gramos", "unidades"],
+      redemption_result: [
+        "success",
+        "already_redeemed",
+        "expired",
+        "invalid",
+        "unpaid",
+        "cancelled",
+        "not_found",
+        "stock_error",
+        "timeout",
+      ],
     },
   },
 } as const
