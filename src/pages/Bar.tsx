@@ -22,7 +22,7 @@ type RedemptionResult = {
 type ScanState = "idle" | "processing" | "success" | "error" | "manual";
 
 // Timing constants
-const COOLDOWN_MS = 5000;
+const COOLDOWN_MS = 7000; // 7 seconds duplicate suppression
 const SUCCESS_DISMISS_MS = 1800;
 const ERROR_DISMISS_MS = 2200;
 const PROCESSING_TIMEOUT_MS = 8000;
@@ -93,6 +93,10 @@ export default function Bar() {
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [pointOfSale, setPointOfSale] = useState<string>("");
+  
+  // CRITICAL: Scanner session ID - incrementing this forces unmount/remount of scanner
+  const [scannerSessionId, setScannerSessionId] = useState(0);
+  const [scannerEnabled, setScannerEnabled] = useState(true);
   const [scannerReady, setScannerReady] = useState(false);
   
   // Debug mode state (tap header 5 times to enable)
@@ -102,19 +106,25 @@ export default function Bar() {
   const debugTapCountRef = useRef(0);
   const debugTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Scanner and state refs - CRITICAL: use refs to avoid stale closures
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scanStateRef = useRef<ScanState>("idle");
+  // ONE-SHOT LATCH: prevents multiple scans until explicitly reset
+  const scanLatchRef = useRef(false);
+  
+  // Token-based duplicate suppression
   const lastTokenRef = useRef<string>("");
-  const lastScanTimeRef = useRef<number>(0);
+  const lastTokenAtRef = useRef<number>(0);
+  
+  // Single-flight backend call tracking
+  const redeemInFlightRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Scanner instance ref
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  
+  // Timers
   const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   const navigate = useNavigate();
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    scanStateRef.current = scanState;
-  }, [scanState]);
 
   // Fetch user info on mount
   useEffect(() => {
@@ -147,69 +157,82 @@ export default function Bar() {
     }
   }, []);
 
-  // Pause scanner stream
-  const pauseScanner = useCallback(() => {
-    if (scannerRef.current) {
-      try {
-        scannerRef.current.pause(true);
-      } catch (e) {
-        // Scanner might not be running
-      }
-    }
-  }, []);
-
-  // Resume scanner stream
-  const resumeScannerStream = useCallback(() => {
-    if (scannerRef.current) {
-      try {
-        scannerRef.current.resume();
-      } catch (e) {
-        // Scanner might not be paused
-      }
-    }
-  }, []);
-
-  // Reset to idle and resume scanning - THE central reset function
-  const resetToIdle = useCallback(() => {
+  // FULL RESTART: Increment session ID to force scanner remount, reset latch
+  const restartScanner = useCallback(() => {
     clearAllTimers();
+    
+    // Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // Reset all state
+    redeemInFlightRef.current = false;
+    scanLatchRef.current = false; // CRITICAL: Reset latch
     setResult(null);
     setScanState("idle");
-    resumeScannerStream();
-  }, [clearAllTimers, resumeScannerStream]);
-
-  // Redeem token via backend
-  const processToken = useCallback(async (token: string) => {
-    // Update cooldown refs BEFORE state change
-    lastTokenRef.current = token;
-    lastScanTimeRef.current = Date.now();
     
-    // Pause scanner and switch to processing
-    pauseScanner();
-    clearAllTimers();
+    // Increment session to force fresh scanner instance
+    setScannerSessionId(prev => prev + 1);
+    setScannerEnabled(true);
+    setScannerReady(false);
+  }, [clearAllTimers]);
+
+  // Process token via backend - SINGLE FLIGHT
+  const processToken = useCallback(async (token: string, rawScan: string) => {
+    // Store for debug
+    setLastRawScan(rawScan);
+    setLastParsedToken(token);
+    
+    // Update duplicate suppression IMMEDIATELY
+    lastTokenRef.current = token;
+    lastTokenAtRef.current = Date.now();
+    
+    // Disable scanner (unmount)
+    setScannerEnabled(false);
     setScanState("processing");
     setResult(null);
 
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     // Set processing timeout fail-safe
     processingTimeoutRef.current = setTimeout(() => {
+      // Abort the request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      redeemInFlightRef.current = false;
+      
       setResult({
         success: false,
         error_code: "TIMEOUT",
         message: "Tiempo de espera agotado - reintenta",
       });
       setScanState("error");
-      dismissTimerRef.current = setTimeout(resetToIdle, ERROR_DISMISS_MS);
+      dismissTimerRef.current = setTimeout(restartScanner, ERROR_DISMISS_MS);
     }, PROCESSING_TIMEOUT_MS);
 
     try {
+      redeemInFlightRef.current = true;
+      
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
       });
+
+      // Check if aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
+      }
 
       // Clear processing timeout since we got a response
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
         processingTimeoutRef.current = null;
       }
+      
+      redeemInFlightRef.current = false;
 
       if (error) throw error;
 
@@ -217,15 +240,22 @@ export default function Bar() {
       setResult(resultData);
       setScanState(resultData.success ? "success" : "error");
 
-      // Auto-dismiss after timeout
+      // Auto-dismiss after timeout, then RESTART scanner
       const timeout = resultData.success ? SUCCESS_DISMISS_MS : ERROR_DISMISS_MS;
-      dismissTimerRef.current = setTimeout(resetToIdle, timeout);
+      dismissTimerRef.current = setTimeout(restartScanner, timeout);
     } catch (error: any) {
+      // Check if aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
+      }
+      
       // Clear processing timeout
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
         processingTimeoutRef.current = null;
       }
+      
+      redeemInFlightRef.current = false;
       
       console.error("Redemption error:", error);
       setResult({
@@ -235,16 +265,78 @@ export default function Bar() {
       });
       setScanState("error");
       
-      dismissTimerRef.current = setTimeout(resetToIdle, ERROR_DISMISS_MS);
+      dismissTimerRef.current = setTimeout(restartScanner, ERROR_DISMISS_MS);
     }
-  }, [pauseScanner, clearAllTimers, resetToIdle]);
+  }, [restartScanner]);
 
-  // Start camera scanner - callback uses refs to avoid stale closures
+  // Handle scan event - with LATCH and all guards
+  const handleScanEvent = useCallback((decodedText: string) => {
+    // GUARD 1: One-shot latch - if already latched, ignore completely
+    if (scanLatchRef.current) {
+      return;
+    }
+    
+    // GUARD 2: If backend call in flight, ignore
+    if (redeemInFlightRef.current) {
+      return;
+    }
+    
+    const now = Date.now();
+    const parsed = parseQRToken(decodedText);
+    
+    // Store for debug even on invalid
+    setLastRawScan(decodedText);
+    setLastParsedToken(parsed.token || "(inválido)");
+    
+    // GUARD 3: Invalid QR format
+    if (!parsed.valid) {
+      // SET LATCH to prevent repeated invalid scans
+      scanLatchRef.current = true;
+      
+      setScannerEnabled(false); // Unmount scanner
+      setScanState("error");
+      setResult({
+        success: false,
+        error_code: "QR_INVALID",
+        message: "Código QR no válido",
+      });
+      
+      dismissTimerRef.current = setTimeout(restartScanner, ERROR_DISMISS_MS);
+      return;
+    }
+
+    // GUARD 4: Duplicate suppression - same token within cooldown
+    if (parsed.token === lastTokenRef.current && 
+        now - lastTokenAtRef.current < COOLDOWN_MS) {
+      // Silently ignore - don't even set latch (allow different QR codes)
+      return;
+    }
+
+    // === ACCEPTED SCAN ===
+    // SET LATCH IMMEDIATELY - before any async work
+    scanLatchRef.current = true;
+    
+    // Process the token
+    processToken(parsed.token, decodedText);
+  }, [processToken, restartScanner]);
+
+  // Start scanner - only when enabled and in idle state
   const startScanner = useCallback(async () => {
-    if (scannerRef.current) return;
+    const elementId = `qr-reader-${scannerSessionId}`;
+    const element = document.getElementById(elementId);
+    
+    if (!element) {
+      // Element not mounted yet, retry shortly
+      return;
+    }
+    
+    if (scannerRef.current) {
+      // Already have a scanner instance
+      return;
+    }
 
     try {
-      const scanner = new Html5Qrcode("qr-reader", { verbose: false });
+      const scanner = new Html5Qrcode(elementId, { verbose: false });
       scannerRef.current = scanner;
 
       await scanner.start(
@@ -256,133 +348,7 @@ export default function Bar() {
           disableFlip: false,
         },
         (decodedText) => {
-          // CRITICAL: Use refs instead of state to avoid stale closures
-          const currentState = scanStateRef.current;
-          
-          // STATE GATE: Only process when idle
-          if (currentState !== "idle") {
-            return;
-          }
-          
-          const now = Date.now();
-          const parsed = parseQRToken(decodedText);
-          
-          // Store for debug display
-          setLastRawScan(decodedText);
-          setLastParsedToken(parsed.token || "(inválido)");
-          
-          if (!parsed.valid) {
-            // Invalid QR - show error briefly
-            setScanState("error");
-            setResult({
-              success: false,
-              error_code: "QR_INVALID",
-              message: "Código QR no válido",
-            });
-            // Pause during error display
-            if (scannerRef.current) {
-              try { scannerRef.current.pause(true); } catch {}
-            }
-            dismissTimerRef.current = setTimeout(() => {
-              setResult(null);
-              setScanState("idle");
-              if (scannerRef.current) {
-                try { scannerRef.current.resume(); } catch {}
-              }
-            }, ERROR_DISMISS_MS);
-            return;
-          }
-
-          // COOLDOWN: Check if same token within cooldown period
-          if (parsed.token === lastTokenRef.current && 
-              now - lastScanTimeRef.current < COOLDOWN_MS) {
-            // Silently ignore duplicate
-            return;
-          }
-
-          // PROCESS: Valid new token
-          // Update cooldown tracking
-          lastTokenRef.current = parsed.token;
-          lastScanTimeRef.current = now;
-          
-          // Pause scanner immediately
-          if (scannerRef.current) {
-            try { scannerRef.current.pause(true); } catch {}
-          }
-          
-          // Process the token
-          setScanState("processing");
-          setResult(null);
-
-          // Set processing timeout
-          processingTimeoutRef.current = setTimeout(() => {
-            setResult({
-              success: false,
-              error_code: "TIMEOUT",
-              message: "Tiempo de espera agotado",
-            });
-            setScanState("error");
-            dismissTimerRef.current = setTimeout(() => {
-              setResult(null);
-              setScanState("idle");
-              if (scannerRef.current) {
-                try { scannerRef.current.resume(); } catch {}
-              }
-            }, ERROR_DISMISS_MS);
-          }, PROCESSING_TIMEOUT_MS);
-
-          // Call backend
-          (async () => {
-            try {
-              const { data, error } = await supabase.rpc("redeem_pickup_token", { p_token: parsed.token });
-              
-              if (processingTimeoutRef.current) {
-                clearTimeout(processingTimeoutRef.current);
-                processingTimeoutRef.current = null;
-              }
-
-              if (error) {
-                setResult({
-                  success: false,
-                  error_code: "SYSTEM_ERROR",
-                  message: error.message || "Error de sistema",
-                });
-                setScanState("error");
-              } else {
-                const resData = data as RedemptionResult;
-                setResult(resData);
-                setScanState(resData.success ? "success" : "error");
-              }
-
-              // Auto-dismiss
-              const timeout = (data as RedemptionResult)?.success ? SUCCESS_DISMISS_MS : ERROR_DISMISS_MS;
-              dismissTimerRef.current = setTimeout(() => {
-                setResult(null);
-                setScanState("idle");
-                if (scannerRef.current) {
-                  try { scannerRef.current.resume(); } catch {}
-                }
-              }, timeout);
-            } catch (err: any) {
-              if (processingTimeoutRef.current) {
-                clearTimeout(processingTimeoutRef.current);
-                processingTimeoutRef.current = null;
-              }
-              setResult({
-                success: false,
-                error_code: "SYSTEM_ERROR",
-                message: err.message || "Error de conexión",
-              });
-              setScanState("error");
-              dismissTimerRef.current = setTimeout(() => {
-                setResult(null);
-                setScanState("idle");
-                if (scannerRef.current) {
-                  try { scannerRef.current.resume(); } catch {}
-                }
-              }, ERROR_DISMISS_MS);
-            }
-          })();
+          handleScanEvent(decodedText);
         },
         () => {} // Ignore scan errors
       );
@@ -393,34 +359,47 @@ export default function Bar() {
       toast.error("No se pudo acceder a la cámara");
       setScanState("manual");
     }
-  }, []);
+  }, [scannerSessionId, handleScanEvent]);
 
   // Stop scanner completely
   const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
-        scannerRef.current = null;
-        setScannerReady(false);
       } catch (e) {
         // Already stopped
       }
+      scannerRef.current = null;
+      setScannerReady(false);
     }
   }, []);
 
-  // Initialize scanner on mount
+  // Effect: Start scanner when enabled and in idle state
   useEffect(() => {
-    if (isVerified && scanState === "idle" && !scannerRef.current) {
-      const timer = setTimeout(() => startScanner(), 300);
+    if (isVerified && scannerEnabled && scanState === "idle") {
+      // Small delay to ensure DOM element is mounted
+      const timer = setTimeout(() => {
+        startScanner();
+      }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isVerified, startScanner]);
+  }, [isVerified, scannerEnabled, scanState, scannerSessionId, startScanner]);
+
+  // Effect: Stop scanner when disabled
+  useEffect(() => {
+    if (!scannerEnabled) {
+      stopScanner();
+    }
+  }, [scannerEnabled, stopScanner]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearAllTimers();
       stopScanner();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, [clearAllTimers, stopScanner]);
 
@@ -434,8 +413,13 @@ export default function Bar() {
       return;
     }
 
+    // Check if already processing
+    if (redeemInFlightRef.current) {
+      toast.warning("Ya hay una solicitud en proceso");
+      return;
+    }
+
     const parsed = parseQRToken(input);
-    setLastParsedToken(parsed.token || "(inválido)");
     
     if (!parsed.valid) {
       setResult({
@@ -444,41 +428,37 @@ export default function Bar() {
         message: "Código inválido - debe ser hexadecimal de 12-64 caracteres",
       });
       setScanState("error");
-      dismissTimerRef.current = setTimeout(resetToIdle, ERROR_DISMISS_MS);
+      dismissTimerRef.current = setTimeout(restartScanner, ERROR_DISMISS_MS);
       return;
     }
 
     // Check cooldown for manual entry too
     const now = Date.now();
     if (parsed.token === lastTokenRef.current && 
-        now - lastScanTimeRef.current < COOLDOWN_MS) {
+        now - lastTokenAtRef.current < COOLDOWN_MS) {
       toast.warning("Código ya procesado recientemente");
       return;
     }
 
-    processToken(parsed.token);
+    // Set latch for manual entry
+    scanLatchRef.current = true;
+    processToken(parsed.token, input);
   };
 
   const switchToManual = () => {
-    pauseScanner();
+    stopScanner();
+    setScannerEnabled(false);
     setScanState("manual");
   };
 
   const switchToCamera = () => {
     setManualToken("");
-    resetToIdle();
+    restartScanner();
   };
 
-  // Manual reset - clear everything and resume
+  // Manual reset button - FULL RESTART
   const handleManualReset = () => {
-    clearAllTimers();
-    setResult(null);
-    setLastRawScan("");
-    setLastParsedToken("");
-    lastTokenRef.current = "";
-    lastScanTimeRef.current = 0;
-    setScanState("idle");
-    resumeScannerStream();
+    restartScanner();
   };
 
   const handleLogout = async () => {
@@ -654,9 +634,15 @@ export default function Bar() {
       <div className="flex-1 flex flex-col">
         {scanState === "idle" && (
           <>
-            {/* Scanner viewport */}
+            {/* Scanner viewport - KEY forces remount on session change */}
             <div className="flex-1 relative bg-black">
-              <div id="qr-reader" className="w-full h-full" />
+              {scannerEnabled && (
+                <div 
+                  key={scannerSessionId} 
+                  id={`qr-reader-${scannerSessionId}`} 
+                  className="w-full h-full" 
+                />
+              )}
               
               {/* Overlay with scanning hint */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -665,9 +651,15 @@ export default function Bar() {
               
               {/* Status indicator */}
               <div className="absolute top-4 left-0 right-0 flex justify-center">
-                <div className="bg-green-500/90 text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2">
-                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                  Listo para escanear
+                <div className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 ${
+                  scannerReady 
+                    ? "bg-green-500/90 text-white" 
+                    : "bg-yellow-500/90 text-black"
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    scannerReady ? "bg-white animate-pulse" : "bg-black"
+                  }`} />
+                  {scannerReady ? "Listo para escanear" : "Iniciando cámara..."}
                 </div>
               </div>
               
@@ -696,7 +688,7 @@ export default function Bar() {
                     variant="ghost"
                     className="h-6 text-xs text-green-400 hover:text-green-300"
                     onClick={() => {
-                      const debugText = `RAW: ${lastRawScan || "(none)"}\nPARSED: ${lastParsedToken || "(none)"}\nLAST_TOKEN_REF: ${lastTokenRef.current || "(none)"}\nCOOLDOWN_REMAINING: ${Math.max(0, COOLDOWN_MS - (Date.now() - lastScanTimeRef.current))}ms`;
+                      const debugText = `SESSION: ${scannerSessionId}\nLATCH: ${scanLatchRef.current}\nIN_FLIGHT: ${redeemInFlightRef.current}\nRAW: ${lastRawScan || "(none)"}\nPARSED: ${lastParsedToken || "(none)"}\nLAST_TOKEN: ${lastTokenRef.current || "(none)"}\nCOOLDOWN_REMAINING: ${Math.max(0, COOLDOWN_MS - (Date.now() - lastTokenAtRef.current))}ms`;
                       navigator.clipboard.writeText(debugText);
                       toast.success("Debug info copiado");
                     }}
@@ -705,15 +697,16 @@ export default function Bar() {
                   </Button>
                 </div>
                 <div className="space-y-1">
+                  <p className="text-xs text-green-400/80 font-mono">
+                    <span className="text-green-500">SESSION:</span> {scannerSessionId} | 
+                    <span className="text-green-500"> LATCH:</span> {scanLatchRef.current ? "ON" : "off"} |
+                    <span className="text-green-500"> READY:</span> {scannerReady ? "yes" : "no"}
+                  </p>
                   <p className="text-xs text-green-400/80 font-mono break-all">
                     <span className="text-green-500">RAW:</span> {lastRawScan || "(esperando escaneo)"}
                   </p>
                   <p className="text-xs text-green-400/80 font-mono break-all">
                     <span className="text-green-500">PARSED:</span> {lastParsedToken || "(ninguno)"}
-                  </p>
-                  <p className="text-xs text-green-400/80 font-mono">
-                    <span className="text-green-500">STATE:</span> {scanState} | 
-                    <span className="text-green-500"> READY:</span> {scannerReady ? "yes" : "no"}
                   </p>
                 </div>
               </div>
@@ -758,7 +751,7 @@ export default function Bar() {
                 <Button 
                   type="submit" 
                   className="w-full h-16 text-xl font-bold"
-                  disabled={!manualToken.trim()}
+                  disabled={!manualToken.trim() || redeemInFlightRef.current}
                 >
                   Validar Código
                 </Button>
