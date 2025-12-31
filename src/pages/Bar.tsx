@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { Html5Qrcode } from "html5-qrcode";
@@ -16,6 +17,14 @@ type RedemptionResult = {
   items?: Array<{ name: string; quantity: number }>;
   total_amount?: number;
   redeemed_at?: string;
+  expected_bar?: string;
+  your_bar?: string;
+};
+
+type BarLocation = {
+  id: string;
+  name: string;
+  type: string;
 };
 
 // Explicit scan lifecycle states
@@ -81,6 +90,7 @@ function getErrorTitle(errorCode?: string): string {
     case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
     case "TIMEOUT": return "TIEMPO AGOTADO";
     case "SYSTEM_ERROR": return "ERROR DE SISTEMA";
+    case "WRONG_BAR": return "BARRA INCORRECTA";
     default: return "ERROR";
   }
 }
@@ -92,7 +102,11 @@ export default function Bar() {
   const [manualToken, setManualToken] = useState("");
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [userName, setUserName] = useState<string>("");
-  const [pointOfSale, setPointOfSale] = useState<string>("");
+  
+  // Bar selection
+  const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
+  const [selectedBarId, setSelectedBarId] = useState<string>("");
+  const [showBarSelection, setShowBarSelection] = useState(true);
   
   // CRITICAL: Scanner session ID - incrementing this forces unmount/remount of scanner
   const [scannerSessionId, setScannerSessionId] = useState(0);
@@ -126,6 +140,15 @@ export default function Bar() {
   
   const navigate = useNavigate();
 
+  // Fetch bar locations on mount
+  useEffect(() => {
+    fetchBarLocations();
+    
+    // Restore last used bar from localStorage
+    const savedBarId = localStorage.getItem("bartenderBarId");
+    if (savedBarId) setSelectedBarId(savedBarId);
+  }, []);
+
   // Fetch user info on mount
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -133,17 +156,44 @@ export default function Bar() {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("full_name, point_of_sale")
+          .select("full_name")
           .eq("id", user.id)
           .single();
         if (profile) {
           setUserName(profile.full_name || "");
-          setPointOfSale(profile.point_of_sale || "");
         }
       }
     };
     fetchUserInfo();
   }, []);
+
+  // Save bar selection to localStorage
+  useEffect(() => {
+    if (selectedBarId) localStorage.setItem("bartenderBarId", selectedBarId);
+  }, [selectedBarId]);
+
+  const fetchBarLocations = async () => {
+    const { data, error } = await supabase
+      .from("stock_locations")
+      .select("*")
+      .eq("type", "bar")
+      .eq("is_active", true)
+      .order("name");
+    
+    if (!error && data) {
+      setBarLocations(data);
+      // Auto-select if only one bar
+      if (data.length === 1) {
+        setSelectedBarId(data[0].id);
+        setShowBarSelection(false);
+      }
+      // Check if saved bar is still valid
+      const savedBarId = localStorage.getItem("bartenderBarId");
+      if (savedBarId && data.some(b => b.id === savedBarId)) {
+        setSelectedBarId(savedBarId);
+      }
+    }
+  };
 
   // Clear all timers
   const clearAllTimers = useCallback(() => {
@@ -180,7 +230,6 @@ export default function Bar() {
   }, [clearAllTimers]);
 
   // FORCE FULL RESET: Hard stop scanner, clear everything, remount after 300ms delay
-  // This works even if scanner is in a loop
   const forceFullReset = useCallback(() => {
     console.log("[Bar] forceFullReset triggered");
     
@@ -224,7 +273,7 @@ export default function Bar() {
     }, 300);
   }, [clearAllTimers]);
 
-  // Process token via backend - SINGLE FLIGHT
+  // Process token via backend - SINGLE FLIGHT, with bar validation
   const processToken = useCallback(async (token: string, rawScan: string) => {
     // Store for debug
     setLastRawScan(rawScan);
@@ -262,8 +311,10 @@ export default function Bar() {
     try {
       redeemInFlightRef.current = true;
       
+      // Pass bartender's bar ID for validation
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
+        p_bartender_bar_id: selectedBarId || null,
       });
 
       // Check if aborted
@@ -312,7 +363,7 @@ export default function Bar() {
       
       dismissTimerRef.current = setTimeout(restartScanner, ERROR_DISMISS_MS);
     }
-  }, [restartScanner]);
+  }, [restartScanner, selectedBarId]);
 
   // Handle scan event - with LATCH and all guards
   const handleScanEvent = useCallback((decodedText: string) => {
@@ -419,16 +470,16 @@ export default function Bar() {
     }
   }, []);
 
-  // Effect: Start scanner when enabled and in idle state
+  // Effect: Start scanner when enabled and in idle state (and bar selected)
   useEffect(() => {
-    if (isVerified && scannerEnabled && scanState === "idle") {
+    if (isVerified && !showBarSelection && scannerEnabled && scanState === "idle") {
       // Small delay to ensure DOM element is mounted
       const timer = setTimeout(() => {
         startScanner();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isVerified, scannerEnabled, scanState, scannerSessionId, startScanner]);
+  }, [isVerified, showBarSelection, scannerEnabled, scanState, scannerSessionId, startScanner]);
 
   // Effect: Stop scanner when disabled
   useEffect(() => {
@@ -501,11 +552,6 @@ export default function Bar() {
     restartScanner();
   };
 
-  // Manual reset button - FULL RESTART
-  const handleManualReset = () => {
-    restartScanner();
-  };
-
   const handleLogout = async () => {
     await stopScanner();
     await supabase.auth.signOut();
@@ -548,6 +594,21 @@ export default function Bar() {
     }
   };
 
+  const confirmBarSelection = () => {
+    if (!selectedBarId) {
+      toast.error("Selecciona una barra");
+      return;
+    }
+    setShowBarSelection(false);
+  };
+
+  const changeBarSelection = () => {
+    setShowBarSelection(true);
+    stopScanner();
+  };
+
+  const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
+
   if (!isVerified) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -556,6 +617,63 @@ export default function Bar() {
           onVerified={handlePinVerified}
           onCancel={handlePinCancel}
         />
+      </div>
+    );
+  }
+
+  // Bar Selection Screen
+  if (showBarSelection) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <div className="max-w-lg mx-auto space-y-6 pt-12">
+          <div className="text-center space-y-2">
+            <MapPin className="w-16 h-16 mx-auto text-primary" />
+            <h1 className="text-3xl font-bold">Selecciona tu Barra</h1>
+            <p className="text-muted-foreground">¿En qué barra estás atendiendo?</p>
+          </div>
+
+          <Card className="p-6 space-y-6">
+            {barLocations.length === 0 ? (
+              <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
+                No hay barras disponibles. Contacta al administrador.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {barLocations.map((bar) => (
+                  <Card
+                    key={bar.id}
+                    onClick={() => setSelectedBarId(bar.id)}
+                    className={`p-6 cursor-pointer transition-all hover:scale-105 ${
+                      selectedBarId === bar.id
+                        ? "border-primary bg-primary/10 ring-2 ring-primary"
+                        : "hover:border-primary/50"
+                    }`}
+                  >
+                    <div className="text-center">
+                      <MapPin className={`w-10 h-10 mx-auto mb-3 ${selectedBarId === bar.id ? "text-primary" : "text-muted-foreground"}`} />
+                      <p className="font-bold text-lg">{bar.name}</p>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <Button
+              onClick={confirmBarSelection}
+              disabled={!selectedBarId}
+              className="w-full h-14 text-lg"
+            >
+              Comenzar a Escanear
+            </Button>
+          </Card>
+
+          <div className="text-center">
+            <Button variant="ghost" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Salir
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -589,15 +707,19 @@ export default function Bar() {
   // Full-screen error state
   if (scanState === "error" && result) {
     const isWarning = result.error_code === "ALREADY_REDEEMED";
+    const isWrongBar = result.error_code === "WRONG_BAR";
+    
     return (
       <div 
         className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 ${
-          isWarning ? "bg-yellow-500 text-black" : "bg-red-600 text-white"
+          isWarning ? "bg-yellow-500 text-black" : isWrongBar ? "bg-orange-500 text-white" : "bg-red-600 text-white"
         }`}
         onClick={forceFullReset}
       >
         {isWarning ? (
           <AlertCircle className="w-32 h-32 mb-6" />
+        ) : isWrongBar ? (
+          <MapPin className="w-32 h-32 mb-6" />
         ) : (
           <XCircle className="w-32 h-32 mb-6" />
         )}
@@ -605,6 +727,14 @@ export default function Bar() {
           {getErrorTitle(result.error_code)}
         </h1>
         <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
+        
+        {/* Show expected bar for wrong bar errors */}
+        {isWrongBar && result.expected_bar && (
+          <div className="mt-4 p-4 bg-white/20 rounded-lg text-center">
+            <p className="text-lg">Este pedido es para:</p>
+            <p className="text-2xl font-bold">{result.expected_bar}</p>
+          </div>
+        )}
         
         {/* Debug info on error */}
         {debugMode && (
@@ -664,16 +794,26 @@ export default function Bar() {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card">
         <div className="flex flex-col" onClick={handleHeaderTap}>
-          <h1 className="text-lg font-bold text-primary select-none">Barra</h1>
-          {(userName || pointOfSale) && (
-            <p className="text-xs text-muted-foreground">
-              {userName}{userName && pointOfSale && " • "}{pointOfSale}
-            </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-primary select-none">Barra</h1>
+            <span className="text-sm text-muted-foreground">•</span>
+            <span className="text-sm font-medium text-foreground flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {selectedBarName}
+            </span>
+          </div>
+          {userName && (
+            <p className="text-xs text-muted-foreground">{userName}</p>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          <LogOut className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={changeBarSelection}>
+            Cambiar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <LogOut className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -734,7 +874,7 @@ export default function Bar() {
                     variant="ghost"
                     className="h-6 text-xs text-green-400 hover:text-green-300"
                     onClick={() => {
-                      const debugText = `SESSION: ${scannerSessionId}\nLATCH: ${scanLatchRef.current}\nIN_FLIGHT: ${redeemInFlightRef.current}\nRAW: ${lastRawScan || "(none)"}\nPARSED: ${lastParsedToken || "(none)"}\nLAST_TOKEN: ${lastTokenRef.current || "(none)"}\nCOOLDOWN_REMAINING: ${Math.max(0, COOLDOWN_MS - (Date.now() - lastTokenAtRef.current))}ms`;
+                      const debugText = `SESSION: ${scannerSessionId}\nLATCH: ${scanLatchRef.current}\nIN_FLIGHT: ${redeemInFlightRef.current}\nRAW: ${lastRawScan || "(none)"}\nPARSED: ${lastParsedToken || "(none)"}\nLAST_TOKEN: ${lastTokenRef.current || "(none)"}\nCOOLDOWN_REMAINING: ${Math.max(0, COOLDOWN_MS - (Date.now() - lastTokenAtRef.current))}ms\nBAR_ID: ${selectedBarId}`;
                       navigator.clipboard.writeText(debugText);
                       toast.success("Debug info copiado");
                     }}
@@ -753,6 +893,9 @@ export default function Bar() {
                   </p>
                   <p className="text-xs text-green-400/80 font-mono break-all">
                     <span className="text-green-500">PARSED:</span> {lastParsedToken || "(ninguno)"}
+                  </p>
+                  <p className="text-xs text-green-400/80 font-mono">
+                    <span className="text-green-500">BAR:</span> {selectedBarName} ({selectedBarId?.slice(0, 8)}...)
                   </p>
                 </div>
               </div>
