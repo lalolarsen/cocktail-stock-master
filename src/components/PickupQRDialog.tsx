@@ -6,7 +6,7 @@ import { Printer, X, Copy, Bug } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-type PickupQRDialogProps = {
+export type PickupQRDialogProps = {
   open: boolean;
   onClose: () => void;
   token: string;
@@ -14,6 +14,7 @@ type PickupQRDialogProps = {
   expiresAt: string;
   items: Array<{ name: string; quantity: number; price: number }>;
   total: number;
+  barName?: string;
 };
 
 export default function PickupQRDialog({
@@ -24,6 +25,7 @@ export default function PickupQRDialog({
   expiresAt,
   items,
   total,
+  barName,
 }: PickupQRDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -179,7 +181,11 @@ export default function PickupQRDialog({
           </p>
 
           <div className="bg-muted/50 p-3 rounded-lg text-center text-sm">
-            Presenta este QR en la barra para retirar tu pedido
+            {barName ? (
+              <>Presenta este QR en <strong>{barName}</strong> para retirar tu pedido</>
+            ) : (
+              "Presenta este QR en la barra para retirar tu pedido"
+            )}
           </div>
         </div>
 

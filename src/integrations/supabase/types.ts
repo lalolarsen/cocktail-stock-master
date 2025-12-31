@@ -340,6 +340,7 @@ export type Database = {
       }
       pickup_tokens: {
         Row: {
+          bar_location_id: string | null
           created_at: string
           expires_at: string
           id: string
@@ -352,6 +353,7 @@ export type Database = {
           token: string
         }
         Insert: {
+          bar_location_id?: string | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -364,6 +366,7 @@ export type Database = {
           token?: string
         }
         Update: {
+          bar_location_id?: string | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -376,6 +379,13 @@ export type Database = {
           token?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pickup_tokens_bar_location_id_fkey"
+            columns: ["bar_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pickup_tokens_sale_id_fkey"
             columns: ["sale_id"]
@@ -533,6 +543,7 @@ export type Database = {
       }
       sales: {
         Row: {
+          bar_location_id: string | null
           created_at: string | null
           id: string
           is_cancelled: boolean | null
@@ -546,6 +557,7 @@ export type Database = {
           total_amount: number
         }
         Insert: {
+          bar_location_id?: string | null
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
@@ -559,6 +571,7 @@ export type Database = {
           total_amount?: number
         }
         Update: {
+          bar_location_id?: string | null
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
@@ -572,6 +585,13 @@ export type Database = {
           total_amount?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "sales_bar_location_id_fkey"
+            columns: ["bar_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sales_jornada_id_fkey"
             columns: ["jornada_id"]
@@ -1012,7 +1032,12 @@ export type Database = {
         Returns: boolean
       }
       initialize_warehouse_stock: { Args: never; Returns: undefined }
-      redeem_pickup_token: { Args: { p_token: string }; Returns: Json }
+      redeem_pickup_token:
+        | { Args: { p_token: string }; Returns: Json }
+        | {
+            Args: { p_bartender_bar_id?: string; p_token: string }
+            Returns: Json
+          }
       transfer_stock: {
         Args: {
           p_from_location_id: string
