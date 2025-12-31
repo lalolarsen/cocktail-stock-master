@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -32,10 +32,30 @@ const menuItems = [
     gradient: "from-primary to-primary-glow"
   },
   { 
+    title: "Barras y POS", 
+    value: "pos" as ViewType, 
+    icon: Monitor,
+    gradient: "from-blue-500 to-indigo-500",
+    adminOnly: true
+  },
+  { 
+    title: "Inventario", 
+    value: "inventory" as ViewType, 
+    icon: Warehouse,
+    gradient: "from-emerald-500 to-green-500"
+  },
+  { 
+    title: "Reposición", 
+    value: "replenishment" as ViewType, 
+    icon: ArrowRightLeft,
+    gradient: "from-cyan-500 to-teal-500",
+    adminOnly: true
+  },
+  { 
     title: "Productos", 
     value: "products" as ViewType, 
     icon: Package,
-    gradient: "from-emerald-500 to-green-500"
+    gradient: "from-lime-500 to-green-500"
   },
   { 
     title: "Menú", 
@@ -47,13 +67,15 @@ const menuItems = [
     title: "Jornadas", 
     value: "jornadas" as ViewType, 
     icon: Calendar,
-    gradient: "from-teal-500 to-cyan-500"
+    gradient: "from-teal-500 to-cyan-500",
+    adminOnly: true
   },
   { 
     title: "Trabajadores", 
     value: "workers" as ViewType, 
     icon: Users,
-    gradient: "from-violet-500 to-purple-500"
+    gradient: "from-violet-500 to-purple-500",
+    adminOnly: true
   },
   { 
     title: "Declaración de Gastos", 
@@ -91,11 +113,11 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   const isCollapsed = state === "collapsed";
 
   // Views restricted for gerencia (read-only users)
-  const restrictedViews: ViewType[] = ["workers", "jornadas"];
+  const restrictedViews: ViewType[] = ["workers", "jornadas", "pos", "replenishment"];
   
   // Filter menu items based on role
   const visibleMenuItems = isReadOnly 
-    ? menuItems.filter(item => !restrictedViews.includes(item.value))
+    ? menuItems.filter(item => !item.adminOnly)
     : menuItems;
 
   const handleLogout = async () => {
