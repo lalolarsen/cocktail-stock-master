@@ -4,10 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { Html5Qrcode } from "html5-qrcode";
+
+type MissingItem = {
+  product_id: string;
+  name: string;
+  required: number;
+  available: number;
+  unit: string;
+};
 
 type RedemptionResult = {
   success: boolean;
@@ -19,6 +27,8 @@ type RedemptionResult = {
   redeemed_at?: string;
   expected_bar?: string;
   your_bar?: string;
+  bar_name?: string;
+  missing?: MissingItem[];
 };
 
 type BarLocation = {
@@ -34,6 +44,7 @@ type ScanState = "idle" | "processing" | "success" | "error" | "manual";
 const COOLDOWN_MS = 7000; // 7 seconds duplicate suppression
 const SUCCESS_DISMISS_MS = 1800;
 const ERROR_DISMISS_MS = 2200;
+const INSUFFICIENT_STOCK_DISMISS_MS = 3000; // Longer for insufficient stock to read details
 const PROCESSING_TIMEOUT_MS = 8000;
 
 /**
@@ -91,6 +102,7 @@ function getErrorTitle(errorCode?: string): string {
     case "TIMEOUT": return "TIEMPO AGOTADO";
     case "SYSTEM_ERROR": return "ERROR DE SISTEMA";
     case "WRONG_BAR": return "BARRA INCORRECTA";
+    case "INSUFFICIENT_BAR_STOCK": return "SIN STOCK EN ESTA BARRA";
     default: return "ERROR";
   }
 }
@@ -337,7 +349,13 @@ export default function Bar() {
       setScanState(resultData.success ? "success" : "error");
 
       // Auto-dismiss after timeout, then RESTART scanner
-      const timeout = resultData.success ? SUCCESS_DISMISS_MS : ERROR_DISMISS_MS;
+      // Use longer timeout for insufficient stock so user can read details
+      let timeout = SUCCESS_DISMISS_MS;
+      if (!resultData.success) {
+        timeout = resultData.error_code === 'INSUFFICIENT_BAR_STOCK' 
+          ? INSUFFICIENT_STOCK_DISMISS_MS 
+          : ERROR_DISMISS_MS;
+      }
       dismissTimerRef.current = setTimeout(restartScanner, timeout);
     } catch (error: any) {
       // Check if aborted
@@ -708,6 +726,71 @@ export default function Bar() {
   if (scanState === "error" && result) {
     const isWarning = result.error_code === "ALREADY_REDEEMED";
     const isWrongBar = result.error_code === "WRONG_BAR";
+    const isInsufficientStock = result.error_code === "INSUFFICIENT_BAR_STOCK";
+    
+    // Handle insufficient stock with special UI
+    if (isInsufficientStock) {
+      const firstMissing = result.missing?.[0];
+      
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-amber-600 text-white"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Package className="w-28 h-28 mb-6" />
+          <h1 className="text-4xl font-black mb-2 tracking-tight text-center">
+            SIN STOCK EN ESTA BARRA
+          </h1>
+          <p className="text-xl opacity-90 text-center mb-4">{result.bar_name}</p>
+          
+          {/* Missing ingredient details */}
+          {firstMissing && (
+            <div className="bg-white/20 rounded-xl p-4 w-full max-w-sm space-y-2">
+              <p className="text-lg font-semibold text-center">Falta:</p>
+              <p className="text-2xl font-bold text-center">{firstMissing.name}</p>
+              <div className="flex justify-center gap-4 text-sm opacity-90">
+                <span>Necesario: {firstMissing.required} {firstMissing.unit}</span>
+                <span>|</span>
+                <span>Disponible: {firstMissing.available} {firstMissing.unit}</span>
+              </div>
+              
+              {/* Show additional missing items if any */}
+              {result.missing && result.missing.length > 1 && (
+                <p className="text-center text-sm opacity-80 mt-2">
+                  + {result.missing.length - 1} ingrediente{result.missing.length > 2 ? "s" : ""} más
+                </p>
+              )}
+            </div>
+          )}
+          
+          <p className="text-lg mt-4 opacity-80 text-center">
+            El QR sigue válido - prueba en otra barra
+          </p>
+          
+          {/* Action buttons */}
+          <div className="flex flex-col gap-3 mt-6 w-full max-w-sm">
+            <Button 
+              onClick={(e) => { e.stopPropagation(); changeBarSelection(); }}
+              variant="secondary"
+              className="w-full h-14 text-lg font-bold bg-white hover:bg-white/90 text-amber-700 border-0 shadow-lg"
+            >
+              <MapPin className="w-5 h-5 mr-2" />
+              Cambiar Barra
+            </Button>
+            <Button 
+              onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
+              variant="outline"
+              className="w-full h-12 text-base font-semibold bg-transparent border-white/50 text-white hover:bg-white/10"
+            >
+              <RefreshCw className="w-5 h-5 mr-2" />
+              Escanear Siguiente
+            </Button>
+          </div>
+          
+          <p className="mt-4 text-sm opacity-60">Auto-cierre en 3s</p>
+        </div>
+      );
+    }
     
     return (
       <div 
