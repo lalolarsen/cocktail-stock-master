@@ -16,13 +16,16 @@ import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { PaymentMethodStats } from "@/components/dashboard/PaymentMethodStats";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { InvoicingAlertsWidget } from "@/components/dashboard/InvoicingAlertsWidget";
+import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
+import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation";
+import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -80,6 +83,9 @@ export default function Admin() {
       case "expenses": return "Declaración de Gastos";
       case "reports": return "Reportes";
       case "documents": return "Documentos Electrónicos";
+      case "pos": return "Barras y POS";
+      case "inventory": return "Inventario por Ubicación";
+      case "replenishment": return "Reposición de Stock";
       default: return "Panel de Administración";
     }
   };
@@ -168,6 +174,24 @@ export default function Admin() {
             {activeView === "documents" && (
               <div className="space-y-6">
                 <DocumentsRetryPanel />
+              </div>
+            )}
+
+            {activeView === "pos" && !isReadOnly && (
+              <div className="space-y-6">
+                <POSBarsManagement />
+              </div>
+            )}
+
+            {activeView === "inventory" && (
+              <div className="space-y-6">
+                <InventoryByLocation />
+              </div>
+            )}
+
+            {activeView === "replenishment" && !isReadOnly && (
+              <div className="space-y-6">
+                <ReplenishmentManager />
               </div>
             )}
           </div>

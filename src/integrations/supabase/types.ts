@@ -385,6 +385,41 @@ export type Database = {
           },
         ]
       }
+      pos_terminals: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          location_id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_terminals_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
@@ -505,6 +540,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: string
           point_of_sale: string
+          pos_id: string | null
           sale_number: string
           seller_id: string
           total_amount: number
@@ -517,6 +553,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale: string
+          pos_id?: string | null
           sale_number: string
           seller_id: string
           total_amount?: number
@@ -529,6 +566,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale?: string
+          pos_id?: string | null
           sale_number?: string
           seller_id?: string
           total_amount?: number
@@ -539,6 +577,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
             referencedColumns: ["id"]
           },
         ]
@@ -653,9 +698,79 @@ export type Database = {
           },
         ]
       }
+      stock_balances: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string
+          product_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id: string
+          product_id: string
+          quantity?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_balances_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_balances_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_locations: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          type: Database["public"]["Enums"]["location_type"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          type: Database["public"]["Enums"]["location_type"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          type?: Database["public"]["Enums"]["location_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stock_movements: {
         Row: {
           created_at: string | null
+          from_location_id: string | null
           id: string
           jornada_id: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
@@ -663,9 +778,12 @@ export type Database = {
           pickup_token_id: string | null
           product_id: string | null
           quantity: number
+          to_location_id: string | null
+          transfer_id: string | null
         }
         Insert: {
           created_at?: string | null
+          from_location_id?: string | null
           id?: string
           jornada_id?: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
@@ -673,9 +791,12 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity: number
+          to_location_id?: string | null
+          transfer_id?: string | null
         }
         Update: {
           created_at?: string | null
+          from_location_id?: string | null
           id?: string
           jornada_id?: string | null
           movement_type?: Database["public"]["Enums"]["movement_type"]
@@ -683,8 +804,17 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity?: number
+          to_location_id?: string | null
+          transfer_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_movements_from_location_id_fkey"
+            columns: ["from_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_movements_jornada_id_fkey"
             columns: ["jornada_id"]
@@ -704,6 +834,20 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_to_location_id_fkey"
+            columns: ["to_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
             referencedColumns: ["id"]
           },
         ]
@@ -743,6 +887,97 @@ export type Database = {
           },
         ]
       }
+      stock_transfer_items: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+          transfer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity: number
+          transfer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          created_at: string
+          from_location_id: string
+          id: string
+          jornada_id: string | null
+          notes: string | null
+          to_location_id: string
+          transferred_by: string
+        }
+        Insert: {
+          created_at?: string
+          from_location_id: string
+          id?: string
+          jornada_id?: string | null
+          notes?: string | null
+          to_location_id: string
+          transferred_by: string
+        }
+        Update: {
+          created_at?: string
+          from_location_id?: string
+          id?: string
+          jornada_id?: string | null
+          notes?: string | null
+          to_location_id?: string
+          transferred_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_from_location_id_fkey"
+            columns: ["from_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_location_id_fkey"
+            columns: ["to_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -776,12 +1011,24 @@ export type Database = {
         }
         Returns: boolean
       }
+      initialize_warehouse_stock: { Args: never; Returns: undefined }
       redeem_pickup_token: { Args: { p_token: string }; Returns: Json }
+      transfer_stock: {
+        Args: {
+          p_from_location_id: string
+          p_items: Json
+          p_jornada_id?: string
+          p_notes?: string
+          p_to_location_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "vendedor" | "gerencia" | "bar"
       document_status: "pending" | "issued" | "failed" | "cancelled"
       document_type: "boleta" | "factura"
+      location_type: "warehouse" | "bar"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
       payment_method: "cash" | "debit" | "credit" | "transfer"
       pickup_token_status: "issued" | "redeemed" | "expired" | "cancelled"
@@ -926,6 +1173,7 @@ export const Constants = {
       app_role: ["admin", "vendedor", "gerencia", "bar"],
       document_status: ["pending", "issued", "failed", "cancelled"],
       document_type: ["boleta", "factura"],
+      location_type: ["warehouse", "bar"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
       payment_method: ["cash", "debit", "credit", "transfer"],
       pickup_token_status: ["issued", "redeemed", "expired", "cancelled"],
