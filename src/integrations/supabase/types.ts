@@ -496,6 +496,99 @@ export type Database = {
         }
         Relationships: []
       }
+      replenishment_plan_items: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+          replenishment_plan_id: string
+          to_location_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity: number
+          replenishment_plan_id: string
+          to_location_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          replenishment_plan_id?: string
+          to_location_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "replenishment_plan_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "replenishment_plan_items_replenishment_plan_id_fkey"
+            columns: ["replenishment_plan_id"]
+            isOneToOne: false
+            referencedRelation: "replenishment_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "replenishment_plan_items_to_location_id_fkey"
+            columns: ["to_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      replenishment_plans: {
+        Row: {
+          applied_at: string | null
+          created_at: string
+          created_by: string
+          id: string
+          jornada_id: string | null
+          name: string
+          plan_date: string
+          status: Database["public"]["Enums"]["replenishment_plan_status"]
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          jornada_id?: string | null
+          name: string
+          plan_date?: string
+          status?: Database["public"]["Enums"]["replenishment_plan_status"]
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          jornada_id?: string | null
+          name?: string
+          plan_date?: string
+          status?: Database["public"]["Enums"]["replenishment_plan_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "replenishment_plans_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sale_items: {
         Row: {
           cocktail_id: string
@@ -1021,6 +1114,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
@@ -1068,6 +1162,7 @@ export type Database = {
         | "not_found"
         | "stock_error"
         | "timeout"
+      replenishment_plan_status: "draft" | "applied" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1214,6 +1309,7 @@ export const Constants = {
         "stock_error",
         "timeout",
       ],
+      replenishment_plan_status: ["draft", "applied", "cancelled"],
     },
   },
 } as const
