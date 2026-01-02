@@ -102,6 +102,7 @@ export type Database = {
           id: string
           name: string
           price: number
+          venue_id: string | null
         }
         Insert: {
           category?: string
@@ -110,6 +111,7 @@ export type Database = {
           id?: string
           name: string
           price?: number
+          venue_id?: string | null
         }
         Update: {
           category?: string
@@ -118,8 +120,17 @@ export type Database = {
           id?: string
           name?: string
           price?: number
+          venue_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cocktails_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       expenses: {
         Row: {
@@ -227,6 +238,7 @@ export type Database = {
           numero_jornada: number
           semana_inicio: string
           updated_at: string
+          venue_id: string | null
         }
         Insert: {
           created_at?: string
@@ -238,6 +250,7 @@ export type Database = {
           numero_jornada: number
           semana_inicio: string
           updated_at?: string
+          venue_id?: string | null
         }
         Update: {
           created_at?: string
@@ -249,8 +262,17 @@ export type Database = {
           numero_jornada?: number
           semana_inicio?: string
           updated_at?: string
+          venue_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "jornadas_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       login_history: {
         Row: {
@@ -403,6 +425,7 @@ export type Database = {
           location_id: string
           name: string
           updated_at: string
+          venue_id: string | null
         }
         Insert: {
           created_at?: string
@@ -411,6 +434,7 @@ export type Database = {
           location_id: string
           name: string
           updated_at?: string
+          venue_id?: string | null
         }
         Update: {
           created_at?: string
@@ -419,6 +443,7 @@ export type Database = {
           location_id?: string
           name?: string
           updated_at?: string
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -426,6 +451,13 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_terminals_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -442,6 +474,7 @@ export type Database = {
           name: string
           unit: string
           updated_at: string | null
+          venue_id: string | null
         }
         Insert: {
           category: Database["public"]["Enums"]["product_category"]
@@ -454,6 +487,7 @@ export type Database = {
           name: string
           unit?: string
           updated_at?: string | null
+          venue_id?: string | null
         }
         Update: {
           category?: Database["public"]["Enums"]["product_category"]
@@ -466,8 +500,17 @@ export type Database = {
           name?: string
           unit?: string
           updated_at?: string | null
+          venue_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -648,6 +691,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount: number
+          venue_id: string | null
         }
         Insert: {
           bar_location_id?: string | null
@@ -662,6 +706,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount?: number
+          venue_id?: string | null
         }
         Update: {
           bar_location_id?: string | null
@@ -676,6 +721,7 @@ export type Database = {
           sale_number?: string
           seller_id?: string
           total_amount?: number
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -697,6 +743,13 @@ export type Database = {
             columns: ["pos_id"]
             isOneToOne: false
             referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -861,6 +914,7 @@ export type Database = {
           name: string
           type: Database["public"]["Enums"]["location_type"]
           updated_at: string
+          venue_id: string | null
         }
         Insert: {
           created_at?: string
@@ -869,6 +923,7 @@ export type Database = {
           name: string
           type: Database["public"]["Enums"]["location_type"]
           updated_at?: string
+          venue_id?: string | null
         }
         Update: {
           created_at?: string
@@ -877,8 +932,17 @@ export type Database = {
           name?: string
           type?: Database["public"]["Enums"]["location_type"]
           updated_at?: string
+          venue_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "stock_locations_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_movements: {
         Row: {
@@ -1109,14 +1173,67 @@ export type Database = {
         }
         Relationships: []
       }
+      venues: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          is_demo: boolean
+          max_bars: number
+          max_pos: number
+          name: string
+          onboarding_completed: boolean
+          onboarding_step: number
+          plan_type: string
+          settings: Json | null
+          slug: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_demo?: boolean
+          max_bars?: number
+          max_pos?: number
+          name: string
+          onboarding_completed?: boolean
+          onboarding_step?: number
+          plan_type?: string
+          settings?: Json | null
+          slug?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_demo?: boolean
+          max_bars?: number
+          max_pos?: number
+          name?: string
+          onboarding_completed?: boolean
+          onboarding_step?: number
+          plan_type?: string
+          settings?: Json | null
+          slug?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
+      check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
+      generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
       has_role: {
         Args: {
@@ -1132,6 +1249,8 @@ export type Database = {
             Args: { p_bartender_bar_id?: string; p_token: string }
             Returns: Json
           }
+      reset_demo_data: { Args: never; Returns: Json }
+      seed_demo_data: { Args: never; Returns: Json }
       transfer_stock: {
         Args: {
           p_from_location_id: string
