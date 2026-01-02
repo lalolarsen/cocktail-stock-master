@@ -7,7 +7,7 @@ import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
 import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
-import { WorkersManagement } from "@/components/dashboard/WorkersManagement";
+import { WorkersManagementNew } from "@/components/dashboard/WorkersManagementNew";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
@@ -35,7 +35,7 @@ export default function Admin() {
   const [showPinDialog, setShowPinDialog] = useState(false);
 
   // Restrict gerencia from accessing certain views
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory"];
   
   const handleViewChange = (view: ViewType) => {
     // Gerencia cannot access workers or jornadas management
@@ -146,10 +146,10 @@ export default function Admin() {
               </div>
             )}
 
-            {activeView === "workers" && !isReadOnly && (
+            {activeView === "workers" && (
               <div className="space-y-6">
-                <WorkersManagement />
-                <ActivityPanel />
+                <WorkersManagementNew isReadOnly={isReadOnly} />
+                {!isReadOnly && <ActivityPanel />}
               </div>
             )}
 

@@ -7,6 +7,7 @@ export type AppRole = "admin" | "vendedor" | "gerencia" | "bar";
 export function useUserRole() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,7 +15,7 @@ export function useUserRole() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserRole(session.user.id);
+        fetchUserRoles(session.user.id);
       } else {
         setLoading(false);
       }
@@ -26,9 +27,10 @@ export function useUserRole() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserRole(session.user.id);
+        fetchUserRoles(session.user.id);
       } else {
         setRole(null);
+        setRoles([]);
         setLoading(false);
       }
     });
@@ -36,19 +38,39 @@ export function useUserRole() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
+  const fetchUserRoles = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("user_roles")
+      // First try worker_roles table
+      const { data: workerRoles, error: workerError } = await supabase
+        .from("worker_roles")
         .select("role")
-        .eq("user_id", userId)
-        .single();
+        .eq("worker_id", userId);
 
-      if (error) throw error;
-      setRole(data?.role as AppRole);
+      let fetchedRoles: AppRole[] = [];
+
+      if (!workerError && workerRoles && workerRoles.length > 0) {
+        fetchedRoles = workerRoles.map(r => r.role as AppRole);
+      } else {
+        // Fallback to user_roles table
+        const { data, error } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId);
+
+        if (!error && data) {
+          fetchedRoles = data.map(r => r.role as AppRole);
+        }
+      }
+
+      setRoles(fetchedRoles);
+      // Set primary role (first one, prioritizing admin > gerencia > vendedor > bar)
+      const priorityOrder: AppRole[] = ["admin", "gerencia", "vendedor", "bar"];
+      const primaryRole = priorityOrder.find(r => fetchedRoles.includes(r)) || fetchedRoles[0] || null;
+      setRole(primaryRole);
     } catch (error) {
-      console.error("Error fetching user role:", error);
+      console.error("Error fetching user roles:", error);
       setRole(null);
+      setRoles([]);
     } finally {
       setLoading(false);
     }
@@ -60,5 +82,8 @@ export function useUserRole() {
   // Helper to check if user can modify data
   const canModify = role === "admin";
 
-  return { user, role, loading, isReadOnly, canModify };
+  // Helper to check if user has a specific role
+  const hasRole = (checkRole: AppRole) => roles.includes(checkRole);
+
+  return { user, role, roles, loading, isReadOnly, canModify, hasRole };
 }

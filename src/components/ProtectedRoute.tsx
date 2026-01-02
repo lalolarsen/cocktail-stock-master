@@ -8,7 +8,7 @@ type ProtectedRouteProps = {
 };
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { user, role, loading } = useUserRole();
+  const { user, roles, loading } = useUserRole();
 
   if (loading) {
     return (
@@ -22,9 +22,13 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/auth" replace />;
   }
 
-  if (role && !allowedRoles.includes(role)) {
-    // Redirect based on user's actual role to their appropriate portal
-    switch (role) {
+  // Check if user has any of the allowed roles
+  const hasAllowedRole = roles.some(role => allowedRoles.includes(role));
+
+  if (!hasAllowedRole) {
+    // Redirect based on user's primary role to their appropriate portal
+    const primaryRole = roles[0];
+    switch (primaryRole) {
       case "admin":
         return <Navigate to="/admin" replace />;
       case "gerencia":

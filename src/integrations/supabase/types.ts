@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_logs: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string
+          details: Json | null
+          id: string
+          target_worker_id: string | null
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_worker_id?: string | null
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_target_worker_id_fkey"
+            columns: ["target_worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_registers: {
         Row: {
           closing_cash: number | null
@@ -274,6 +316,44 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          attempted_at: string
+          id: string
+          ip_address: string | null
+          rut_code: string
+          success: boolean
+          user_agent: string | null
+          venue_id: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          id?: string
+          ip_address?: string | null
+          rut_code: string
+          success?: boolean
+          user_agent?: string | null
+          venue_id?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          id?: string
+          ip_address?: string | null
+          rut_code?: string
+          success?: boolean
+          user_agent?: string | null
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "login_attempts_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       login_history: {
         Row: {
           id: string
@@ -518,7 +598,11 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          internal_email: string | null
+          is_active: boolean | null
           point_of_sale: string | null
+          rut_code: string | null
+          venue_id: string | null
           worker_pin: string | null
         }
         Insert: {
@@ -526,7 +610,11 @@ export type Database = {
           email: string
           full_name?: string | null
           id: string
+          internal_email?: string | null
+          is_active?: boolean | null
           point_of_sale?: string | null
+          rut_code?: string | null
+          venue_id?: string | null
           worker_pin?: string | null
         }
         Update: {
@@ -534,10 +622,22 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          internal_email?: string | null
+          is_active?: boolean | null
           point_of_sale?: string | null
+          rut_code?: string | null
+          venue_id?: string | null
           worker_pin?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       replenishment_plan_items: {
         Row: {
@@ -1224,6 +1324,45 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          venue_id: string | null
+          worker_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          venue_id?: string | null
+          worker_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          venue_id?: string | null
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_roles_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worker_roles_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1235,6 +1374,23 @@ export type Database = {
       generate_product_code: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
+      get_worker_by_rut: {
+        Args: { p_rut_code: string; p_venue_id?: string }
+        Returns: {
+          email: string
+          full_name: string
+          id: string
+          internal_email: string
+          is_active: boolean
+          roles: Database["public"]["Enums"]["app_role"][]
+          rut_code: string
+          venue_id: string
+        }[]
+      }
+      get_worker_roles: {
+        Args: { p_worker_id: string }
+        Returns: Database["public"]["Enums"]["app_role"][]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1243,6 +1399,28 @@ export type Database = {
         Returns: boolean
       }
       initialize_warehouse_stock: { Args: never; Returns: undefined }
+      is_account_locked: {
+        Args: { p_rut_code: string; p_venue_id: string }
+        Returns: boolean
+      }
+      log_admin_action: {
+        Args: {
+          p_action: string
+          p_details?: Json
+          p_target_worker_id?: string
+        }
+        Returns: string
+      }
+      record_login_attempt: {
+        Args: {
+          p_ip_address?: string
+          p_rut_code: string
+          p_success: boolean
+          p_user_agent?: string
+          p_venue_id: string
+        }
+        Returns: undefined
+      }
       redeem_pickup_token:
         | { Args: { p_token: string }; Returns: Json }
         | {
