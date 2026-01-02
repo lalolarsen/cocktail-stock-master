@@ -491,14 +491,14 @@ export function POSBarsManagement() {
                 />
               ) : (
                 <Select
-                  value={posForm.locationId}
+                  value={posForm.locationId || ""}
                   onValueChange={(v) => setPosForm({ ...posForm, locationId: v })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona una barra" />
                   </SelectTrigger>
                   <SelectContent>
-                    {barLocations.map((loc) => (
+                    {barLocations.filter(loc => loc?.id).map((loc) => (
                       <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                     ))}
                   </SelectContent>

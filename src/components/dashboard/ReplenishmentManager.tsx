@@ -601,13 +601,16 @@ export function ReplenishmentManager() {
                 </div>
                 <div className="space-y-2">
                   <Label>Jornada (opcional)</Label>
-                  <Select value={selectedJornadaId} onValueChange={setSelectedJornadaId}>
+                  <Select 
+                    value={selectedJornadaId || "__none__"} 
+                    onValueChange={(v) => setSelectedJornadaId(v === "__none__" ? "" : v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar jornada" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin jornada específica</SelectItem>
-                      {jornadas.map((j) => (
+                      <SelectItem value="__none__">Sin jornada específica</SelectItem>
+                      {jornadas.filter(j => j?.id).map((j) => (
                         <SelectItem key={j.id} value={j.id}>
                           #{j.numero_jornada} - {format(new Date(j.fecha), "dd/MM/yyyy")} ({j.estado})
                         </SelectItem>
@@ -682,12 +685,12 @@ export function ReplenishmentManager() {
                         return (
                           <TableRow key={index}>
                             <TableCell>
-                              <Select value={item.to_location_id} onValueChange={(v) => updateItem(index, "to_location_id", v)}>
+                              <Select value={item.to_location_id || ""} onValueChange={(v) => updateItem(index, "to_location_id", v)}>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Seleccionar barra" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {barLocations.map((bar) => (
+                                  {barLocations.filter(bar => bar?.id).map((bar) => (
                                     <SelectItem key={bar.id} value={bar.id}>
                                       {bar.name}
                                     </SelectItem>
@@ -696,12 +699,12 @@ export function ReplenishmentManager() {
                               </Select>
                             </TableCell>
                             <TableCell>
-                              <Select value={item.product_id} onValueChange={(v) => updateItem(index, "product_id", v)}>
+                              <Select value={item.product_id || ""} onValueChange={(v) => updateItem(index, "product_id", v)}>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Seleccionar producto" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {products.map((p) => (
+                                  {products.filter(p => p?.id).map((p) => (
                                     <SelectItem key={p.id} value={p.id}>
                                       {p.name} ({p.code})
                                     </SelectItem>
