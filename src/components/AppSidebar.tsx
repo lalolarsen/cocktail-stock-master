@@ -75,7 +75,7 @@ const menuItems = [
     value: "workers" as ViewType, 
     icon: Users,
     gradient: "from-violet-500 to-purple-500",
-    adminOnly: true
+    // Workers is now visible to gerencia (read-only view)
   },
   { 
     title: "Declaración de Gastos", 
