@@ -296,10 +296,14 @@ export default function Sales() {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.user) throw new Error("No autenticado");
 
-      // Generate unique sale number with POS prefix
+      // Generate unique sale number using database sequence for multi-cashier safety
       const selectedPos = posTerminals.find(p => p.id === selectedPosId);
       const posPrefix = selectedPos?.name.substring(0, 3).toUpperCase() || "POS";
-      const saleNumber = `${posPrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      
+      // Use RPC for atomic sale number generation
+      const { data: saleNumberData, error: seqError } = await supabase.rpc("generate_sale_number", { p_pos_prefix: posPrefix });
+      if (seqError) throw seqError;
+      const saleNumber = saleNumberData as string;
       const totalAmount = calculateTotal();
 
       // Create sale with pos_id and bar_location_id

@@ -12,6 +12,7 @@ import PickupTokens from "./pages/PickupTokens";
 import PickupRedemptions from "./pages/PickupRedemptions";
 import Bar from "./pages/Bar";
 import Auth from "./pages/Auth";
+import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
@@ -119,6 +120,7 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
+            <Route path="/help" element={<Help />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
