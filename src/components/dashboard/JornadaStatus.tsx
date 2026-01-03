@@ -167,6 +167,21 @@ export function JornadaStatus() {
 
       if (error) throw error;
       
+      // Queue email notifications for jornada close
+      try {
+        await supabase.rpc("enqueue_jornada_closed_notifications", {
+          p_jornada_id: activeJornada!.id,
+        });
+        
+        // Trigger sending the notifications
+        await supabase.functions.invoke("send-jornada-summary", {
+          body: { jornada_id: activeJornada!.id },
+        });
+      } catch (notifError) {
+        console.error("Error sending notifications:", notifError);
+        // Don't fail the jornada close if notifications fail
+      }
+      
       toast.success("Jornada cerrada exitosamente");
       fetchActiveJornada();
     } catch (error) {

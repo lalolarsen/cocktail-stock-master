@@ -389,6 +389,118 @@ export type Database = {
           },
         ]
       }
+      notification_logs: {
+        Row: {
+          created_at: string
+          email_subject: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          idempotency_key: string
+          jornada_id: string | null
+          recipient_email: string
+          recipient_worker_id: string | null
+          sent_at: string | null
+          status: string
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email_subject?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          idempotency_key: string
+          jornada_id?: string | null
+          recipient_email: string
+          recipient_worker_id?: string | null
+          sent_at?: string | null
+          status?: string
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email_subject?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          jornada_id?: string | null
+          recipient_email?: string
+          recipient_worker_id?: string | null
+          sent_at?: string | null
+          status?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_logs_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_logs_recipient_worker_id_fkey"
+            columns: ["recipient_worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_logs_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          channel: string
+          created_at: string
+          event_type: string
+          id: string
+          is_enabled: boolean
+          venue_id: string | null
+          worker_id: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          event_type: string
+          id?: string
+          is_enabled?: boolean
+          venue_id?: string | null
+          worker_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          is_enabled?: boolean
+          venue_id?: string | null
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_preferences_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickup_redemptions_log: {
         Row: {
           bartender_id: string
@@ -600,6 +712,7 @@ export type Database = {
           id: string
           internal_email: string | null
           is_active: boolean | null
+          notification_email: string | null
           point_of_sale: string | null
           rut_code: string | null
           venue_id: string | null
@@ -612,6 +725,7 @@ export type Database = {
           id: string
           internal_email?: string | null
           is_active?: boolean | null
+          notification_email?: string | null
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
@@ -624,6 +738,7 @@ export type Database = {
           id?: string
           internal_email?: string | null
           is_active?: boolean | null
+          notification_email?: string | null
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
@@ -1370,6 +1485,10 @@ export type Database = {
     Functions: {
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
+      enqueue_jornada_closed_notifications: {
+        Args: { p_jornada_id: string }
+        Returns: Json
+      }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }

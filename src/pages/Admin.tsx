@@ -19,13 +19,14 @@ import { InvoicingAlertsWidget } from "@/components/dashboard/InvoicingAlertsWid
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
 import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation";
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
+import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -86,6 +87,7 @@ export default function Admin() {
       case "pos": return "Barras y POS";
       case "inventory": return "Inventario por Ubicación";
       case "replenishment": return "Reposición de Stock";
+      case "notifications": return "Notificaciones";
       default: return "Panel de Administración";
     }
   };
@@ -192,6 +194,12 @@ export default function Admin() {
             {activeView === "replenishment" && !isReadOnly && (
               <div className="space-y-6">
                 <ReplenishmentManager />
+              </div>
+            )}
+
+            {activeView === "notifications" && !isReadOnly && (
+              <div className="space-y-6">
+                <NotificationsManagement />
               </div>
             )}
           </div>
