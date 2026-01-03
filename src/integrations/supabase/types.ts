@@ -1489,6 +1489,7 @@ export type Database = {
         Args: { p_jornada_id: string }
         Returns: Json
       }
+      factory_reset_non_demo: { Args: never; Returns: Json }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
