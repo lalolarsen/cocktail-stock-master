@@ -1,5 +1,8 @@
 project_id = "rboiblptylnsgcciutrk"
 
+[functions.setup-demo-users]
+verify_jwt = false
+
 [functions.predict-consumption]
 verify_jwt = false
 
