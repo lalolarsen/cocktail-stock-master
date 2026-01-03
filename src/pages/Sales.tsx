@@ -12,6 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import PickupQRDialog from "@/components/PickupQRDialog";
+import { DemoWatermark } from "@/components/DemoWatermark";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import {
   Select,
@@ -47,6 +49,7 @@ type BarLocation = {
 };
 
 export default function Sales() {
+  const { isDemoMode } = useDemoMode();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pointOfSale, setPointOfSale] = useState("");
@@ -576,8 +579,10 @@ export default function Sales() {
   const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <>
+      {isDemoMode && <DemoWatermark />}
+      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+        <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold gradient-text">Portal de Ventas</h1>
@@ -844,6 +849,7 @@ export default function Sales() {
           barName={pickupQRData.barName}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
