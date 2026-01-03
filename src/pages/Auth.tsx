@@ -110,10 +110,18 @@ export default function Auth() {
   };
 
   const normalizeRut = (input: string): string => {
+    // For demo accounts, keep as-is (starts with DEMO-)
+    if (input.toUpperCase().startsWith("DEMO-")) {
+      return input.toUpperCase();
+    }
     return input.replace(/\D/g, "").trim();
   };
 
   const validateRut = (rut: string): boolean => {
+    // Demo accounts have format DEMO-XXX
+    if (rut.toUpperCase().startsWith("DEMO-")) {
+      return rut.length >= 6;
+    }
     const normalized = normalizeRut(rut);
     return /^\d{7,9}$/.test(normalized);
   };
@@ -123,8 +131,8 @@ export default function Auth() {
     
     const normalizedRut = normalizeRut(rutCode);
     
-    if (!validateRut(normalizedRut)) {
-      toast.error("RUT inválido. Ingresa entre 7 y 9 dígitos.");
+    if (!validateRut(rutCode)) {
+      toast.error("RUT inválido. Ingresa entre 7 y 9 dígitos, o usa un RUT demo.");
       return;
     }
 
@@ -338,12 +346,11 @@ export default function Auth() {
             <Input
               id="rut"
               type="text"
-              inputMode="numeric"
-              placeholder="12345678"
+              placeholder="12345678 ó DEMO-ADMIN"
               value={rutCode}
-              onChange={(e) => setRutCode(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => setRutCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
               required
-              maxLength={9}
+              maxLength={15}
               autoComplete="username"
             />
             <p className="text-xs text-muted-foreground">
