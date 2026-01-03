@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
+import { DemoWatermark } from "@/components/DemoWatermark";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { Html5Qrcode } from "html5-qrcode";
 
 type MissingItem = {
@@ -108,6 +110,7 @@ function getErrorTitle(errorCode?: string): string {
 }
 
 export default function Bar() {
+  const { isDemoMode } = useDemoMode();
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
@@ -873,7 +876,9 @@ export default function Bar() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <>
+      {isDemoMode && <DemoWatermark />}
+      <div className={`min-h-screen bg-background flex flex-col ${isDemoMode ? 'pt-10' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card">
         <div className="flex flex-col" onClick={handleHeaderTap}>
@@ -1053,6 +1058,7 @@ export default function Bar() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

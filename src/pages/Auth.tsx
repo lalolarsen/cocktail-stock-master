@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Wine, ShoppingCart, Shield, Eye } from "lucide-react";
+import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
+import { DemoModeBanner } from "@/components/DemoModeBanner";
 
 const LAST_MODE_KEY = "coctelstock_last_mode";
 
@@ -317,8 +318,12 @@ export default function Auth() {
     );
   }
 
+  const handleDemoActivated = () => {
+    toast.success("Demo listo. Puedes iniciar sesión con las credenciales de prueba.");
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4 gap-6">
       <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-sm bg-background/95 border-primary/20">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold gradient-text">CoctelStock</h1>
@@ -377,6 +382,11 @@ export default function Auth() {
           </Button>
         </form>
       </Card>
+
+      {/* Demo Mode Entry */}
+      <div className="w-full max-w-md">
+        <DemoModeBanner onDemoActivated={handleDemoActivated} />
+      </div>
     </div>
   );
 }

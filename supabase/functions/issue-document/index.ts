@@ -110,6 +110,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if we're in demo mode - force mock provider
+    const { data: demoVenue } = await supabase
+      .from("venues")
+      .select("id, is_demo")
+      .eq("is_demo", true)
+      .maybeSingle();
+
+    const isDemoMode = demoVenue?.is_demo === true;
+
     // Get active provider configuration
     const { data: configData } = await supabase
       .from("invoicing_config")
@@ -117,8 +126,13 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    const activeProvider = (configData?.active_provider as ProviderType) || "mock";
+    // Force mock provider in demo mode
+    const activeProvider: ProviderType = isDemoMode ? "mock" : ((configData?.active_provider as ProviderType) || "mock");
     const providerConfig = (configData?.config as Record<string, unknown>) || {};
+
+    if (isDemoMode) {
+      console.log("[issue-document] Demo mode detected - forcing mock provider");
+    }
 
     // Generate idempotency key
     const idempotencyKey = `${activeProvider}:${saleId}:${documentType}`;
