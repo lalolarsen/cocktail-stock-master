@@ -14,6 +14,7 @@ import Bar from "./pages/Bar";
 import Auth from "./pages/Auth";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
+import SystemSettings from "./pages/SystemSettings";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
@@ -93,6 +94,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
                   <PickupRedemptions />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/system"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <SystemSettings />
                 </ProtectedRoute>
               }
             />

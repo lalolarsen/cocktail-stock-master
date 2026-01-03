@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -113,6 +113,13 @@ const externalLinks = [
     path: "/admin/pickups",
   },
   {
+    title: "Sistema",
+    icon: Settings,
+    gradient: "from-slate-500 to-zinc-500",
+    path: "/admin/system",
+    adminOnly: true,
+  },
+  {
     title: "Ayuda",
     icon: HelpCircle,
     gradient: "from-gray-500 to-slate-500",
@@ -186,7 +193,9 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
               })}
               
               {/* External links - navigate to separate pages */}
-              {externalLinks.map((link) => (
+              {externalLinks
+                .filter((link) => !link.adminOnly || !isReadOnly)
+                .map((link) => (
                 <SidebarMenuItem key={link.path}>
                   <SidebarMenuButton
                     onClick={() => handleExternalNavigation(link.path)}
