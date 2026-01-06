@@ -1,67 +1,17 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, AlertTriangle, TrendingDown, DollarSign } from "lucide-react";
+import { Package, AlertTriangle, TrendingDown, DollarSign, Warehouse, Wine } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface Stats {
-  totalProducts: number;
-  lowStockProducts: number;
-  totalValue: number;
-  criticalAlerts: number;
-}
+import { useStockData } from "@/hooks/useStockData";
+import { formatCLP } from "@/lib/currency";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const StatsCards = () => {
-  const [stats, setStats] = useState<Stats>({
-    totalProducts: 0,
-    lowStockProducts: 0,
-    totalValue: 0,
-    criticalAlerts: 0,
-  });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  const fetchStats = async () => {
-    try {
-      // Get all products
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("*");
-
-      if (productsError) throw productsError;
-
-      // Get unread alerts
-      const { data: alerts, error: alertsError } = await supabase
-        .from("stock_alerts")
-        .select("*")
-        .eq("is_read", false);
-
-      if (alertsError) throw alertsError;
-
-      const totalProducts = products?.length || 0;
-      const lowStockProducts =
-        products?.filter((p) => p.current_stock <= p.minimum_stock).length || 0;
-      const totalValue =
-        products?.reduce(
-          (sum, p) => sum + (p.current_stock * (p.cost_per_unit || 0)),
-          0
-        ) || 0;
-
-      setStats({
-        totalProducts,
-        lowStockProducts,
-        totalValue,
-        criticalAlerts: alerts?.length || 0,
-      });
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { stats, products, loading } = useStockData();
 
   if (loading) {
     return (
@@ -73,6 +23,10 @@ export const StatsCards = () => {
     );
   }
 
+  // Calculate warehouse and bar totals for the tooltip
+  const warehouseTotal = products.reduce((sum, p) => sum + p.warehouseStock * p.cost_per_unit, 0);
+  const barTotal = products.reduce((sum, p) => sum + p.barStock * p.cost_per_unit, 0);
+
   const cards = [
     {
       title: "Total Productos",
@@ -80,13 +34,16 @@ export const StatsCards = () => {
       icon: Package,
       gradient: "primary-gradient",
       iconColor: "text-primary-foreground",
+      tooltip: "Cantidad de productos registrados en el sistema",
     },
     {
-      title: "Stock Bajo",
+      title: "Stock Bodega Bajo",
       value: stats.lowStockProducts,
-      icon: TrendingDown,
+      subtitle: "bajo mínimo",
+      icon: Warehouse,
       gradient: "alert-gradient",
       iconColor: "text-white",
+      tooltip: "Productos con stock en bodega igual o menor al mínimo (para planificar reposición)",
     },
     {
       title: "Alertas Activas",
@@ -95,40 +52,56 @@ export const StatsCards = () => {
       gradient: "alert-gradient",
       iconColor: "text-white",
       pulse: stats.criticalAlerts > 0,
+      tooltip: "Alertas no leídas de stock bajo o crítico",
     },
     {
-      title: "Valor Inventario",
-      value: `$${stats.totalValue.toFixed(2)}`,
+      title: "Valor Inventario Total",
+      value: formatCLP(stats.totalValue),
+      subtitle: `Bodega: ${formatCLP(warehouseTotal)} | Barras: ${formatCLP(barTotal)}`,
       icon: DollarSign,
       gradient: "secondary-gradient",
       iconColor: "text-secondary-foreground",
+      tooltip: "Valor total del inventario en bodega + barras",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {cards.map((card, index) => (
-        <Card
-          key={index}
-          className={`${card.gradient} border-0 hover-lift ${
-            card.pulse ? "pulse-glow" : ""
-          }`}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium opacity-90 text-white">
-                  {card.title}
-                </p>
-                <p className="text-3xl font-bold mt-2 text-white">
-                  {card.value}
-                </p>
-              </div>
-              <card.icon className={`h-12 w-12 ${card.iconColor} opacity-80`} />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <TooltipProvider>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {cards.map((card, index) => (
+          <Tooltip key={index}>
+            <TooltipTrigger asChild>
+              <Card
+                className={`${card.gradient} border-0 hover-lift cursor-help ${
+                  card.pulse ? "pulse-glow" : ""
+                }`}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium opacity-90 text-white">
+                        {card.title}
+                      </p>
+                      <p className="text-3xl font-bold mt-2 text-white">
+                        {card.value}
+                      </p>
+                      {card.subtitle && (
+                        <p className="text-xs opacity-75 mt-1 text-white">
+                          {card.subtitle}
+                        </p>
+                      )}
+                    </div>
+                    <card.icon className={`h-12 w-12 ${card.iconColor} opacity-80`} />
+                  </div>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{card.tooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 };

@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Wine, Droplet, Citrus, Leaf, Pencil, Trash2 } from "lucide-react";
+import { Wine, Droplet, Leaf, Pencil, Trash2, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
+import { useStockData, ProductWithStock } from "@/hooks/useStockData";
+import { StockBreakdownPopover } from "./StockBreakdownPopover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,16 +36,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  current_stock: number;
-  minimum_stock: number;
-  unit: string;
-  cost_per_unit: number;
-}
-
 const categoryIcons = {
   ml: Droplet,
   gramos: Leaf,
@@ -68,68 +60,30 @@ interface ProductsListProps {
 }
 
 export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { products, loading, refetch } = useStockData();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     category: "",
-    current_stock: 0,
     minimum_stock: 0,
     unit: "",
     cost_per_unit: 0,
   });
 
-  useEffect(() => {
-    fetchProducts();
-
-    const channel = supabase
-      .channel("products-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "products" },
-        () => {
-          fetchProducts();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchProducts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("name");
-
-      if (error) throw error;
-      setProducts(data || []);
-    } catch (error) {
-      console.error("Error fetching products:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStockStatus = (current: number, minimum: number) => {
-    const percentage = (current / minimum) * 100;
-    if (percentage <= 50) return { color: "destructive", label: "Crítico" };
-    if (percentage <= 100) return { color: "warning", label: "Bajo" };
+  const getStockStatus = (warehouseStock: number, minimumStock: number) => {
+    const percentage = (warehouseStock / minimumStock) * 100;
+    if (percentage <= 50) return { color: "destructive", label: "Bodega Crítico" };
+    if (percentage <= 100) return { color: "warning", label: "Bodega Bajo" };
     return { color: "default", label: "Normal" };
   };
 
-  const handleEditClick = (product: Product) => {
+  const handleEditClick = (product: ProductWithStock) => {
     setSelectedProduct(product);
     setEditForm({
       name: product.name,
       category: product.category,
-      current_stock: product.current_stock,
       minimum_stock: product.minimum_stock,
       unit: product.unit,
       cost_per_unit: product.cost_per_unit || 0,
@@ -137,7 +91,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setEditDialogOpen(true);
   };
 
-  const handleDeleteClick = (product: Product) => {
+  const handleDeleteClick = (product: ProductWithStock) => {
     setSelectedProduct(product);
     setDeleteDialogOpen(true);
   };
@@ -158,6 +112,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       });
       setDeleteDialogOpen(false);
       setSelectedProduct(null);
+      refetch();
     } catch (error) {
       console.error("Error deleting product:", error);
       toast.error("Error al eliminar el producto");
@@ -173,7 +128,6 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         .update({
           name: editForm.name,
           category: editForm.category as any,
-          current_stock: editForm.current_stock,
           minimum_stock: editForm.minimum_stock,
           unit: editForm.unit,
           cost_per_unit: editForm.cost_per_unit,
@@ -187,6 +141,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       });
       setEditDialogOpen(false);
       setSelectedProduct(null);
+      refetch();
     } catch (error) {
       console.error("Error updating product:", error);
       toast.error("Error al actualizar el producto");
@@ -214,13 +169,17 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         <CardTitle className="text-2xl bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
           Inventario de Productos
         </CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Stock total = Bodega + Barras. Estado basado en stock de bodega para planificación de reposición.
+        </p>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {products.map((product) => {
             const Icon = categoryIcons[product.category as keyof typeof categoryIcons];
-            const status = getStockStatus(product.current_stock, product.minimum_stock);
-            const stockPercentage = (product.current_stock / product.minimum_stock) * 100;
+            const status = getStockStatus(product.warehouseStock, product.minimum_stock);
+            const stockPercentage = (product.warehouseStock / product.minimum_stock) * 100;
+            const unitDisplay = getUnitDisplay(product.category, product.unit);
 
             return (
               <div
@@ -270,19 +229,44 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Stock actual</span>
+                  {/* Stock breakdown row */}
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Stock Total (Bodega + Barras)</span>
+                      <StockBreakdownPopover product={product} unit={unitDisplay} />
+                    </div>
                     <span className="font-semibold">
-                      {product.current_stock} {getUnitDisplay(product.category, product.unit)}
+                      {product.totalStock} {unitDisplay}
                     </span>
                   </div>
-                  <Progress
-                    value={Math.min(stockPercentage, 100)}
-                    className="h-2"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Mínimo: {product.minimum_stock} {getUnitDisplay(product.category, product.unit)}</span>
-                    <span>Valor: {formatCLP(product.current_stock * (product.cost_per_unit || 0))}</span>
+                  
+                  {/* Quick breakdown inline */}
+                  <div className="flex gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Warehouse className="h-3 w-3" />
+                      Bodega: {product.warehouseStock} {unitDisplay}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Wine className="h-3 w-3" />
+                      Barras: {product.barStock} {unitDisplay}
+                    </span>
+                  </div>
+
+                  {/* Progress bar based on warehouse stock */}
+                  <div className="pt-1">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>Stock Bodega vs Mínimo</span>
+                      <span>{product.warehouseStock} / {product.minimum_stock}</span>
+                    </div>
+                    <Progress
+                      value={Math.min(stockPercentage, 100)}
+                      className="h-2"
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                    <span>Mínimo requerido: {product.minimum_stock} {unitDisplay}</span>
+                    <span>Valor total: {formatCLP(product.totalStock * product.cost_per_unit)}</span>
                   </div>
                 </div>
               </div>
@@ -334,7 +318,6 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
               <Select
                 value={editForm.category}
                 onValueChange={(value) => {
-                  // Sincronizar la unidad con la categoría
                   let newUnit = "ml";
                   if (value === "gramos") newUnit = "g";
                   if (value === "unidades") newUnit = "unidad";
@@ -354,42 +337,13 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-stock">Stock Actual</Label>
-                <Input
-                  id="edit-stock"
-                  type="number"
-                  value={editForm.current_stock}
-                  onChange={(e) => setEditForm({ ...editForm, current_stock: Number(e.target.value) })}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="edit-min">Stock Mínimo</Label>
+                <Label htmlFor="edit-min">Stock Mínimo (Bodega)</Label>
                 <Input
                   id="edit-min"
                   type="number"
                   value={editForm.minimum_stock}
                   onChange={(e) => setEditForm({ ...editForm, minimum_stock: Number(e.target.value) })}
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-unit">Unidad</Label>
-                <Select
-                  value={editForm.unit}
-                  onValueChange={(value) => setEditForm({ ...editForm, unit: value })}
-                >
-                  <SelectTrigger id="edit-unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ml">ml</SelectItem>
-                    <SelectItem value="g">g</SelectItem>
-                    <SelectItem value="unidad">unidad</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
               
               <div className="space-y-2">
@@ -403,6 +357,10 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                 />
               </div>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Nota: El stock se gestiona a través de transferencias entre ubicaciones, no se puede editar directamente aquí.
+            </p>
           </div>
           
           <div className="flex justify-end gap-2">
