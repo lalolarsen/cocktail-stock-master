@@ -1162,6 +1162,70 @@ export type Database = {
           },
         ]
       }
+      stock_lots: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          is_depleted: boolean
+          location_id: string
+          product_id: string
+          quantity: number
+          received_at: string
+          source: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_depleted?: boolean
+          location_id: string
+          product_id: string
+          quantity?: number
+          received_at?: string
+          source?: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_depleted?: boolean
+          location_id?: string
+          product_id?: string
+          quantity?: number
+          received_at?: string
+          source?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_lots_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_lots_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_lots_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_movements: {
         Row: {
           created_at: string | null
@@ -1173,6 +1237,7 @@ export type Database = {
           pickup_token_id: string | null
           product_id: string | null
           quantity: number
+          stock_lot_id: string | null
           to_location_id: string | null
           transfer_id: string | null
         }
@@ -1186,6 +1251,7 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity: number
+          stock_lot_id?: string | null
           to_location_id?: string | null
           transfer_id?: string | null
         }
@@ -1199,6 +1265,7 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity?: number
+          stock_lot_id?: string | null
           to_location_id?: string | null
           transfer_id?: string | null
         }
@@ -1229,6 +1296,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_stock_lot_id_fkey"
+            columns: ["stock_lot_id"]
+            isOneToOne: false
+            referencedRelation: "stock_lots"
             referencedColumns: ["id"]
           },
           {
@@ -1486,8 +1560,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_stock_lot: {
+        Args: {
+          p_expires_at: string
+          p_location_id: string
+          p_product_id: string
+          p_quantity: number
+          p_source?: string
+          p_venue_id: string
+        }
+        Returns: Json
+      }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
+      consume_stock_fefo: {
+        Args: {
+          p_allow_expired?: boolean
+          p_jornada_id?: string
+          p_location_id: string
+          p_notes?: string
+          p_pickup_token_id?: string
+          p_product_id: string
+          p_quantity: number
+        }
+        Returns: Json
+      }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
         Returns: Json
@@ -1497,6 +1594,19 @@ export type Database = {
       generate_product_code: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
+      get_expiring_lots: {
+        Args: { p_days_ahead?: number; p_venue_id: string }
+        Returns: {
+          days_until_expiry: number
+          expires_at: string
+          location_id: string
+          location_name: string
+          lot_id: string
+          product_id: string
+          product_name: string
+          quantity: number
+        }[]
+      }
       get_worker_by_rut: {
         Args: { p_rut_code: string; p_venue_id?: string }
         Returns: {
@@ -1534,6 +1644,7 @@ export type Database = {
         }
         Returns: string
       }
+      migrate_stock_to_lots: { Args: never; Returns: Json }
       record_login_attempt: {
         Args: {
           p_ip_address?: string
@@ -1559,6 +1670,18 @@ export type Database = {
           p_jornada_id?: string
           p_notes?: string
           p_to_location_id: string
+        }
+        Returns: Json
+      }
+      transfer_stock_fefo: {
+        Args: {
+          p_from_location_id: string
+          p_jornada_id?: string
+          p_notes?: string
+          p_product_id: string
+          p_quantity: number
+          p_to_location_id: string
+          p_transferred_by: string
         }
         Returns: Json
       }
