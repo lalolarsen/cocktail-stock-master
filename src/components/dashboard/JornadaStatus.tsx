@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Calendar, Clock, Play, Square, RefreshCw, Banknote } from "lucide-react";
+import { Loader2, Calendar, Clock, Play, Square, RefreshCw, Banknote, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -36,9 +36,11 @@ export function JornadaStatus() {
   const [showReconciliation, setShowReconciliation] = useState(false);
   const [showOpeningDialog, setShowOpeningDialog] = useState(false);
   const [openingCash, setOpeningCash] = useState("");
+  const [outsideJornadaCount, setOutsideJornadaCount] = useState(0);
 
   useEffect(() => {
     fetchActiveJornada();
+    fetchOutsideJornadaCount();
   }, []);
 
   const fetchActiveJornada = async () => {
@@ -60,6 +62,18 @@ export function JornadaStatus() {
       console.error("Error fetching jornada:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOutsideJornadaCount = async () => {
+    const { count, error } = await supabase
+      .from("sales")
+      .select("*", { count: "exact", head: true })
+      .eq("outside_jornada", true)
+      .eq("is_cancelled", false);
+
+    if (!error && count !== null) {
+      setOutsideJornadaCount(count);
     }
   };
 
@@ -150,6 +164,13 @@ export function JornadaStatus() {
       toast.error("No hay jornada activa para cerrar");
       return;
     }
+    
+    // Check for outside_jornada sales
+    if (outsideJornadaCount > 0) {
+      toast.error(`Hay ${outsideJornadaCount} venta(s) fuera de jornada. Asígnalas antes de cerrar.`);
+      return;
+    }
+    
     setShowReconciliation(true);
   };
 

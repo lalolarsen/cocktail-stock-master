@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { format, startOfWeek, parseISO, isToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { JornadaConfig } from "./JornadaConfig";
+import { OutsideJornadaSales } from "./OutsideJornadaSales";
 import { formatCLP } from "@/lib/currency";
 
 interface Jornada {
@@ -404,10 +405,14 @@ export function JornadaManagement() {
       </div>
 
       <Tabs defaultValue="summary" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="summary" className="flex items-center gap-2">
             <Calendar className="w-4 h-4" />
             Resumen
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="flex items-center gap-2">
+            <ShoppingCart className="w-4 h-4" />
+            Pendientes
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="w-4 h-4" />
@@ -418,6 +423,16 @@ export function JornadaManagement() {
             Configuración
           </TabsTrigger>
         </TabsList>
+
+        {/* Pending / Outside Jornada Sales Tab */}
+        <TabsContent value="pending" className="space-y-4">
+          <OutsideJornadaSales />
+          <Card className="p-6">
+            <p className="text-muted-foreground text-center">
+              Las ventas fuera de jornada deben asignarse a una jornada antes del cierre final.
+            </p>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="summary" className="space-y-4">
           {/* Stats Cards */}
