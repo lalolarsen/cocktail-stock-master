@@ -15,6 +15,7 @@ import PickupQRDialog from "@/components/PickupQRDialog";
 import { DemoWatermark } from "@/components/DemoWatermark";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
+import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
 import {
   Select,
   SelectContent,
@@ -50,6 +51,7 @@ type BarLocation = {
 
 export default function Sales() {
   const { isDemoMode } = useDemoMode();
+  const { activeJornadaId, hasActiveJornada } = useActiveJornada();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pointOfSale, setPointOfSale] = useState("");
@@ -310,6 +312,7 @@ export default function Sales() {
       const totalAmount = calculateTotal();
 
       // Create sale with pos_id and bar_location_id
+      // If no active jornada, mark as outside_jornada
       const { data: sale, error: saleError } = await supabase
         .from("sales")
         .insert({
@@ -321,6 +324,8 @@ export default function Sales() {
           payment_status: "paid",
           pos_id: selectedPosId,
           bar_location_id: selectedBarId,
+          jornada_id: activeJornadaId || null,
+          outside_jornada: !hasActiveJornada,
         })
         .select()
         .single();
@@ -582,7 +587,10 @@ export default function Sales() {
     <>
       {isDemoMode && <DemoWatermark />}
       <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="max-w-7xl mx-auto space-y-4">
+        {/* Warning banner when no jornada active */}
+        <OutsideJornadaBanner />
+        
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold gradient-text">Portal de Ventas</h1>
