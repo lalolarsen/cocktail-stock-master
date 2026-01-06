@@ -43,11 +43,60 @@ type BarLocation = {
 type ScanState = "idle" | "processing" | "success" | "error" | "manual";
 
 // Timing constants
-const COOLDOWN_MS = 7000; // 7 seconds duplicate suppression
-const SUCCESS_DISMISS_MS = 1800;
-const ERROR_DISMISS_MS = 2200;
-const INSUFFICIENT_STOCK_DISMISS_MS = 3000; // Longer for insufficient stock to read details
+const COOLDOWN_MS = 2500; // 2.5 seconds duplicate suppression (anti-loop protection)
+const SUCCESS_DISMISS_MS = 1800; // 1.8s display for success
+const USED_DISMISS_MS = 2000; // 2s display for already used
+const ERROR_DISMISS_MS = 2000; // 2s display for errors
+const INSUFFICIENT_STOCK_DISMISS_MS = 3000; // 3s for insufficient stock to read details
 const PROCESSING_TIMEOUT_MS = 8000;
+
+// Audio feedback utilities
+const playBeep = (type: 'success' | 'used' | 'error') => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (type === 'success') {
+      // Short high beep for success
+      oscillator.frequency.value = 880; // A5 note
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.15);
+    } else if (type === 'used') {
+      // Long low beep for already used
+      oscillator.frequency.value = 330; // E4 note
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.4;
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } else {
+      // Double beep for error
+      oscillator.frequency.value = 220; // A3 note
+      oscillator.type = 'square';
+      gainNode.gain.value = 0.2;
+      oscillator.start();
+      
+      // Schedule frequency change for double beep effect
+      setTimeout(() => {
+        try {
+          oscillator.frequency.value = 0;
+          setTimeout(() => {
+            oscillator.frequency.value = 220;
+          }, 100);
+        } catch (e) {}
+      }, 150);
+      
+      oscillator.stop(audioContext.currentTime + 0.4);
+    }
+  } catch (e) {
+    // Audio not supported, fail silently
+  }
+};
 
 /**
  * Universal QR token parser - handles multiple formats:
@@ -351,13 +400,25 @@ export default function Bar() {
       setResult(resultData);
       setScanState(resultData.success ? "success" : "error");
 
-      // Auto-dismiss after timeout, then RESTART scanner
-      // Use longer timeout for insufficient stock so user can read details
+      // Play audio feedback
+      if (resultData.success) {
+        playBeep('success');
+      } else if (resultData.error_code === 'ALREADY_REDEEMED') {
+        playBeep('used');
+      } else {
+        playBeep('error');
+      }
+
+      // Auto-dismiss after timeout, then RESTART scanner automatically
       let timeout = SUCCESS_DISMISS_MS;
       if (!resultData.success) {
-        timeout = resultData.error_code === 'INSUFFICIENT_BAR_STOCK' 
-          ? INSUFFICIENT_STOCK_DISMISS_MS 
-          : ERROR_DISMISS_MS;
+        if (resultData.error_code === 'ALREADY_REDEEMED') {
+          timeout = USED_DISMISS_MS;
+        } else if (resultData.error_code === 'INSUFFICIENT_BAR_STOCK') {
+          timeout = INSUFFICIENT_STOCK_DISMISS_MS;
+        } else {
+          timeout = ERROR_DISMISS_MS;
+        }
       }
       dismissTimerRef.current = setTimeout(restartScanner, timeout);
     } catch (error: any) {
@@ -725,9 +786,45 @@ export default function Bar() {
     );
   }
 
-  // Full-screen error state
+  // Full-screen ALREADY USED state (orange, prominent)
+  if (scanState === "error" && result?.error_code === "ALREADY_REDEEMED") {
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-orange-500 text-white p-6"
+        onClick={forceFullReset}
+      >
+        <AlertCircle className="w-32 h-32 mb-6 animate-pulse" />
+        <h1 className="text-5xl font-black mb-4 tracking-tight">QR YA USADO</h1>
+        <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
+        
+        {result.sale_number && (
+          <p className="text-2xl font-bold mt-4 opacity-80">#{result.sale_number}</p>
+        )}
+        
+        {debugMode && (
+          <div className="mt-4 p-3 bg-black/20 rounded-lg max-w-sm w-full">
+            <p className="text-xs font-mono break-all opacity-80">
+              TOKEN: {lastParsedToken || "(none)"}
+            </p>
+          </div>
+        )}
+        
+        <Button 
+          onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
+          variant="secondary"
+          className="mt-8 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-orange-600 border-0 shadow-lg"
+        >
+          <RefreshCw className="w-6 h-6 mr-3" />
+          Escanear Siguiente
+        </Button>
+        
+        <p className="mt-4 text-sm opacity-60">Auto-cierre en {USED_DISMISS_MS/1000}s</p>
+      </div>
+    );
+  }
+
+  // Full-screen error state (other errors)
   if (scanState === "error" && result) {
-    const isWarning = result.error_code === "ALREADY_REDEEMED";
     const isWrongBar = result.error_code === "WRONG_BAR";
     const isInsufficientStock = result.error_code === "INSUFFICIENT_BAR_STOCK";
     
@@ -794,17 +891,18 @@ export default function Bar() {
         </div>
       );
     }
+    // Determine background color based on error type
+    const bgColor = isWrongBar ? "bg-orange-600" : 
+                    result.error_code === "QR_INVALID" ? "bg-gray-600" : "bg-red-600";
+    const btnTextColor = isWrongBar ? "text-orange-700" : 
+                         result.error_code === "QR_INVALID" ? "text-gray-700" : "text-red-700";
     
     return (
       <div 
-        className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 ${
-          isWarning ? "bg-yellow-500 text-black" : isWrongBar ? "bg-orange-500 text-white" : "bg-red-600 text-white"
-        }`}
+        className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 ${bgColor} text-white`}
         onClick={forceFullReset}
       >
-        {isWarning ? (
-          <AlertCircle className="w-32 h-32 mb-6" />
-        ) : isWrongBar ? (
+        {isWrongBar ? (
           <MapPin className="w-32 h-32 mb-6" />
         ) : (
           <XCircle className="w-32 h-32 mb-6" />
@@ -837,9 +935,7 @@ export default function Bar() {
         <Button 
           onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
           variant="secondary"
-          className={`mt-8 h-16 px-10 text-xl font-bold border-0 shadow-lg ${
-            isWarning ? "bg-white hover:bg-white/90 text-yellow-700" : "bg-white hover:bg-white/90 text-red-700"
-          }`}
+          className={`mt-8 h-16 px-10 text-xl font-bold border-0 shadow-lg bg-white hover:bg-white/90 ${btnTextColor}`}
         >
           <RefreshCw className="w-6 h-6 mr-3" />
           Escanear Siguiente
