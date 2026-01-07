@@ -1826,6 +1826,7 @@ export type Database = {
           p_pickup_token_id?: string
           p_product_id: string
           p_quantity: number
+          p_source_type?: string
         }
         Returns: Json
       }
