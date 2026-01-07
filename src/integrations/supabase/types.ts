@@ -805,6 +805,54 @@ export type Database = {
           },
         ]
       }
+      product_name_mappings: {
+        Row: {
+          created_at: string
+          id: string
+          normalized_name: string
+          product_id: string
+          raw_name: string
+          updated_at: string
+          usage_count: number | null
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          normalized_name: string
+          product_id: string
+          raw_name: string
+          updated_at?: string
+          usage_count?: number | null
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          normalized_name?: string
+          product_id?: string
+          raw_name?: string
+          updated_at?: string
+          usage_count?: number | null
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_name_mappings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_name_mappings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
@@ -901,6 +949,138 @@ export type Database = {
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_documents: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          document_date: string | null
+          document_number: string | null
+          extracted_data: Json | null
+          file_path: string
+          file_type: string
+          id: string
+          provider_name: string | null
+          provider_rut: string | null
+          raw_text: string | null
+          status: string
+          total_amount: number | null
+          updated_at: string
+          venue_id: string | null
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          document_date?: string | null
+          document_number?: string | null
+          extracted_data?: Json | null
+          file_path: string
+          file_type: string
+          id?: string
+          provider_name?: string | null
+          provider_rut?: string | null
+          raw_text?: string | null
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          document_date?: string | null
+          document_number?: string | null
+          extracted_data?: Json | null
+          file_path?: string
+          file_type?: string
+          id?: string
+          provider_name?: string | null
+          provider_rut?: string | null
+          raw_text?: string | null
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_documents_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_documents_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_items: {
+        Row: {
+          confirmed_quantity: number | null
+          confirmed_unit_price: number | null
+          created_at: string
+          extracted_quantity: number | null
+          extracted_total: number | null
+          extracted_unit_price: number | null
+          id: string
+          is_confirmed: boolean | null
+          match_confidence: number | null
+          matched_product_id: string | null
+          purchase_document_id: string
+          raw_product_name: string
+        }
+        Insert: {
+          confirmed_quantity?: number | null
+          confirmed_unit_price?: number | null
+          created_at?: string
+          extracted_quantity?: number | null
+          extracted_total?: number | null
+          extracted_unit_price?: number | null
+          id?: string
+          is_confirmed?: boolean | null
+          match_confidence?: number | null
+          matched_product_id?: string | null
+          purchase_document_id: string
+          raw_product_name: string
+        }
+        Update: {
+          confirmed_quantity?: number | null
+          confirmed_unit_price?: number | null
+          created_at?: string
+          extracted_quantity?: number | null
+          extracted_total?: number | null
+          extracted_unit_price?: number | null
+          id?: string
+          is_confirmed?: boolean | null
+          match_confidence?: number | null
+          matched_product_id?: string | null
+          purchase_document_id?: string
+          raw_product_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_items_matched_product_id_fkey"
+            columns: ["matched_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_purchase_document_id_fkey"
+            columns: ["purchase_document_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_documents"
             referencedColumns: ["id"]
           },
         ]
@@ -1886,6 +2066,10 @@ export type Database = {
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       close_jornada_with_summary: {
         Args: { p_jornada_id: string }
+        Returns: Json
+      }
+      confirm_purchase_intake: {
+        Args: { p_items: Json; p_purchase_document_id: string }
         Returns: Json
       }
       consume_stock_fefo: {
