@@ -309,8 +309,15 @@ export default function Tickets() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-background p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-48"></div>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} className="h-32 bg-muted rounded-lg"></div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -318,7 +325,7 @@ export default function Tickets() {
   // Success Screen
   if (step === "success" && saleResult) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-background p-4 flex items-center justify-center">
         <Card className="w-full max-w-lg p-6 text-center space-y-6">
           <div className="flex items-center justify-center gap-2 text-green-600">
             <Check className="h-8 w-8" />
@@ -364,7 +371,7 @@ export default function Tickets() {
   const coversIncluded = getTotalCoversIncluded();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <div className="min-h-screen bg-background">
       <div className="flex flex-col lg:flex-row min-h-screen">
         {/* Left: Ticket Grid (70%) */}
         <div className="flex-1 lg:w-[70%] p-4 space-y-4">

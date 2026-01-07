@@ -46,7 +46,7 @@ const Index = () => {
               <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
                 <Menu className="w-5 h-5" />
               </SidebarTrigger>
-              <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
+              <h1 className="text-xl font-semibold">{getViewTitle()}</h1>
             </div>
           </header>
 

@@ -534,7 +534,7 @@ export default function Sales() {
 
   if (!isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <WorkerPinDialog
           open={showPinDialog}
           onVerified={handlePinVerified}
@@ -547,7 +547,7 @@ export default function Sales() {
   // POS and Bar Selection Screen
   if (showPosSelection) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+      <div className="min-h-screen bg-background p-4">
         <div className="max-w-lg mx-auto space-y-6 pt-12">
           <div className="text-center space-y-2">
             <Store className="w-16 h-16 mx-auto text-primary" />
@@ -693,7 +693,7 @@ export default function Sales() {
   return (
     <>
       {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-14' : ''}`}>
+      <div className={`min-h-screen bg-background ${isDemoMode ? 'pt-14' : ''}`}>
         {/* Compact Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
