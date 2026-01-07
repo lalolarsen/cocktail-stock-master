@@ -82,6 +82,8 @@ export default function Auth() {
         navigate("/sales");
       } else if (role === "bar") {
         navigate("/bar");
+      } else if (role === "ticket_seller") {
+        navigate("/tickets");
       }
       return;
     }
@@ -106,6 +108,8 @@ export default function Auth() {
       navigate("/sales");
     } else if (role === "bar") {
       navigate("/bar");
+    } else if (role === "ticket_seller") {
+      navigate("/tickets");
     }
   };
 
@@ -275,6 +279,20 @@ export default function Auth() {
                 <div>
                   <div className="font-medium">Caja</div>
                   <div className="text-xs text-muted-foreground">Punto de venta</div>
+                </div>
+              </Button>
+            )}
+
+            {workerRoles.includes("ticket_seller") && (
+              <Button
+                variant="outline"
+                className="w-full h-16 justify-start gap-4 text-left"
+                onClick={() => handleModeSelect("ticket_seller")}
+              >
+                <Sparkles className="h-6 w-6 text-amber-500" />
+                <div>
+                  <div className="font-medium">Entradas</div>
+                  <div className="text-xs text-muted-foreground">Venta de tickets</div>
                 </div>
               </Button>
             )}

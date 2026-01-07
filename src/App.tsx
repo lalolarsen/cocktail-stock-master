@@ -15,6 +15,7 @@ import Auth from "./pages/Auth";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import SystemSettings from "./pages/SystemSettings";
+import Tickets from "./pages/Tickets";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
@@ -125,7 +126,15 @@ const App = () => {
               path="/bar"
               element={
                 <ProtectedRoute allowedRoles={["bar"]}>
-                  <Bar />
+              <Bar />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tickets"
+              element={
+                <ProtectedRoute allowedRoles={["ticket_seller"]}>
+                  <Tickets />
                 </ProtectedRoute>
               }
             />

@@ -37,6 +37,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         return <Navigate to="/sales" replace />;
       case "bar":
         return <Navigate to="/bar" replace />;
+      case "ticket_seller":
+        return <Navigate to="/tickets" replace />;
       default:
         return <Navigate to="/auth" replace />;
     }

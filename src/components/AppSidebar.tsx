@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -94,6 +94,13 @@ const menuItems = [
     value: "notifications" as ViewType, 
     icon: Bell,
     gradient: "from-fuchsia-500 to-pink-500",
+    adminOnly: true
+  },
+  { 
+    title: "Tipos de Entrada", 
+    value: "tickets" as ViewType, 
+    icon: Ticket,
+    gradient: "from-amber-500 to-yellow-500",
     adminOnly: true
   },
 ];

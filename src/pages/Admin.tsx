@@ -21,6 +21,7 @@ import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
 import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation";
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
+import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
 import { DemoWatermark } from "@/components/DemoWatermark";
 import { DemoModeBanner } from "@/components/DemoModeBanner";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -29,7 +30,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, Eye } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -92,6 +93,7 @@ export default function Admin() {
       case "inventory": return "Inventario por Ubicación";
       case "replenishment": return "Reposición de Stock";
       case "notifications": return "Notificaciones";
+      case "tickets": return "Tipos de Entrada";
       default: return "Panel de Administración";
     }
   };
@@ -209,6 +211,12 @@ export default function Admin() {
             {activeView === "notifications" && !isReadOnly && (
               <div className="space-y-6">
                 <NotificationsManagement />
+              </div>
+            )}
+
+            {activeView === "tickets" && !isReadOnly && (
+              <div className="space-y-6">
+                <TicketTypesManagement />
               </div>
             )}
           </div>
