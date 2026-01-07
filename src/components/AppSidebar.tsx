@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -107,6 +107,12 @@ const menuItems = [
 
 // External link items for separate pages
 const externalLinks = [
+  {
+    title: "Ingresos",
+    icon: Banknote,
+    gradient: "from-emerald-500 to-teal-500",
+    path: "/admin/income",
+  },
   {
     title: "Documentos",
     icon: FileCheck,
