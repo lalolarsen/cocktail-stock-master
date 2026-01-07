@@ -75,6 +75,16 @@ interface Expense {
   created_at: string;
 }
 
+interface FrozenSummary {
+  ingresos_brutos: number;
+  costo_ventas: number;
+  utilidad_bruta: number;
+  margen_bruto: number;
+  gastos_operacionales: number;
+  resultado_periodo: number;
+  closed_at: string;
+}
+
 export default function IncomeStatement() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -90,6 +100,7 @@ export default function IncomeStatement() {
   const [costOfSales, setCostOfSales] = useState<CostOfSales>({ total_cost: 0, products_count: 0, items_count: 0 });
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomeEntries, setIncomeEntries] = useState<any[]>([]);
+  const [frozenSummary, setFrozenSummary] = useState<FrozenSummary | null>(null);
 
   // Collapsible sections
   const [incomeOpen, setIncomeOpen] = useState(false);
@@ -118,6 +129,7 @@ export default function IncomeStatement() {
   const fetchData = async () => {
     if (!dateRange?.from || !dateRange?.to) return;
     setLoading(true);
+    setFrozenSummary(null);
 
     try {
       const fromDate = format(dateRange.from, "yyyy-MM-dd");
@@ -125,7 +137,36 @@ export default function IncomeStatement() {
       const fromTimestamp = startOfDay(dateRange.from).toISOString();
       const toTimestamp = endOfDay(dateRange.to).toISOString();
 
-      // Fetch income entries
+      // If a specific closed jornada is selected, try to get the frozen summary
+      if (selectedJornadaId) {
+        const selectedJornada = jornadas.find((j) => j.id === selectedJornadaId);
+        if (selectedJornada?.estado === "cerrada") {
+          const { data: summaryData } = await supabase
+            .from("jornada_financial_summary")
+            .select("*")
+            .eq("jornada_id", selectedJornadaId)
+            .maybeSingle();
+
+          if (summaryData) {
+            setFrozenSummary(summaryData as FrozenSummary);
+            // Still fetch expenses for detail view
+            const { data: expensesData } = await supabase
+              .from("expenses")
+              .select("*")
+              .eq("jornada_id", selectedJornadaId)
+              .order("created_at", { ascending: false });
+            setExpenses(expensesData || []);
+            
+            // Set breakdown from frozen data
+            setIncomeBreakdown({ sale: 0, ticket: 0, manual: 0, total: summaryData.ingresos_brutos });
+            setCostOfSales({ total_cost: summaryData.costo_ventas, products_count: 0, items_count: 0 });
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Fetch live data for non-closed jornadas or date ranges
       let incomeQuery = supabase
         .from("gross_income_entries")
         .select("*")
@@ -195,6 +236,14 @@ export default function IncomeStatement() {
   [grossProfit, incomeBreakdown]);
   const netResult = useMemo(() => grossProfit - totalExpenses, [grossProfit, totalExpenses]);
 
+  // Use frozen data if available for display
+  const displayIngresos = frozenSummary ? frozenSummary.ingresos_brutos : incomeBreakdown.total;
+  const displayCosto = frozenSummary ? frozenSummary.costo_ventas : costOfSales.total_cost;
+  const displayGastos = frozenSummary ? frozenSummary.gastos_operacionales : totalExpenses;
+  const displayUtilidad = frozenSummary ? frozenSummary.utilidad_bruta : grossProfit;
+  const displayMargen = frozenSummary ? frozenSummary.margen_bruto : grossMargin;
+  const displayResultado = frozenSummary ? frozenSummary.resultado_periodo : netResult;
+
   // Presets
   const setPreset = (preset: "today" | "currentJornada" | "currentMonth") => {
     const today = new Date();
@@ -233,23 +282,24 @@ export default function IncomeStatement() {
     const rows = [
       ["Estado de Resultados"],
       [`Período: ${dateRange?.from ? format(dateRange.from, "dd/MM/yyyy", { locale: es }) : ""} - ${dateRange?.to ? format(dateRange.to, "dd/MM/yyyy", { locale: es }) : ""}`],
+      frozenSummary ? ["(Datos congelados de jornada cerrada)"] : [],
       [""],
       ["Concepto", "Monto (CLP)"],
-      ["Ingresos Brutos", incomeBreakdown.total],
-      ["  - Ventas Barra", incomeBreakdown.sale],
-      ["  - Entradas", incomeBreakdown.ticket],
-      ["  - Manuales", incomeBreakdown.manual],
+      ["Ingresos Brutos", displayIngresos],
+      ["  - Ventas Barra", frozenSummary ? "" : incomeBreakdown.sale],
+      ["  - Entradas", frozenSummary ? "" : incomeBreakdown.ticket],
+      ["  - Manuales", frozenSummary ? "" : incomeBreakdown.manual],
       [""],
-      ["Costo de Ventas", -costOfSales.total_cost],
+      ["Costo de Ventas", -displayCosto],
       [""],
-      ["Utilidad Bruta", grossProfit],
-      [`Margen Bruto`, `${grossMargin.toFixed(1)}%`],
+      ["Utilidad Bruta", displayUtilidad],
+      [`Margen Bruto`, `${displayMargen.toFixed(1)}%`],
       [""],
-      ["Gastos Operacionales", -totalExpenses],
+      ["Gastos Operacionales", -displayGastos],
       ...expenses.map((e) => [`  - ${e.description}`, -e.amount]),
       [""],
-      ["Resultado del Período", netResult],
-    ];
+      ["Resultado del Período", displayResultado],
+    ].filter(row => row.length > 0);
 
     const csv = rows.map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -347,13 +397,25 @@ export default function IncomeStatement() {
           <>
             {/* KPI Summary */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {/* Frozen Summary Banner */}
+              {frozenSummary && (
+                <Card className="card-minimal bg-muted/30 col-span-full">
+                  <CardContent className="p-3 flex items-center gap-2">
+                    <Badge variant="secondary">Datos congelados</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Esta jornada fue cerrada el {format(new Date(frozenSummary.closed_at), "dd/MM/yyyy HH:mm", { locale: es })}. Los valores son inmutables.
+                    </span>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card className="card-minimal">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="kpi-label">Ingresos Brutos</p>
-                  <p className="kpi-value text-primary">{formatCLP(incomeBreakdown.total)}</p>
+                  <p className="kpi-value text-primary">{formatCLP(displayIngresos)}</p>
                 </CardContent>
               </Card>
 
@@ -363,7 +425,7 @@ export default function IncomeStatement() {
                     <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="kpi-label">Costo de Ventas</p>
-                  <p className="kpi-value text-destructive">{formatCLP(costOfSales.total_cost)}</p>
+                  <p className="kpi-value text-destructive">{formatCLP(displayCosto)}</p>
                 </CardContent>
               </Card>
 
@@ -373,8 +435,8 @@ export default function IncomeStatement() {
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="kpi-label">Utilidad Bruta</p>
-                  <p className={`kpi-value ${grossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                    {formatCLP(grossProfit)}
+                  <p className={`kpi-value ${displayUtilidad >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {formatCLP(displayUtilidad)}
                   </p>
                 </CardContent>
               </Card>
@@ -382,15 +444,15 @@ export default function IncomeStatement() {
               <Card className="card-minimal">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    {grossMargin >= 50 ? (
+                    {displayMargen >= 50 ? (
                       <TrendingUp className="h-4 w-4 text-primary" />
                     ) : (
                       <TrendingDown className="h-4 w-4 text-destructive" />
                     )}
                   </div>
                   <p className="kpi-label">Margen Bruto</p>
-                  <p className={`kpi-value ${grossMargin >= 50 ? "text-primary" : "text-destructive"}`}>
-                    {grossMargin.toFixed(1)}%
+                  <p className={`kpi-value ${displayMargen >= 50 ? "text-primary" : "text-destructive"}`}>
+                    {displayMargen.toFixed(1)}%
                   </p>
                 </CardContent>
               </Card>
@@ -401,22 +463,22 @@ export default function IncomeStatement() {
                     <Wallet className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="kpi-label">Gastos Operacionales</p>
-                  <p className="kpi-value text-destructive">{formatCLP(totalExpenses)}</p>
+                  <p className="kpi-value text-destructive">{formatCLP(displayGastos)}</p>
                 </CardContent>
               </Card>
 
-              <Card className={`card-minimal ${netResult >= 0 ? "border-primary/30" : "border-destructive/30"}`}>
+              <Card className={`card-minimal ${displayResultado >= 0 ? "border-primary/30" : "border-destructive/30"}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    {netResult >= 0 ? (
+                    {displayResultado >= 0 ? (
                       <TrendingUp className="h-4 w-4 text-primary" />
                     ) : (
                       <TrendingDown className="h-4 w-4 text-destructive" />
                     )}
                   </div>
                   <p className="kpi-label">Resultado del Período</p>
-                  <p className={`kpi-value ${netResult >= 0 ? "text-primary" : "text-destructive"}`}>
-                    {formatCLP(netResult)}
+                  <p className={`kpi-value ${displayResultado >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {formatCLP(displayResultado)}
                   </p>
                 </CardContent>
               </Card>
@@ -434,36 +496,42 @@ export default function IncomeStatement() {
                           {incomeOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           <CardTitle className="text-base font-medium">Ingresos</CardTitle>
                         </div>
-                        <span className="text-lg font-semibold text-primary">{formatCLP(incomeBreakdown.total)}</span>
+                        <span className="text-lg font-semibold text-primary">{formatCLP(displayIngresos)}</span>
                       </div>
                     </CardHeader>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent className="pt-0">
                       <Separator className="mb-4" />
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <div className="flex items-center gap-2">
-                            <Receipt className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">Ventas Barra</span>
+                      {frozenSummary ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          Desglose no disponible para jornadas cerradas
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-2">
+                              <Receipt className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">Ventas Barra</span>
+                            </div>
+                            <span className="font-medium">{formatCLP(incomeBreakdown.sale)}</span>
                           </div>
-                          <span className="font-medium">{formatCLP(incomeBreakdown.sale)}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <div className="flex items-center gap-2">
-                            <Ticket className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">Entradas</span>
+                          <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-2">
+                              <Ticket className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">Entradas</span>
+                            </div>
+                            <span className="font-medium">{formatCLP(incomeBreakdown.ticket)}</span>
                           </div>
-                          <span className="font-medium">{formatCLP(incomeBreakdown.ticket)}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <div className="flex items-center gap-2">
-                            <FileEdit className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">Manuales</span>
+                          <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-2">
+                              <FileEdit className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">Manuales</span>
+                            </div>
+                            <span className="font-medium">{formatCLP(incomeBreakdown.manual)}</span>
                           </div>
-                          <span className="font-medium">{formatCLP(incomeBreakdown.manual)}</span>
                         </div>
-                      </div>
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -479,7 +547,7 @@ export default function IncomeStatement() {
                           {costOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           <CardTitle className="text-base font-medium">Costo de Ventas</CardTitle>
                         </div>
-                        <span className="text-lg font-semibold text-destructive">-{formatCLP(costOfSales.total_cost)}</span>
+                        <span className="text-lg font-semibold text-destructive">-{formatCLP(displayCosto)}</span>
                       </div>
                     </CardHeader>
                   </CollapsibleTrigger>
@@ -497,7 +565,7 @@ export default function IncomeStatement() {
                         </div>
                         <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
                           <span className="text-sm font-medium">Costo total de insumos</span>
-                          <span className="font-semibold text-destructive">{formatCLP(costOfSales.total_cost)}</span>
+                          <span className="font-semibold text-destructive">{formatCLP(displayCosto)}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -515,7 +583,7 @@ export default function IncomeStatement() {
                           {expensesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           <CardTitle className="text-base font-medium">Gastos Operacionales</CardTitle>
                         </div>
-                        <span className="text-lg font-semibold text-destructive">-{formatCLP(totalExpenses)}</span>
+                        <span className="text-lg font-semibold text-destructive">-{formatCLP(displayGastos)}</span>
                       </div>
                     </CardHeader>
                   </CollapsibleTrigger>
@@ -561,7 +629,7 @@ export default function IncomeStatement() {
             </div>
 
             {/* Summary Footer */}
-            <Card className={`card-minimal ${netResult >= 0 ? "bg-primary/5 border-primary/20" : "bg-destructive/5 border-destructive/20"}`}>
+            <Card className={`card-minimal ${displayResultado >= 0 ? "bg-primary/5 border-primary/20" : "bg-destructive/5 border-destructive/20"}`}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -571,13 +639,16 @@ export default function IncomeStatement() {
                         ? `${format(dateRange.from, "dd/MM/yyyy", { locale: es })} - ${format(dateRange.to, "dd/MM/yyyy", { locale: es })}`
                         : ""}
                     </p>
+                    {frozenSummary && (
+                      <Badge variant="secondary" className="mt-1">Congelado</Badge>
+                    )}
                   </div>
                   <div className="text-right">
-                    <p className={`text-3xl font-bold ${netResult >= 0 ? "text-primary" : "text-destructive"}`}>
-                      {formatCLP(netResult)}
+                    <p className={`text-3xl font-bold ${displayResultado >= 0 ? "text-primary" : "text-destructive"}`}>
+                      {formatCLP(displayResultado)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {netResult >= 0 ? "Utilidad" : "Pérdida"}
+                      {displayResultado >= 0 ? "Utilidad" : "Pérdida"}
                     </p>
                   </div>
                 </div>
