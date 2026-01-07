@@ -401,6 +401,19 @@ export default function Sales() {
 
       if (itemsError) throw itemsError;
 
+      // Record gross income entry
+      await supabase
+        .from("gross_income_entries")
+        .insert({
+          venue_id: sale.venue_id || "00000000-0000-0000-0000-000000000000",
+          source_type: "sale",
+          source_id: sale.id,
+          amount: Math.round(totalAmount),
+          description: `Venta ${saleNumber}`,
+          jornada_id: activeJornadaId || null,
+          created_by: session.session.user.id
+        });
+
       // Issue electronic document
       const docResult = await issueDocument(sale.id, documentType);
       const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
