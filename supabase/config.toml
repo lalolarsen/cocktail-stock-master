@@ -14,3 +14,6 @@ verify_jwt = true
 
 [functions.send-jornada-summary]
 verify_jwt = false
+
+[functions.send-financial-summary]
+verify_jwt = false
