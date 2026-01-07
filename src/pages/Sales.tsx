@@ -1,13 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, X, LogOut, FileText, CreditCard, Banknote, Smartphone, QrCode, MapPin, Store } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, FileText, CreditCard, Banknote, Smartphone, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -23,6 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Cocktail = {
   id: string;
@@ -71,7 +78,23 @@ export default function Sales() {
   const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showPosSelection, setShowPosSelection] = useState(true);
   
-  // Pickup QR state
+  // Clear cart confirmation
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  
+  // Success screen state
+  const [showSuccessScreen, setShowSuccessScreen] = useState(false);
+  const [lastSaleData, setLastSaleData] = useState<{
+    saleNumber: string;
+    total: number;
+    pickupData?: {
+      token: string;
+      expiresAt: string;
+      items: Array<{ name: string; quantity: number; price: number }>;
+      barName?: string;
+    };
+  } | null>(null);
+  
+  // Pickup QR state (for viewing recent sales QR)
   const [showPickupQR, setShowPickupQR] = useState(false);
   const [pickupQRData, setPickupQRData] = useState<{
     token: string;
@@ -81,7 +104,9 @@ export default function Sales() {
     total: number;
     barName?: string;
   } | null>(null);
+  
   const navigate = useNavigate();
+  const cartScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (shouldRedirect) {
@@ -115,6 +140,36 @@ export default function Sales() {
     if (selectedBarId) localStorage.setItem("selectedBarId", selectedBarId);
   }, [selectedPosId, selectedBarId]);
 
+  // Auto-scroll to last added item
+  useEffect(() => {
+    if (cartScrollRef.current && cart.length > 0) {
+      cartScrollRef.current.scrollTop = cartScrollRef.current.scrollHeight;
+    }
+  }, [cart.length]);
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Don't trigger if user is typing in an input or dialog is open
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+      return;
+    }
+    
+    if (e.key === "Enter" && cart.length > 0 && !loading && !showSuccessScreen) {
+      e.preventDefault();
+      processSale();
+    }
+    
+    if (e.key === "Escape" && cart.length > 0 && !loading && !showSuccessScreen) {
+      e.preventDefault();
+      setShowClearConfirm(true);
+    }
+  }, [cart.length, loading, showSuccessScreen]);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   const fetchPosTerminals = async () => {
     const { data, error } = await supabase
       .from("pos_terminals")
@@ -124,11 +179,9 @@ export default function Sales() {
     
     if (!error && data) {
       setPosTerminals(data);
-      // Auto-select if only one POS
       if (data.length === 1) {
         setSelectedPosId(data[0].id);
       }
-      // Check if saved POS is still valid
       const savedPosId = localStorage.getItem("selectedPosId");
       if (savedPosId && data.some(p => p.id === savedPosId)) {
         setSelectedPosId(savedPosId);
@@ -146,11 +199,9 @@ export default function Sales() {
     
     if (!error && data) {
       setBarLocations(data);
-      // Auto-select if only one bar
       if (data.length === 1) {
         setSelectedBarId(data[0].id);
       }
-      // Check if saved bar is still valid
       const savedBarId = localStorage.getItem("selectedBarId");
       if (savedBarId && data.some(b => b.id === savedBarId)) {
         setSelectedBarId(savedBarId);
@@ -180,7 +231,7 @@ export default function Sales() {
       .order("name");
 
     if (error) {
-      toast.error("Error al cargar cocteles");
+      toast.error("Error al cargar productos");
       return;
     }
 
@@ -201,6 +252,7 @@ export default function Sales() {
         )
       `)
       .eq("seller_id", session.session.user.id)
+      .eq("is_cancelled", false)
       .order("created_at", { ascending: false })
       .limit(5);
 
@@ -222,23 +274,34 @@ export default function Sales() {
     } else {
       setCart([...cart, { cocktail, quantity: 1 }]);
     }
-    toast.success(`${cocktail.name} agregado`);
   };
 
-  const removeFromCart = (cocktailId: string) => {
-    setCart(cart.filter((item) => item.cocktail.id !== cocktailId));
-  };
-
-  const updateQuantity = (cocktailId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(cocktailId);
-      return;
+  const decreaseQuantity = (cocktailId: string) => {
+    const item = cart.find((i) => i.cocktail.id === cocktailId);
+    if (item && item.quantity > 1) {
+      setCart(
+        cart.map((i) =>
+          i.cocktail.id === cocktailId ? { ...i, quantity: i.quantity - 1 } : i
+        )
+      );
+    } else {
+      setCart(cart.filter((i) => i.cocktail.id !== cocktailId));
     }
+  };
+
+  const increaseQuantity = (cocktailId: string) => {
     setCart(
       cart.map((item) =>
-        item.cocktail.id === cocktailId ? { ...item, quantity } : item
+        item.cocktail.id === cocktailId
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
       )
     );
+  };
+
+  const clearCart = () => {
+    setCart([]);
+    setShowClearConfirm(false);
   };
 
   const calculateTotal = () => {
@@ -258,7 +321,6 @@ export default function Sales() {
       return;
     }
     
-    // Get POS name for point_of_sale field
     const selectedPos = posTerminals.find(p => p.id === selectedPosId);
     if (selectedPos) {
       setPointOfSale(selectedPos.name);
@@ -286,7 +348,6 @@ export default function Sales() {
     setLoading(true);
     setIssuingDocument(true);
 
-    // Store cart items for QR display before clearing
     const cartItemsForQR = cart.map((item) => ({
       name: item.cocktail.name,
       quantity: item.quantity,
@@ -295,24 +356,18 @@ export default function Sales() {
     const totalForQR = calculateTotal();
     const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
 
-    let saleId: string | null = null;
-
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.user) throw new Error("No autenticado");
 
-      // Generate unique sale number using database sequence for multi-cashier safety
       const selectedPos = posTerminals.find(p => p.id === selectedPosId);
       const posPrefix = selectedPos?.name.substring(0, 3).toUpperCase() || "POS";
       
-      // Use RPC for atomic sale number generation
       const { data: saleNumberData, error: seqError } = await supabase.rpc("generate_sale_number", { p_pos_prefix: posPrefix });
       if (seqError) throw seqError;
       const saleNumber = saleNumberData as string;
       const totalAmount = calculateTotal();
 
-      // Create sale with pos_id and bar_location_id
-      // If no active jornada, mark as outside_jornada
       const { data: sale, error: saleError } = await supabase
         .from("sales")
         .insert({
@@ -331,9 +386,7 @@ export default function Sales() {
         .single();
 
       if (saleError) throw saleError;
-      saleId = sale.id;
 
-      // Create sale items
       const saleItems = cart.map((item) => ({
         sale_id: sale.id,
         cocktail_id: item.cocktail.id,
@@ -348,41 +401,40 @@ export default function Sales() {
 
       if (itemsError) throw itemsError;
 
-      // Issue electronic document (provider-agnostic)
+      // Issue electronic document
       const docResult = await issueDocument(sale.id, documentType);
       const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
       
-      if (docResult.success) {
-        toast.success(`Venta ${saleNumber} registrada. ${docLabel}: ${docResult.folio}`);
-      } else {
-        toast.warning(`Venta ${saleNumber} registrada. ${docLabel} pendiente: ${docResult.errorMessage}`);
+      if (!docResult.success) {
+        console.warn(`${docLabel} pendiente: ${docResult.errorMessage}`);
       }
 
       // Generate pickup QR token
+      let pickupData: typeof lastSaleData["pickupData"] = undefined;
       const { data: tokenResult, error: tokenError } = await supabase.rpc(
         "generate_pickup_token",
         { p_sale_id: sale.id }
       );
 
-      if (tokenError) {
-        console.error("Error generating pickup token:", tokenError);
-        toast.warning("Venta registrada pero no se pudo generar QR de retiro");
-      } else if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; sale_number?: string; expires_at?: string; bar_name?: string };
+      if (!tokenError && tokenResult) {
+        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; bar_name?: string };
         if (result.success && result.token) {
-          // Show pickup QR dialog
-          setPickupQRData({
+          pickupData = {
             token: result.token,
-            saleNumber: result.sale_number || saleNumber,
             expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             items: cartItemsForQR,
-            total: totalForQR,
             barName: result.bar_name || selectedBarName,
-          });
-          setShowPickupQR(true);
+          };
         }
       }
 
+      // Show success screen
+      setLastSaleData({
+        saleNumber,
+        total: totalAmount,
+        pickupData,
+      });
+      setShowSuccessScreen(true);
       setCart([]);
       fetchRecentSales();
     } catch (error: any) {
@@ -393,23 +445,12 @@ export default function Sales() {
     }
   };
 
-  const cancelSale = async (saleId: string) => {
-    try {
-      const { error } = await supabase
-        .from("sales")
-        .update({ is_cancelled: true })
-        .eq("id", saleId);
-
-      if (error) throw error;
-
-      toast.success("Venta cancelada");
-      fetchRecentSales();
-    } catch (error: any) {
-      toast.error(error.message || "Error al cancelar venta");
-    }
+  const handleNewSale = () => {
+    setShowSuccessScreen(false);
+    setLastSaleData(null);
   };
 
-  const reprintQR = async (sale: any) => {
+  const viewSaleQR = async (sale: any) => {
     try {
       const { data: tokenResult, error: tokenError } = await supabase.rpc(
         "generate_pickup_token",
@@ -419,9 +460,8 @@ export default function Sales() {
       if (tokenError) throw tokenError;
       
       if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; error_code?: string; message?: string; bar_name?: string };
+        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; bar_name?: string; message?: string };
         if (result.success && result.token) {
-          // Build items from sale_items
           const items = (sale.sale_items || []).map((item: any) => ({
             name: item.cocktails?.name || "Item",
             quantity: item.quantity,
@@ -471,6 +511,14 @@ export default function Sales() {
     setShowPosSelection(true);
   };
 
+  // Format time from ISO string
+  const formatTime = (isoString: string) => {
+    return new Date(isoString).toLocaleTimeString("es-CL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   if (!isVerified) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
@@ -495,12 +543,11 @@ export default function Sales() {
           </div>
 
           <Card className="p-6 space-y-6">
-            {/* POS Terminal Selection */}
             <div className="space-y-3">
-              <Label className="flex items-center gap-2 text-lg">
+              <p className="flex items-center gap-2 text-lg font-medium">
                 <Store className="w-5 h-5" />
                 Caja (POS)
-              </Label>
+              </p>
               {posTerminals.length === 0 ? (
                 <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
                   No hay cajas disponibles. Contacta al administrador.
@@ -527,12 +574,11 @@ export default function Sales() {
               )}
             </div>
 
-            {/* Bar Location Selection */}
             <div className="space-y-3">
-              <Label className="flex items-center gap-2 text-lg">
+              <p className="flex items-center gap-2 text-lg font-medium">
                 <MapPin className="w-5 h-5" />
                 Barra Destino
-              </Label>
+              </p>
               {barLocations.length === 0 ? (
                 <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
                   No hay barras disponibles. Contacta al administrador.
@@ -583,265 +629,308 @@ export default function Sales() {
   const selectedPosName = posTerminals.find(p => p.id === selectedPosId)?.name;
   const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
 
+  // Success Screen after sale
+  if (showSuccessScreen && lastSaleData) {
+    return (
+      <>
+        {isDemoMode && <DemoWatermark />}
+        <div className={`min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+          <Card className="max-w-md w-full p-8 text-center space-y-6">
+            <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
+              <Check className="w-10 h-10 text-green-500" />
+            </div>
+            
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold">¡Venta Exitosa!</h1>
+              <p className="text-4xl font-bold text-primary">{lastSaleData.saleNumber}</p>
+              <p className="text-2xl font-semibold text-muted-foreground">
+                {formatCLP(lastSaleData.total)}
+              </p>
+            </div>
+
+            {lastSaleData.pickupData && (
+              <div className="border-t pt-6">
+                <PickupQRDialog
+                  open={true}
+                  onClose={() => {}}
+                  token={lastSaleData.pickupData.token}
+                  saleNumber={lastSaleData.saleNumber}
+                  expiresAt={lastSaleData.pickupData.expiresAt}
+                  items={lastSaleData.pickupData.items}
+                  total={lastSaleData.total}
+                  barName={lastSaleData.pickupData.barName}
+                  embedded
+                />
+              </div>
+            )}
+
+            <Button
+              onClick={handleNewSale}
+              size="lg"
+              className="w-full text-lg py-6"
+            >
+              Nueva Venta
+            </Button>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
-        <div className="max-w-7xl mx-auto space-y-4">
-        {/* Warning banner when no jornada active */}
-        <OutsideJornadaBanner />
-        
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold gradient-text">Portal de Ventas</h1>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Store className="w-4 h-4" />
-                {selectedPosName}
-              </span>
-              <span className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                {selectedBarName}
-              </span>
-              <Button variant="link" size="sm" className="h-auto p-0" onClick={changePosSelection}>
-                Cambiar
-              </Button>
+      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-14' : ''}`}>
+        {/* Compact Header */}
+        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold">Caja</h1>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Store className="w-4 h-4" />
+                  {selectedPosName}
+                </span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  {selectedBarName}
+                </span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={changePosSelection}>
+                  Cambiar
+                </Button>
+              </div>
             </div>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Salir
+            </Button>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Salir
-          </Button>
+          <OutsideJornadaBanner />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Cocktails List */}
-          <Card className="lg:col-span-2 p-6">
-            <h2 className="text-xl font-semibold mb-4">Menú de Cocteles</h2>
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pr-4">
-                {cocktails.map((cocktail) => (
-                  <Card
-                    key={cocktail.id}
-                    className="p-4 hover:shadow-lg transition-all cursor-pointer hover:border-primary/50 hover:scale-105"
-                    onClick={() => addToCart(cocktail)}
-                  >
-                    <div className="text-center space-y-2">
-                      <h3 className="font-semibold text-lg">{cocktail.name}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {cocktail.category}
-                      </Badge>
-                      <div className="text-2xl font-bold text-primary">
-                        {formatCLP(cocktail.price)}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </ScrollArea>
-          </Card>
-
-          {/* Cart */}
-          <Card className="p-6 h-fit sticky top-4">
-            <div className="flex items-center gap-2 mb-4">
-              <ShoppingCart className="w-5 h-5" />
-              <h2 className="text-xl font-semibold">Carrito</h2>
-            </div>
-
-            {cart.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                Carrito vacío
-              </p>
-            ) : (
-              <>
-                <ScrollArea className="h-48 mb-4">
-                  <div className="space-y-2">
-                    {cart.map((item) => (
-                      <div
-                        key={item.cocktail.id}
-                        className="flex justify-between items-center gap-2 p-2 border rounded"
+        <div className="max-w-7xl mx-auto p-4">
+          <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 h-[calc(100vh-120px)]">
+            {/* Product Grid - 70% */}
+            <div className="lg:col-span-7 overflow-hidden">
+              <Card className="h-full p-4">
+                <ScrollArea className="h-full">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pr-2">
+                    {cocktails.map((cocktail) => (
+                      <Card
+                        key={cocktail.id}
+                        className="p-4 cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 active:scale-95"
+                        onClick={() => addToCart(cocktail)}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">
-                            {item.cocktail.name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatCLP(item.cocktail.price)} c/u
-                          </p>
+                        <div className="text-center space-y-1">
+                          <h3 className="font-bold text-lg leading-tight">{cocktail.name}</h3>
+                          <div className="text-2xl font-bold text-primary">
+                            {formatCLP(cocktail.price)}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateQuantity(
-                                item.cocktail.id,
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="w-16"
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => removeFromCart(item.cocktail.id)}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
+                      </Card>
                     ))}
                   </div>
                 </ScrollArea>
-
-                <div className="space-y-4">
-                  {/* Bar destination display */}
-                  <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg text-sm">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    <span>Retiro en: <strong>{selectedBarName}</strong></span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                      <Banknote className="w-4 h-4" />
-                      Método de Pago
-                    </Label>
-                    <Select
-                      value={paymentMethod}
-                      onValueChange={(value: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar método" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">
-                          <span className="flex items-center gap-2">
-                            <Banknote className="w-4 h-4" />
-                            Efectivo
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="debit">
-                          <span className="flex items-center gap-2">
-                            <CreditCard className="w-4 h-4" />
-                            Débito
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="credit">
-                          <span className="flex items-center gap-2">
-                            <CreditCard className="w-4 h-4" />
-                            Crédito
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="transfer">
-                          <span className="flex items-center gap-2">
-                            <Smartphone className="w-4 h-4" />
-                            Transferencia
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Tipo de Documento
-                    </Label>
-                    <Select
-                      value={documentType}
-                      onValueChange={(value: DocumentType) => setDocumentType(value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="boleta">Boleta Electrónica</SelectItem>
-                        <SelectItem value="factura">Factura Electrónica</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="border-t pt-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <span className="font-semibold">Total:</span>
-                      <span className="text-2xl font-bold text-primary">
-                        {formatCLP(calculateTotal())}
-                      </span>
-                    </div>
-
-                    <Button
-                      onClick={processSale}
-                      disabled={loading || issuingDocument}
-                      className="w-full"
-                      size="lg"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          {issuingDocument ? "Emitiendo documento..." : "Procesando..."}
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="mr-2 h-4 w-4" />
-                          Procesar Venta
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
-          </Card>
-        </div>
-
-        {/* Recent Sales */}
-        {recentSales.length > 0 && (
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Ventas Recientes</h2>
-            <div className="space-y-2">
-              {recentSales.map((sale) => (
-                <div
-                  key={sale.id}
-                  className="flex justify-between items-center p-4 border rounded"
-                >
-                  <div>
-                    <p className="font-semibold">{sale.sale_number}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {sale.point_of_sale} • {formatCLP(sale.total_amount)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {sale.is_cancelled ? (
-                      <Badge variant="destructive">Cancelada</Badge>
-                    ) : (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => reprintQR(sale)}
-                        >
-                          <QrCode className="w-4 h-4 mr-1" />
-                          QR
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => cancelSale(sale.id)}
-                        >
-                          Cancelar
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+              </Card>
             </div>
-          </Card>
-        )}
+
+            {/* Cart Panel - 30% */}
+            <div className="lg:col-span-3 flex flex-col gap-4">
+              {/* Cart */}
+              <Card className="flex-1 p-4 flex flex-col min-h-0">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5" />
+                    <h2 className="text-lg font-semibold">Carrito</h2>
+                  </div>
+                  {cart.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setShowClearConfirm(true)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+
+                {cart.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                    Carrito vacío
+                  </div>
+                ) : (
+                  <>
+                    <ScrollArea className="flex-1 min-h-0" ref={cartScrollRef}>
+                      <div className="space-y-2 pr-2">
+                        {cart.map((item) => (
+                          <div
+                            key={item.cocktail.id}
+                            className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{item.cocktail.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatCLP(item.cocktail.price * item.quantity)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8"
+                                onClick={() => decreaseQuantity(item.cocktail.id)}
+                              >
+                                <Minus className="w-4 h-4" />
+                              </Button>
+                              <span className="w-8 text-center font-bold">{item.quantity}</span>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8"
+                                onClick={() => increaseQuantity(item.cocktail.id)}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+
+                    <div className="mt-4 space-y-3 border-t pt-4">
+                      {/* Payment & Document selectors (compact) */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Select
+                          value={paymentMethod}
+                          onValueChange={(value: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(value)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">
+                              <span className="flex items-center gap-2">
+                                <Banknote className="w-4 h-4" />
+                                Efectivo
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="debit">
+                              <span className="flex items-center gap-2">
+                                <CreditCard className="w-4 h-4" />
+                                Débito
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="credit">
+                              <span className="flex items-center gap-2">
+                                <CreditCard className="w-4 h-4" />
+                                Crédito
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="transfer">
+                              <span className="flex items-center gap-2">
+                                <Smartphone className="w-4 h-4" />
+                                Transfer
+                              </span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Select
+                          value={documentType}
+                          onValueChange={(value: DocumentType) => setDocumentType(value)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="boleta">Boleta</SelectItem>
+                            <SelectItem value="factura">Factura</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Total */}
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-semibold">Total:</span>
+                        <span className="text-3xl font-bold text-primary">
+                          {formatCLP(calculateTotal())}
+                        </span>
+                      </div>
+
+                      {/* Cobrar Button */}
+                      <Button
+                        onClick={processSale}
+                        disabled={loading}
+                        className="w-full text-lg py-6"
+                        size="lg"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            {issuingDocument ? "Procesando..." : "Procesando..."}
+                          </>
+                        ) : (
+                          "Cobrar"
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </Card>
+
+              {/* Recent Sales (minimal) */}
+              {recentSales.length > 0 && (
+                <Card className="p-4 shrink-0">
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-2">Recientes</h3>
+                  <div className="space-y-1">
+                    {recentSales.slice(0, 5).map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="flex items-center justify-between text-sm py-1"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-medium">{sale.sale_number}</span>
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatTime(sale.created_at)}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => viewSaleQR(sale)}
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Pickup QR Dialog */}
+      {/* Clear Cart Confirmation */}
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Limpiar carrito?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminarán todos los items del carrito.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={clearCart}>Limpiar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Pickup QR Dialog (for viewing recent sales) */}
       {showPickupQR && pickupQRData && (
         <PickupQRDialog
           open={showPickupQR}
@@ -857,7 +946,6 @@ export default function Sales() {
           barName={pickupQRData.barName}
         />
       )}
-      </div>
     </>
   );
 }
