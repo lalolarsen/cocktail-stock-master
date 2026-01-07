@@ -4,31 +4,46 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { DemoWatermark } from "@/components/DemoWatermark";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { Html5Qrcode } from "html5-qrcode";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 type MissingItem = {
-  product_id: string;
-  name: string;
-  required: number;
-  available: number;
+  product_name: string;
+  required_qty: number;
   unit: string;
+};
+
+type DeliverItem = {
+  name: string;
+  quantity: number;
+};
+
+type DeliverInfo = {
+  type: "cover" | "menu_items";
+  name?: string;
+  quantity?: number;
+  items?: DeliverItem[];
+  source: "sale" | "ticket";
+  sale_number?: string;
+  ticket_number?: string;
 };
 
 type RedemptionResult = {
   success: boolean;
   error_code?: string;
   message: string;
+  deliver?: DeliverInfo;
   sale_number?: string;
-  items?: Array<{ name: string; quantity: number }>;
   total_amount?: number;
   redeemed_at?: string;
-  expected_bar?: string;
-  your_bar?: string;
+  previously_redeemed_at?: string;
+  bar_location?: { id: string; name: string };
   bar_name?: string;
   missing?: MissingItem[];
 };
@@ -156,6 +171,36 @@ function getErrorTitle(errorCode?: string): string {
     case "INSUFFICIENT_BAR_STOCK": return "SIN STOCK EN ESTA BARRA";
     default: return "ERROR";
   }
+}
+
+/**
+ * Format source label in Spanish
+ */
+function getSourceLabel(source: string): string {
+  return source === "ticket" ? "Cover" : "Caja";
+}
+
+/**
+ * Get primary delivery name and quantity from deliver info
+ */
+function getDeliveryDisplay(deliver?: DeliverInfo): { name: string; quantity: number } {
+  if (!deliver) return { name: "Pedido", quantity: 1 };
+  
+  if (deliver.type === "cover" && deliver.name) {
+    return { name: deliver.name, quantity: deliver.quantity || 1 };
+  }
+  
+  if (deliver.type === "menu_items" && deliver.items && deliver.items.length > 0) {
+    // If only one item, show it directly
+    if (deliver.items.length === 1) {
+      return { name: deliver.items[0].name, quantity: deliver.items[0].quantity };
+    }
+    // Multiple items - show first item name
+    const totalQty = deliver.items.reduce((sum, item) => sum + item.quantity, 0);
+    return { name: deliver.items[0].name, quantity: totalQty };
+  }
+  
+  return { name: "Pedido", quantity: 1 };
 }
 
 export default function Bar() {
@@ -652,11 +697,6 @@ export default function Bar() {
     })();
   };
 
-  const getItemCount = () => {
-    if (!result?.items) return 0;
-    return result.items.reduce((sum, item) => sum + item.quantity, 0);
-  };
-
   // Debug mode toggle - tap header 5 times within 2 seconds
   const handleHeaderTap = () => {
     debugTapCountRef.current++;
@@ -760,22 +800,55 @@ export default function Bar() {
     );
   }
 
-  // Full-screen success state
+  // Full-screen SUCCESS state - shows what to deliver
   if (scanState === "success" && result?.success) {
+    const delivery = getDeliveryDisplay(result.deliver);
+    const hasMultipleItems = result.deliver?.type === "menu_items" && result.deliver?.items && result.deliver.items.length > 1;
+    
     return (
       <div 
         className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-600 text-white p-6"
         onClick={forceFullReset}
       >
-        <CheckCircle2 className="w-32 h-32 mb-6 animate-pulse" />
-        <h1 className="text-5xl font-black mb-4 tracking-tight">ENTREGADO</h1>
-        <p className="text-3xl font-bold mb-2">{result.sale_number}</p>
-        <p className="text-2xl opacity-90">{getItemCount()} {getItemCount() === 1 ? "item" : "items"}</p>
+        <CheckCircle2 className="w-24 h-24 mb-4 animate-pulse" />
+        <h1 className="text-4xl font-black mb-4 tracking-tight">ENTREGAR</h1>
+        
+        {/* Main item name - BIG */}
+        <p className="text-5xl font-black mb-3 text-center leading-tight">{delivery.name}</p>
+        
+        {/* Quantity badge */}
+        <div className="bg-white/20 rounded-full px-6 py-2 mb-4">
+          <span className="text-3xl font-bold">x{delivery.quantity}</span>
+        </div>
+        
+        {/* Show all items if multiple */}
+        {hasMultipleItems && result.deliver?.items && (
+          <div className="bg-white/10 rounded-xl p-4 mb-4 w-full max-w-sm">
+            {result.deliver.items.map((item, idx) => (
+              <div key={idx} className="flex justify-between text-lg">
+                <span>{item.name}</span>
+                <span className="font-bold">x{item.quantity}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {/* Source label */}
+        <p className="text-lg opacity-90 mb-2">
+          Origen: {getSourceLabel(result.deliver?.source || "sale")}
+        </p>
+        
+        {/* Sale/ticket number */}
+        {(result.deliver?.sale_number || result.deliver?.ticket_number || result.sale_number) && (
+          <p className="text-sm opacity-70">
+            #{result.deliver?.sale_number || result.deliver?.ticket_number || result.sale_number}
+          </p>
+        )}
         
         <Button 
           onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
           variant="secondary"
-          className="mt-8 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-green-700 border-0 shadow-lg"
+          className="mt-6 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-green-700 border-0 shadow-lg"
         >
           <RefreshCw className="w-6 h-6 mr-3" />
           Escanear Siguiente
@@ -786,19 +859,41 @@ export default function Bar() {
     );
   }
 
-  // Full-screen ALREADY USED state (orange, prominent)
+  // Full-screen ALREADY USED state - shows what it was
   if (scanState === "error" && result?.error_code === "ALREADY_REDEEMED") {
+    const delivery = getDeliveryDisplay(result.deliver);
+    const previousTime = result.previously_redeemed_at 
+      ? format(new Date(result.previously_redeemed_at), "HH:mm", { locale: es })
+      : null;
+    
     return (
       <div 
         className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-orange-500 text-white p-6"
         onClick={forceFullReset}
       >
-        <AlertCircle className="w-32 h-32 mb-6 animate-pulse" />
-        <h1 className="text-5xl font-black mb-4 tracking-tight">QR YA USADO</h1>
-        <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
+        <AlertCircle className="w-24 h-24 mb-4 animate-pulse" />
+        <h1 className="text-4xl font-black mb-4 tracking-tight">YA USADO</h1>
+        
+        {/* Show what was ordered */}
+        {result.deliver && (
+          <>
+            <p className="text-3xl font-bold mb-2">{delivery.name}</p>
+            <div className="bg-white/20 rounded-full px-4 py-1 mb-4">
+              <span className="text-xl font-bold">x{delivery.quantity}</span>
+            </div>
+          </>
+        )}
+        
+        {/* Previous redemption time */}
+        {previousTime && (
+          <div className="flex items-center gap-2 text-lg opacity-90 mb-2">
+            <Clock className="w-5 h-5" />
+            <span>Canjeado a las {previousTime}</span>
+          </div>
+        )}
         
         {result.sale_number && (
-          <p className="text-2xl font-bold mt-4 opacity-80">#{result.sale_number}</p>
+          <p className="text-sm opacity-70">#{result.sale_number}</p>
         )}
         
         {debugMode && (
@@ -812,7 +907,7 @@ export default function Bar() {
         <Button 
           onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
           variant="secondary"
-          className="mt-8 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-orange-600 border-0 shadow-lg"
+          className="mt-6 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-orange-600 border-0 shadow-lg"
         >
           <RefreshCw className="w-6 h-6 mr-3" />
           Escanear Siguiente
@@ -823,74 +918,78 @@ export default function Bar() {
     );
   }
 
+  // Full-screen INSUFFICIENT STOCK state - shows what and missing ingredients
+  if (scanState === "error" && result?.error_code === "INSUFFICIENT_BAR_STOCK") {
+    const delivery = getDeliveryDisplay(result.deliver);
+    const missingItems = result.missing?.slice(0, 3) || [];
+    
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-amber-600 text-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Package className="w-24 h-24 mb-4" />
+        <h1 className="text-4xl font-black mb-2 tracking-tight text-center">SIN STOCK</h1>
+        <p className="text-xl opacity-90 text-center mb-4">{result.bar_name}</p>
+        
+        {/* What they wanted */}
+        <div className="bg-white/20 rounded-xl p-4 w-full max-w-sm mb-4">
+          <p className="text-sm opacity-80 text-center mb-1">Pedido:</p>
+          <p className="text-2xl font-bold text-center">{delivery.name}</p>
+          <p className="text-center opacity-90">x{delivery.quantity}</p>
+        </div>
+        
+        {/* Missing ingredient details - max 3 */}
+        {missingItems.length > 0 && (
+          <div className="bg-white/20 rounded-xl p-4 w-full max-w-sm space-y-2">
+            <p className="text-sm font-semibold text-center opacity-80">Falta:</p>
+            {missingItems.map((item, idx) => (
+              <div key={idx} className="flex justify-between text-base">
+                <span>{item.product_name}</span>
+                <span className="font-mono">{item.required_qty} {item.unit}</span>
+              </div>
+            ))}
+            {result.missing && result.missing.length > 3 && (
+              <p className="text-center text-sm opacity-80 mt-2">
+                + {result.missing.length - 3} más
+              </p>
+            )}
+          </div>
+        )}
+        
+        <p className="text-lg mt-4 opacity-80 text-center">
+          El QR sigue válido - prueba en otra barra
+        </p>
+        
+        {/* Action buttons */}
+        <div className="flex flex-col gap-3 mt-6 w-full max-w-sm">
+          <Button 
+            onClick={(e) => { e.stopPropagation(); changeBarSelection(); }}
+            variant="secondary"
+            className="w-full h-14 text-lg font-bold bg-white hover:bg-white/90 text-amber-700 border-0 shadow-lg"
+          >
+            <MapPin className="w-5 h-5 mr-2" />
+            Cambiar Barra
+          </Button>
+          <Button 
+            onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
+            variant="outline"
+            className="w-full h-12 text-base font-semibold bg-transparent border-white/50 text-white hover:bg-white/10"
+          >
+            <RefreshCw className="w-5 h-5 mr-2" />
+            Escanear Siguiente
+          </Button>
+        </div>
+        
+        <p className="mt-4 text-sm opacity-60">Auto-cierre en 3s</p>
+      </div>
+    );
+  }
+
   // Full-screen error state (other errors)
   if (scanState === "error" && result) {
     const isWrongBar = result.error_code === "WRONG_BAR";
-    const isInsufficientStock = result.error_code === "INSUFFICIENT_BAR_STOCK";
     
-    // Handle insufficient stock with special UI
-    if (isInsufficientStock) {
-      const firstMissing = result.missing?.[0];
-      
-      return (
-        <div 
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-amber-600 text-white"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Package className="w-28 h-28 mb-6" />
-          <h1 className="text-4xl font-black mb-2 tracking-tight text-center">
-            SIN STOCK EN ESTA BARRA
-          </h1>
-          <p className="text-xl opacity-90 text-center mb-4">{result.bar_name}</p>
-          
-          {/* Missing ingredient details */}
-          {firstMissing && (
-            <div className="bg-white/20 rounded-xl p-4 w-full max-w-sm space-y-2">
-              <p className="text-lg font-semibold text-center">Falta:</p>
-              <p className="text-2xl font-bold text-center">{firstMissing.name}</p>
-              <div className="flex justify-center gap-4 text-sm opacity-90">
-                <span>Necesario: {firstMissing.required} {firstMissing.unit}</span>
-                <span>|</span>
-                <span>Disponible: {firstMissing.available} {firstMissing.unit}</span>
-              </div>
-              
-              {/* Show additional missing items if any */}
-              {result.missing && result.missing.length > 1 && (
-                <p className="text-center text-sm opacity-80 mt-2">
-                  + {result.missing.length - 1} ingrediente{result.missing.length > 2 ? "s" : ""} más
-                </p>
-              )}
-            </div>
-          )}
-          
-          <p className="text-lg mt-4 opacity-80 text-center">
-            El QR sigue válido - prueba en otra barra
-          </p>
-          
-          {/* Action buttons */}
-          <div className="flex flex-col gap-3 mt-6 w-full max-w-sm">
-            <Button 
-              onClick={(e) => { e.stopPropagation(); changeBarSelection(); }}
-              variant="secondary"
-              className="w-full h-14 text-lg font-bold bg-white hover:bg-white/90 text-amber-700 border-0 shadow-lg"
-            >
-              <MapPin className="w-5 h-5 mr-2" />
-              Cambiar Barra
-            </Button>
-            <Button 
-              onClick={(e) => { e.stopPropagation(); forceFullReset(); }}
-              variant="outline"
-              className="w-full h-12 text-base font-semibold bg-transparent border-white/50 text-white hover:bg-white/10"
-            >
-              <RefreshCw className="w-5 h-5 mr-2" />
-              Escanear Siguiente
-            </Button>
-          </div>
-          
-          <p className="mt-4 text-sm opacity-60">Auto-cierre en 3s</p>
-        </div>
-      );
-    }
     // Determine background color based on error type
     const bgColor = isWrongBar ? "bg-orange-600" : 
                     result.error_code === "QR_INVALID" ? "bg-gray-600" : "bg-red-600";
@@ -911,14 +1010,6 @@ export default function Bar() {
           {getErrorTitle(result.error_code)}
         </h1>
         <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
-        
-        {/* Show expected bar for wrong bar errors */}
-        {isWrongBar && result.expected_bar && (
-          <div className="mt-4 p-4 bg-white/20 rounded-lg text-center">
-            <p className="text-lg">Este pedido es para:</p>
-            <p className="text-2xl font-bold">{result.expected_bar}</p>
-          </div>
-        )}
         
         {/* Debug info on error */}
         {debugMode && (
@@ -1010,151 +1101,79 @@ export default function Bar() {
                 <div 
                   key={scannerSessionId} 
                   id={`qr-reader-${scannerSessionId}`} 
-                  className="w-full h-full" 
+                  className="w-full h-full"
                 />
               )}
               
-              {/* Overlay with scanning hint */}
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
-              </div>
-              
-              {/* Status indicator */}
-              <div className="absolute top-4 left-0 right-0 flex justify-center">
-                <div className={`px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 ${
-                  scannerReady 
-                    ? "bg-green-500/90 text-white" 
-                    : "bg-yellow-500/90 text-black"
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${
-                    scannerReady ? "bg-white animate-pulse" : "bg-black"
-                  }`} />
-                  {scannerReady ? "Listo para escanear" : "Iniciando cámara..."}
-                </div>
-              </div>
-              
-              {/* Loading indicator when scanner not ready */}
-              {!scannerReady && (
+              {/* Loading overlay while scanner initializes */}
+              {!scannerReady && scannerEnabled && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80">
                   <Loader2 className="w-12 h-12 animate-spin text-white" />
                 </div>
               )}
-            </div>
-            
-            {/* Hint text */}
-            <div className="bg-black px-4 py-2">
-              <p className="text-center text-sm text-white/70">
-                Sube el brillo del celular del cliente si falla la lectura
-              </p>
-            </div>
-            
-            {/* Enhanced Debug panel */}
-            {debugMode && (
-              <div className="bg-black border-t border-green-500/30 px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-green-400 font-semibold">DEBUG MODE</span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-xs text-green-400 hover:text-green-300"
-                    onClick={() => {
-                      const debugText = `SESSION: ${scannerSessionId}\nLATCH: ${scanLatchRef.current}\nIN_FLIGHT: ${redeemInFlightRef.current}\nRAW: ${lastRawScan || "(none)"}\nPARSED: ${lastParsedToken || "(none)"}\nLAST_TOKEN: ${lastTokenRef.current || "(none)"}\nCOOLDOWN_REMAINING: ${Math.max(0, COOLDOWN_MS - (Date.now() - lastTokenAtRef.current))}ms\nBAR_ID: ${selectedBarId}`;
-                      navigator.clipboard.writeText(debugText);
-                      toast.success("Debug info copiado");
-                    }}
-                  >
-                    Copiar Debug
-                  </Button>
+              
+              {/* Scanning guide overlay */}
+              {scannerReady && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-green-400/80 font-mono">
-                    <span className="text-green-500">SESSION:</span> {scannerSessionId} | 
-                    <span className="text-green-500"> LATCH:</span> {scanLatchRef.current ? "ON" : "off"} |
-                    <span className="text-green-500"> READY:</span> {scannerReady ? "yes" : "no"}
-                  </p>
-                  <p className="text-xs text-green-400/80 font-mono break-all">
-                    <span className="text-green-500">RAW:</span> {lastRawScan || "(esperando escaneo)"}
-                  </p>
-                  <p className="text-xs text-green-400/80 font-mono break-all">
-                    <span className="text-green-500">PARSED:</span> {lastParsedToken || "(ninguno)"}
-                  </p>
-                  <p className="text-xs text-green-400/80 font-mono">
-                    <span className="text-green-500">BAR:</span> {selectedBarName} ({selectedBarId?.slice(0, 8)}...)
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            {/* PROMINENT Escanear siguiente button - always visible in idle */}
-            <div className="p-4 bg-primary">
-              <Button 
-                onClick={forceFullReset}
-                variant="secondary"
-                className="w-full h-16 text-xl font-bold bg-white hover:bg-white/90 text-primary shadow-lg"
-              >
-                <RefreshCw className="w-6 h-6 mr-3" />
-                Escanear Siguiente
-              </Button>
+              )}
             </div>
-            
-            {/* Manual entry button */}
-            <div className="px-4 pb-4 bg-card border-t border-border">
+
+            {/* Bottom controls */}
+            <div className="p-4 bg-card border-t border-border">
               <Button 
                 variant="outline" 
-                onClick={switchToManual} 
-                className="w-full h-12 text-base"
+                onClick={switchToManual}
+                className="w-full h-12"
               >
                 <Keyboard className="w-5 h-5 mr-2" />
-                Ingresar Código Manual
+                Ingresar código manual
               </Button>
+              
+              {/* Debug info panel */}
+              {debugMode && (
+                <div className="mt-4 p-3 bg-muted rounded-lg text-xs font-mono space-y-1">
+                  <p>Session: {scannerSessionId}</p>
+                  <p>Latch: {scanLatchRef.current ? "SET" : "open"}</p>
+                  <p>Ready: {scannerReady ? "yes" : "no"}</p>
+                  <p className="break-all">Last: {lastParsedToken || "(none)"}</p>
+                </div>
+              )}
             </div>
           </>
         )}
 
         {scanState === "manual" && (
-          <div className="flex-1 flex flex-col p-6">
-            <form onSubmit={handleManualSubmit} className="flex-1 flex flex-col gap-6">
-              <div className="flex-1 flex flex-col justify-center">
-                <label className="text-lg font-semibold mb-3 text-foreground">
-                  Código de Retiro
-                </label>
+          <div className="flex-1 flex flex-col p-6 justify-center">
+            <Card className="p-6 max-w-md mx-auto w-full">
+              <h2 className="text-xl font-bold mb-4 text-center">Ingreso Manual</h2>
+              <form onSubmit={handleManualSubmit} className="space-y-4">
                 <Input
+                  type="text"
+                  placeholder="Código del ticket..."
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
-                  placeholder="Ej: 9f3a1c7b6e2d4a9f"
+                  className="h-14 text-lg font-mono"
                   autoFocus
-                  autoComplete="off"
-                  inputMode="text"
-                  className="h-16 text-2xl text-center font-mono tracking-wider"
                 />
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Ingresa el código hexadecimal del QR
-                </p>
-              </div>
-              
-              <div className="space-y-3">
-                <Button 
-                  type="submit" 
-                  className="w-full h-16 text-xl font-bold"
-                  disabled={!manualToken.trim() || redeemInFlightRef.current}
-                >
+                <Button type="submit" className="w-full h-14 text-lg">
                   Validar Código
                 </Button>
-                <Button 
-                  type="button"
-                  variant="outline"
-                  onClick={switchToCamera}
-                  className="w-full h-14 text-lg"
-                >
-                  <Camera className="w-5 h-5 mr-2" />
-                  Volver a Cámara
-                </Button>
-              </div>
-            </form>
+              </form>
+              <Button 
+                variant="ghost" 
+                onClick={switchToCamera}
+                className="w-full mt-4"
+              >
+                <Camera className="w-5 h-5 mr-2" />
+                Volver a cámara
+              </Button>
+            </Card>
           </div>
         )}
       </div>
-      </div>
+    </div>
     </>
   );
 }
