@@ -555,6 +555,8 @@ export type Database = {
       pickup_tokens: {
         Row: {
           bar_location_id: string | null
+          cover_cocktail_id: string | null
+          cover_quantity: number | null
           created_at: string
           expires_at: string
           id: string
@@ -563,11 +565,15 @@ export type Database = {
           redeemed_at: string | null
           redeemed_by: string | null
           sale_id: string
+          source_type: string | null
           status: Database["public"]["Enums"]["pickup_token_status"]
+          ticket_sale_id: string | null
           token: string
         }
         Insert: {
           bar_location_id?: string | null
+          cover_cocktail_id?: string | null
+          cover_quantity?: number | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -576,11 +582,15 @@ export type Database = {
           redeemed_at?: string | null
           redeemed_by?: string | null
           sale_id: string
+          source_type?: string | null
           status?: Database["public"]["Enums"]["pickup_token_status"]
+          ticket_sale_id?: string | null
           token?: string
         }
         Update: {
           bar_location_id?: string | null
+          cover_cocktail_id?: string | null
+          cover_quantity?: number | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -589,7 +599,9 @@ export type Database = {
           redeemed_at?: string | null
           redeemed_by?: string | null
           sale_id?: string
+          source_type?: string | null
           status?: Database["public"]["Enums"]["pickup_token_status"]
+          ticket_sale_id?: string | null
           token?: string
         }
         Relationships: [
@@ -601,10 +613,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pickup_tokens_cover_cocktail_id_fkey"
+            columns: ["cover_cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pickup_tokens_sale_id_fkey"
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_tokens_ticket_sale_id_fkey"
+            columns: ["ticket_sale_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_sales"
             referencedColumns: ["id"]
           },
         ]
@@ -1447,6 +1473,160 @@ export type Database = {
           },
         ]
       }
+      ticket_sale_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          line_total: number
+          quantity: number
+          ticket_sale_id: string
+          ticket_type_id: string
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          line_total: number
+          quantity: number
+          ticket_sale_id: string
+          ticket_type_id: string
+          unit_price: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          line_total?: number
+          quantity?: number
+          ticket_sale_id?: string
+          ticket_type_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_sale_items_ticket_sale_id_fkey"
+            columns: ["ticket_sale_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_sale_items_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_sales: {
+        Row: {
+          created_at: string | null
+          id: string
+          jornada_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          payment_status: string
+          sold_by_worker_id: string
+          ticket_number: string
+          total: number
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          jornada_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          payment_status?: string
+          sold_by_worker_id: string
+          ticket_number: string
+          total: number
+          venue_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          jornada_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          payment_status?: string
+          sold_by_worker_id?: string
+          ticket_number?: string
+          total?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_sales_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_sales_sold_by_worker_id_fkey"
+            columns: ["sold_by_worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_sales_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_types: {
+        Row: {
+          cover_cocktail_id: string | null
+          cover_quantity: number | null
+          created_at: string | null
+          id: string
+          includes_cover: boolean | null
+          is_active: boolean | null
+          name: string
+          price: number
+          venue_id: string
+        }
+        Insert: {
+          cover_cocktail_id?: string | null
+          cover_quantity?: number | null
+          created_at?: string | null
+          id?: string
+          includes_cover?: boolean | null
+          is_active?: boolean | null
+          name: string
+          price: number
+          venue_id: string
+        }
+        Update: {
+          cover_cocktail_id?: string | null
+          cover_quantity?: number | null
+          created_at?: string | null
+          id?: string
+          includes_cover?: boolean | null
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_types_cover_cocktail_id_fkey"
+            columns: ["cover_cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_types_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -1585,6 +1765,15 @@ export type Database = {
         }
         Returns: Json
       }
+      create_ticket_sale_with_covers: {
+        Args: {
+          p_items: Json
+          p_jornada_id?: string
+          p_payment_method?: string
+          p_venue_id?: string
+        }
+        Returns: Json
+      }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
         Returns: Json
@@ -1593,6 +1782,7 @@ export type Database = {
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
+      generate_ticket_number: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
       get_expiring_lots: {
         Args: { p_days_ahead?: number; p_venue_id: string }
