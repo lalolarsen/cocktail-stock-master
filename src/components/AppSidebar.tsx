@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -63,6 +63,7 @@ const accountingViews: MenuItem[] = [
 
 const accountingLinks: ExternalLink[] = [
   { title: "Ingresos", icon: Banknote, path: "/admin/income" },
+  { title: "Estado de Resultados", icon: TrendingUp, path: "/admin/reports/estado-resultados" },
   { title: "Documentos", icon: FileCheck, path: "/admin/documents" },
   { title: "Auditoría Retiros", icon: QrCode, path: "/admin/pickups" },
 ];
