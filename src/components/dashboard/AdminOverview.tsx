@@ -49,6 +49,7 @@ interface TodayStats {
   salesToday: number;
   transactionsToday: number;
   qrsRedeemed: number;
+  grossIncome: number;
 }
 
 interface BarStatus {
@@ -77,7 +78,7 @@ interface Props {
 export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [jornada, setJornada] = useState<Jornada | null>(null);
-  const [todayStats, setTodayStats] = useState<TodayStats>({ salesToday: 0, transactionsToday: 0, qrsRedeemed: 0 });
+  const [todayStats, setTodayStats] = useState<TodayStats>({ salesToday: 0, transactionsToday: 0, qrsRedeemed: 0, grossIncome: 0 });
   const [barStatuses, setBarStatuses] = useState<BarStatus[]>([]);
   const [warehouseAlerts, setWarehouseAlerts] = useState<AlertItem[]>([]);
   const [barAlerts, setBarAlerts] = useState<AlertItem[]>([]);
@@ -144,14 +145,22 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .gte("redeemed_at", `${today}T00:00:00`)
       .eq("result", "success");
 
+    // Gross income today
+    const { data: incomeData } = await supabase
+      .from("gross_income_entries")
+      .select("amount")
+      .gte("created_at", `${today}T00:00:00`);
+
     const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
     const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
     const transactionsCount = (salesData?.length || 0) + (ticketData?.length || 0);
+    const grossIncomeTotal = incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
 
     setTodayStats({
       salesToday: barSalesTotal + ticketSalesTotal,
       transactionsToday: transactionsCount,
-      qrsRedeemed: qrCount || 0
+      qrsRedeemed: qrCount || 0,
+      grossIncome: grossIncomeTotal
     });
   };
 
@@ -398,7 +407,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {/* Jornada Status */}
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Jornada</p>
@@ -415,14 +424,22 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
               </div>
             </div>
 
-            {/* Sales Today */}
+            {/* Gross Income Today */}
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Ventas hoy</p>
+              <p className="text-sm text-muted-foreground">Ingresos brutos</p>
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-green-500" />
+                <span className="text-xl font-bold">{formatCLP(todayStats.grossIncome)}</span>
+              </div>
+            </div>
+
+            {/* Sales Today */}
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Ventas</p>
+              <div className="flex items-center gap-2">
                 <span className="text-xl font-bold">{formatCLP(todayStats.salesToday)}</span>
               </div>
-              <p className="text-xs text-muted-foreground">{todayStats.transactionsToday} transacciones</p>
+              <p className="text-xs text-muted-foreground">{todayStats.transactionsToday} txn</p>
             </div>
 
             {/* QRs Redeemed */}
@@ -516,6 +533,16 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
               >
                 <UtensilsCrossed className="h-6 w-6" />
                 <span>Carta</span>
+              </Button>
+
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="h-auto py-4 flex-col gap-2"
+                onClick={() => window.location.href = "/admin/income"}
+              >
+                <DollarSign className="h-6 w-6" />
+                <span>Ingresos</span>
               </Button>
             </div>
           </CardContent>

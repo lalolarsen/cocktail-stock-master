@@ -218,6 +218,64 @@ export type Database = {
           },
         ]
       }
+      gross_income_entries: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          jornada_id: string | null
+          source_id: string | null
+          source_type: string
+          venue_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          jornada_id?: string | null
+          source_id?: string | null
+          source_type: string
+          venue_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          jornada_id?: string | null
+          source_id?: string | null
+          source_type?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gross_income_entries_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gross_income_entries_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gross_income_entries_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoicing_config: {
         Row: {
           active_provider: string

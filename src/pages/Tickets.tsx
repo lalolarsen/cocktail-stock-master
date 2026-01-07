@@ -230,6 +230,22 @@ export default function Tickets() {
         throw new Error(result.error || "Error al procesar venta");
       }
 
+      // Record gross income entry
+      const { data: session } = await supabase.auth.getSession();
+      if (session.session?.user) {
+        await supabase
+          .from("gross_income_entries")
+          .insert({
+            venue_id: "00000000-0000-0000-0000-000000000000", // Will use profile venue
+            source_type: "ticket",
+            source_id: result.ticket_sale_id,
+            amount: result.total!,
+            description: `Entrada ${result.ticket_number}`,
+            jornada_id: activeJornadaId,
+            created_by: session.session.user.id
+          });
+      }
+
       toast.success(`Venta completada: ${result.ticket_number}`);
       
       setSaleResult({
