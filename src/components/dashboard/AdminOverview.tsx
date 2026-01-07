@@ -481,68 +481,72 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">Acciones rápidas</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <CardContent className="space-y-4">
+            {/* A) Primary action - Jornada control */}
+            {jornada?.estado === "activa" ? (
               <Button 
                 size="lg" 
-                className="h-auto py-4 flex-col gap-2"
+                variant="destructive"
+                className="w-full h-12 gap-3 text-base font-medium"
+                onClick={handleCloseJornada}
+                disabled={syncing}
+              >
+                {syncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
+                Cerrar jornada
+              </Button>
+            ) : (
+              <Button 
+                size="lg" 
+                className="w-full h-12 gap-3 text-base font-medium"
+                onClick={handleOpenJornada}
+                disabled={syncing}
+              >
+                {syncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+                Abrir jornada
+              </Button>
+            )}
+
+            {/* B) Secondary operational actions */}
+            <div className="grid grid-cols-2 gap-3">
+              <Button 
+                size="lg" 
+                variant="secondary"
+                className="h-11 gap-2"
                 onClick={() => onNavigate?.("replenishment")}
               >
-                <ClipboardList className="h-6 w-6" />
-                <span>Preparar reposición</span>
-              </Button>
-
-              {jornada?.estado === "activa" ? (
-                <Button 
-                  size="lg" 
-                  variant="destructive"
-                  className="h-auto py-4 flex-col gap-2"
-                  onClick={handleCloseJornada}
-                  disabled={syncing}
-                >
-                  {syncing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Square className="h-6 w-6" />}
-                  <span>Cerrar jornada</span>
-                </Button>
-              ) : (
-                <Button 
-                  size="lg" 
-                  className="h-auto py-4 flex-col gap-2 bg-green-600 hover:bg-green-700"
-                  onClick={handleOpenJornada}
-                  disabled={syncing}
-                >
-                  {syncing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Play className="h-6 w-6" />}
-                  <span>Abrir jornada</span>
-                </Button>
-              )}
-
-              <Button 
-                size="lg" 
-                variant="secondary"
-                className="h-auto py-4 flex-col gap-2"
-                onClick={() => onNavigate?.("products")}
-              >
-                <Package className="h-6 w-6" />
-                <span>Productos</span>
+                <ClipboardList className="h-4 w-4" />
+                Preparar reposición
               </Button>
 
               <Button 
                 size="lg" 
                 variant="secondary"
-                className="h-auto py-4 flex-col gap-2"
-                onClick={() => onNavigate?.("menu")}
-              >
-                <UtensilsCrossed className="h-6 w-6" />
-                <span>Carta</span>
-              </Button>
-
-              <Button 
-                size="lg" 
-                variant="outline"
-                className="h-auto py-4 flex-col gap-2"
+                className="h-11 gap-2"
                 onClick={() => window.location.href = "/admin/income"}
               >
-                <DollarSign className="h-6 w-6" />
-                <span>Ingresos</span>
+                <DollarSign className="h-4 w-4" />
+                Ingresos brutos
+              </Button>
+            </div>
+
+            {/* C) Management shortcuts */}
+            <div className="flex gap-3 pt-1">
+              <Button 
+                variant="ghost"
+                className="h-9 gap-2 text-muted-foreground hover:text-foreground"
+                onClick={() => onNavigate?.("products")}
+              >
+                <Package className="h-4 w-4" />
+                Productos
+              </Button>
+
+              <Button 
+                variant="ghost"
+                className="h-9 gap-2 text-muted-foreground hover:text-foreground"
+                onClick={() => onNavigate?.("menu")}
+              >
+                <UtensilsCrossed className="h-4 w-4" />
+                Carta
               </Button>
             </div>
           </CardContent>
