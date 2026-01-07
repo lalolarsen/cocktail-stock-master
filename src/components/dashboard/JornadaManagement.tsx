@@ -25,7 +25,7 @@ import {
 import { 
   Loader2, Plus, Calendar, History, Settings, Sparkles, 
   DollarSign, ShoppingCart, Users, TrendingUp, ChevronDown, ChevronUp,
-  Trash2, Play, Square
+  Trash2, Play, Square, Download
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, parseISO, isToday } from "date-fns";
@@ -335,6 +335,37 @@ export function JornadaManagement() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const exportJornadaCSV = (jornada: Jornada) => {
+    const summary = financialSummaries[jornada.id];
+    if (!summary) {
+      toast.error("No hay resumen financiero disponible");
+      return;
+    }
+
+    const rows = [
+      ["Cierre de Jornada"],
+      [`Jornada #${jornada.numero_jornada}`],
+      [`Fecha: ${format(parseISO(jornada.fecha), "dd/MM/yyyy", { locale: es })}`],
+      [`Cerrada: ${format(new Date(summary.closed_at), "dd/MM/yyyy HH:mm", { locale: es })}`],
+      [""],
+      ["Concepto", "Monto (CLP)"],
+      ["Ingresos Brutos", summary.ingresos_brutos],
+      ["Costo de Ventas", -summary.costo_ventas],
+      ["Utilidad Bruta", summary.utilidad_bruta],
+      ["Margen Bruto (%)", summary.margen_bruto],
+      ["Gastos Operacionales", -summary.gastos_operacionales],
+      ["Resultado del Período", summary.resultado_periodo],
+    ];
+
+    const csv = rows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `cierre_jornada_${jornada.id.slice(0, 8)}.csv`;
+    link.click();
+    toast.success("CSV exportado");
   };
 
   const getStatusBadge = (estado: string) => {
@@ -685,11 +716,25 @@ export function JornadaManagement() {
                             {financialSummaries[jornada.id] ? (
                               // Show frozen financial summary for closed jornadas
                               <div className="space-y-3 py-2">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <Badge variant="secondary">Resumen financiero congelado</Badge>
-                                  <span>
-                                    Cerrada el {format(new Date(financialSummaries[jornada.id].closed_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                                  </span>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Badge variant="secondary">Resumen financiero congelado</Badge>
+                                    <span>
+                                      Cerrada el {format(new Date(financialSummaries[jornada.id].closed_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                                    </span>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      exportJornadaCSV(jornada);
+                                    }}
+                                    className="gap-2"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                    Exportar CSV
+                                  </Button>
                                 </div>
                                 <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
                                   <div className="text-center">

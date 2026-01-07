@@ -305,7 +305,14 @@ export default function IncomeStatement() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `estado-resultados-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    
+    // Generate filename based on context
+    const dateStr = format(new Date(), "yyyy-MM-dd");
+    const filename = selectedJornadaId && frozenSummary
+      ? `cierre_jornada_${selectedJornadaId.slice(0, 8)}.csv`
+      : `estado_resultados_${dateStr}.csv`;
+    
+    link.download = filename;
     link.click();
   };
 
