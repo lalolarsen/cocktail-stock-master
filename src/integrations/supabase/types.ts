@@ -1321,9 +1321,11 @@ export type Database = {
           pickup_token_id: string | null
           product_id: string | null
           quantity: number
+          source_type: string | null
           stock_lot_id: string | null
           to_location_id: string | null
           transfer_id: string | null
+          unit_cost: number | null
         }
         Insert: {
           created_at?: string | null
@@ -1335,9 +1337,11 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity: number
+          source_type?: string | null
           stock_lot_id?: string | null
           to_location_id?: string | null
           transfer_id?: string | null
+          unit_cost?: number | null
         }
         Update: {
           created_at?: string | null
@@ -1349,9 +1353,11 @@ export type Database = {
           pickup_token_id?: string | null
           product_id?: string | null
           quantity?: number
+          source_type?: string | null
           stock_lot_id?: string | null
           to_location_id?: string | null
           transfer_id?: string | null
+          unit_cost?: number | null
         }
         Relationships: [
           {
@@ -1842,6 +1848,36 @@ export type Database = {
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       generate_ticket_number: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
+      get_cost_of_sales_by_date_range: {
+        Args: { p_from_date: string; p_to_date: string }
+        Returns: {
+          items_count: number
+          products_count: number
+          total_cost: number
+        }[]
+      }
+      get_cost_of_sales_by_jornada: {
+        Args: { p_jornada_id: string }
+        Returns: {
+          items_count: number
+          products_count: number
+          total_cost: number
+        }[]
+      }
+      get_cost_of_sales_by_product: {
+        Args: {
+          p_from_date?: string
+          p_jornada_id?: string
+          p_to_date?: string
+        }
+        Returns: {
+          avg_unit_cost: number
+          product_id: string
+          product_name: string
+          total_cost: number
+          total_quantity: number
+        }[]
+      }
       get_expiring_lots: {
         Args: { p_days_ahead?: number; p_venue_id: string }
         Returns: {
