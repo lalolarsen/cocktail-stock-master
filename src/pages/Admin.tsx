@@ -27,8 +27,8 @@ import { Menu, Eye } from "lucide-react";
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
 export default function Admin() {
-  const { role, isReadOnly } = useUserRole();
-  const { isDemoMode, demoVenue, refreshDemoStatus } = useDemoMode();
+  const { isReadOnly } = useUserRole();
+  const { isDemoMode, refreshDemoStatus } = useDemoMode();
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
@@ -60,7 +60,7 @@ export default function Admin() {
 
   if (!isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen flex items-center justify-center">
         <WorkerPinDialog
           open={showPinDialog}
           onVerified={handlePinVerified}
@@ -72,128 +72,72 @@ export default function Admin() {
 
   const getViewTitle = () => {
     switch (activeView) {
-      case "overview": return "Panel General";
+      case "overview": return "Panel";
       case "products": return "Productos";
       case "menu": return "Menú";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
-      case "expenses": return "Declaración de Gastos";
+      case "expenses": return "Gastos";
       case "reports": return "Reportes";
-      case "documents": return "Documentos Electrónicos";
-      case "pos": return "Barras y POS";
-      case "inventory": return "Inventario por Ubicación";
-      case "replenishment": return "Reposición de Stock";
+      case "documents": return "Documentos";
+      case "pos": return "Configuración";
+      case "inventory": return "Inventario";
+      case "replenishment": return "Reposición";
       case "notifications": return "Notificaciones";
-      case "tickets": return "Tipos de Entrada";
-      default: return "Panel de Administración";
+      case "tickets": return "Entradas";
+      default: return "Panel";
     }
   };
 
   return (
     <SidebarProvider>
       {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-10' : ''}`}>
+      <div className={`min-h-screen flex w-full ${isDemoMode ? 'pt-10' : ''}`}>
         <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
         
         <main className="flex-1 overflow-auto">
-          <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
-            <div className="flex items-center gap-4">
+          <header className="sticky top-0 z-10 bg-background border-b px-6 py-3">
+            <div className="flex items-center gap-3">
               <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
                 <Menu className="w-5 h-5" />
               </SidebarTrigger>
-              <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
+              <h1 className="text-xl font-semibold">{getViewTitle()}</h1>
               {isReadOnly && (
-                <Badge variant="secondary" className="flex items-center gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                <Badge variant="secondary" className="flex items-center gap-1">
                   <Eye className="w-3 h-3" />
-                  Gerencia – solo lectura
+                  Solo lectura
                 </Badge>
               )}
             </div>
           </header>
 
-          <div className="p-6 space-y-6 animate-fade-in">
+          <div className="p-6">
             {activeView === "overview" && (
-              <div className="space-y-6">
+              <>
                 {isDemoMode && !isReadOnly && (
                   <DemoModeBanner isAdmin={true} onDemoActivated={refreshDemoStatus} />
                 )}
                 <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
-              </div>
+              </>
             )}
 
-            {activeView === "products" && (
-              <div className="space-y-6">
-                <ProductsList isReadOnly={isReadOnly} />
-              </div>
-            )}
-
-
-            {activeView === "menu" && (
-              <div className="space-y-6">
-                <CocktailsMenu isReadOnly={isReadOnly} />
-              </div>
-            )}
-
+            {activeView === "products" && <ProductsList isReadOnly={isReadOnly} />}
+            {activeView === "menu" && <CocktailsMenu isReadOnly={isReadOnly} />}
             {activeView === "workers" && (
-              <div className="space-y-6">
+              <>
                 <WorkersManagementNew isReadOnly={isReadOnly} />
                 {!isReadOnly && <ActivityPanel />}
-              </div>
+              </>
             )}
-
-            {activeView === "jornadas" && !isReadOnly && (
-              <div className="space-y-6">
-                <JornadaManagement />
-              </div>
-            )}
-
-            {activeView === "expenses" && (
-              <div className="space-y-6">
-                <ExpenseDeclaration />
-              </div>
-            )}
-
-            {activeView === "reports" && (
-              <div className="space-y-6">
-                <ReportsPanel />
-              </div>
-            )}
-
-            {activeView === "documents" && (
-              <div className="space-y-6">
-                <DocumentsRetryPanel />
-              </div>
-            )}
-
-            {activeView === "pos" && !isReadOnly && (
-              <div className="space-y-6">
-                <POSBarsManagement />
-              </div>
-            )}
-
-            {activeView === "inventory" && (
-              <div className="space-y-6">
-                <InventoryByLocation />
-              </div>
-            )}
-
-            {activeView === "replenishment" && !isReadOnly && (
-              <div className="space-y-6">
-                <ReplenishmentManager />
-              </div>
-            )}
-
-            {activeView === "notifications" && !isReadOnly && (
-              <div className="space-y-6">
-                <NotificationsManagement />
-              </div>
-            )}
-
-            {activeView === "tickets" && !isReadOnly && (
-              <div className="space-y-6">
-                <TicketTypesManagement />
-              </div>
-            )}
+            {activeView === "jornadas" && !isReadOnly && <JornadaManagement />}
+            {activeView === "expenses" && <ExpenseDeclaration />}
+            {activeView === "reports" && <ReportsPanel />}
+            {activeView === "documents" && <DocumentsRetryPanel />}
+            {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
+            {activeView === "inventory" && <InventoryByLocation />}
+            {activeView === "replenishment" && !isReadOnly && <ReplenishmentManager />}
+            {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
+            {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
           </div>
         </main>
       </div>

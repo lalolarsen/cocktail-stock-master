@@ -129,7 +129,7 @@ export function ReportsPanel() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold gradient-text">Reportes de Ventas</h2>
+      <h2 className="text-2xl font-semibold">Reportes de Ventas</h2>
 
       {/* Filters */}
       <Card className="p-6">
