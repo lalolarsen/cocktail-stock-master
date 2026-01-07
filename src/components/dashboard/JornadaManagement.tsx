@@ -292,6 +292,18 @@ export function JornadaManagement() {
       );
       setShowCloseConfirm(null);
       fetchJornadas();
+
+      // Trigger financial summary email (non-blocking)
+      supabase.functions
+        .invoke("send-financial-summary")
+        .then(({ error: emailError }) => {
+          if (emailError) {
+            console.warn("Financial summary email trigger failed:", emailError);
+          } else {
+            console.log("Financial summary emails queued");
+          }
+        })
+        .catch((err) => console.warn("Email trigger error:", err));
     } catch (error: any) {
       console.error("Error closing jornada:", error);
       toast.error(error.message || "Error al cerrar jornada");
