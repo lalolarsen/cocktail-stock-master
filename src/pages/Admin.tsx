@@ -1,22 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { StatsCards } from "@/components/dashboard/StatsCards";
+import { AdminOverview } from "@/components/dashboard/AdminOverview";
 import { ProductsList } from "@/components/dashboard/ProductsList";
-import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
-import { ConsumptionChart } from "@/components/dashboard/ConsumptionChart";
-import { ExcelUpload } from "@/components/dashboard/ExcelUpload";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
 import { WorkersManagementNew } from "@/components/dashboard/WorkersManagementNew";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
-import { JornadaStatus } from "@/components/dashboard/JornadaStatus";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
 import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
-import { PaymentMethodStats } from "@/components/dashboard/PaymentMethodStats";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
-import { InvoicingAlertsWidget } from "@/components/dashboard/InvoicingAlertsWidget";
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
 import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation";
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
@@ -36,15 +30,12 @@ export default function Admin() {
   const { role, isReadOnly } = useUserRole();
   const { isDemoMode, demoVenue, refreshDemoStatus } = useDemoMode();
   const [activeView, setActiveView] = useState<ViewType>("overview");
-  // Admin and gerencia already verified PIN during login, so skip the dialog
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  // Restrict gerencia from accessing certain views
   const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory"];
   
   const handleViewChange = (view: ViewType) => {
-    // Gerencia cannot access workers or jornadas management
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
       return;
     }
@@ -105,7 +96,6 @@ export default function Admin() {
         <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
         
         <main className="flex-1 overflow-auto">
-          {/* Header with sidebar trigger */}
           <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
@@ -124,25 +114,10 @@ export default function Admin() {
           <div className="p-6 space-y-6 animate-fade-in">
             {activeView === "overview" && (
               <div className="space-y-6">
-                {/* Demo Reset Banner for Admins */}
                 {isDemoMode && !isReadOnly && (
                   <DemoModeBanner isAdmin={true} onDemoActivated={refreshDemoStatus} />
                 )}
-                {!isReadOnly && <JornadaStatus />}
-                <StatsCards />
-                {isReadOnly && <PaymentMethodStats />}
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2">
-                      <ConsumptionChart />
-                    </div>
-                    <div className="space-y-6">
-                      <InvoicingAlertsWidget />
-                      <AlertsPanel />
-                    </div>
-                  </div>
-                </div>
-                {!isReadOnly && <ExcelUpload />}
+                <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
               </div>
             )}
 
