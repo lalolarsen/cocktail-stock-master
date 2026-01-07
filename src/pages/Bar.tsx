@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { DemoWatermark } from "@/components/DemoWatermark";
@@ -12,6 +12,8 @@ import { useDemoMode } from "@/hooks/useDemoMode";
 import { Html5Qrcode } from "html5-qrcode";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { RedemptionHistory } from "@/components/bar/RedemptionHistory";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type MissingItem = {
   product_name: string;
@@ -134,7 +136,11 @@ function getDeliveryDisplay(deliver?: DeliverInfo): { name: string; quantity: nu
 
 export default function Bar() {
   const { isDemoMode } = useDemoMode();
+  const isMobile = useIsMobile();
   const [isVerified, setIsVerified] = useState(true);
+  
+  // History refresh trigger - increments after each scan attempt
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0);
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -352,6 +358,9 @@ export default function Bar() {
       const resultData = data as RedemptionResult;
       setResult(resultData);
       setScanState(resultData.success ? "success" : "error");
+      
+      // Trigger history refresh after any scan
+      setHistoryRefreshTrigger(prev => prev + 1);
 
       // Auto-dismiss
       let timeout = SUCCESS_DISMISS_MS;
@@ -382,6 +391,9 @@ export default function Bar() {
         message: error.message || "Error al procesar el código",
       });
       setScanState("error");
+      
+      // Trigger history refresh even on errors
+      setHistoryRefreshTrigger(prev => prev + 1);
       
       dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
     }
@@ -889,63 +901,82 @@ export default function Bar() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Manual Entry Panel */}
-          {showManualEntry && (
-            <div className="p-4 bg-card border-b border-border">
-              <form onSubmit={handleManualSubmit} className="flex gap-2 max-w-xl mx-auto">
-                <Input
-                  type="text"
-                  placeholder="Ingresa el código del ticket..."
-                  value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
-                  className="h-12 text-lg font-mono flex-1"
-                  autoFocus
-                />
-                <Button type="submit" className="h-12 px-6">Canjear</Button>
-              </form>
-            </div>
-          )}
-
-          {/* Camera viewport (optional) */}
-          {cameraEnabled && (
-            <div className="flex-1 relative bg-black min-h-[300px]">
-              <div key={scannerSessionId} id={`qr-reader-${scannerSessionId}`} className="w-full h-full" />
-              
-              {!scannerReady && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                  <Loader2 className="w-12 h-12 animate-spin text-white" />
-                </div>
-              )}
-              
-              {scannerReady && (
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* No camera view - USB scanner ready */}
-          {!cameraEnabled && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-              <div className="w-32 h-32 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6">
-                <ScanLine className="w-16 h-16 text-green-600 dark:text-green-400" />
+        {/* Main Content - 2 column on desktop */}
+        <div className="flex-1 flex flex-col md:flex-row">
+          {/* Left: Scanner Area */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Manual Entry Panel */}
+            {showManualEntry && (
+              <div className="p-4 bg-card border-b border-border">
+                <form onSubmit={handleManualSubmit} className="flex gap-2 max-w-xl mx-auto">
+                  <Input
+                    type="text"
+                    placeholder="Ingresa el código del ticket..."
+                    value={manualToken}
+                    onChange={(e) => setManualToken(e.target.value)}
+                    className="h-12 text-lg font-mono flex-1"
+                    autoFocus
+                  />
+                  <Button type="submit" className="h-12 px-6">Canjear</Button>
+                </form>
               </div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">Listo para escanear</h2>
-              <p className="text-muted-foreground max-w-md">
-                Escanea un código QR con el lector USB. El sistema procesará automáticamente el código.
-              </p>
-              
-              {debugMode && (
-                <div className="mt-6 p-4 bg-muted rounded-lg text-left text-xs font-mono max-w-sm w-full">
-                  <p>Estado: {scanState}</p>
-                  <p>Buffer: {scanBufferRef.current || "(vacío)"}</p>
-                  <p>Último: {lastParsedToken || "(ninguno)"}</p>
-                  <p>Cámara: {cameraAvailable ? "disponible" : "no disponible"}</p>
+            )}
+
+            {/* Camera viewport (optional) */}
+            {cameraEnabled && (
+              <div className="flex-1 relative bg-black min-h-[300px]">
+                <div key={scannerSessionId} id={`qr-reader-${scannerSessionId}`} className="w-full h-full" />
+                
+                {!scannerReady && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                    <Loader2 className="w-12 h-12 animate-spin text-white" />
+                  </div>
+                )}
+                
+                {scannerReady && (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* No camera view - USB scanner ready */}
+            {!cameraEnabled && (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                <div className="w-32 h-32 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6">
+                  <ScanLine className="w-16 h-16 text-green-600 dark:text-green-400" />
                 </div>
-              )}
+                <h2 className="text-2xl font-bold text-foreground mb-2">Listo para escanear</h2>
+                <p className="text-muted-foreground max-w-md">
+                  Escanea un código QR con el lector USB. El sistema procesará automáticamente el código.
+                </p>
+                
+                {debugMode && (
+                  <div className="mt-6 p-4 bg-muted rounded-lg text-left text-xs font-mono max-w-sm w-full">
+                    <p>Estado: {scanState}</p>
+                    <p>Buffer: {scanBufferRef.current || "(vacío)"}</p>
+                    <p>Último: {lastParsedToken || "(ninguno)"}</p>
+                    <p>Cámara: {cameraAvailable ? "disponible" : "no disponible"}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: History Panel (desktop only) */}
+          {!isMobile && selectedBarId && (
+            <div className="hidden md:flex w-80 lg:w-96 border-l border-border bg-card flex-col">
+              <div className="p-4 border-b border-border flex items-center gap-2">
+                <History className="w-5 h-5 text-muted-foreground" />
+                <h2 className="font-semibold text-foreground">Historial de canjes</h2>
+              </div>
+              <div className="flex-1 p-3 overflow-hidden">
+                <RedemptionHistory 
+                  barLocationId={selectedBarId} 
+                  refreshTrigger={historyRefreshTrigger} 
+                />
+              </div>
             </div>
           )}
         </div>
