@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.send-financial-summary]
 verify_jwt = false
+
+[functions.parse-invoice]
+verify_jwt = true
