@@ -15,6 +15,8 @@ export type PickupQRDialogProps = {
   items: Array<{ name: string; quantity: number; price: number }>;
   total: number;
   barName?: string;
+  /** Render inline without dialog wrapper (for success screens) */
+  embedded?: boolean;
 };
 
 export default function PickupQRDialog({
@@ -26,6 +28,7 @@ export default function PickupQRDialog({
   items,
   total,
   barName,
+  embedded = false,
 }: PickupQRDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -110,6 +113,81 @@ export default function PickupQRDialog({
     minute: "2-digit",
   });
 
+  const content = (
+    <div ref={printRef} className="flex flex-col items-center space-y-3">
+      <div className="bg-white p-3 rounded-lg">
+        <QRCodeSVG
+          id="qr-code-svg"
+          value={qrContent}
+          size={embedded ? 150 : 200}
+          level="H"
+          includeMargin
+        />
+      </div>
+
+      <div className="text-center space-y-1">
+        {items.map((item, index) => (
+          <p key={index} className="text-sm text-muted-foreground">
+            {item.quantity}x {item.name}
+          </p>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Válido hasta: {formattedExpires}
+      </p>
+
+      <div className="bg-muted/50 p-2 rounded-lg text-center text-sm">
+        {barName ? (
+          <>Retiro en <strong>{barName}</strong></>
+        ) : (
+          "Presenta en barra"
+        )}
+      </div>
+
+      {!embedded && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => setShowDebug(!showDebug)}
+        >
+          <Bug className="w-3 h-3 mr-1" />
+          {showDebug ? "Ocultar Debug" : "Ver Debug"}
+        </Button>
+      )}
+
+      {!embedded && showDebug && (
+        <div className="w-full bg-muted/50 rounded-lg p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground">DEBUG INFO</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs"
+              onClick={() => {
+                navigator.clipboard.writeText(`TOKEN: ${token}\nQR_CONTENT: ${qrContent}`);
+                toast.success("Debug info copiado");
+              }}
+            >
+              <Copy className="w-3 h-3 mr-1" />
+              Copiar
+            </Button>
+          </div>
+          <div className="text-xs font-mono space-y-1">
+            <p><span className="text-muted-foreground">TOKEN:</span> {token}</p>
+            <p><span className="text-muted-foreground">QR:</span> {qrContent}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Embedded mode: just return the content without Dialog wrapper
+  if (embedded) {
+    return content;
+  }
+
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -117,76 +195,9 @@ export default function PickupQRDialog({
           <DialogTitle className="text-center">QR de Retiro</DialogTitle>
         </DialogHeader>
 
-        <div ref={printRef} className="flex flex-col items-center space-y-4 py-4">
-          <p className="text-2xl font-bold">{saleNumber}</p>
-
-          <div className="bg-white p-4 rounded-lg">
-            <QRCodeSVG
-              id="qr-code-svg"
-              value={qrContent}
-              size={200}
-              level="H"
-              includeMargin
-            />
-          </div>
-          
-          {/* Debug toggle - tap QR 3 times */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={() => setShowDebug(!showDebug)}
-          >
-            <Bug className="w-3 h-3 mr-1" />
-            {showDebug ? "Ocultar Debug" : "Ver Debug"}
-          </Button>
-          
-          {/* Debug info panel */}
-          {showDebug && (
-            <div className="w-full bg-muted/50 rounded-lg p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground">DEBUG INFO</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-xs"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`TOKEN: ${token}\nQR_CONTENT: ${qrContent}`);
-                    toast.success("Debug info copiado");
-                  }}
-                >
-                  <Copy className="w-3 h-3 mr-1" />
-                  Copiar
-                </Button>
-              </div>
-              <div className="text-xs font-mono space-y-1">
-                <p><span className="text-muted-foreground">TOKEN:</span> {token}</p>
-                <p><span className="text-muted-foreground">QR:</span> {qrContent}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="text-center space-y-1">
-            {items.map((item, index) => (
-              <p key={index} className="text-sm text-muted-foreground">
-                {item.quantity}x {item.name}
-              </p>
-            ))}
-          </div>
-
-          <p className="text-xl font-bold text-primary">{formatCLP(total)}</p>
-
-          <p className="text-xs text-muted-foreground">
-            Válido hasta: {formattedExpires}
-          </p>
-
-          <div className="bg-muted/50 p-3 rounded-lg text-center text-sm">
-            {barName ? (
-              <>Presenta este QR en <strong>{barName}</strong> para retirar tu pedido</>
-            ) : (
-              "Presenta este QR en la barra para retirar tu pedido"
-            )}
-          </div>
+        <div className="py-4">
+          <p className="text-2xl font-bold text-center mb-4">{saleNumber}</p>
+          {content}
         </div>
 
         <div className="flex gap-2">
