@@ -149,7 +149,7 @@ export default function Help() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6">
       <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">

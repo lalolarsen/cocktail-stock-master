@@ -348,9 +348,9 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-semibold">Menú de Cócteles</h2>
+        <h2 className="text-3xl font-bold gradient-text">Menú de Cócteles</h2>
         {!isReadOnly && (
-          <Button onClick={handleAddClick}>
+          <Button onClick={handleAddClick} className="primary-gradient">
             <Plus className="w-4 h-4 mr-2" />
             Agregar Cóctel
           </Button>

@@ -259,8 +259,8 @@ export default function Auth() {
   // Mode selection screen
   if (showModeSelection) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md p-8 space-y-6">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
+        <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-sm bg-background/95 border-primary/20">
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-bold">Selecciona tu modo</h1>
             <p className="text-muted-foreground text-sm">
@@ -349,10 +349,10 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 gap-6">
-      <Card className="w-full max-w-md p-8 space-y-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4 gap-6">
+      <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-sm bg-background/95 border-primary/20">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">CoctelStock</h1>
+          <h1 className="text-3xl font-bold gradient-text">CoctelStock</h1>
           <p className="text-muted-foreground">
             Inicia sesión con tu RUT y PIN
           </p>

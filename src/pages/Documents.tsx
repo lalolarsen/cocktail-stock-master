@@ -458,7 +458,7 @@ export default function Documents() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
         <div className="max-w-7xl mx-auto">
@@ -472,8 +472,8 @@ export default function Documents() {
                 <ArrowLeft className="w-5 h-5" />
               </Button>
               <div>
-                <h1 className="text-xl font-semibold flex items-center gap-2">
-                  <FileCheck className="w-5 h-5" />
+                <h1 className="text-2xl font-bold gradient-text flex items-center gap-2">
+                  <FileCheck className="w-6 h-6" />
                   Documentos
                 </h1>
                 <p className="text-sm text-muted-foreground">

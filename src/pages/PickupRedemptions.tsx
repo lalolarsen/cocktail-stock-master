@@ -173,7 +173,7 @@ export default function PickupRedemptions() {
   const hasActiveFilters = dateFrom || dateTo || resultFilter !== "all" || searchQuery;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
         <div className="flex items-center gap-4">
@@ -181,7 +181,7 @@ export default function PickupRedemptions() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Volver
           </Button>
-          <h1 className="text-xl font-semibold">Auditoría de Retiros</h1>
+          <h1 className="text-2xl font-bold gradient-text">Auditoría de Retiros</h1>
         </div>
       </header>
 
