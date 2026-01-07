@@ -327,6 +327,73 @@ export type Database = {
         }
         Relationships: []
       }
+      jornada_financial_summary: {
+        Row: {
+          closed_at: string
+          closed_by: string
+          costo_ventas: number
+          created_at: string
+          gastos_operacionales: number
+          id: string
+          ingresos_brutos: number
+          jornada_id: string
+          margen_bruto: number
+          resultado_periodo: number
+          utilidad_bruta: number
+          venue_id: string
+        }
+        Insert: {
+          closed_at?: string
+          closed_by: string
+          costo_ventas?: number
+          created_at?: string
+          gastos_operacionales?: number
+          id?: string
+          ingresos_brutos?: number
+          jornada_id: string
+          margen_bruto?: number
+          resultado_periodo?: number
+          utilidad_bruta?: number
+          venue_id: string
+        }
+        Update: {
+          closed_at?: string
+          closed_by?: string
+          costo_ventas?: number
+          created_at?: string
+          gastos_operacionales?: number
+          id?: string
+          ingresos_brutos?: number
+          jornada_id?: string
+          margen_bruto?: number
+          resultado_periodo?: number
+          utilidad_bruta?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_financial_summary_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_financial_summary_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: true
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_financial_summary_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jornadas: {
         Row: {
           created_at: string
@@ -1817,6 +1884,10 @@ export type Database = {
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
+      close_jornada_with_summary: {
+        Args: { p_jornada_id: string }
+        Returns: Json
+      }
       consume_stock_fefo: {
         Args: {
           p_allow_expired?: boolean

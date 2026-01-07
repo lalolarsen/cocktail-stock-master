@@ -52,6 +52,19 @@ interface JornadaStats {
   logins: number;
 }
 
+interface FinancialSummary {
+  id: string;
+  jornada_id: string;
+  ingresos_brutos: number;
+  costo_ventas: number;
+  utilidad_bruta: number;
+  margen_bruto: number;
+  gastos_operacionales: number;
+  resultado_periodo: number;
+  closed_at: string;
+  closed_by: string;
+}
+
 interface WeeklySummary {
   semana_inicio: string;
   total_jornadas: number;
@@ -61,8 +74,10 @@ interface WeeklySummary {
 export function JornadaManagement() {
   const [jornadas, setJornadas] = useState<Jornada[]>([]);
   const [jornadaStats, setJornadaStats] = useState<Record<string, JornadaStats>>({});
+  const [financialSummaries, setFinancialSummaries] = useState<Record<string, FinancialSummary>>({});
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -88,15 +103,36 @@ export function JornadaManagement() {
       if (error) throw error;
       setJornadas(data || []);
       
-      // Fetch stats for each jornada
+      // Fetch stats and financial summaries for each jornada
       if (data && data.length > 0) {
-        await fetchJornadaStats(data.map(j => j.id));
+        const ids = data.map(j => j.id);
+        await Promise.all([
+          fetchJornadaStats(ids),
+          fetchFinancialSummaries(ids),
+        ]);
       }
     } catch (error) {
       console.error("Error fetching jornadas:", error);
       toast.error("Error al cargar jornadas");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFinancialSummaries = async (jornadaIds: string[]) => {
+    try {
+      const { data } = await supabase
+        .from("jornada_financial_summary")
+        .select("*")
+        .in("jornada_id", jornadaIds);
+
+      const summaries: Record<string, FinancialSummary> = {};
+      (data || []).forEach((s) => {
+        summaries[s.jornada_id] = s as FinancialSummary;
+      });
+      setFinancialSummaries(summaries);
+    } catch (error) {
+      console.error("Error fetching financial summaries:", error);
     }
   };
 
@@ -238,17 +274,27 @@ export function JornadaManagement() {
   const closeJornada = async (jornadaId: string) => {
     setActionLoading(jornadaId);
     try {
-      const { error } = await supabase
-        .from("jornadas")
-        .update({ estado: "cerrada", hora_cierre: format(new Date(), "HH:mm") })
-        .eq("id", jornadaId);
+      // Use the new close_jornada_with_summary function
+      const { data, error } = await supabase.rpc("close_jornada_with_summary", {
+        p_jornada_id: jornadaId,
+      });
 
       if (error) throw error;
-      toast.success("Jornada cerrada");
+
+      const result = data as { success: boolean; error?: string; resultado_periodo?: number };
+      
+      if (!result.success) {
+        throw new Error(result.error || "Error desconocido");
+      }
+
+      toast.success(
+        `Jornada cerrada con resultado: ${formatCLP(result.resultado_periodo || 0)}`
+      );
+      setShowCloseConfirm(null);
       fetchJornadas();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error closing jornada:", error);
-      toast.error("Error al cerrar jornada");
+      toast.error(error.message || "Error al cerrar jornada");
     } finally {
       setActionLoading(null);
     }
@@ -592,8 +638,9 @@ export function JornadaManagement() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => closeJornada(jornada.id)}
+                                onClick={() => setShowCloseConfirm(jornada.id)}
                                 disabled={actionLoading === jornada.id}
+                                title="Cerrar jornada"
                               >
                                 {actionLoading === jornada.id ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -620,27 +667,72 @@ export function JornadaManagement() {
                           </div>
                         </TableCell>
                       </TableRow>
-                      {isExpanded && stats && (
+                      {isExpanded && (
                         <TableRow key={`${jornada.id}-stats`}>
                           <TableCell colSpan={7} className="bg-muted/30">
-                            <div className="grid grid-cols-4 gap-4 py-2">
-                              <div className="text-center">
-                                <div className="text-2xl font-bold">{formatCLP(stats.total_ventas)}</div>
-                                <div className="text-xs text-muted-foreground">Total Ventas</div>
+                            {financialSummaries[jornada.id] ? (
+                              // Show frozen financial summary for closed jornadas
+                              <div className="space-y-3 py-2">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <Badge variant="secondary">Resumen financiero congelado</Badge>
+                                  <span>
+                                    Cerrada el {format(new Date(financialSummaries[jornada.id].closed_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold text-primary">{formatCLP(financialSummaries[jornada.id].ingresos_brutos)}</div>
+                                    <div className="text-xs text-muted-foreground">Ingresos Brutos</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].costo_ventas)}</div>
+                                    <div className="text-xs text-muted-foreground">Costo Ventas</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold">{formatCLP(financialSummaries[jornada.id].utilidad_bruta)}</div>
+                                    <div className="text-xs text-muted-foreground">Utilidad Bruta</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold">{financialSummaries[jornada.id].margen_bruto}%</div>
+                                    <div className="text-xs text-muted-foreground">Margen</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].gastos_operacionales)}</div>
+                                    <div className="text-xs text-muted-foreground">Gastos</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className={`text-lg font-bold ${financialSummaries[jornada.id].resultado_periodo >= 0 ? "text-primary" : "text-destructive"}`}>
+                                      {formatCLP(financialSummaries[jornada.id].resultado_periodo)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Resultado</div>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-center">
-                                <div className="text-2xl font-bold">{stats.cantidad_ventas}</div>
-                                <div className="text-xs text-muted-foreground">Transacciones</div>
+                            ) : stats ? (
+                              // Show live stats for active/pending jornadas
+                              <div className="grid grid-cols-4 gap-4 py-2">
+                                <div className="text-center">
+                                  <div className="text-2xl font-bold">{formatCLP(stats.total_ventas)}</div>
+                                  <div className="text-xs text-muted-foreground">Total Ventas</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-2xl font-bold">{stats.cantidad_ventas}</div>
+                                  <div className="text-xs text-muted-foreground">Transacciones</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-2xl font-bold">{stats.productos_vendidos}</div>
+                                  <div className="text-xs text-muted-foreground">Productos Vendidos</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-2xl font-bold">{stats.logins}</div>
+                                  <div className="text-xs text-muted-foreground">Sesiones</div>
+                                </div>
                               </div>
-                              <div className="text-center">
-                                <div className="text-2xl font-bold">{stats.productos_vendidos}</div>
-                                <div className="text-xs text-muted-foreground">Productos Vendidos</div>
+                            ) : (
+                              <div className="text-center py-4 text-muted-foreground">
+                                Sin datos registrados
                               </div>
-                              <div className="text-center">
-                                <div className="text-2xl font-bold">{stats.logins}</div>
-                                <div className="text-xs text-muted-foreground">Sesiones</div>
-                              </div>
-                            </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       )}
@@ -663,6 +755,48 @@ export function JornadaManagement() {
           <JornadaConfig />
         </TabsContent>
       </Tabs>
+
+      {/* Close Jornada Confirmation Dialog */}
+      <Dialog open={!!showCloseConfirm} onOpenChange={() => setShowCloseConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Square className="w-5 h-5" />
+              Cerrar Jornada
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Al cerrar la jornada se creará un <strong>resumen financiero inmutable</strong> con los siguientes datos:
+            </p>
+            <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
+              <li>Ingresos brutos (ventas, entradas, manuales)</li>
+              <li>Costo de ventas (consumo de inventario)</li>
+              <li>Gastos operacionales</li>
+              <li>Resultado del período</li>
+            </ul>
+            <p className="text-sm font-medium text-destructive">
+              Una vez cerrada, no se podrán agregar más registros a esta jornada.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloseConfirm(null)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => showCloseConfirm && closeJornada(showCloseConfirm)} 
+              disabled={actionLoading === showCloseConfirm}
+            >
+              {actionLoading === showCloseConfirm ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Square className="w-4 h-4 mr-2" />
+              )}
+              Cerrar Jornada
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
