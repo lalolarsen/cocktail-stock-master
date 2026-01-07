@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, ChevronLeft, Wine, QrCode, Clock, Check, X } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
@@ -47,7 +47,7 @@ interface RecentSale {
   cover_count: number;
 }
 
-type Step = "select-tickets" | "select-covers" | "success";
+type Step = "select-tickets" | "success";
 
 export default function Tickets() {
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
@@ -57,11 +57,6 @@ export default function Tickets() {
   const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
   const [activeJornadaId, setActiveJornadaId] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("select-tickets");
-  
-  // Cover selection state
-  const [coversRequired, setCoversRequired] = useState(0);
-  const [selectedCovers, setSelectedCovers] = useState<string[]>([]);
-  const [coverOptions, setCoverOptions] = useState<Array<{ id: string; name: string }>>([]);
   
   // Recent sales
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
@@ -78,16 +73,14 @@ export default function Tickets() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (step === "select-covers") {
-          setStep("select-tickets");
-          setSelectedCovers([]);
-        }
+      if (e.key === "Enter" && cart.size > 0 && !processing && step === "select-tickets") {
+        e.preventDefault();
+        handleCheckout();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [step]);
+  }, [cart, processing, step]);
 
   const fetchTicketTypes = async () => {
     try {
@@ -192,53 +185,19 @@ export default function Tickets() {
     return Array.from(cart.values());
   };
 
-  const getTotalCoversRequired = () => {
+  /**
+   * Calculate total covers that will be generated.
+   * Only ticket types with includes_cover=true AND valid cover_cocktail_id generate covers.
+   */
+  const getTotalCoversIncluded = () => {
     let total = 0;
     cart.forEach(item => {
-      if (item.ticketType.includes_cover && item.ticketType.cover_quantity) {
-        total += item.ticketType.cover_quantity * item.quantity;
+      // Only count covers if includes_cover=true AND cover_cocktail_id exists
+      if (item.ticketType.includes_cover && item.ticketType.cover_cocktail_id) {
+        total += (item.ticketType.cover_quantity || 1) * item.quantity;
       }
     });
     return total;
-  };
-
-  const handleContinue = async () => {
-    const coversNeeded = getTotalCoversRequired();
-    
-    if (coversNeeded === 0) {
-      // No covers required, go straight to checkout
-      await handleCheckout();
-    } else {
-      // Need to select covers
-      setCoversRequired(coversNeeded);
-      setSelectedCovers([]);
-      
-      // Get unique cover options from cart items
-      const options: Array<{ id: string; name: string }> = [];
-      cart.forEach(item => {
-        if (item.ticketType.includes_cover && item.ticketType.cover_cocktail) {
-          if (!options.find(o => o.id === item.ticketType.cover_cocktail_id)) {
-            options.push({
-              id: item.ticketType.cover_cocktail_id!,
-              name: item.ticketType.cover_cocktail.name
-            });
-          }
-        }
-      });
-      
-      setCoverOptions(options);
-      setStep("select-covers");
-    }
-  };
-
-  const selectCover = (cocktailId: string) => {
-    if (selectedCovers.length < coversRequired) {
-      setSelectedCovers(prev => [...prev, cocktailId]);
-    }
-  };
-
-  const removeCover = (index: number) => {
-    setSelectedCovers(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleCheckout = async () => {
@@ -247,14 +206,11 @@ export default function Tickets() {
       return;
     }
 
-    if (step === "select-covers" && selectedCovers.length < coversRequired) {
-      toast.error(`Debes seleccionar ${coversRequired - selectedCovers.length} cover${coversRequired - selectedCovers.length > 1 ? 's' : ''} más`);
-      return;
-    }
-
     setProcessing(true);
 
     try {
+      // Build items payload - only ticket_type_id and quantity
+      // Backend will determine covers based on ticket_type configuration
       const items = getCartItems().map(item => ({
         ticket_type_id: item.ticketType.id,
         quantity: item.quantity
@@ -296,8 +252,6 @@ export default function Tickets() {
   const handleNewSale = () => {
     setCart(new Map());
     setSaleResult(null);
-    setSelectedCovers([]);
-    setCoversRequired(0);
     setStep("select-tickets");
     setSelectedHistorySale(null);
   };
@@ -368,7 +322,7 @@ export default function Tickets() {
               </p>
               <ScrollArea className="h-[300px]">
                 <div className="grid gap-4">
-                  {saleResult.cover_tokens.map((token, index) => (
+                  {saleResult.cover_tokens.map((token) => (
                     <div key={token.token_id} className="p-4 border rounded-lg bg-card">
                       <p className="text-sm font-medium mb-2">{token.ticket_type}</p>
                       <div className="flex justify-center bg-white p-4 rounded-lg">
@@ -390,104 +344,9 @@ export default function Tickets() {
     );
   }
 
-  // Cover Selection Screen
-  if (step === "select-covers") {
-    const coversRemaining = coversRequired - selectedCovers.length;
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => { setStep("select-tickets"); setSelectedCovers([]); }}>
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold">Selecciona Covers</h1>
-              <p className="text-sm text-muted-foreground">
-                {coversRemaining > 0 
-                  ? `${coversRemaining} restante${coversRemaining > 1 ? 's' : ''}`
-                  : "¡Todos seleccionados!"}
-              </p>
-            </div>
-          </div>
-
-          {/* Progress indicator */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${(selectedCovers.length / coversRequired) * 100}%` }}
-              />
-            </div>
-            <span className="text-sm font-medium">{selectedCovers.length}/{coversRequired}</span>
-          </div>
-
-          {/* Selected covers as chips */}
-          {selectedCovers.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedCovers.map((coverId, index) => {
-                const option = coverOptions.find(o => o.id === coverId);
-                return (
-                  <Badge 
-                    key={index} 
-                    variant="secondary" 
-                    className="px-3 py-1 text-sm flex items-center gap-2 cursor-pointer hover:bg-destructive/20"
-                    onClick={() => removeCover(index)}
-                  >
-                    <Wine className="h-3 w-3" />
-                    {option?.name || "Cover"}
-                    <X className="h-3 w-3" />
-                  </Badge>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Cover options */}
-          <div className="grid grid-cols-2 gap-4">
-            {coverOptions.map(option => (
-              <Button
-                key={option.id}
-                variant="outline"
-                className="h-24 text-lg font-medium flex flex-col gap-2"
-                onClick={() => selectCover(option.id)}
-                disabled={selectedCovers.length >= coversRequired}
-              >
-                <Wine className="h-6 w-6" />
-                {option.name}
-              </Button>
-            ))}
-          </div>
-
-          {/* Cobrar button */}
-          <Button
-            size="lg"
-            className="w-full h-14 text-lg"
-            onClick={handleCheckout}
-            disabled={processing || selectedCovers.length < coversRequired}
-          >
-            {processing ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <>
-                <CreditCard className="h-5 w-5 mr-2" />
-                Cobrar {formatCLP(getCartTotal())}
-              </>
-            )}
-          </Button>
-
-          {selectedCovers.length < coversRequired && (
-            <p className="text-center text-sm text-amber-600">
-              Debes seleccionar {coversRemaining} cover{coversRemaining > 1 ? 's' : ''} más
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // Main ticket selection screen
+  const coversIncluded = getTotalCoversIncluded();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <div className="flex flex-col lg:flex-row min-h-screen">
@@ -499,17 +358,13 @@ export default function Tickets() {
             <h1 className="text-2xl font-bold">Venta de Entradas</h1>
           </div>
 
-          {/* Step indicator */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="default" className="px-2">Paso 1</Badge>
-            <span>Seleccionar entradas</span>
-          </div>
-
           {/* Ticket Types Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {ticketTypes.map(ticketType => {
               const cartItem = cart.get(ticketType.id);
               const quantity = cartItem?.quantity || 0;
+              // Only show cover badge if includes_cover=true AND has a valid cocktail
+              const hasCover = ticketType.includes_cover && ticketType.cover_cocktail_id;
 
               return (
                 <Card 
@@ -521,10 +376,10 @@ export default function Tickets() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h3 className="font-bold text-lg leading-tight">{ticketType.name}</h3>
-                        {ticketType.includes_cover && (
+                        {hasCover && (
                           <Badge variant="secondary" className="mt-1 text-xs">
                             <Wine className="h-3 w-3 mr-1" />
-                            {ticketType.cover_quantity} Cover
+                            {ticketType.cover_quantity || 1} Cover
                           </Badge>
                         )}
                       </div>
@@ -583,33 +438,43 @@ export default function Tickets() {
                 <>
                   <ScrollArea className="flex-1 mb-4">
                     <div className="space-y-2">
-                      {getCartItems().map(item => (
-                        <div key={item.ticketType.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{item.ticketType.name}</p>
-                            <p className="text-xs text-muted-foreground">{formatCLP(item.ticketType.price)}</p>
+                      {getCartItems().map(item => {
+                        const hasCover = item.ticketType.includes_cover && item.ticketType.cover_cocktail_id;
+                        return (
+                          <div key={item.ticketType.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{item.ticketType.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatCLP(item.ticketType.price)}
+                                {hasCover && (
+                                  <span className="ml-1 text-primary">
+                                    (+{(item.ticketType.cover_quantity || 1) * item.quantity} QR)
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => removeFromCart(item.ticketType.id)}
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="w-6 text-center font-bold">{item.quantity}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => addToCart(item.ticketType)}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => removeFromCart(item.ticketType.id)}
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="w-6 text-center font-bold">{item.quantity}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => addToCart(item.ticketType)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </ScrollArea>
 
@@ -619,22 +484,21 @@ export default function Tickets() {
                       <span className="text-2xl font-bold">{formatCLP(getCartTotal())}</span>
                     </div>
 
-                    {getTotalCoversRequired() > 0 && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        Incluye {getTotalCoversRequired()} cover{getTotalCoversRequired() > 1 ? 's' : ''}
+                    {coversIncluded > 0 && (
+                      <p className="text-xs text-center text-primary flex items-center justify-center gap-1">
+                        <QrCode className="h-3 w-3" />
+                        Incluye {coversIncluded} código{coversIncluded > 1 ? 's' : ''} QR de cover
                       </p>
                     )}
 
                     <Button
                       size="lg"
                       className="w-full h-12"
-                      onClick={handleContinue}
+                      onClick={handleCheckout}
                       disabled={processing || cart.size === 0}
                     >
                       {processing ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : getTotalCoversRequired() > 0 ? (
-                        "Continuar →"
                       ) : (
                         <>
                           <CreditCard className="h-5 w-5 mr-2" />
