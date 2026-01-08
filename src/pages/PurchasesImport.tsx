@@ -63,6 +63,7 @@ interface PurchaseItem {
   extracted_total: number | null;
   matched_product_id: string | null;
   match_confidence: number;
+  match_source?: "provider" | "generic" | "fuzzy";
   confirmed_quantity: number | null;
   confirmed_unit_price: number | null;
   is_confirmed: boolean;
@@ -72,6 +73,7 @@ interface EditableItem extends PurchaseItem {
   selected_product_id: string | null;
   quantity: number;
   unit_price: number;
+  match_source?: "provider" | "generic" | "fuzzy";
 }
 
 type Step = "upload" | "processing" | "review" | "confirm" | "complete";
@@ -246,9 +248,25 @@ export default function PurchasesImport() {
     );
   };
 
-  const getMatchBadge = (confidence: number) => {
+  const getMatchBadge = (confidence: number, matchSource?: string) => {
     if (confidence >= 0.9) {
-      return <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Alta</Badge>;
+      return (
+        <div className="flex flex-col gap-0.5">
+          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Alta</Badge>
+          {matchSource === "provider" && (
+            <span className="text-[10px] text-muted-foreground">Aprendido</span>
+          )}
+        </div>
+      );
+    } else if (confidence >= 0.7) {
+      return (
+        <div className="flex flex-col gap-0.5">
+          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Alta</Badge>
+          {matchSource === "generic" && (
+            <span className="text-[10px] text-muted-foreground">Aprendido</span>
+          )}
+        </div>
+      );
     } else if (confidence >= 0.5) {
       return <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-500/30">Media</Badge>;
     } else if (confidence > 0) {
@@ -337,7 +355,8 @@ export default function PurchasesImport() {
         item_id: item.id,
         product_id: item.selected_product_id,
         quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_cost: item.unit_price,
+        raw_name: item.raw_product_name,
       }));
 
       const { data, error } = await supabase.rpc("confirm_purchase_intake", {
@@ -556,7 +575,7 @@ export default function PurchasesImport() {
                         <TableCell className="font-medium text-sm">
                           {item.raw_product_name}
                         </TableCell>
-                        <TableCell>{getMatchBadge(item.match_confidence)}</TableCell>
+                        <TableCell>{getMatchBadge(item.match_confidence, item.match_source)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             <Select

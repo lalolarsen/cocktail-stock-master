@@ -953,6 +953,54 @@ export type Database = {
           },
         ]
       }
+      provider_product_mappings: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          last_used_at: string | null
+          product_id: string
+          provider_name: string
+          raw_product_name: string
+          venue_id: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          product_id: string
+          provider_name: string
+          raw_product_name: string
+          venue_id?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          product_id?: string
+          provider_name?: string
+          raw_product_name?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_product_mappings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provider_product_mappings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_documents: {
         Row: {
           confirmed_at: string | null
