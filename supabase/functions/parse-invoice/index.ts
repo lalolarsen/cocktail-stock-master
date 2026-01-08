@@ -61,15 +61,18 @@ serve(async (req) => {
       .from("products")
       .select("id, name, code, category, unit");
 
-    // Get existing mappings for better matching
-    const { data: mappings } = await supabase
+    // Get existing generic mappings
+    const { data: genericMappings } = await supabase
       .from("product_name_mappings")
       .select("raw_name, normalized_name, product_id, usage_count");
 
-    // Build mapping lookup
-    const mappingLookup = new Map<string, { product_id: string; usage_count: number }>();
-    (mappings || []).forEach((m) => {
-      mappingLookup.set(m.normalized_name, { product_id: m.product_id, usage_count: m.usage_count });
+    // Build generic mapping lookup
+    const genericMappingLookup = new Map<string, { product_id: string; usage_count: number }>();
+    (genericMappings || []).forEach((m) => {
+      genericMappingLookup.set(m.raw_name?.toLowerCase() || m.normalized_name, { 
+        product_id: m.product_id, 
+        usage_count: m.usage_count || 0 
+      });
     });
 
     let extractedData: ExtractedData;
@@ -82,29 +85,70 @@ serve(async (req) => {
       extractedData = await parseWithAI(file_content_base64, file_type);
     }
 
-    // Match line items to products
+    // Get provider-specific mappings if we have a provider name
+    const providerName = extractedData.provider_name?.toLowerCase().trim();
+    let providerMappingLookup = new Map<string, { product_id: string; confidence_score: number }>();
+    
+    if (providerName) {
+      const { data: providerMappings } = await supabase
+        .from("provider_product_mappings")
+        .select("raw_product_name, product_id, confidence_score")
+        .eq("provider_name", providerName)
+        .order("confidence_score", { ascending: false });
+
+      (providerMappings || []).forEach((m) => {
+        providerMappingLookup.set(m.raw_product_name, { 
+          product_id: m.product_id, 
+          confidence_score: m.confidence_score || 1.0 
+        });
+      });
+    }
+
+    // Match line items to products with priority:
+    // 1. Provider-specific mappings (highest confidence)
+    // 2. Generic learned mappings
+    // 3. Fuzzy name matching
     const matchedItems = extractedData.line_items.map((item) => {
       const normalizedName = item.raw_product_name.toLowerCase().trim();
       
-      // Check mappings first
-      const mapping = mappingLookup.get(normalizedName);
-      if (mapping) {
-        const product = products?.find((p) => p.id === mapping.product_id);
+      // Priority 1: Check provider-specific mappings first
+      const providerMapping = providerMappingLookup.get(normalizedName);
+      if (providerMapping) {
+        const product = products?.find((p) => p.id === providerMapping.product_id);
+        // Confidence based on learned score, capped at 0.98 to show it's learned
+        const confidence = Math.min(0.5 + (providerMapping.confidence_score * 0.4), 0.98);
         return {
           ...item,
-          matched_product_id: mapping.product_id,
+          matched_product_id: providerMapping.product_id,
           matched_product_name: product?.name || null,
-          match_confidence: 0.95, // High confidence from learned mapping
+          match_confidence: confidence,
+          match_source: "provider" as const,
         };
       }
 
-      // Fuzzy match by name
+      // Priority 2: Check generic mappings
+      const genericMapping = genericMappingLookup.get(normalizedName);
+      if (genericMapping) {
+        const product = products?.find((p) => p.id === genericMapping.product_id);
+        // Slightly lower confidence for generic mappings
+        const usageBonus = Math.min(genericMapping.usage_count * 0.02, 0.1);
+        return {
+          ...item,
+          matched_product_id: genericMapping.product_id,
+          matched_product_name: product?.name || null,
+          match_confidence: 0.75 + usageBonus,
+          match_source: "generic" as const,
+        };
+      }
+
+      // Priority 3: Fuzzy match by name
       const match = findBestProductMatch(item.raw_product_name, products || []);
       return {
         ...item,
         matched_product_id: match?.id || null,
         matched_product_name: match?.name || null,
         match_confidence: match?.confidence || 0,
+        match_source: "fuzzy" as const,
       };
     });
 
