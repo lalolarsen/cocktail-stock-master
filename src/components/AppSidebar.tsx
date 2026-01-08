@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp, FileUp } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -47,6 +47,11 @@ const operationsItems: MenuItem[] = [
   { title: "Reposición", value: "replenishment", icon: ArrowRightLeft, adminOnly: true },
   { title: "Productos", value: "products", icon: Package },
   { title: "Menú", value: "menu", icon: Martini },
+];
+
+// Purchases section
+const purchaseLinks: ExternalLink[] = [
+  { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true },
 ];
 
 // People section
@@ -160,6 +165,18 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Purchases Section */}
+        {!isReadOnly && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Compras</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filterByRole(purchaseLinks, isReadOnly).map(renderExternalLink)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* People Section */}
         <SidebarGroup>
