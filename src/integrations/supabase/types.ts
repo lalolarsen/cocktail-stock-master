@@ -861,6 +861,7 @@ export type Database = {
           created_at: string | null
           current_stock: number
           id: string
+          is_active_in_sales: boolean | null
           minimum_stock: number
           name: string
           unit: string
@@ -874,6 +875,7 @@ export type Database = {
           created_at?: string | null
           current_stock?: number
           id?: string
+          is_active_in_sales?: boolean | null
           minimum_stock?: number
           name: string
           unit?: string
@@ -887,6 +889,7 @@ export type Database = {
           created_at?: string | null
           current_stock?: number
           id?: string
+          is_active_in_sales?: boolean | null
           minimum_stock?: number
           name?: string
           unit?: string

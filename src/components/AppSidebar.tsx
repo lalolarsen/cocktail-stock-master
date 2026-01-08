@@ -52,6 +52,7 @@ const operationsItems: MenuItem[] = [
 // Purchases section
 const purchaseLinks: ExternalLink[] = [
   { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true },
+  { title: "Catálogo Pendiente", icon: Package, path: "/admin/catalog/pending", adminOnly: true },
 ];
 
 // People section

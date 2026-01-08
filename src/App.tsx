@@ -19,6 +19,7 @@ import Tickets from "./pages/Tickets";
 import Income from "./pages/Income";
 import IncomeStatement from "./pages/IncomeStatement";
 import PurchasesImport from "./pages/PurchasesImport";
+import PendingCatalog from "./pages/PendingCatalog";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
@@ -130,6 +131,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <PurchasesImport />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/catalog/pending"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <PendingCatalog />
                 </ProtectedRoute>
               }
             />
