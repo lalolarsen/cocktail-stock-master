@@ -42,6 +42,7 @@ import {
   Package,
   Plus,
   Search,
+  Warehouse,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -76,7 +77,7 @@ interface EditableItem extends PurchaseItem {
   match_source?: "provider" | "generic" | "fuzzy";
 }
 
-type Step = "upload" | "processing" | "review" | "confirm" | "complete";
+type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-warehouse";
 
 export default function PurchasesImport() {
   const navigate = useNavigate();
@@ -84,6 +85,7 @@ export default function PurchasesImport() {
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [checkingWarehouse, setCheckingWarehouse] = useState(true);
 
   // Document data
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -108,8 +110,39 @@ export default function PurchasesImport() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    fetchProducts();
+    checkWarehouseAndFetchProducts();
   }, []);
+
+  const checkWarehouseAndFetchProducts = async () => {
+    try {
+      // Check if warehouse exists
+      const { data: warehouse } = await supabase
+        .from("stock_locations")
+        .select("id")
+        .eq("type", "warehouse")
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+
+      if (!warehouse) {
+        setStep("no-warehouse");
+        setCheckingWarehouse(false);
+        return;
+      }
+
+      // Fetch products
+      const { data: productsData } = await supabase
+        .from("products")
+        .select("id, name, code, category, unit, current_stock")
+        .order("name");
+      setProducts((productsData as Product[]) || []);
+      setCheckingWarehouse(false);
+    } catch (error) {
+      // No warehouse found
+      setStep("no-warehouse");
+      setCheckingWarehouse(false);
+    }
+  };
 
   const fetchProducts = async () => {
     const { data } = await supabase
@@ -413,38 +446,67 @@ export default function PurchasesImport() {
       </header>
 
       <main className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* Step indicator */}
-        <div className="flex items-center justify-center gap-2">
-          {[
-            { key: "upload", label: "Subir" },
-            { key: "review", label: "Revisar" },
-            { key: "confirm", label: "Confirmar" },
-          ].map((s, i) => (
-            <div key={s.key} className="flex items-center gap-2">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step === s.key || (step === "processing" && s.key === "upload")
-                    ? "bg-primary text-primary-foreground"
-                    : step === "complete" || 
-                      (step === "review" && s.key === "upload") ||
-                      (step === "confirm" && (s.key === "upload" || s.key === "review"))
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {step === "complete" || 
-                 (step === "review" && s.key === "upload") ||
-                 (step === "confirm" && (s.key === "upload" || s.key === "review")) ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  i + 1
-                )}
+        {/* No Warehouse Warning */}
+        {step === "no-warehouse" && (
+          <Card className="border-amber-500/30">
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                <Warehouse className="h-8 w-8 text-amber-600" />
               </div>
-              <span className="text-sm hidden sm:inline">{s.label}</span>
-              {i < 2 && <div className="w-8 h-px bg-border" />}
-            </div>
-          ))}
-        </div>
+              <h2 className="text-2xl font-bold mb-2">Bodega no configurada</h2>
+              <p className="text-muted-foreground mb-6">
+                Debes tener una bodega configurada antes de importar stock desde facturas.
+              </p>
+              <div className="flex justify-center gap-4">
+                <Button variant="outline" onClick={() => navigate("/admin")}>
+                  Volver al panel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Loading check */}
+        {checkingWarehouse && step !== "no-warehouse" && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
+
+        {/* Step indicator - only show when not blocked */}
+        {!checkingWarehouse && step !== "no-warehouse" && (
+          <div className="flex items-center justify-center gap-2">
+            {[
+              { key: "upload", label: "Subir" },
+              { key: "review", label: "Revisar" },
+              { key: "confirm", label: "Confirmar" },
+            ].map((s, i) => (
+              <div key={s.key} className="flex items-center gap-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                    step === s.key || (step === "processing" && s.key === "upload")
+                      ? "bg-primary text-primary-foreground"
+                      : step === "complete" || 
+                        (step === "review" && s.key === "upload") ||
+                        (step === "confirm" && (s.key === "upload" || s.key === "review"))
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {step === "complete" || 
+                   (step === "review" && s.key === "upload") ||
+                   (step === "confirm" && (s.key === "upload" || s.key === "review")) ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    i + 1
+                  )}
+                </div>
+                <span className="text-sm hidden sm:inline">{s.label}</span>
+                {i < 2 && <div className="w-8 h-px bg-border" />}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Upload Step */}
         {(step === "upload" || step === "processing") && (
