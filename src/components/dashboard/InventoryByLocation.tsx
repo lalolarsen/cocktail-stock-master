@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Store, Package, AlertTriangle, FileUp, ArrowRightLeft, Plus } from "lucide-react";
+import { Store, Package, AlertTriangle } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
+import { WarehouseStockIntake } from "./WarehouseStockIntake";
 
 interface StockLocation {
   id: string;
@@ -20,6 +19,7 @@ interface StockLocation {
 interface Product {
   id: string;
   name: string;
+  code: string;
   category: string;
   minimum_stock: number;
   unit: string;
@@ -40,7 +40,6 @@ const getUnitDisplay = (category: string, unit: string) => {
 };
 
 export function InventoryByLocation() {
-  const navigate = useNavigate();
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [balances, setBalances] = useState<StockBalance[]>([]);
@@ -64,7 +63,7 @@ export function InventoryByLocation() {
       if (balResult.error) throw balResult.error;
       
       setLocations(locResult.data as StockLocation[] || []);
-      setProducts(prodResult.data || []);
+      setProducts(prodResult.data as Product[] || []);
       setBalances(balResult.data || []);
       
       // Default to warehouse
@@ -119,40 +118,24 @@ export function InventoryByLocation() {
   }
 
   return (
-    <Card className="glass-effect shadow-elegant">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-2xl bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-          Inventario por Ubicación
-        </CardTitle>
-        
-        {/* Action Buttons for Warehouse */}
-        {selectedLocation?.type === "warehouse" && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate("/admin/purchases/import")}
-              disabled={!hasWarehouse}
-              className="gap-2"
-              title={hasWarehouse ? "Importar stock desde factura" : "Debes tener una bodega configurada"}
-            >
-              <FileUp className="h-4 w-4" />
-              <span className="hidden sm:inline">Importar desde factura</span>
-            </Button>
-          </div>
-        )}
-      </CardHeader>
-      
-      {/* Helper text when on warehouse tab */}
-      {selectedLocation?.type === "warehouse" && (
-        <div className="px-6 pb-2">
-          <p className="text-xs text-muted-foreground">
-            💡 Sube una factura PDF o imagen para ingresar stock automáticamente a bodega
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Stock Intake Section - Only for Warehouse */}
+      {warehouse && (
+        <WarehouseStockIntake
+          warehouseId={warehouse.id}
+          products={products.map(p => ({ ...p, code: p.code || "" }))}
+          onStockUpdated={fetchData}
+        />
       )}
-      
-      <CardContent>
+
+      <Card className="glass-effect shadow-elegant">
+        <CardHeader>
+          <CardTitle className="text-2xl bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+            Inventario por Ubicación
+          </CardTitle>
+        </CardHeader>
+        
+        <CardContent>
         <Tabs value={selectedLocationId || ""} onValueChange={setSelectedLocationId} className="w-full">
           <TabsList className="w-full flex flex-wrap gap-1 h-auto mb-6">
             {locations.map((location) => (
@@ -239,5 +222,6 @@ export function InventoryByLocation() {
         </Tabs>
       </CardContent>
     </Card>
+    </div>
   );
 }
