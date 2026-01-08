@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -40,8 +41,13 @@ import {
   AlertCircle,
   Warehouse,
   Download,
+  Link2,
+  HelpCircle,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { NewProductWizard } from "./NewProductWizard";
+
+type MatchStatus = "matched" | "review_required" | "new_proposed";
 
 interface Product {
   id: string;
@@ -57,6 +63,7 @@ interface ExcelRow {
   unit_cost: number;
   matched_product_id?: string;
   matched_product_name?: string;
+  match_status: MatchStatus;
   error?: string;
 }
 
@@ -73,7 +80,20 @@ const INTAKE_REASONS = [
   { value: "correccion", label: "Corrección" },
 ];
 
-export function WarehouseStockIntake({ 
+// Calculate similarity between two strings
+function calculateSimilarity(str1: string, str2: string): number {
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+  if (s1 === s2) return 1;
+  if (s1.includes(s2) || s2.includes(s1)) return 0.9;
+  const words1 = new Set(s1.split(/\s+/));
+  const words2 = new Set(s2.split(/\s+/));
+  const intersection = new Set([...words1].filter(x => words2.has(x)));
+  const union = new Set([...words1, ...words2]);
+  return intersection.size / union.size;
+}
+
+export function WarehouseStockIntake({
   warehouseId, 
   products, 
   onStockUpdated 
@@ -95,6 +115,47 @@ export function WarehouseStockIntake({
   const [excelStep, setExcelStep] = useState<"upload" | "preview" | "confirm">("upload");
   const [processingExcel, setProcessingExcel] = useState(false);
   const [submittingExcel, setSubmittingExcel] = useState(false);
+
+  // New product wizard state
+  const [showNewProductWizard, setShowNewProductWizard] = useState(false);
+  const [wizardRowIndex, setWizardRowIndex] = useState<number | null>(null);
+  const [wizardRawName, setWizardRawName] = useState("");
+  const [wizardUnitCost, setWizardUnitCost] = useState<number | undefined>();
+
+  const handleOpenNewProductWizard = (index: number) => {
+    const row = excelRows[index];
+    setWizardRowIndex(index);
+    setWizardRawName(row.product_name);
+    setWizardUnitCost(row.unit_cost > 0 ? row.unit_cost : undefined);
+    setShowNewProductWizard(true);
+  };
+
+  const handleProductCreatedForRow = (productId: string, productName: string) => {
+    if (wizardRowIndex !== null) {
+      setExcelRows((prev) =>
+        prev.map((row, i) =>
+          i === wizardRowIndex
+            ? { ...row, matched_product_id: productId, matched_product_name: productName, match_status: "matched" as MatchStatus, error: undefined }
+            : row
+        )
+      );
+    }
+    setWizardRowIndex(null);
+  };
+
+  const handleLinkToExistingForRow = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (wizardRowIndex !== null && product) {
+      setExcelRows((prev) =>
+        prev.map((row, i) =>
+          i === wizardRowIndex
+            ? { ...row, matched_product_id: productId, matched_product_name: product.name, match_status: "matched" as MatchStatus, error: undefined }
+            : row
+        )
+      );
+    }
+    setWizardRowIndex(null);
+  };
 
   const handleManualSubmit = async () => {
     if (!manualProductId || !manualQuantity || !manualReason) {
@@ -229,12 +290,25 @@ export function WarehouseStockIntake({
         const quantity = parseFloat(String(row.quantity || row.cantidad || 0));
         const unitCost = parseFloat(String(row.unit_cost || row.costo_unitario || row.costo || 0));
 
-        // Try to match product
+        // Try to match product (exact or code match)
         const matchedProduct = products.find(
           (p) =>
             p.name.toLowerCase() === productName.toLowerCase() ||
             p.code.toLowerCase() === productName.toLowerCase()
         );
+
+        // Determine match status
+        let matchStatus: MatchStatus = "new_proposed";
+        if (matchedProduct) {
+          matchStatus = "matched";
+        } else {
+          // Check for similar products
+          const hasSimilar = products.some((p) => {
+            const similarity = calculateSimilarity(productName, p.name);
+            return similarity >= 0.4;
+          });
+          matchStatus = hasSimilar ? "review_required" : "new_proposed";
+        }
 
         return {
           product_name: productName,
@@ -242,12 +316,11 @@ export function WarehouseStockIntake({
           unit_cost: isNaN(unitCost) ? 0 : unitCost,
           matched_product_id: matchedProduct?.id,
           matched_product_name: matchedProduct?.name,
+          match_status: matchStatus,
           error: !productName
             ? "Sin nombre"
             : quantity <= 0
             ? "Cantidad inválida"
-            : !matchedProduct
-            ? "Producto no encontrado"
             : undefined,
         };
       });
@@ -356,7 +429,9 @@ export function WarehouseStockIntake({
     XLSX.writeFile(wb, "plantilla_ingreso_stock.xlsx");
   };
 
-  const validExcelRows = excelRows.filter((r) => !r.error);
+  // Only rows with matched products count as valid for import
+  const validExcelRows = excelRows.filter((r) => r.matched_product_id && !r.error);
+  const unmatchedRows = excelRows.filter((r) => !r.matched_product_id && !r.error);
   const totalExcelQuantity = validExcelRows.reduce((sum, r) => sum + r.quantity, 0);
   const totalExcelValue = validExcelRows.reduce((sum, r) => sum + r.quantity * r.unit_cost, 0);
 
@@ -598,29 +673,59 @@ export function WarehouseStockIntake({
                   </div>
                 )}
 
+                {excelRows.some((r) => r.match_status !== "matched" && !r.error) && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-500/10 p-3 rounded-lg">
+                    <HelpCircle className="h-4 w-4" />
+                    {excelRows.filter((r) => r.match_status !== "matched" && !r.error).length} productos requieren revisión. Vincúlelos o créelos nuevos.
+                  </div>
+                )}
+
                 {/* Table preview */}
                 <div className="border rounded-lg overflow-hidden">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Producto</TableHead>
-                        <TableHead>Match</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Vinculación</TableHead>
                         <TableHead className="text-right">Cantidad</TableHead>
                         <TableHead className="text-right">Costo Unit.</TableHead>
-                        <TableHead>Estado</TableHead>
+                        <TableHead className="w-20">Acción</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {excelRows.slice(0, 20).map((row, idx) => (
-                        <TableRow key={idx} className={row.error ? "bg-red-50/50" : ""}>
-                          <TableCell className="text-sm">{row.product_name}</TableCell>
-                          <TableCell className="text-sm">{row.matched_product_name || "-"}</TableCell>
+                        <TableRow key={idx} className={row.error ? "bg-red-50/50" : row.match_status !== "matched" ? "bg-amber-50/50" : ""}>
+                          <TableCell className="text-sm font-medium">{row.product_name}</TableCell>
+                          <TableCell>
+                            {row.error ? (
+                              <Badge variant="destructive" className="text-xs">{row.error}</Badge>
+                            ) : row.match_status === "matched" ? (
+                              <Badge className="bg-green-500/20 text-green-700 border-green-500/30 text-xs">Vinculado</Badge>
+                            ) : row.match_status === "review_required" ? (
+                              <Badge className="bg-amber-500/20 text-amber-700 border-amber-500/30 text-xs">Revisar</Badge>
+                            ) : (
+                              <Badge className="bg-blue-500/20 text-blue-700 border-blue-500/30 text-xs">Nuevo</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.matched_product_name || <span className="text-muted-foreground">-</span>}
+                          </TableCell>
                           <TableCell className="text-right">{row.quantity}</TableCell>
                           <TableCell className="text-right">{row.unit_cost > 0 ? formatCLP(row.unit_cost) : "-"}</TableCell>
                           <TableCell>
-                            {row.error ? (
-                              <span className="text-xs text-red-600">{row.error}</span>
-                            ) : (
+                            {!row.error && row.match_status !== "matched" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleOpenNewProductWizard(idx)}
+                                className="h-7 px-2 gap-1"
+                              >
+                                <Link2 className="h-3 w-3" />
+                                Resolver
+                              </Button>
+                            )}
+                            {row.match_status === "matched" && !row.error && (
                               <Check className="h-4 w-4 text-green-600" />
                             )}
                           </TableCell>
@@ -665,6 +770,17 @@ export function WarehouseStockIntake({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* New Product Wizard for Excel rows */}
+      <NewProductWizard
+        open={showNewProductWizard}
+        onOpenChange={setShowNewProductWizard}
+        rawName={wizardRawName}
+        suggestedUnitCost={wizardUnitCost}
+        existingProducts={products}
+        onProductCreated={handleProductCreatedForRow}
+        onLinkToExisting={handleLinkToExistingForRow}
+      />
     </>
   );
 }
