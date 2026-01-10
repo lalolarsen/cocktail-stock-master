@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Receipt, TrendingDown, Building2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Receipt, TrendingDown, Building2, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
@@ -47,6 +47,8 @@ const EXPENSE_CATEGORIES = {
   ]
 };
 
+const PAGE_SIZE = 25;
+
 export function ExpenseDeclaration() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [description, setDescription] = useState("");
@@ -54,6 +56,7 @@ export function ExpenseDeclaration() {
   const [expenseType, setExpenseType] = useState<"operacional" | "no_operacional">("operacional");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [page, setPage] = useState(0);
   
   const queryClient = useQueryClient();
 
@@ -63,7 +66,7 @@ export function ExpenseDeclaration() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("jornadas")
-        .select("*")
+        .select("id, numero_jornada")
         .eq("estado", "activa")
         .maybeSingle();
       
@@ -72,17 +75,45 @@ export function ExpenseDeclaration() {
     }
   });
 
-  // Fetch expenses
-  const { data: expenses, isLoading } = useQuery({
-    queryKey: ["expenses"],
+  // Fetch expenses with pagination
+  const { data: expensesData, isLoading } = useQuery({
+    queryKey: ["expenses", page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data, error, count } = await supabase
         .from("expenses")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select("id, description, amount, expense_type, category, created_at, notes", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
       
       if (error) throw error;
-      return data as Expense[];
+      return { expenses: data as Expense[], totalCount: count || 0 };
+    }
+  });
+
+  // Fetch totals separately (aggregate query for summary)
+  const { data: totals } = useQuery({
+    queryKey: ["expenses-totals"],
+    queryFn: async () => {
+      // Fetch counts and sums grouped by type
+      const { data: opData } = await supabase
+        .from("expenses")
+        .select("amount")
+        .eq("expense_type", "operacional");
+      
+      const { data: noOpData } = await supabase
+        .from("expenses")
+        .select("amount")
+        .eq("expense_type", "no_operacional");
+
+      const totalOperacional = (opData || []).reduce((sum, e) => sum + Number(e.amount), 0);
+      const totalNoOperacional = (noOpData || []).reduce((sum, e) => sum + Number(e.amount), 0);
+      const countOperacional = opData?.length || 0;
+      const countNoOperacional = noOpData?.length || 0;
+
+      return { totalOperacional, totalNoOperacional, countOperacional, countNoOperacional };
     }
   });
 
@@ -106,6 +137,7 @@ export function ExpenseDeclaration() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses-totals"] });
       toast.success("Gasto registrado exitosamente");
       resetForm();
       setIsDialogOpen(false);
@@ -123,6 +155,7 @@ export function ExpenseDeclaration() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses-totals"] });
       toast.success("Gasto eliminado");
     },
     onError: (error) => {
@@ -147,11 +180,9 @@ export function ExpenseDeclaration() {
     createExpense.mutate();
   };
 
-  // Calculate totals
-  const totalOperacional = expenses?.filter(e => e.expense_type === "operacional")
-    .reduce((sum, e) => sum + Number(e.amount), 0) || 0;
-  const totalNoOperacional = expenses?.filter(e => e.expense_type === "no_operacional")
-    .reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+  const expenses = expensesData?.expenses || [];
+  const totalCount = expensesData?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -265,9 +296,9 @@ export function ExpenseDeclaration() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500">{formatCLP(totalOperacional)}</div>
+            <div className="text-2xl font-bold text-orange-500">{formatCLP(totals?.totalOperacional || 0)}</div>
             <p className="text-xs text-muted-foreground">
-              {expenses?.filter(e => e.expense_type === "operacional").length || 0} registros
+              {totals?.countOperacional || 0} registros
             </p>
           </CardContent>
         </Card>
@@ -278,9 +309,9 @@ export function ExpenseDeclaration() {
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">{formatCLP(totalNoOperacional)}</div>
+            <div className="text-2xl font-bold text-red-500">{formatCLP(totals?.totalNoOperacional || 0)}</div>
             <p className="text-xs text-muted-foreground">
-              {expenses?.filter(e => e.expense_type === "no_operacional").length || 0} registros
+              {totals?.countNoOperacional || 0} registros
             </p>
           </CardContent>
         </Card>
@@ -291,9 +322,9 @@ export function ExpenseDeclaration() {
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCLP(totalOperacional + totalNoOperacional)}</div>
+            <div className="text-2xl font-bold">{formatCLP((totals?.totalOperacional || 0) + (totals?.totalNoOperacional || 0))}</div>
             <p className="text-xs text-muted-foreground">
-              {expenses?.length || 0} registros totales
+              {totalCount} registros totales
             </p>
           </CardContent>
         </Card>
@@ -309,55 +340,86 @@ export function ExpenseDeclaration() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : expenses && expenses.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {expenses.map((expense) => (
-                  <TableRow key={expense.id}>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(expense.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <span className="font-medium">{expense.description}</span>
-                        {expense.notes && (
-                          <p className="text-xs text-muted-foreground">{expense.notes}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={expense.expense_type === "operacional" ? "default" : "secondary"}>
-                        {expense.expense_type === "operacional" ? "Operacional" : "No Operacional"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{expense.category}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCLP(expense.amount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteExpense.mutate(expense.id)}
-                        disabled={deleteExpense.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
+          ) : expenses.length > 0 ? (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {expenses.map((expense) => (
+                    <TableRow key={expense.id}>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(expense.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium">{expense.description}</span>
+                          {expense.notes && (
+                            <p className="text-xs text-muted-foreground">{expense.notes}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={expense.expense_type === "operacional" ? "default" : "secondary"}>
+                          {expense.expense_type === "operacional" ? "Operacional" : "No Operacional"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{expense.category}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCLP(expense.amount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteExpense.mutate(expense.id)}
+                          disabled={deleteExpense.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {totalCount > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page === 0 || isLoading}
+                      onClick={() => setPage(p => p - 1)}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages - 1 || isLoading}
+                      onClick={() => setPage(p => p + 1)}
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <Receipt className="h-12 w-12 mx-auto mb-4 opacity-50" />

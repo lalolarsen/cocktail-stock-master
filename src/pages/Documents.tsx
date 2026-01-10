@@ -148,12 +148,16 @@ interface InvoicingConfig {
   active_provider: string;
 }
 
+const PAGE_SIZE = 25;
+
 export default function Documents() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { role, isReadOnly } = useUserRole();
   const [documents, setDocuments] = useState<SalesDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
   // Track retrying by idempotency key (provider:saleId:documentType) to prevent duplicates
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set());
   
@@ -184,7 +188,12 @@ export default function Documents() {
   useEffect(() => {
     fetchInvoicingConfig();
     fetchDocuments();
-  }, [activeTab]);
+  }, [activeTab, page]);
+
+  // Reset page when tab or filters change
+  useEffect(() => {
+    setPage(0);
+  }, [activeTab, documentTypeFilter]);
 
   // Realtime subscription for sales_documents changes
   useEffect(() => {
@@ -326,39 +335,47 @@ export default function Documents() {
     setLoading(true);
     try {
       const statuses = getStatusesForTab(activeTab);
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
       
       let query = supabase
         .from("sales_documents")
         .select(`
-          *,
+          id,
+          sale_id,
+          document_type,
+          provider,
+          provider_ref,
+          status,
+          folio,
+          pdf_url,
+          error_message,
+          retry_count,
+          last_attempt_at,
+          issued_at,
+          created_at,
           sale:sales (
             sale_number,
             total_amount,
             point_of_sale,
             created_at,
-            seller_id,
-            jornada:jornadas (
-              fecha,
-              numero_jornada
-            ),
-            sale_items (
-              quantity,
-              unit_price,
-              subtotal,
-              cocktails (
-                name
-              )
-            )
+            seller_id
           )
-        `)
+        `, { count: "exact" })
         .in("status", statuses)
         .order("created_at", { ascending: false })
-        .limit(200);
+        .range(from, to);
 
-      const { data, error } = await query;
+      // Apply document type filter at query level
+      if (documentTypeFilter !== "all") {
+        query = query.eq("document_type", documentTypeFilter as "boleta" | "factura");
+      }
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
       setDocuments((data as SalesDocument[]) || []);
+      setTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching documents:", error);
       toast.error("Error al cargar documentos");
@@ -426,24 +443,23 @@ export default function Documents() {
     return format(new Date(dateStr), "dd MMM yyyy HH:mm", { locale: es });
   };
 
+  // Client-side search filter (server handles type filter now)
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch =
       searchQuery === "" ||
       doc.sale?.sale_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       doc.folio?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesType =
-      documentTypeFilter === "all" || doc.document_type === documentTypeFilter;
-
-    return matchesSearch && matchesType;
+    return matchesSearch;
   });
 
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
   const getCounts = () => {
-    // We need to fetch counts separately, but for now we'll show the filtered count
     return {
-      issued: activeTab === "issued" ? filteredDocuments.length : 0,
-      pending: activeTab === "pending" ? filteredDocuments.length : 0,
-      failed: activeTab === "failed" ? filteredDocuments.length : 0,
+      issued: activeTab === "issued" ? totalCount : 0,
+      pending: activeTab === "pending" ? totalCount : 0,
+      failed: activeTab === "failed" ? totalCount : 0,
     };
   };
 
@@ -564,7 +580,7 @@ export default function Documents() {
           </div>
 
           {/* Tab Content */}
-          <TabsContent value="issued">
+          <TabsContent value="issued" className="space-y-4">
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
@@ -578,9 +594,25 @@ export default function Documents() {
               isReadOnly={isReadOnly}
               showIssuedDate
             />
+            {/* Pagination */}
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage(p => p - 1)}>
+                    Anterior
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages - 1 || loading} onClick={() => setPage(p => p + 1)}>
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="pending">
+          <TabsContent value="pending" className="space-y-4">
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
@@ -593,9 +625,24 @@ export default function Documents() {
               formatDate={formatDate}
               isReadOnly={isReadOnly}
             />
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage(p => p - 1)}>
+                    Anterior
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages - 1 || loading} onClick={() => setPage(p => p + 1)}>
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="failed">
+          <TabsContent value="failed" className="space-y-4">
             <DocumentsTable
               documents={filteredDocuments}
               loading={loading}
@@ -609,6 +656,21 @@ export default function Documents() {
               isReadOnly={isReadOnly}
               showRetryInfo
             />
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage(p => p - 1)}>
+                    Anterior
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages - 1 || loading} onClick={() => setPage(p => p + 1)}>
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
