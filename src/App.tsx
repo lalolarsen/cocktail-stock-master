@@ -20,6 +20,7 @@ import Income from "./pages/Income";
 import IncomeStatement from "./pages/IncomeStatement";
 import PurchasesImport from "./pages/PurchasesImport";
 import PendingCatalog from "./pages/PendingCatalog";
+import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
@@ -139,6 +140,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <PendingCatalog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/feature-flags"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <FeatureFlagsAdmin />
                 </ProtectedRoute>
               }
             />
