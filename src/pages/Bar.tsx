@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { RedemptionHistory } from "@/components/bar/RedemptionHistory";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { logAuditEvent } from "@/lib/monitoring";
 
 type MissingItem = {
   product_name: string;
@@ -358,6 +359,17 @@ export default function Bar() {
       const resultData = data as RedemptionResult;
       setResult(resultData);
       setScanState(resultData.success ? "success" : "error");
+      
+      // Log audit event
+      logAuditEvent({
+        action: "redeem_pickup_token",
+        status: resultData.success ? "success" : "fail",
+        metadata: {
+          token: token.substring(0, 8) + "...",
+          error_code: resultData.error_code,
+          bar_id: selectedBarId,
+        },
+      });
       
       // Trigger history refresh after any scan
       setHistoryRefreshTrigger(prev => prev + 1);

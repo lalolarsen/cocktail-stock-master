@@ -51,6 +51,7 @@ import {
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { logAuditEvent } from "@/lib/monitoring";
 
 interface Product {
   id: string;
@@ -491,11 +492,37 @@ export default function PurchasesImport() {
         : "";
       const messages = [inventoryMsg, expenseMsg].filter(Boolean).join(", ");
       
+      // Log audit event
+      await logAuditEvent({
+        action: "invoice_import_confirm",
+        status: "success",
+        metadata: {
+          document_id: documentId,
+          provider: providerName,
+          document_number: documentNumber,
+          inventory_items: inventoryItems.length,
+          expense_items: expenseItems.length,
+          total_inventory_amount: totalInventoryAmount,
+          total_expense_amount: totalExpenseAmount,
+        },
+      });
+
       toast.success(`Ingreso confirmado: ${messages}`);
       setStep("complete");
     } catch (error: unknown) {
       console.error("Error confirming intake:", error);
       const errorMessage = error instanceof Error ? error.message : "Error al confirmar el ingreso";
+      
+      // Log audit event for failure
+      await logAuditEvent({
+        action: "invoice_import_confirm",
+        status: "fail",
+        metadata: {
+          document_id: documentId,
+          error: errorMessage,
+        },
+      });
+      
       toast.error(errorMessage);
     } finally {
       setConfirming(false);

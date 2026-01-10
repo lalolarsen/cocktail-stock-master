@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp, FileUp } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp, FileUp, Activity } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -84,6 +84,7 @@ const settingsViews: MenuItem[] = [
 ];
 
 const settingsLinks: ExternalLink[] = [
+  { title: "Monitoreo", icon: Activity, path: "/admin/monitoring", adminOnly: true },
   { title: "Feature Flags", icon: Settings, path: "/admin/feature-flags", adminOnly: true },
   { title: "Sistema", icon: Settings, path: "/admin/system", adminOnly: true },
   { title: "Ayuda", icon: HelpCircle, path: "/help" },
