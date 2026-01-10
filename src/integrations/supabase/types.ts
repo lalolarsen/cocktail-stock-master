@@ -185,6 +185,9 @@ export type Database = {
           id: string
           jornada_id: string | null
           notes: string | null
+          source_id: string | null
+          source_type: string | null
+          venue_id: string | null
         }
         Insert: {
           amount: number
@@ -196,6 +199,9 @@ export type Database = {
           id?: string
           jornada_id?: string | null
           notes?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          venue_id?: string | null
         }
         Update: {
           amount?: number
@@ -207,6 +213,9 @@ export type Database = {
           id?: string
           jornada_id?: string | null
           notes?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -214,6 +223,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
