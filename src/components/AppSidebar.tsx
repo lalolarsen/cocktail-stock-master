@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { useFeatureFlags, FeatureKey } from "@/hooks/useFeatureFlags";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -30,6 +31,7 @@ type MenuItem = {
   value: ViewType;
   icon: typeof Wine;
   adminOnly?: boolean;
+  featureFlag?: FeatureKey;
 };
 
 type ExternalLink = {
@@ -37,6 +39,7 @@ type ExternalLink = {
   icon: typeof Wine;
   path: string;
   adminOnly?: boolean;
+  featureFlag?: FeatureKey;
 };
 
 // Operations section
@@ -51,7 +54,7 @@ const operationsItems: MenuItem[] = [
 
 // Purchases section
 const purchaseLinks: ExternalLink[] = [
-  { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true },
+  { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true, featureFlag: "invoice_reader" },
   { title: "Catálogo Pendiente", icon: Package, path: "/admin/catalog/pending", adminOnly: true },
 ];
 
@@ -81,6 +84,7 @@ const settingsViews: MenuItem[] = [
 ];
 
 const settingsLinks: ExternalLink[] = [
+  { title: "Feature Flags", icon: Settings, path: "/admin/feature-flags", adminOnly: true },
   { title: "Sistema", icon: Settings, path: "/admin/system", adminOnly: true },
   { title: "Ayuda", icon: HelpCircle, path: "/help" },
 ];
@@ -88,8 +92,16 @@ const settingsLinks: ExternalLink[] = [
 const filterByRole = <T extends { adminOnly?: boolean }>(items: T[], isReadOnly: boolean): T[] => 
   isReadOnly ? items.filter(item => !item.adminOnly) : items;
 
+// Helper to filter items by feature flags
+const filterByFeatureFlags = <T extends { featureFlag?: FeatureKey }>(
+  items: T[], 
+  isEnabled: (key: FeatureKey) => boolean
+): T[] => 
+  items.filter(item => !item.featureFlag || isEnabled(item.featureFlag));
+
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
   const navigate = useNavigate();
+  const { isEnabled } = useFeatureFlags();
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -168,12 +180,12 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
         </SidebarGroup>
 
         {/* Purchases Section */}
-        {!isReadOnly && (
+        {!isReadOnly && filterByFeatureFlags(purchaseLinks, isEnabled).length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Compras</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {filterByRole(purchaseLinks, isReadOnly).map(renderExternalLink)}
+                {filterByFeatureFlags(filterByRole(purchaseLinks, isReadOnly), isEnabled).map(renderExternalLink)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

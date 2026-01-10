@@ -46,9 +46,11 @@ import {
   Search,
   Warehouse,
   Receipt,
+  Lock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 interface Product {
   id: string;
@@ -93,10 +95,11 @@ const EXPENSE_SUBCATEGORIES: Record<ExpenseCategory, string[]> = {
   "non-operational": ["Administrativo", "Marketing", "Transporte", "Otros no-operacional"],
 };
 
-type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-warehouse";
+type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-warehouse" | "no-access";
 
 export default function PurchasesImport() {
   const navigate = useNavigate();
+  const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const [step, setStep] = useState<Step>("upload");
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -130,8 +133,15 @@ export default function PurchasesImport() {
   const [expenseMode, setExpenseMode] = useState<"all_inventory" | "partial_expense">("all_inventory");
 
   useEffect(() => {
-    checkWarehouseAndFetchProducts();
-  }, []);
+    if (!flagsLoading) {
+      if (!isEnabled("invoice_reader")) {
+        setStep("no-access");
+        setCheckingWarehouse(false);
+      } else {
+        checkWarehouseAndFetchProducts();
+      }
+    }
+  }, [flagsLoading, isEnabled]);
 
   const checkWarehouseAndFetchProducts = async () => {
     try {
@@ -536,6 +546,26 @@ export default function PurchasesImport() {
       </header>
 
       <main className="p-6 max-w-5xl mx-auto space-y-6">
+        {/* No Access - Feature disabled */}
+        {step === "no-access" && (
+          <Card className="border-destructive/30">
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+                <Lock className="h-8 w-8 text-destructive" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Función no disponible</h2>
+              <p className="text-muted-foreground mb-6">
+                Esta función no está habilitada para tu local. Contacta al administrador para más información.
+              </p>
+              <div className="flex justify-center gap-4">
+                <Button variant="outline" onClick={() => navigate("/admin")}>
+                  Volver al panel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* No Warehouse Warning */}
         {step === "no-warehouse" && (
           <Card className="border-amber-500/30">
@@ -564,7 +594,7 @@ export default function PurchasesImport() {
         )}
 
         {/* Step indicator - only show when not blocked */}
-        {!checkingWarehouse && step !== "no-warehouse" && (
+        {!checkingWarehouse && step !== "no-warehouse" && step !== "no-access" && (
           <div className="flex items-center justify-center gap-2">
             {[
               { key: "upload", label: "Subir" },
@@ -887,58 +917,60 @@ export default function PurchasesImport() {
               </CardContent>
             </Card>
 
-            {/* Expense Registration Toggle */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Receipt className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <CardTitle className="text-base">Registrar parte como GASTO</CardTitle>
-                      <CardDescription className="text-sm">
-                        Opcionalmente registre ítems como gastos operacionales (ej: hielo, vasos, limpieza)
-                      </CardDescription>
+            {/* Expense Registration Toggle - only show if invoice_to_expense feature is enabled */}
+            {isEnabled("invoice_to_expense") && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Receipt className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <CardTitle className="text-base">Registrar parte como GASTO</CardTitle>
+                        <CardDescription className="text-sm">
+                          Opcionalmente registre ítems como gastos operacionales (ej: hielo, vasos, limpieza)
+                        </CardDescription>
+                      </div>
                     </div>
+                    <Switch
+                      checked={registerExpenses}
+                      onCheckedChange={setRegisterExpenses}
+                    />
                   </div>
-                  <Switch
-                    checked={registerExpenses}
-                    onCheckedChange={setRegisterExpenses}
-                  />
-                </div>
-              </CardHeader>
-              {registerExpenses && (
-                <CardContent className="pt-0">
-                  <div className="space-y-4">
-                    <div className="flex gap-4">
-                      <Button
-                        variant={expenseMode === "all_inventory" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setExpenseMode("all_inventory");
-                          // Reset all to inventory
-                          setItems(prev => prev.map(item => ({ ...item, classification: "inventory" as const })));
-                        }}
-                      >
-                        Todo es inventario
-                      </Button>
-                      <Button
-                        variant={expenseMode === "partial_expense" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setExpenseMode("partial_expense")}
-                      >
-                        Parte es gasto
-                      </Button>
+                </CardHeader>
+                {registerExpenses && (
+                  <CardContent className="pt-0">
+                    <div className="space-y-4">
+                      <div className="flex gap-4">
+                        <Button
+                          variant={expenseMode === "all_inventory" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setExpenseMode("all_inventory");
+                            // Reset all to inventory
+                            setItems(prev => prev.map(item => ({ ...item, classification: "inventory" as const })));
+                          }}
+                        >
+                          Todo es inventario
+                        </Button>
+                        <Button
+                          variant={expenseMode === "partial_expense" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setExpenseMode("partial_expense")}
+                        >
+                          Parte es gasto
+                        </Button>
+                      </div>
+                      
+                      {expenseMode === "partial_expense" && (
+                        <p className="text-sm text-muted-foreground">
+                          Use la columna "Clasificación" en la tabla para marcar ítems como gasto.
+                        </p>
+                      )}
                     </div>
-                    
-                    {expenseMode === "partial_expense" && (
-                      <p className="text-sm text-muted-foreground">
-                        Use la columna "Clasificación" en la tabla para marcar ítems como gasto.
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
+                  </CardContent>
+                )}
+              </Card>
+            )}
 
             {/* Summary & Confirm */}
             <Card className="border-primary/30">
