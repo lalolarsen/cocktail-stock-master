@@ -9,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CalendarIcon, Download } from "lucide-react";
+import { CalendarIcon, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -31,32 +31,39 @@ type Sale = {
   total_amount: number;
   point_of_sale: string;
   is_cancelled: boolean;
+  seller_id: string;
+};
+
+type SaleWithSeller = Sale & {
   seller: {
     full_name: string | null;
     email: string;
   };
-  sale_items: Array<{
-    quantity: number;
-    unit_price: number;
-    subtotal: number;
-    cocktails: {
-      name: string;
-    };
-  }>;
 };
 
+const PAGE_SIZE = 25;
+
 export function ReportsPanel() {
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<SaleWithSeller[]>([]);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  
+  // Aggregated totals (fetched separately to avoid loading all rows)
+  const [totals, setTotals] = useState({ totalSales: 0, totalCancelled: 0, activeCount: 0, cancelledCount: 0 });
 
   const fetchSales = async () => {
     if (!startDate || !endDate) return;
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      // Fetch paginated sales with only needed columns
+      const { data, error, count } = await supabase
         .from("sales")
         .select(`
           id,
@@ -65,19 +72,16 @@ export function ReportsPanel() {
           total_amount,
           point_of_sale,
           is_cancelled,
-          seller_id,
-          sale_items(
-            quantity,
-            unit_price,
-            subtotal,
-            cocktails(name)
-          )
-        `)
+          seller_id
+        `, { count: "exact" })
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
+
+      setTotalCount(count || 0);
 
       // Fetch seller profiles separately
       const sellerIds = [...new Set(data?.map((s) => s.seller_id))];
@@ -96,9 +100,9 @@ export function ReportsPanel() {
           full_name: null,
           email: "Usuario desconocido",
         },
-      }));
+      })) || [];
 
-      setSales(salesWithSellers || []);
+      setSales(salesWithSellers);
     } catch (error) {
       console.error("Error fetching sales:", error);
     } finally {
@@ -106,26 +110,80 @@ export function ReportsPanel() {
     }
   };
 
+  // Fetch aggregated totals separately (only when dates change)
+  const fetchTotals = async () => {
+    if (!startDate || !endDate) return;
+
+    try {
+      // Fetch active sales total
+      const { data: activeData } = await supabase
+        .from("sales")
+        .select("total_amount")
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .eq("is_cancelled", false);
+
+      // Fetch cancelled sales total
+      const { data: cancelledData } = await supabase
+        .from("sales")
+        .select("total_amount")
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .eq("is_cancelled", true);
+
+      const totalSales = (activeData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+      const totalCancelled = (cancelledData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+
+      setTotals({
+        totalSales,
+        totalCancelled,
+        activeCount: activeData?.length || 0,
+        cancelledCount: cancelledData?.length || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching totals:", error);
+    }
+  };
+
   useEffect(() => {
     if (startDate && endDate) {
       fetchSales();
     }
+  }, [startDate, endDate, page]);
+
+  useEffect(() => {
+    if (startDate && endDate) {
+      setPage(0); // Reset page when dates change
+      fetchTotals();
+    }
   }, [startDate, endDate]);
 
-  const calculateTotals = () => {
-    const activeSales = sales.filter((sale) => !sale.is_cancelled);
-    const totalSales = activeSales.reduce(
-      (sum, sale) => sum + sale.total_amount,
-      0
-    );
-    const totalCancelled = sales
-      .filter((sale) => sale.is_cancelled)
-      .reduce((sum, sale) => sum + sale.total_amount, 0);
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-    return { totalSales, totalCancelled, count: activeSales.length };
+  const handleExport = () => {
+    if (sales.length === 0) return;
+    
+    const headers = ["Número", "Fecha", "Vendedor", "Punto de Venta", "Total", "Estado"];
+    const rows = sales.map(sale => [
+      sale.sale_number,
+      format(new Date(sale.created_at), "dd/MM/yyyy HH:mm"),
+      sale.seller.full_name || sale.seller.email,
+      sale.point_of_sale,
+      sale.total_amount.toString(),
+      sale.is_cancelled ? "Cancelada" : "Activa"
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ventas_${format(startDate!, "yyyy-MM-dd")}_${format(endDate!, "yyyy-MM-dd")}.csv`;
+    link.click();
   };
-
-  const totals = calculateTotals();
 
   return (
     <div className="space-y-6">
@@ -198,18 +256,25 @@ export function ReportsPanel() {
 
           <div className="flex items-end">
             <Button
-              onClick={fetchSales}
+              onClick={() => { setPage(0); fetchSales(); fetchTotals(); }}
               disabled={!startDate || !endDate || loading}
               className="w-full"
             >
-              {loading ? "Cargando..." : "Generar Reporte"}
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                "Generar Reporte"
+              )}
             </Button>
           </div>
         </div>
       </Card>
 
       {/* Summary Cards */}
-      {sales.length > 0 && (
+      {(startDate && endDate) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="p-6">
             <div className="space-y-2">
@@ -218,7 +283,7 @@ export function ReportsPanel() {
                 {formatCLP(totals.totalSales)}
               </p>
               <p className="text-xs text-muted-foreground">
-                {totals.count} ventas activas
+                {totals.activeCount} ventas activas
               </p>
             </div>
           </Card>
@@ -232,7 +297,7 @@ export function ReportsPanel() {
                 {formatCLP(totals.totalCancelled)}
               </p>
               <p className="text-xs text-muted-foreground">
-                {sales.length - totals.count} canceladas
+                {totals.cancelledCount} canceladas
               </p>
             </div>
           </Card>
@@ -244,7 +309,7 @@ export function ReportsPanel() {
                 {formatCLP(totals.totalSales + totals.totalCancelled)}
               </p>
               <p className="text-xs text-muted-foreground">
-                {sales.length} transacciones
+                {totalCount} transacciones
               </p>
             </div>
           </Card>
@@ -256,7 +321,7 @@ export function ReportsPanel() {
         <Card className="p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold">Detalle de Ventas</h3>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
@@ -270,7 +335,6 @@ export function ReportsPanel() {
                   <TableHead>Fecha</TableHead>
                   <TableHead>Vendedor</TableHead>
                   <TableHead>Punto de Venta</TableHead>
-                  <TableHead>Items</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
@@ -292,15 +356,6 @@ export function ReportsPanel() {
                       {sale.seller.full_name || sale.seller.email}
                     </TableCell>
                     <TableCell>{sale.point_of_sale}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {sale.sale_items.map((item, idx) => (
-                          <div key={idx}>
-                            {item.quantity}x {item.cocktails.name}
-                          </div>
-                        ))}
-                      </div>
-                    </TableCell>
                     <TableCell className="font-semibold">
                       {formatCLP(sale.total_amount)}
                     </TableCell>
@@ -316,6 +371,35 @@ export function ReportsPanel() {
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination */}
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0 || loading}
+                  onClick={() => setPage(p => p - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages - 1 || loading}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
