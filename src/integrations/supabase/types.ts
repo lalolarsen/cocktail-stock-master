@@ -56,6 +56,85 @@ export type Database = {
           },
         ]
       }
+      app_audit_events: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          status: string
+          user_id: string | null
+          venue_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          status: string
+          user_id?: string | null
+          venue_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          status?: string
+          user_id?: string | null
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_audit_events_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_error_logs: {
+        Row: {
+          created_at: string
+          error_message: string
+          id: string
+          meta: Json | null
+          route: string
+          stack: string | null
+          user_id: string | null
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message: string
+          id?: string
+          meta?: Json | null
+          route: string
+          stack?: string | null
+          user_id?: string | null
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string
+          id?: string
+          meta?: Json | null
+          route?: string
+          stack?: string | null
+          user_id?: string | null
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_error_logs_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_registers: {
         Row: {
           closing_cash: number | null
@@ -2280,6 +2359,16 @@ export type Database = {
           p_action: string
           p_details?: Json
           p_target_worker_id?: string
+        }
+        Returns: string
+      }
+      log_audit_event: {
+        Args: {
+          p_action: string
+          p_metadata?: Json
+          p_status: string
+          p_user_id?: string
+          p_venue_id?: string
         }
         Returns: string
       }

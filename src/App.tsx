@@ -21,7 +21,9 @@ import IncomeStatement from "./pages/IncomeStatement";
 import PurchasesImport from "./pages/PurchasesImport";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
+import SystemMonitoring from "./pages/SystemMonitoring";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -54,12 +56,13 @@ const App = () => {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
             <Route
               path="/"
               element={
@@ -152,6 +155,14 @@ const App = () => {
               }
             />
             <Route
+              path="/admin/monitoring"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+                  <SystemMonitoring />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/gerencia"
               element={
                 <ProtectedRoute allowedRoles={["gerencia"]}>
@@ -190,6 +201,7 @@ const App = () => {
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
+  </ErrorBoundary>
   );
 };
 
