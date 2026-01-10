@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import {
@@ -43,6 +45,7 @@ import {
   Plus,
   Search,
   Warehouse,
+  Receipt,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -75,7 +78,20 @@ interface EditableItem extends PurchaseItem {
   quantity: number;
   unit_price: number;
   match_source?: "provider" | "generic" | "fuzzy";
+  // Expense classification
+  classification: "inventory" | "expense";
+  expense_category?: string;
+  expense_subcategory?: string;
+  expense_notes?: string;
+  expense_amount?: number;
 }
+
+type ExpenseCategory = "operational" | "non-operational";
+
+const EXPENSE_SUBCATEGORIES: Record<ExpenseCategory, string[]> = {
+  operational: ["Insumos", "Limpieza", "Descartables", "Servicios", "Mantenimiento", "Otros operacional"],
+  "non-operational": ["Administrativo", "Marketing", "Transporte", "Otros no-operacional"],
+};
 
 type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-warehouse";
 
@@ -108,6 +124,10 @@ export default function PurchasesImport() {
 
   // Product search
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Expense registration
+  const [registerExpenses, setRegisterExpenses] = useState(false);
+  const [expenseMode, setExpenseMode] = useState<"all_inventory" | "partial_expense">("all_inventory");
 
   useEffect(() => {
     checkWarehouseAndFetchProducts();
@@ -238,6 +258,8 @@ export default function PurchasesImport() {
         selected_product_id: item.matched_product_id,
         quantity: item.extracted_quantity || 0,
         unit_price: item.extracted_unit_price || 0,
+        classification: "inventory" as const,
+        expense_amount: (item.extracted_quantity || 0) * (item.extracted_unit_price || 0),
       }));
 
       setItems(editableItems);
@@ -372,41 +394,94 @@ export default function PurchasesImport() {
   );
 
   // Calculate totals
-  const validItems = items.filter((item) => item.selected_product_id && item.quantity > 0);
-  const totalItems = validItems.length;
-  const totalQuantity = validItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  const inventoryItems = items.filter(
+    (item) => item.classification === "inventory" && item.selected_product_id && item.quantity > 0
+  );
+  const expenseItems = items.filter(
+    (item) => item.classification === "expense" && item.expense_category && (item.expense_amount || 0) > 0
+  );
+  
+  const totalInventoryItems = inventoryItems.length;
+  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  const totalExpenseAmount = expenseItems.reduce((sum, item) => sum + (item.expense_amount || 0), 0);
+  const totalAmount = totalInventoryAmount + totalExpenseAmount;
 
-  const canConfirm = validItems.length > 0;
+  const canConfirm = inventoryItems.length > 0 || expenseItems.length > 0;
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
 
     setConfirming(true);
     try {
-      const itemsPayload = validItems.map((item) => ({
-        item_id: item.id,
-        product_id: item.selected_product_id,
-        quantity: item.quantity,
-        unit_cost: item.unit_price,
-        raw_name: item.raw_product_name,
-      }));
+      // Handle inventory items
+      if (inventoryItems.length > 0) {
+        const itemsPayload = inventoryItems.map((item) => ({
+          item_id: item.id,
+          product_id: item.selected_product_id,
+          quantity: item.quantity,
+          unit_cost: item.unit_price,
+          raw_name: item.raw_product_name,
+        }));
 
-      const { data, error } = await supabase.rpc("confirm_purchase_intake", {
-        p_purchase_document_id: documentId,
-        p_items: itemsPayload,
-      });
+        const { data, error } = await supabase.rpc("confirm_purchase_intake", {
+          p_purchase_document_id: documentId,
+          p_items: itemsPayload,
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const result = data as { success: boolean; error?: string; total_items?: number; total_quantity?: number; total_amount?: number };
-      if (!result.success) {
-        throw new Error(result.error || "Error desconocido");
+        const result = data as { success: boolean; error?: string; total_items?: number; total_quantity?: number; total_amount?: number };
+        if (!result.success) {
+          throw new Error(result.error || "Error desconocido");
+        }
       }
 
-      toast.success(
-        `Ingreso confirmado: ${result.total_items} productos, ${result.total_quantity} unidades, ${formatCLP(result.total_amount || 0)}`
-      );
+      // Handle expense items
+      if (expenseItems.length > 0 && registerExpenses) {
+        // Get current user and venue
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Usuario no autenticado");
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("venue_id")
+          .eq("id", user.id)
+          .single();
+
+        // Get active jornada if exists
+        const { data: jornadaId } = await supabase.rpc("get_active_jornada");
+
+        // Create expense records
+        const expenseRecords = expenseItems.map((item) => ({
+          description: item.raw_product_name,
+          amount: item.expense_amount || 0,
+          expense_type: item.expense_category === "operational" ? "operational" : "non-operational",
+          category: item.expense_subcategory || "Otros",
+          notes: item.expense_notes || `Importado desde factura: ${providerName} - ${documentNumber}`,
+          created_by: user.id,
+          jornada_id: jornadaId || null,
+          venue_id: profile?.venue_id || null,
+          source_type: "purchase_invoice",
+          source_id: documentId,
+        }));
+
+        const { error: expenseError } = await supabase
+          .from("expenses")
+          .insert(expenseRecords);
+
+        if (expenseError) throw expenseError;
+      }
+
+      const inventoryMsg = inventoryItems.length > 0 
+        ? `${inventoryItems.length} productos a inventario` 
+        : "";
+      const expenseMsg = expenseItems.length > 0 && registerExpenses
+        ? `${expenseItems.length} gastos registrados` 
+        : "";
+      const messages = [inventoryMsg, expenseMsg].filter(Boolean).join(", ");
+      
+      toast.success(`Ingreso confirmado: ${messages}`);
       setStep("complete");
     } catch (error: unknown) {
       console.error("Error confirming intake:", error);
@@ -425,6 +500,21 @@ export default function PurchasesImport() {
     setDocumentNumber("");
     setDocumentDate("");
     setItems([]);
+    setRegisterExpenses(false);
+    setExpenseMode("all_inventory");
+  };
+
+  const updateItemClassification = (index: number, classification: "inventory" | "expense") => {
+    setItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        return {
+          ...item,
+          classification,
+          expense_amount: item.quantity * item.unit_price,
+        };
+      })
+    );
   };
 
   return (
@@ -629,71 +719,161 @@ export default function PurchasesImport() {
                       <TableHead className="w-[100px]">Cantidad</TableHead>
                       <TableHead className="w-[120px]">Precio Unit.</TableHead>
                       <TableHead className="text-right">Total</TableHead>
+                      {registerExpenses && expenseMode === "partial_expense" && (
+                        <TableHead className="w-[120px]">Clasificación</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {items.map((item, index) => (
-                      <TableRow key={item.id}>
+                      <TableRow 
+                        key={item.id}
+                        className={item.classification === "expense" ? "bg-amber-50/50" : ""}
+                      >
                         <TableCell className="font-medium text-sm">
                           {item.raw_product_name}
                         </TableCell>
-                        <TableCell>{getMatchBadge(item.match_confidence, item.match_source)}</TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
+                          {item.classification === "expense" ? (
+                            <Badge className="bg-amber-500/20 text-amber-700 border-amber-500/30">
+                              Gasto
+                            </Badge>
+                          ) : (
+                            getMatchBadge(item.match_confidence, item.match_source)
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {item.classification === "inventory" ? (
+                            <div className="flex gap-1">
+                              <Select
+                                value={item.selected_product_id || ""}
+                                onValueChange={(value) =>
+                                  updateItem(index, { selected_product_id: value || null })
+                                }
+                              >
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue placeholder="Seleccionar..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {filteredProducts.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                      {p.name} ({p.code})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => openNewProductDialog(index)}
+                                title="Crear nuevo producto"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
                             <Select
-                              value={item.selected_product_id || ""}
+                              value={item.expense_category || ""}
                               onValueChange={(value) =>
-                                updateItem(index, { selected_product_id: value || null })
+                                updateItem(index, { 
+                                  expense_category: value as ExpenseCategory,
+                                  expense_subcategory: undefined 
+                                })
                               }
                             >
                               <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Seleccionar..." />
+                                <SelectValue placeholder="Tipo de gasto..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {filteredProducts.map((p) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    {p.name} ({p.code})
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="operational">Operacional</SelectItem>
+                                <SelectItem value="non-operational">No operacional</SelectItem>
                               </SelectContent>
                             </Select>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => openNewProductDialog(index)}
-                              title="Crear nuevo producto"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateItem(index, { quantity: parseFloat(e.target.value) || 0 })
-                            }
-                            className="w-20"
-                          />
+                          {item.classification === "inventory" ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateItem(index, { quantity: parseFloat(e.target.value) || 0 })
+                              }
+                              className="w-20"
+                            />
+                          ) : (
+                            item.expense_category && (
+                              <Select
+                                value={item.expense_subcategory || ""}
+                                onValueChange={(value) =>
+                                  updateItem(index, { expense_subcategory: value })
+                                }
+                              >
+                                <SelectTrigger className="w-[130px]">
+                                  <SelectValue placeholder="Subcategoría..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {EXPENSE_SUBCATEGORIES[item.expense_category as ExpenseCategory]?.map((sub) => (
+                                    <SelectItem key={sub} value={sub}>
+                                      {sub}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )
+                          )}
                         </TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={item.unit_price}
-                            onChange={(e) =>
-                              updateItem(index, { unit_price: parseFloat(e.target.value) || 0 })
-                            }
-                            className="w-24"
-                          />
+                          {item.classification === "inventory" ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={item.unit_price}
+                              onChange={(e) =>
+                                updateItem(index, { unit_price: parseFloat(e.target.value) || 0 })
+                              }
+                              className="w-24"
+                            />
+                          ) : (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={item.expense_amount || 0}
+                              onChange={(e) =>
+                                updateItem(index, { expense_amount: parseFloat(e.target.value) || 0 })
+                              }
+                              className="w-24"
+                            />
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCLP(item.quantity * item.unit_price)}
+                          {item.classification === "inventory" 
+                            ? formatCLP(item.quantity * item.unit_price)
+                            : formatCLP(item.expense_amount || 0)
+                          }
                         </TableCell>
+                        {registerExpenses && expenseMode === "partial_expense" && (
+                          <TableCell>
+                            <Select
+                              value={item.classification}
+                              onValueChange={(value) =>
+                                updateItemClassification(index, value as "inventory" | "expense")
+                              }
+                            >
+                              <SelectTrigger className="w-[110px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="inventory">Inventario</SelectItem>
+                                <SelectItem value="expense">Gasto</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -707,13 +887,66 @@ export default function PurchasesImport() {
               </CardContent>
             </Card>
 
+            {/* Expense Registration Toggle */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Receipt className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <CardTitle className="text-base">Registrar parte como GASTO</CardTitle>
+                      <CardDescription className="text-sm">
+                        Opcionalmente registre ítems como gastos operacionales (ej: hielo, vasos, limpieza)
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={registerExpenses}
+                    onCheckedChange={setRegisterExpenses}
+                  />
+                </div>
+              </CardHeader>
+              {registerExpenses && (
+                <CardContent className="pt-0">
+                  <div className="space-y-4">
+                    <div className="flex gap-4">
+                      <Button
+                        variant={expenseMode === "all_inventory" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setExpenseMode("all_inventory");
+                          // Reset all to inventory
+                          setItems(prev => prev.map(item => ({ ...item, classification: "inventory" as const })));
+                        }}
+                      >
+                        Todo es inventario
+                      </Button>
+                      <Button
+                        variant={expenseMode === "partial_expense" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setExpenseMode("partial_expense")}
+                      >
+                        Parte es gasto
+                      </Button>
+                    </div>
+                    
+                    {expenseMode === "partial_expense" && (
+                      <p className="text-sm text-muted-foreground">
+                        Use la columna "Clasificación" en la tabla para marcar ítems como gasto.
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
             {/* Summary & Confirm */}
             <Card className="border-primary/30">
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="grid grid-cols-3 gap-8 text-center">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-primary">{totalItems}</p>
+                      <p className="text-2xl font-bold text-primary">{totalInventoryItems}</p>
                       <p className="text-sm text-muted-foreground">Productos</p>
                     </div>
                     <div>
@@ -721,9 +954,15 @@ export default function PurchasesImport() {
                       <p className="text-sm text-muted-foreground">Unidades</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{formatCLP(totalAmount)}</p>
-                      <p className="text-sm text-muted-foreground">Total</p>
+                      <p className="text-2xl font-bold">{formatCLP(totalInventoryAmount)}</p>
+                      <p className="text-sm text-muted-foreground">Inventario</p>
                     </div>
+                    {registerExpenses && expenseItems.length > 0 && (
+                      <div>
+                        <p className="text-2xl font-bold text-amber-600">{formatCLP(totalExpenseAmount)}</p>
+                        <p className="text-sm text-muted-foreground">Gastos ({expenseItems.length})</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-2">
@@ -748,7 +987,7 @@ export default function PurchasesImport() {
                 {!canConfirm && items.length > 0 && (
                   <div className="flex items-center gap-2 mt-4 text-sm text-amber-600">
                     <AlertCircle className="h-4 w-4" />
-                    Debe asignar al menos un producto con cantidad válida
+                    Debe asignar al menos un producto o gasto válido
                   </div>
                 )}
               </CardContent>
