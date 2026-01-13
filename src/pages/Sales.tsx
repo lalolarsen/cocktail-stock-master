@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, FileText, CreditCard, Banknote, Smartphone, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, FileText, CreditCard, Banknote, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -69,7 +69,8 @@ export default function Sales() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "debit" | "credit" | "transfer">("cash");
+  // Simplified to card (external POS) or cash (internal receipt)
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   
   // Multi-POS and bar selection
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
@@ -245,10 +246,21 @@ export default function Sales() {
     const { data, error } = await supabase
       .from("sales")
       .select(`
-        *,
+        id,
+        sale_number,
+        created_at,
+        total_amount,
+        payment_method,
+        receipt_source,
         sale_items(
-          *,
+          quantity,
+          unit_price,
           cocktails(name)
+        ),
+        sales_documents(
+          id,
+          status,
+          document_type
         )
       `)
       .eq("seller_id", session.session.user.id)
@@ -368,6 +380,12 @@ export default function Sales() {
       const saleNumber = saleNumberData as string;
       const totalAmount = calculateTotal();
 
+      // Card = external POS handles receipt, Cash = we issue receipt
+      const isCardPayment = paymentMethod === "card";
+      const receiptSource = isCardPayment ? "external" : "internal";
+      // Map simplified payment method to database enum
+      const dbPaymentMethod = isCardPayment ? "debit" : "cash";
+
       const { data: sale, error: saleError } = await supabase
         .from("sales")
         .insert({
@@ -375,12 +393,13 @@ export default function Sales() {
           seller_id: session.session.user.id,
           total_amount: totalAmount,
           point_of_sale: pointOfSale || selectedPos?.name || "POS",
-          payment_method: paymentMethod,
+          payment_method: dbPaymentMethod,
           payment_status: "paid",
           pos_id: selectedPosId,
           bar_location_id: selectedBarId,
           jornada_id: activeJornadaId || null,
           outside_jornada: !hasActiveJornada,
+          receipt_source: receiptSource,
         })
         .select()
         .single();
@@ -414,12 +433,20 @@ export default function Sales() {
           created_by: session.session.user.id
         });
 
-      // Issue electronic document
-      const docResult = await issueDocument(sale.id, documentType);
-      const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
-      
-      if (!docResult.success) {
-        console.warn(`${docLabel} pendiente: ${docResult.errorMessage}`);
+      // Only issue receipt for cash payments (card uses external POS)
+      let receiptStatus: "issued" | "pending" | "failed" | "skipped" = "skipped";
+      if (!isCardPayment) {
+        // Cash flow: attempt to issue receipt (non-blocking)
+        const docResult = await issueDocument(sale.id, documentType);
+        const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
+        
+        if (docResult.success) {
+          receiptStatus = "issued";
+        } else {
+          receiptStatus = "failed";
+          console.warn(`${docLabel} pendiente: ${docResult.errorMessage}`);
+          toast.warning(`${docLabel} no emitida. Puede reintentar desde Documentos.`);
+        }
       }
 
       // Generate pickup QR token
@@ -812,43 +839,36 @@ export default function Sales() {
                     </ScrollArea>
 
                     <div className="mt-4 space-y-3 border-t pt-4">
-                      {/* Payment & Document selectors (compact) */}
+                      {/* Payment method: Card (external POS) or Cash */}
                       <div className="grid grid-cols-2 gap-2">
-                        <Select
-                          value={paymentMethod}
-                          onValueChange={(value: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(value)}
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod("cash")}
+                          className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                            paymentMethod === "cash"
+                              ? "border-primary bg-primary/10 text-primary font-semibold"
+                              : "border-muted hover:border-primary/50"
+                          }`}
                         >
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">
-                              <span className="flex items-center gap-2">
-                                <Banknote className="w-4 h-4" />
-                                Efectivo
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="debit">
-                              <span className="flex items-center gap-2">
-                                <CreditCard className="w-4 h-4" />
-                                Débito
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="credit">
-                              <span className="flex items-center gap-2">
-                                <CreditCard className="w-4 h-4" />
-                                Crédito
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="transfer">
-                              <span className="flex items-center gap-2">
-                                <Smartphone className="w-4 h-4" />
-                                Transfer
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-
+                          <Banknote className="w-5 h-5" />
+                          <span>Efectivo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod("card")}
+                          className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                            paymentMethod === "card"
+                              ? "border-primary bg-primary/10 text-primary font-semibold"
+                              : "border-muted hover:border-primary/50"
+                          }`}
+                        >
+                          <CreditCard className="w-5 h-5" />
+                          <span>Tarjeta</span>
+                        </button>
+                      </div>
+                      
+                      {/* Document type selector - only show for cash */}
+                      {paymentMethod === "cash" && (
                         <Select
                           value={documentType}
                           onValueChange={(value: DocumentType) => setDocumentType(value)}
@@ -861,7 +881,14 @@ export default function Sales() {
                             <SelectItem value="factura">Factura</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
+                      )}
+                      
+                      {/* Info text for card payments */}
+                      {paymentMethod === "card" && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          El comprobante se emite desde el POS externo
+                        </p>
+                      )}
 
                       {/* Total */}
                       <div className="flex justify-between items-center">
@@ -897,28 +924,58 @@ export default function Sales() {
                 <Card className="p-4 shrink-0">
                   <h3 className="text-sm font-semibold text-muted-foreground mb-2">Recientes</h3>
                   <div className="space-y-1">
-                    {recentSales.slice(0, 5).map((sale) => (
-                      <div
-                        key={sale.id}
-                        className="flex items-center justify-between text-sm py-1"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-medium">{sale.sale_number}</span>
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {formatTime(sale.created_at)}
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={() => viewSaleQR(sale)}
+                    {recentSales.slice(0, 5).map((sale) => {
+                      // Determine receipt status
+                      const doc = sale.sales_documents?.[0];
+                      const isExternal = sale.receipt_source === "external";
+                      const receiptStatus = isExternal 
+                        ? "external" 
+                        : doc?.status || "pending";
+                      
+                      return (
+                        <div
+                          key={sale.id}
+                          className="flex items-center justify-between text-sm py-1"
                         >
-                          <QrCode className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-medium">{sale.sale_number}</span>
+                            {/* Receipt status badge */}
+                            {receiptStatus === "external" && (
+                              <span className="text-xs text-muted-foreground" title="Comprobante externo">
+                                <CreditCard className="w-3 h-3" />
+                              </span>
+                            )}
+                            {receiptStatus === "issued" && (
+                              <span className="text-xs text-green-600" title="Boleta emitida">
+                                <FileCheck className="w-3 h-3" />
+                              </span>
+                            )}
+                            {receiptStatus === "pending" && (
+                              <span className="text-xs text-yellow-600" title="Boleta pendiente">
+                                <Clock className="w-3 h-3" />
+                              </span>
+                            )}
+                            {receiptStatus === "failed" && (
+                              <span className="text-xs text-destructive" title="Boleta fallida">
+                                <AlertCircle className="w-3 h-3" />
+                              </span>
+                            )}
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatTime(sale.created_at)}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => viewSaleQR(sale)}
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </Card>
               )}

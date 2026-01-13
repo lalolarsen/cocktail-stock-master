@@ -1413,6 +1413,7 @@ export type Database = {
           payment_status: string
           point_of_sale: string
           pos_id: string | null
+          receipt_source: string | null
           sale_number: string
           seller_id: string
           total_amount: number
@@ -1429,6 +1430,7 @@ export type Database = {
           payment_status?: string
           point_of_sale: string
           pos_id?: string | null
+          receipt_source?: string | null
           sale_number: string
           seller_id: string
           total_amount?: number
@@ -1445,6 +1447,7 @@ export type Database = {
           payment_status?: string
           point_of_sale?: string
           pos_id?: string | null
+          receipt_source?: string | null
           sale_number?: string
           seller_id?: string
           total_amount?: number
