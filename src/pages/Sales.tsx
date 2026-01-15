@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, FileText, CreditCard, Banknote, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -13,6 +13,7 @@ import { DemoWatermark } from "@/components/DemoWatermark";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
+import { useReceiptConfig } from "@/hooks/useReceiptConfig";
 import {
   Select,
   SelectContent,
@@ -59,6 +60,7 @@ type BarLocation = {
 export default function Sales() {
   const { isDemoMode } = useDemoMode();
   const { activeJornadaId, hasActiveJornada } = useActiveJornada();
+  const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pointOfSale, setPointOfSale] = useState("");
@@ -380,9 +382,11 @@ export default function Sales() {
       const saleNumber = saleNumberData as string;
       const totalAmount = calculateTotal();
 
-      // Card = external POS handles receipt, Cash = we issue receipt
+      // Card = external POS handles receipt in hybrid mode, internal in unified mode
+      // Cash = always internal receipt
       const isCardPayment = paymentMethod === "card";
-      const receiptSource = isCardPayment ? "external" : "internal";
+      const shouldIssueInternally = receiptMode === "unified" || !isCardPayment;
+      const receiptSource = (isCardPayment && receiptMode === "hybrid") ? "external" : "internal";
       // Map simplified payment method to database enum
       const dbPaymentMethod = isCardPayment ? "debit" : "cash";
 
@@ -433,10 +437,12 @@ export default function Sales() {
           created_by: session.session.user.id
         });
 
-      // Only issue receipt for cash payments (card uses external POS)
+      // Issue receipt based on config mode:
+      // - hybrid: only cash issues receipt internally
+      // - unified: both cash and card issue receipt internally
       let receiptStatus: "issued" | "pending" | "failed" | "skipped" = "skipped";
-      if (!isCardPayment) {
-        // Cash flow: attempt to issue receipt (non-blocking)
+      if (shouldIssueInternally) {
+        // Attempt to issue receipt (non-blocking)
         const docResult = await issueDocument(sale.id, documentType);
         const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
         
@@ -867,8 +873,8 @@ export default function Sales() {
                         </button>
                       </div>
                       
-                      {/* Document type selector - only show for cash */}
-                      {paymentMethod === "cash" && (
+                      {/* Document type selector - show for cash, or card in unified mode */}
+                      {(paymentMethod === "cash" || receiptMode === "unified") && (
                         <Select
                           value={documentType}
                           onValueChange={(value: DocumentType) => setDocumentType(value)}
@@ -883,8 +889,8 @@ export default function Sales() {
                         </Select>
                       )}
                       
-                      {/* Info text for card payments */}
-                      {paymentMethod === "card" && (
+                      {/* Info text for card payments in hybrid mode */}
+                      {paymentMethod === "card" && receiptMode === "hybrid" && (
                         <p className="text-xs text-muted-foreground text-center">
                           El comprobante se emite desde el POS externo
                         </p>
