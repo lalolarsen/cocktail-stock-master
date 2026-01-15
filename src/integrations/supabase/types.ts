@@ -409,6 +409,7 @@ export type Database = {
           config: Json | null
           created_at: string
           id: string
+          receipt_mode: string
           updated_at: string
         }
         Insert: {
@@ -416,6 +417,7 @@ export type Database = {
           config?: Json | null
           created_at?: string
           id?: string
+          receipt_mode?: string
           updated_at?: string
         }
         Update: {
@@ -423,6 +425,7 @@ export type Database = {
           config?: Json | null
           created_at?: string
           id?: string
+          receipt_mode?: string
           updated_at?: string
         }
         Relationships: []

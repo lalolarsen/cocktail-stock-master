@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 
 const CONFIRMATION_TEXT = "BORRAR";
 
@@ -100,6 +101,9 @@ export default function SystemSettings() {
             <p className="text-muted-foreground">Acciones administrativas avanzadas</p>
           </div>
         </div>
+
+        {/* Receipt Settings */}
+        <ReceiptSettingsCard />
 
         {/* Danger Zone */}
         <Card className="border-destructive/50">
