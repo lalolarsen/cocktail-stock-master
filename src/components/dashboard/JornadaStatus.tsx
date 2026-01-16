@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Calendar, Clock, Play, Square, RefreshCw, Banknote, AlertTriangle } from "lucide-react";
+import { Loader2, Calendar, Clock, Play, Square, RefreshCw, Banknote, FileWarning } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -37,11 +37,20 @@ export function JornadaStatus() {
   const [showOpeningDialog, setShowOpeningDialog] = useState(false);
   const [openingCash, setOpeningCash] = useState("");
   const [outsideJornadaCount, setOutsideJornadaCount] = useState(0);
+  const [pendingReceiptsCount, setPendingReceiptsCount] = useState(0);
+  const [showPendingReceiptsWarning, setShowPendingReceiptsWarning] = useState(false);
 
   useEffect(() => {
     fetchActiveJornada();
     fetchOutsideJornadaCount();
   }, []);
+
+  // Fetch pending receipts count when jornada changes
+  useEffect(() => {
+    if (activeJornada?.estado === "activa") {
+      fetchPendingReceiptsCount();
+    }
+  }, [activeJornada]);
 
   const fetchActiveJornada = async () => {
     try {
@@ -74,6 +83,21 @@ export function JornadaStatus() {
 
     if (!error && count !== null) {
       setOutsideJornadaCount(count);
+    }
+  };
+
+  const fetchPendingReceiptsCount = async () => {
+    if (!activeJornada?.id) return;
+    
+    // Get sales for this jornada that have pending/failed receipts
+    const { count, error } = await supabase
+      .from("sales_documents")
+      .select("*, sales!inner(jornada_id)", { count: "exact", head: true })
+      .eq("sales.jornada_id", activeJornada.id)
+      .in("status", ["pending", "failed"]);
+
+    if (!error && count !== null) {
+      setPendingReceiptsCount(count);
     }
   };
 
@@ -159,7 +183,7 @@ export function JornadaStatus() {
     }
   };
 
-  const handleCloseJornada = () => {
+  const handleCloseJornada = async () => {
     if (!activeJornada) {
       toast.error("No hay jornada activa para cerrar");
       return;
@@ -171,6 +195,20 @@ export function JornadaStatus() {
       return;
     }
     
+    // Refresh pending receipts count
+    await fetchPendingReceiptsCount();
+    
+    // If there are pending receipts, show warning dialog
+    if (pendingReceiptsCount > 0) {
+      setShowPendingReceiptsWarning(true);
+      return;
+    }
+    
+    setShowReconciliation(true);
+  };
+
+  const confirmCloseWithPendingReceipts = () => {
+    setShowPendingReceiptsWarning(false);
     setShowReconciliation(true);
   };
 
@@ -346,6 +384,37 @@ export function JornadaStatus() {
               ) : (
                 "Abrir Jornada"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending Receipts Warning Dialog */}
+      <Dialog open={showPendingReceiptsWarning} onOpenChange={setShowPendingReceiptsWarning}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <FileWarning className="w-5 h-5" />
+              Boletas Pendientes
+            </DialogTitle>
+            <DialogDescription>
+              Hay {pendingReceiptsCount} boleta(s) pendiente(s) de emisión para esta jornada.
+              Puedes cerrar la jornada de todas formas y emitir las boletas después desde Documentos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Las boletas pendientes seguirán visibles en la sección de Documentos y podrán ser reintentadas en cualquier momento.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowPendingReceiptsWarning(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmCloseWithPendingReceipts} variant="default">
+              Cerrar Jornada
             </Button>
           </DialogFooter>
         </DialogContent>

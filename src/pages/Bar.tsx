@@ -61,7 +61,7 @@ type BarLocation = {
 type ScanState = "idle" | "processing" | "success" | "error";
 
 // Timing constants
-const COOLDOWN_MS = 2500; // 2.5 seconds duplicate suppression
+const COOLDOWN_MS = 400; // 400ms cooldown between scans (faster recovery)
 const SUCCESS_DISMISS_MS = 1800; // 1.8s display for success
 const USED_DISMISS_MS = 2000; // 2s display for already used
 const ERROR_DISMISS_MS = 2000; // 2s display for errors
@@ -716,11 +716,11 @@ export default function Bar() {
           <p className="text-sm opacity-70">#{result.deliver?.sale_number || result.deliver?.ticket_number || result.sale_number}</p>
         )}
         
-        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className="mt-6 h-14 px-8 text-lg font-bold bg-white hover:bg-white/90 text-green-700 border-0 shadow-lg">
-          <RefreshCw className="w-5 h-5 mr-2" />
-          Siguiente
+        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className="mt-6 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-green-700 border-0 shadow-lg">
+          <RefreshCw className="w-6 h-6 mr-2" />
+          LISTO - Siguiente
         </Button>
-        <p className="mt-3 text-sm opacity-60">Auto-cierre en {SUCCESS_DISMISS_MS/1000}s</p>
+        <p className="mt-3 text-sm opacity-60">Toca cualquier parte o escanea el siguiente QR</p>
       </div>
     );
   }
@@ -748,11 +748,11 @@ export default function Bar() {
             <span>Canjeado a las {previousTime}</span>
           </div>
         )}
-        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className="mt-6 h-14 px-8 text-lg font-bold bg-white hover:bg-white/90 text-orange-600 border-0 shadow-lg">
-          <RefreshCw className="w-5 h-5 mr-2" />
-          Siguiente
+        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className="mt-6 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-orange-600 border-0 shadow-lg">
+          <RefreshCw className="w-6 h-6 mr-2" />
+          LISTO - Siguiente
         </Button>
-        <p className="mt-3 text-sm opacity-60">Auto-cierre en {USED_DISMISS_MS/1000}s</p>
+        <p className="mt-3 text-sm opacity-60">Toca cualquier parte o escanea el siguiente QR</p>
       </div>
     );
   }
@@ -813,11 +813,11 @@ export default function Bar() {
         <h1 className="text-4xl font-black mb-4 tracking-tight text-center">{getErrorTitle(result.error_code)}</h1>
         <p className="text-xl opacity-90 text-center max-w-sm">{result.message}</p>
         
-        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className={`mt-8 h-14 px-8 text-lg font-bold border-0 shadow-lg bg-white hover:bg-white/90 ${btnTextColor}`}>
-          <RefreshCw className="w-5 h-5 mr-2" />
-          Siguiente
+        <Button onClick={(e) => { e.stopPropagation(); resetToReady(); }} variant="secondary" className={`mt-8 h-16 px-10 text-xl font-bold border-0 shadow-lg bg-white hover:bg-white/90 ${btnTextColor}`}>
+          <RefreshCw className="w-6 h-6 mr-2" />
+          LISTO - Siguiente
         </Button>
-        <p className="mt-3 text-sm opacity-60">Auto-cierre en {ERROR_DISMISS_MS/1000}s</p>
+        <p className="mt-3 text-sm opacity-60">Toca cualquier parte o escanea el siguiente QR</p>
       </div>
     );
   }
@@ -879,10 +879,10 @@ export default function Bar() {
         {/* Control Bar */}
         <div className="flex items-center justify-between p-3 bg-muted/50 border-b border-border">
           <div className="flex items-center gap-2">
-            {/* Scanner ready indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-sm font-medium">
+            {/* Scanner ready indicator - prominent */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-full text-sm font-bold shadow-sm animate-pulse">
               <ScanLine className="w-4 h-4" />
-              <span>Scanner listo</span>
+              <span>LISTO PARA ESCANEAR</span>
             </div>
             
             {/* Camera toggle */}
