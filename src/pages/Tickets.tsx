@@ -10,6 +10,8 @@ import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { DemoWatermark } from "@/components/DemoWatermark";
+import { useDemoLogging } from "@/hooks/useDemoLogging";
 
 interface TicketType {
   id: string;
@@ -50,6 +52,7 @@ interface RecentSale {
 type Step = "select-tickets" | "success";
 
 export default function Tickets() {
+  const { logDemoEvent, isDemoMode } = useDemoLogging();
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -248,6 +251,27 @@ export default function Tickets() {
 
       toast.success(`Venta completada: ${result.ticket_number}`);
       
+      // Log demo event for ticket sale
+      if (isDemoMode) {
+        const cartItems = getCartItems();
+        for (const item of cartItems) {
+          const hasCover = item.ticketType.includes_cover && item.ticketType.cover_cocktail_id;
+          logDemoEvent({
+            event_type: "ticket_sale",
+            user_role: "ticket_seller",
+            payload: {
+              ticket_type: item.ticketType.name,
+              quantity: item.quantity,
+              cover_included: hasCover,
+              cover_type: hasCover ? item.ticketType.cover_cocktail?.name : null,
+              ticket_number: result.ticket_number,
+              qr_count: hasCover ? (item.ticketType.cover_quantity || 1) * item.quantity : 0,
+              qr_status: "generated",
+            },
+          });
+        }
+      }
+      
       setSaleResult({
         ticket_sale_id: result.ticket_sale_id!,
         ticket_number: result.ticket_number!,
@@ -318,12 +342,14 @@ export default function Tickets() {
   // Success Screen
   if (step === "success" && saleResult) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center">
-        <Card className="w-full max-w-lg p-6 text-center space-y-6">
-          <div className="flex items-center justify-center gap-2 text-green-600">
-            <Check className="h-8 w-8" />
-            <span className="text-2xl font-bold">Venta Completada</span>
-          </div>
+      <>
+        {isDemoMode && <DemoWatermark />}
+        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center ${isDemoMode ? 'pt-14' : ''}`}>
+          <Card className="w-full max-w-lg p-6 text-center space-y-6">
+            <div className="flex items-center justify-center gap-2 text-green-600">
+              <Check className="h-8 w-8" />
+              <span className="text-2xl font-bold">Venta Completada</span>
+            </div>
           
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Número de ticket</p>
@@ -357,6 +383,7 @@ export default function Tickets() {
           </Button>
         </Card>
       </div>
+      </>
     );
   }
 
@@ -364,15 +391,22 @@ export default function Tickets() {
   const coversIncluded = getTotalCoversIncluded();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <div className="flex flex-col lg:flex-row min-h-screen">
-        {/* Left: Ticket Grid (70%) */}
-        <div className="flex-1 lg:w-[70%] p-4 space-y-4">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <Ticket className="h-7 w-7 text-primary" />
-            <h1 className="text-2xl font-bold">Venta de Entradas</h1>
-          </div>
+    <>
+      {isDemoMode && <DemoWatermark />}
+      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-14' : ''}`}>
+        <div className="flex flex-col lg:flex-row min-h-screen">
+          {/* Left: Ticket Grid (70%) */}
+          <div className="flex-1 lg:w-[70%] p-4 space-y-4">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <Ticket className="h-7 w-7 text-primary" />
+              <h1 className="text-2xl font-bold">Venta de Entradas</h1>
+              {isDemoMode && (
+                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                  Ticket Seller
+                </Badge>
+              )}
+            </div>
 
           {/* Ticket Types Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -601,5 +635,6 @@ export default function Tickets() {
         </div>
       </div>
     </div>
+    </>
   );
 }

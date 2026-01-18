@@ -51,11 +51,7 @@ type POSTerminal = {
   is_active: boolean;
 };
 
-type BarLocation = {
-  id: string;
-  name: string;
-  type: string;
-};
+// BarLocation removed - bar is determined at redemption time, not at sale
 
 export default function Sales() {
   const { isDemoMode } = useDemoMode();
@@ -74,11 +70,9 @@ export default function Sales() {
   // Simplified to card (external POS) or cash (internal receipt)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   
-  // Multi-POS and bar selection
+  // Multi-POS selection (bar is determined at redemption, not sale)
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
-  const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
   const [selectedPosId, setSelectedPosId] = useState<string>("");
-  const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showPosSelection, setShowPosSelection] = useState(true);
   
   // Clear cart confirmation
@@ -117,16 +111,13 @@ export default function Sales() {
     }
   }, [shouldRedirect, navigate]);
 
-  // Fetch POS terminals and bar locations on mount
+  // Fetch POS terminals on mount
   useEffect(() => {
     fetchPosTerminals();
-    fetchBarLocations();
     
-    // Restore last used selections from localStorage
+    // Restore last used POS selection from localStorage
     const savedPosId = localStorage.getItem("selectedPosId");
-    const savedBarId = localStorage.getItem("selectedBarId");
     if (savedPosId) setSelectedPosId(savedPosId);
-    if (savedBarId) setSelectedBarId(savedBarId);
   }, []);
 
   useEffect(() => {
@@ -137,11 +128,10 @@ export default function Sales() {
     }
   }, [isVerified, showPosSelection]);
 
-  // Save selections to localStorage
+  // Save POS selection to localStorage
   useEffect(() => {
     if (selectedPosId) localStorage.setItem("selectedPosId", selectedPosId);
-    if (selectedBarId) localStorage.setItem("selectedBarId", selectedBarId);
-  }, [selectedPosId, selectedBarId]);
+  }, [selectedPosId]);
 
   // Auto-scroll to last added item
   useEffect(() => {
@@ -192,26 +182,7 @@ export default function Sales() {
     }
   };
 
-  const fetchBarLocations = async () => {
-    const { data, error } = await supabase
-      .from("stock_locations")
-      .select("*")
-      .eq("type", "bar")
-      .eq("is_active", true)
-      .order("name");
-    
-    if (!error && data) {
-      setBarLocations(data);
-      if (data.length === 1) {
-        setSelectedBarId(data[0].id);
-      }
-      const savedBarId = localStorage.getItem("selectedBarId");
-      if (savedBarId && data.some(b => b.id === savedBarId)) {
-        setSelectedBarId(savedBarId);
-      }
-    }
-  };
-
+  // Bar is determined at redemption time, not at sale
   const fetchUserPointOfSale = async () => {
     const { data: session } = await supabase.auth.getSession();
     if (!session.session?.user) return;
@@ -330,10 +301,6 @@ export default function Sales() {
       toast.error("Selecciona una caja");
       return;
     }
-    if (!selectedBarId) {
-      toast.error("Selecciona una barra destino");
-      return;
-    }
     
     const selectedPos = posTerminals.find(p => p.id === selectedPosId);
     if (selectedPos) {
@@ -354,11 +321,6 @@ export default function Sales() {
       return;
     }
 
-    if (!selectedBarId) {
-      toast.error("Selecciona una barra destino");
-      return;
-    }
-
     setLoading(true);
     setIssuingDocument(true);
 
@@ -367,8 +329,6 @@ export default function Sales() {
       quantity: item.quantity,
       price: item.cocktail.price,
     }));
-    const totalForQR = calculateTotal();
-    const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
 
     try {
       const { data: session } = await supabase.auth.getSession();
@@ -400,7 +360,7 @@ export default function Sales() {
           payment_method: dbPaymentMethod,
           payment_status: "paid",
           pos_id: selectedPosId,
-          bar_location_id: selectedBarId,
+          bar_location_id: null, // Bar determined at redemption
           jornada_id: activeJornadaId || null,
           outside_jornada: !hasActiveJornada,
           receipt_source: receiptSource,
@@ -469,7 +429,7 @@ export default function Sales() {
             token: result.token,
             expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             items: cartItemsForQR,
-            barName: result.bar_name || selectedBarName,
+            barName: undefined, // Bar determined at redemption
           };
         }
       }
@@ -585,7 +545,7 @@ export default function Sales() {
           <div className="text-center space-y-2">
             <Store className="w-16 h-16 mx-auto text-primary" />
             <h1 className="text-3xl font-bold">Configurar Caja</h1>
-            <p className="text-muted-foreground">Selecciona tu punto de venta y barra destino</p>
+            <p className="text-muted-foreground">Selecciona tu punto de venta</p>
           </div>
 
           <Card className="p-6 space-y-6">
@@ -620,40 +580,14 @@ export default function Sales() {
               )}
             </div>
 
-            <div className="space-y-3">
-              <p className="flex items-center gap-2 text-lg font-medium">
-                <MapPin className="w-5 h-5" />
-                Barra Destino
-              </p>
-              {barLocations.length === 0 ? (
-                <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
-                  No hay barras disponibles. Contacta al administrador.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {barLocations.map((bar) => (
-                    <Card
-                      key={bar.id}
-                      onClick={() => setSelectedBarId(bar.id)}
-                      className={`p-4 cursor-pointer transition-all hover:scale-105 ${
-                        selectedBarId === bar.id
-                          ? "border-primary bg-primary/10 ring-2 ring-primary"
-                          : "hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="text-center">
-                        <MapPin className={`w-8 h-8 mx-auto mb-2 ${selectedBarId === bar.id ? "text-primary" : "text-muted-foreground"}`} />
-                        <p className="font-semibold">{bar.name}</p>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
+            <div className="p-4 bg-muted/50 rounded-lg text-center text-sm text-muted-foreground">
+              <MapPin className="w-5 h-5 mx-auto mb-2 text-muted-foreground/70" />
+              <p>La barra de entrega se determina al escanear el QR</p>
             </div>
 
             <Button
               onClick={confirmPosSelection}
-              disabled={!selectedPosId || !selectedBarId}
+              disabled={!selectedPosId}
               className="w-full"
               size="lg"
             >
@@ -673,7 +607,6 @@ export default function Sales() {
   }
 
   const selectedPosName = posTerminals.find(p => p.id === selectedPosId)?.name;
-  const selectedBarName = barLocations.find(b => b.id === selectedBarId)?.name;
 
   // Success Screen after sale
   if (showSuccessScreen && lastSaleData) {
@@ -736,10 +669,6 @@ export default function Sales() {
                 <span className="flex items-center gap-1">
                   <Store className="w-4 h-4" />
                   {selectedPosName}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-4 h-4" />
-                  {selectedBarName}
                 </span>
                 <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={changePosSelection}>
                   Cambiar
