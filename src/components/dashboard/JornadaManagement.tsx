@@ -32,6 +32,8 @@ import { format, startOfWeek, parseISO, isToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { JornadaConfig } from "./JornadaConfig";
 import { OutsideJornadaSales } from "./OutsideJornadaSales";
+import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
+import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
 import { formatCLP } from "@/lib/currency";
 
 interface Jornada {
@@ -78,6 +80,7 @@ export function JornadaManagement() {
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState<string | null>(null);
+  const [showCashOpening, setShowCashOpening] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -245,30 +248,14 @@ export function JornadaManagement() {
     }
   };
 
-  const startJornada = async (jornadaId: string) => {
-    setActionLoading(jornadaId);
-    try {
-      // First close any active jornada
-      await supabase
-        .from("jornadas")
-        .update({ estado: "cerrada", hora_cierre: format(new Date(), "HH:mm") })
-        .eq("estado", "activa");
+  const startJornada = (jornadaId: string) => {
+    // Open cash opening dialog instead of direct start
+    setShowCashOpening(jornadaId);
+  };
 
-      // Then activate this jornada
-      const { error } = await supabase
-        .from("jornadas")
-        .update({ estado: "activa", hora_apertura: format(new Date(), "HH:mm") })
-        .eq("id", jornadaId);
-
-      if (error) throw error;
-      toast.success("Jornada iniciada");
-      fetchJornadas();
-    } catch (error) {
-      console.error("Error starting jornada:", error);
-      toast.error("Error al iniciar jornada");
-    } finally {
-      setActionLoading(null);
-    }
+  const handleCashOpeningSuccess = () => {
+    setShowCashOpening(null);
+    fetchJornadas();
   };
 
   const closeJornada = async (jornadaId: string) => {
@@ -808,8 +795,9 @@ export function JornadaManagement() {
           </div>
         </TabsContent>
 
-        <TabsContent value="config">
+        <TabsContent value="config" className="space-y-6">
           <JornadaConfig />
+          <JornadaCashSettingsCard />
         </TabsContent>
       </Tabs>
 
@@ -854,6 +842,16 @@ export function JornadaManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Cash Opening Dialog */}
+      {showCashOpening && (
+        <JornadaCashOpeningDialog
+          open={true}
+          onClose={() => setShowCashOpening(null)}
+          jornadaId={showCashOpening}
+          onSuccess={handleCashOpeningSuccess}
+        />
+      )}
     </Card>
   );
 }
