@@ -29,20 +29,30 @@ export function OutsideJornadaBanner({ onOpenJornada }: OutsideJornadaBannerProp
       )
       .subscribe();
 
+    // Fallback polling every 10 seconds
+    const pollInterval = setInterval(checkActiveJornada, 10000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, []);
 
   const checkActiveJornada = async () => {
-    const { data, error } = await supabase
-      .from("jornadas")
-      .select("id")
-      .eq("estado", "activa")
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("jornadas")
+        .select("id")
+        .eq("estado", "activa")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (!error) {
-      setHasActiveJornada(!!data);
+      if (!error) {
+        setHasActiveJornada(!!data);
+      }
+    } catch (err) {
+      console.error("Error checking active jornada:", err);
     }
   };
 
@@ -84,21 +94,30 @@ export function useActiveJornada() {
 
   useEffect(() => {
     const checkJornada = async () => {
-      const { data, error } = await supabase
-        .from("jornadas")
-        .select("id")
-        .eq("estado", "activa")
-        .maybeSingle();
+      try {
+        const { data, error } = await supabase
+          .from("jornadas")
+          .select("id")
+          .eq("estado", "activa")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (!error) {
-        setActiveJornadaId(data?.id || null);
+        if (!error) {
+          setActiveJornadaId(data?.id || null);
+        } else {
+          console.warn("Error checking active jornada:", error.message);
+        }
+      } catch (err) {
+        console.error("Exception checking jornada:", err);
       }
       setLoading(false);
     };
 
+    // Initial check
     checkJornada();
 
-    // Subscribe to jornada changes
+    // Subscribe to jornada changes for realtime updates
     const channel = supabase
       .channel("active-jornada-check")
       .on(
@@ -110,8 +129,12 @@ export function useActiveJornada() {
       )
       .subscribe();
 
+    // Fallback polling every 10 seconds in case realtime fails
+    const pollInterval = setInterval(checkJornada, 10000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, []);
 
