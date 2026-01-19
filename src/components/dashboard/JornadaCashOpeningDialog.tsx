@@ -135,6 +135,18 @@ export function JornadaCashOpeningDialog({
         amount: item.amount,
       }));
 
+      // Log audit event for opening
+      await supabase.from("jornada_audit_log").insert({
+        jornada_id: jornadaId,
+        action: "opened",
+        actor_source: "ui",
+        reason: "Admin inició jornada con efectivo inicial",
+        meta: { 
+          cash_amounts: cashData,
+          total_cash: cashData.reduce((sum, item) => sum + item.amount, 0),
+        },
+      });
+
       const { data, error } = await supabase.rpc("start_jornada_with_cash", {
         p_jornada_id: jornadaId,
         p_cash_amounts: cashData,

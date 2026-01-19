@@ -261,6 +261,17 @@ export function JornadaManagement() {
   const closeJornada = async (jornadaId: string) => {
     setActionLoading(jornadaId);
     try {
+      const jornada = jornadas.find(j => j.id === jornadaId);
+      
+      // Log audit event before closing
+      await supabase.from("jornada_audit_log").insert({
+        jornada_id: jornadaId,
+        action: "closed",
+        actor_source: "ui",
+        reason: "Admin cerró jornada manualmente desde el panel",
+        meta: { jornada_estado_previo: jornada?.estado },
+      });
+
       // Use the new close_jornada_with_summary function
       const { data, error } = await supabase.rpc("close_jornada_with_summary", {
         p_jornada_id: jornadaId,

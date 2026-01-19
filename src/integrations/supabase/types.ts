@@ -468,6 +468,57 @@ export type Database = {
         }
         Relationships: []
       }
+      jornada_audit_log: {
+        Row: {
+          action: string
+          actor_source: string
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          jornada_id: string
+          meta: Json | null
+          reason: string | null
+          venue_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_source: string
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          jornada_id: string
+          meta?: Json | null
+          reason?: string | null
+          venue_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_source?: string
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          jornada_id?: string
+          meta?: Json | null
+          reason?: string | null
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_audit_log_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_audit_log_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jornada_cash_openings: {
         Row: {
           created_at: string
@@ -564,6 +615,7 @@ export type Database = {
       }
       jornada_cash_settings: {
         Row: {
+          auto_close_enabled: boolean
           cash_opening_mode: string
           created_at: string
           default_opening_amount: number
@@ -572,6 +624,7 @@ export type Database = {
           venue_id: string | null
         }
         Insert: {
+          auto_close_enabled?: boolean
           cash_opening_mode?: string
           created_at?: string
           default_opening_amount?: number
@@ -580,6 +633,7 @@ export type Database = {
           venue_id?: string | null
         }
         Update: {
+          auto_close_enabled?: boolean
           cash_opening_mode?: string
           created_at?: string
           default_opening_amount?: number
