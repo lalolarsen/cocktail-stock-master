@@ -2509,6 +2509,10 @@ export type Database = {
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       generate_ticket_number: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
+      get_active_jornada_for_venue: {
+        Args: { p_venue_id: string }
+        Returns: string
+      }
       get_cost_of_sales_by_date_range: {
         Args: { p_from_date: string; p_to_date: string }
         Returns: {
