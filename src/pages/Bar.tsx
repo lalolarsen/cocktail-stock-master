@@ -64,7 +64,7 @@ type ScanState = "idle" | "processing" | "success" | "error";
 const COOLDOWN_MS = 400; // 400ms cooldown between scans (faster recovery)
 const SUCCESS_DISMISS_MS = 1800; // 1.8s display for success
 const USED_DISMISS_MS = 2000; // 2s display for already used
-const ERROR_DISMISS_MS = 2000; // 2s display for errors
+const ERROR_DISMISS_MS = 800; // 800ms for quick errors (expired, invalid) - fast reset
 const INSUFFICIENT_STOCK_DISMISS_MS = 3000; // 3s for insufficient stock
 const PROCESSING_TIMEOUT_MS = 8000;
 
@@ -173,6 +173,9 @@ export default function Bar() {
   const scanBufferRef = useRef("");
   const lastProcessedTokenRef = useRef<string>("");
   const lastProcessedTimeRef = useRef<number>(0);
+  
+  // Processing lock - prevents concurrent scan processing
+  const isProcessingRef = useRef(false);
   
   // Backend call tracking
   const redeemInFlightRef = useRef(false);
@@ -285,7 +288,13 @@ export default function Bar() {
       abortControllerRef.current = null;
     }
     
+    // Clear all processing locks
     redeemInFlightRef.current = false;
+    isProcessingRef.current = false;
+    
+    // Clear last token to prevent stale comparisons blocking next scan
+    lastProcessedTokenRef.current = "";
+    
     setResult(null);
     setScanState("idle");
     scanBufferRef.current = "";
@@ -296,8 +305,15 @@ export default function Bar() {
 
   // Process token via backend
   const processToken = useCallback(async (token: string) => {
-    // Check cooldown for duplicate suppression
     const now = Date.now();
+    
+    // Guard 1: Processing lock (prevents concurrent requests)
+    if (isProcessingRef.current) {
+      console.log("[Bar] Processing lock active, ignoring scan");
+      return;
+    }
+    
+    // Guard 2: Duplicate token within cooldown window
     if (token === lastProcessedTokenRef.current && 
         now - lastProcessedTimeRef.current < COOLDOWN_MS) {
       console.log("[Bar] Duplicate token within cooldown, ignoring");
@@ -305,12 +321,15 @@ export default function Bar() {
       return;
     }
 
-    // Guard: already processing
+    // Guard 3: Backend call already in flight
     if (redeemInFlightRef.current) {
-      console.log("[Bar] Already processing, ignoring");
+      console.log("[Bar] Backend call in flight, ignoring");
       return;
     }
 
+    // Set processing lock immediately
+    isProcessingRef.current = true;
+    
     // Update tracking
     lastProcessedTokenRef.current = token;
     lastProcessedTimeRef.current = now;
@@ -327,6 +346,7 @@ export default function Bar() {
         abortControllerRef.current.abort();
       }
       redeemInFlightRef.current = false;
+      isProcessingRef.current = false;
       
       setResult({
         success: false,
@@ -353,6 +373,7 @@ export default function Bar() {
       }
       
       redeemInFlightRef.current = false;
+      // Note: isProcessingRef stays true until auto-dismiss completes
 
       if (error) throw error;
 
@@ -374,7 +395,7 @@ export default function Bar() {
       // Trigger history refresh after any scan
       setHistoryRefreshTrigger(prev => prev + 1);
 
-      // Auto-dismiss
+      // Auto-dismiss - determine timeout based on result type
       let timeout = SUCCESS_DISMISS_MS;
       if (!resultData.success) {
         if (resultData.error_code === 'ALREADY_REDEEMED') {
@@ -382,12 +403,16 @@ export default function Bar() {
         } else if (resultData.error_code === 'INSUFFICIENT_BAR_STOCK') {
           timeout = INSUFFICIENT_STOCK_DISMISS_MS;
         } else {
+          // Fast reset for expired, invalid, not_found, etc.
           timeout = ERROR_DISMISS_MS;
         }
       }
       dismissTimerRef.current = setTimeout(resetToReady, timeout);
     } catch (error: any) {
-      if (abortControllerRef.current?.signal.aborted) return;
+      if (abortControllerRef.current?.signal.aborted) {
+        isProcessingRef.current = false;
+        return;
+      }
       
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
@@ -395,6 +420,7 @@ export default function Bar() {
       }
       
       redeemInFlightRef.current = false;
+      // isProcessingRef stays true until auto-dismiss
       
       console.error("Redemption error:", error);
       setResult({
@@ -407,6 +433,7 @@ export default function Bar() {
       // Trigger history refresh even on errors
       setHistoryRefreshTrigger(prev => prev + 1);
       
+      // Fast auto-dismiss for system errors
       dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
     }
   }, [resetToReady, selectedBarId, focusScannerInput]);
@@ -425,9 +452,17 @@ export default function Bar() {
       
       if (!rawValue) return;
       
+      // Guard: don't process if already handling a scan
+      if (isProcessingRef.current || scanState !== "idle") {
+        console.log("[Bar] Scan rejected - currently processing or not idle");
+        focusScannerInput();
+        return;
+      }
+      
       const parsed = parseQRToken(rawValue);
       
       if (!parsed.valid) {
+        isProcessingRef.current = true;
         setResult({
           success: false,
           error_code: "QR_INVALID",
@@ -449,9 +484,15 @@ export default function Bar() {
 
   // Handle camera QR scan
   const handleCameraScan = useCallback((decodedText: string) => {
+    // Guard: don't process if already handling a scan
+    if (isProcessingRef.current || scanState !== "idle") {
+      return;
+    }
+    
     const parsed = parseQRToken(decodedText);
     
     if (!parsed.valid) {
+      isProcessingRef.current = true;
       setResult({
         success: false,
         error_code: "QR_INVALID",
