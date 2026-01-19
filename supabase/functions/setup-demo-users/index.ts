@@ -9,7 +9,7 @@ interface DemoUser {
   rut: string;
   pin: string;
   name: string;
-  role: "admin" | "gerencia" | "vendedor" | "bar";
+  role: "admin" | "gerencia" | "vendedor" | "bar" | "ticket_seller";
   email: string;
 }
 
@@ -18,6 +18,7 @@ const DEMO_USERS: DemoUser[] = [
   { rut: "DEMO-GERENCIA", pin: "1234", name: "Gerente Demo", role: "gerencia", email: "demo-gerencia@coctelstock.demo" },
   { rut: "DEMO-VENDEDOR", pin: "1234", name: "Vendedor Demo", role: "vendedor", email: "demo-vendedor@coctelstock.demo" },
   { rut: "DEMO-BAR", pin: "1234", name: "Bartender Demo", role: "bar", email: "demo-bar@coctelstock.demo" },
+  { rut: "DEMO-TICKETS", pin: "1234", name: "Ticketero Demo", role: "ticket_seller", email: "demo-tickets@coctelstock.demo" },
 ];
 
 Deno.serve(async (req) => {

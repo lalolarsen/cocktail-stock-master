@@ -40,6 +40,7 @@ const DEMO_CREDENTIALS: DemoUser[] = [
   { rut: "DEMO-GERENCIA", pin: "1234", role: "Gerencia", name: "Gerente Demo" },
   { rut: "DEMO-VENDEDOR", pin: "1234", role: "Vendedor", name: "Vendedor Demo" },
   { rut: "DEMO-BAR", pin: "1234", role: "Bartender", name: "Bartender Demo" },
+  { rut: "DEMO-TICKETS", pin: "1234", role: "Vendedor de Entradas", name: "Ticketero Demo" },
 ];
 
 export function DemoModeBanner({ isAdmin = false, onDemoActivated }: DemoModeBannerProps) {
