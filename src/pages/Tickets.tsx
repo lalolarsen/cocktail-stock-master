@@ -117,9 +117,10 @@ export default function Tickets() {
     const { data } = await supabase
       .from("jornadas")
       .select("id")
-      .eq("estado", "abierta")
+      .eq("estado", "activa")
+      .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
     setActiveJornadaId(data?.id || null);
   };
