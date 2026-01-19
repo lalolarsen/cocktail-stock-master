@@ -468,6 +468,135 @@ export type Database = {
         }
         Relationships: []
       }
+      jornada_cash_openings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          jornada_id: string
+          opening_cash_amount: number
+          pos_id: string
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          jornada_id: string
+          opening_cash_amount?: number
+          pos_id: string
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          jornada_id?: string
+          opening_cash_amount?: number
+          pos_id?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_cash_openings_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_cash_openings_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_cash_openings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jornada_cash_pos_defaults: {
+        Row: {
+          created_at: string
+          default_amount: number
+          id: string
+          pos_id: string
+          updated_at: string
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          default_amount?: number
+          id?: string
+          pos_id: string
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          default_amount?: number
+          id?: string
+          pos_id?: string
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_cash_pos_defaults_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_cash_pos_defaults_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jornada_cash_settings: {
+        Row: {
+          cash_opening_mode: string
+          created_at: string
+          default_opening_amount: number
+          id: string
+          updated_at: string
+          venue_id: string | null
+        }
+        Insert: {
+          cash_opening_mode?: string
+          created_at?: string
+          default_opening_amount?: number
+          id?: string
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Update: {
+          cash_opening_mode?: string
+          created_at?: string
+          default_opening_amount?: number
+          id?: string
+          updated_at?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_cash_settings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: true
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jornada_config: {
         Row: {
           activo: boolean
@@ -2435,6 +2564,10 @@ export type Database = {
           }
       reset_demo_data: { Args: never; Returns: Json }
       seed_demo_data: { Args: never; Returns: Json }
+      start_jornada_with_cash: {
+        Args: { p_cash_amounts?: Json; p_jornada_id: string }
+        Returns: Json
+      }
       transfer_stock: {
         Args: {
           p_from_location_id: string
