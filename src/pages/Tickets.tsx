@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
@@ -52,6 +53,7 @@ interface RecentSale {
 type Step = "select-tickets" | "success";
 
 export default function Tickets() {
+  const navigate = useNavigate();
   const { logDemoEvent, isDemoMode } = useDemoLogging();
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
@@ -398,14 +400,30 @@ export default function Tickets() {
           {/* Left: Ticket Grid (70%) */}
           <div className="flex-1 lg:w-[70%] p-4 space-y-4">
             {/* Header */}
-            <div className="flex items-center gap-3">
-              <Ticket className="h-7 w-7 text-primary" />
-              <h1 className="text-2xl font-bold">Venta de Entradas</h1>
-              {isDemoMode && (
-                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                  Ticket Seller
-                </Badge>
-              )}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Ticket className="h-7 w-7 text-primary" />
+                <h1 className="text-2xl font-bold">Venta de Entradas</h1>
+                {isDemoMode && (
+                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                    Ticket Seller
+                  </Badge>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  setCart(new Map());
+                  setSaleResult(null);
+                  navigate("/auth");
+                }}
+                className="gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
             </div>
 
           {/* Ticket Types Grid */}
