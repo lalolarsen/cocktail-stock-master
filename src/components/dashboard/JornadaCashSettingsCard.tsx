@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, DollarSign, Store, Save } from "lucide-react";
+import { Loader2, DollarSign, Store, Save, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 
@@ -18,6 +18,7 @@ interface CashSettings {
   id?: string;
   cash_opening_mode: "prompt" | "auto";
   default_opening_amount: number;
+  auto_close_enabled: boolean;
 }
 
 interface POSDefault {
@@ -33,6 +34,7 @@ export function JornadaCashSettingsCard() {
   const [settings, setSettings] = useState<CashSettings>({
     cash_opening_mode: "prompt",
     default_opening_amount: 0,
+    auto_close_enabled: false,
   });
   const [posDefaults, setPosDefaults] = useState<Map<string, number>>(new Map());
 
@@ -68,6 +70,7 @@ export function JornadaCashSettingsCard() {
           id: settingsData.id,
           cash_opening_mode: settingsData.cash_opening_mode as "prompt" | "auto",
           default_opening_amount: Number(settingsData.default_opening_amount) || 0,
+          auto_close_enabled: settingsData.auto_close_enabled ?? false,
         });
       }
 
@@ -94,6 +97,7 @@ export function JornadaCashSettingsCard() {
           id: settings.id,
           cash_opening_mode: settings.cash_opening_mode,
           default_opening_amount: settings.default_opening_amount,
+          auto_close_enabled: settings.auto_close_enabled,
           updated_at: new Date().toISOString(),
         }, { onConflict: "venue_id" });
 
@@ -144,10 +148,34 @@ export function JornadaCashSettingsCard() {
       </div>
 
       <div className="space-y-4">
+        {/* Auto-close safety toggle */}
+        <div className="flex items-center justify-between p-4 border rounded-lg border-yellow-500/30 bg-yellow-500/5">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div>
+              <Label className="font-medium">Cierre automático de jornadas</Label>
+              <p className="text-sm text-muted-foreground">
+                {settings.auto_close_enabled
+                  ? "Las jornadas se cerrarán automáticamente según horario configurado"
+                  : "Las jornadas solo se cierran manualmente (recomendado)"}
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={settings.auto_close_enabled}
+            onCheckedChange={(checked) =>
+              setSettings((s) => ({
+                ...s,
+                auto_close_enabled: checked,
+              }))
+            }
+          />
+        </div>
+
         {/* Mode toggle */}
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div>
-            <Label className="font-medium">Modo de apertura</Label>
+            <Label className="font-medium">Modo de apertura de efectivo</Label>
             <p className="text-sm text-muted-foreground">
               {settings.cash_opening_mode === "auto"
                 ? "Automático: valores pre-llenados, editables antes de confirmar"
