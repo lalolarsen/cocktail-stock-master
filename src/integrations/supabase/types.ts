@@ -2573,6 +2573,7 @@ export type Database = {
       factory_reset_non_demo: { Args: never; Returns: Json }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
+      generate_qr_token: { Args: never; Returns: string }
       generate_sale_number: { Args: { p_pos_prefix?: string }; Returns: string }
       generate_ticket_number: { Args: never; Returns: string }
       get_active_jornada: { Args: never; Returns: string }
