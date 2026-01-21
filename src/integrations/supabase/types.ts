@@ -519,6 +519,73 @@ export type Database = {
           },
         ]
       }
+      jornada_cash_closings: {
+        Row: {
+          cash_sales_total: number
+          closing_cash_counted: number
+          created_at: string
+          created_by: string | null
+          difference: number
+          expected_cash: number
+          id: string
+          jornada_id: string
+          notes: string | null
+          opening_cash_amount: number
+          pos_id: string
+          venue_id: string | null
+        }
+        Insert: {
+          cash_sales_total?: number
+          closing_cash_counted?: number
+          created_at?: string
+          created_by?: string | null
+          difference?: number
+          expected_cash?: number
+          id?: string
+          jornada_id: string
+          notes?: string | null
+          opening_cash_amount?: number
+          pos_id: string
+          venue_id?: string | null
+        }
+        Update: {
+          cash_sales_total?: number
+          closing_cash_counted?: number
+          created_at?: string
+          created_by?: string | null
+          difference?: number
+          expected_cash?: number
+          id?: string
+          jornada_id?: string
+          notes?: string | null
+          opening_cash_amount?: number
+          pos_id?: string
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_cash_closings_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_cash_closings_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_cash_closings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jornada_cash_openings: {
         Row: {
           created_at: string

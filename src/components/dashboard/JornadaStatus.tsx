@@ -218,6 +218,12 @@ export function JornadaStatus() {
     
     try {
       const currentTime = new Date().toTimeString().slice(0, 5);
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("venue_id")
+        .eq("id", user?.id || "")
+        .single();
       
       const { error } = await supabase
         .from("jornadas")
@@ -225,6 +231,20 @@ export function JornadaStatus() {
         .eq("id", activeJornada!.id);
 
       if (error) throw error;
+      
+      // Log jornada close in audit log
+      try {
+        await supabase.from("jornada_audit_log").insert({
+          jornada_id: activeJornada!.id,
+          venue_id: profile?.venue_id,
+          actor_user_id: user?.id,
+          actor_source: "ui",
+          action: "closed",
+          meta: { hora_cierre: currentTime },
+        });
+      } catch (auditError) {
+        console.error("Error logging audit:", auditError);
+      }
       
       // Queue email notifications for jornada close
       try {
