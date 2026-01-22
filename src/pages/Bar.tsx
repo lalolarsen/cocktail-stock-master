@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine, History } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine, History, Usb } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { DemoWatermark } from "@/components/DemoWatermark";
@@ -15,6 +15,7 @@ import { es } from "date-fns/locale";
 import { RedemptionHistory } from "@/components/bar/RedemptionHistory";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logAuditEvent } from "@/lib/monitoring";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type MissingItem = {
   product_name: string;
@@ -57,13 +58,20 @@ type BarLocation = {
   type: string;
 };
 
+// Reader modes
+type ReaderMode = "USB_SCANNER" | "CAMERA";
+
 // Explicit scan lifecycle states
 type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume";
 
-// Timing constants - HARD STOP strategy
+// Timing constants - HARD STOP strategy for CAMERA mode
 const DEDUPE_WINDOW_MS = 5000; // 5s dedupe window - ignore same QR within this window
-const RESULT_DISPLAY_MS = 1200; // 1.2s display for any result before showing resume button
+const RESULT_DISPLAY_MS = 1500; // 1.5s display for any result before showing resume button (CAMERA) or auto-reset (USB)
 const PROCESSING_TIMEOUT_MS = 8000;
+const USB_AUTO_RESET_MS = 2000; // USB mode auto-resets to idle after result display
+
+// LocalStorage key for reader mode preference
+const READER_MODE_KEY = "bartender_reader_mode";
 
 /**
  * Universal QR token parser - handles multiple formats
@@ -149,9 +157,14 @@ export default function Bar() {
   const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showBarSelection, setShowBarSelection] = useState(true);
   
-  // Scanner modes - HARD STOP: camera is disabled by default and only enabled manually
-  const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [scannerFrozen, setScannerFrozen] = useState(false); // Hard freeze after any decode
+  // Reader mode - persisted per device
+  const [readerMode, setReaderMode] = useState<ReaderMode>(() => {
+    const saved = localStorage.getItem(READER_MODE_KEY);
+    return (saved === "CAMERA" || saved === "USB_SCANNER") ? saved : "USB_SCANNER";
+  });
+  
+  // Scanner modes - HARD STOP for CAMERA mode
+  const [scannerFrozen, setScannerFrozen] = useState(false); // Hard freeze after any decode (CAMERA mode)
   const [cameraAvailable, setCameraAvailable] = useState(true);
   const [scannerSessionId, setScannerSessionId] = useState(0);
   const [scannerReady, setScannerReady] = useState(false);
@@ -220,32 +233,32 @@ export default function Bar() {
     if (selectedBarId) localStorage.setItem("bartenderBarId", selectedBarId);
   }, [selectedBarId]);
 
-  // CRITICAL: Always keep scanner input focused when in idle state
+  // CRITICAL: Always keep scanner input focused when in USB_SCANNER mode and idle
   useEffect(() => {
-    if (isVerified && !showBarSelection && scanState === "idle") {
+    if (isVerified && !showBarSelection && scanState === "idle" && readerMode === "USB_SCANNER") {
       focusScannerInput();
     }
-  }, [isVerified, showBarSelection, scanState]);
+  }, [isVerified, showBarSelection, scanState, readerMode]);
 
-  // Refocus on window focus
+  // Refocus on window focus (USB mode only)
   useEffect(() => {
     const handleWindowFocus = () => {
-      if (scanState === "idle" && !showManualEntry) {
+      if (scanState === "idle" && !showManualEntry && readerMode === "USB_SCANNER") {
         focusScannerInput();
       }
     };
     window.addEventListener("focus", handleWindowFocus);
     return () => window.removeEventListener("focus", handleWindowFocus);
-  }, [scanState, showManualEntry]);
+  }, [scanState, showManualEntry, readerMode]);
 
   const focusScannerInput = useCallback(() => {
     // Small delay to ensure DOM is ready
     setTimeout(() => {
-      if (scannerInputRef.current && !showManualEntry) {
+      if (scannerInputRef.current && !showManualEntry && readerMode === "USB_SCANNER") {
         scannerInputRef.current.focus();
       }
     }, 50);
-  }, [showManualEntry]);
+  }, [showManualEntry, readerMode]);
 
   const fetchBarLocations = async () => {
     const { data, error } = await supabase
@@ -279,23 +292,48 @@ export default function Bar() {
     }
   }, []);
 
-  // HARD STOP: Force scanner to waiting_resume state after any decode
-  const transitionToWaitingResume = useCallback(() => {
+  // Handle post-scan transition based on reader mode
+  // CAMERA mode: Hard stop, require manual "Escanear siguiente" button
+  // USB_SCANNER mode: Auto-reset to idle after brief result display
+  const transitionToWaitingResume = useCallback((currentMode: ReaderMode) => {
     clearAllTimers();
-    setScannerFrozen(true);
     
-    // Stop camera completely when frozen
-    if (cameraRef.current) {
-      cameraRef.current.stop().catch(() => {});
-      cameraRef.current = null;
-      setScannerReady(false);
+    // For CAMERA mode: freeze scanner, require manual resume
+    if (currentMode === "CAMERA") {
+      setScannerFrozen(true);
+      
+      // Stop camera completely when frozen
+      if (cameraRef.current) {
+        cameraRef.current.stop().catch(() => {});
+        cameraRef.current = null;
+        setScannerReady(false);
+      }
+      
+      // After display time, move to waiting_resume state
+      dismissTimerRef.current = setTimeout(() => {
+        setScanState("waiting_resume");
+      }, RESULT_DISPLAY_MS);
+    } else {
+      // USB_SCANNER mode: Auto-reset to idle for continuous scanning
+      dismissTimerRef.current = setTimeout(() => {
+        // Clear all locks
+        redeemInFlightRef.current = false;
+        isProcessingRef.current = false;
+        setScannerFrozen(false);
+        
+        // Clear result and go back to idle
+        setResult(null);
+        setScanState("idle");
+        scanBufferRef.current = "";
+        
+        // Clear input and refocus
+        if (scannerInputRef.current) {
+          scannerInputRef.current.value = "";
+        }
+        focusScannerInput();
+      }, USB_AUTO_RESET_MS);
     }
-    
-    // After display time, move to waiting_resume state
-    dismissTimerRef.current = setTimeout(() => {
-      setScanState("waiting_resume");
-    }, RESULT_DISPLAY_MS);
-  }, [clearAllTimers]);
+  }, [clearAllTimers, focusScannerInput]);
 
   // Resume scanning - called by user action ONLY
   const resumeScanning = useCallback(() => {
@@ -319,14 +357,16 @@ export default function Bar() {
     setScanState("idle");
     scanBufferRef.current = "";
     
-    // Restart camera if it was enabled
-    if (cameraEnabled) {
+    // Restart camera if in CAMERA mode
+    if (readerMode === "CAMERA") {
       setScannerSessionId(prev => prev + 1);
     }
     
-    // Refocus scanner input
-    focusScannerInput();
-  }, [clearAllTimers, focusScannerInput, cameraEnabled]);
+    // Refocus scanner input if in USB mode
+    if (readerMode === "USB_SCANNER") {
+      focusScannerInput();
+    }
+  }, [clearAllTimers, focusScannerInput, readerMode]);
 
   // Legacy reset alias for manual "Limpiar" button
   const resetToReady = resumeScanning;
@@ -394,7 +434,7 @@ export default function Bar() {
         message: "Tiempo de espera agotado - reintenta",
       });
       setScanState("error");
-      transitionToWaitingResume();
+      transitionToWaitingResume(readerMode);
     }, PROCESSING_TIMEOUT_MS);
 
     try {
@@ -448,7 +488,7 @@ export default function Bar() {
       setHistoryRefreshTrigger(prev => prev + 1);
 
       // HARD STOP: Transition to waiting_resume after showing result
-      transitionToWaitingResume();
+      transitionToWaitingResume(readerMode);
     } catch (error: any) {
       if (abortControllerRef.current?.signal.aborted) {
         isProcessingRef.current = false;
@@ -474,9 +514,9 @@ export default function Bar() {
       setHistoryRefreshTrigger(prev => prev + 1);
       
       // HARD STOP: Transition to waiting_resume
-      transitionToWaitingResume();
+      transitionToWaitingResume(readerMode);
     }
-  }, [transitionToWaitingResume, selectedBarId, scannerFrozen]);
+  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode]);
 
   // Handle USB scanner input (hidden input keydown)
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -503,22 +543,21 @@ export default function Bar() {
       
       if (!parsed.valid) {
         isProcessingRef.current = true;
-        setScannerFrozen(true);
         setResult({
           success: false,
           error_code: "QR_INVALID",
           message: "Código QR no válido",
         });
         setScanState("error");
-        dismissTimerRef.current = setTimeout(() => {
-          setScanState("waiting_resume");
-        }, RESULT_DISPLAY_MS);
+        setHistoryRefreshTrigger(prev => prev + 1);
+        // USB mode: auto-reset after display
+        transitionToWaitingResume("USB_SCANNER");
         return;
       }
       
       processToken(parsed.token);
     }
-  }, [processToken, scannerFrozen, scanState, focusScannerInput]);
+  }, [processToken, scannerFrozen, scanState, focusScannerInput, transitionToWaitingResume]);
 
   // Handle character input from USB scanner
   const handleScannerInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -543,14 +582,14 @@ export default function Bar() {
         message: "Código QR no válido",
       });
       setScanState("error");
-      dismissTimerRef.current = setTimeout(() => {
-        setScanState("waiting_resume");
-      }, RESULT_DISPLAY_MS);
+      setHistoryRefreshTrigger(prev => prev + 1);
+      // Camera mode: require manual resume
+      transitionToWaitingResume("CAMERA");
       return;
     }
     
     processToken(parsed.token);
-  }, [processToken, scannerFrozen, scanState]);
+  }, [processToken, scannerFrozen, scanState, transitionToWaitingResume]);
 
   // Start camera scanner
   const startCamera = useCallback(async () => {
@@ -575,7 +614,10 @@ export default function Bar() {
     } catch (error) {
       console.error("Camera error:", error);
       setCameraAvailable(false);
-      setCameraEnabled(false);
+      // Fall back to USB mode if camera fails
+      setReaderMode("USB_SCANNER");
+      localStorage.setItem(READER_MODE_KEY, "USB_SCANNER");
+      toast.error("Cámara no disponible. Cambiado a modo USB.");
     }
   }, [scannerSessionId, handleCameraScan]);
 
@@ -590,18 +632,18 @@ export default function Bar() {
     }
   }, []);
 
-  // Effect: Start camera when enabled AND not frozen
+  // Effect: Start camera when in CAMERA mode AND not frozen
   useEffect(() => {
-    if (isVerified && !showBarSelection && cameraEnabled && scanState === "idle" && !scannerFrozen) {
+    if (isVerified && !showBarSelection && readerMode === "CAMERA" && scanState === "idle" && !scannerFrozen) {
       const timer = setTimeout(startCamera, 100);
       return () => clearTimeout(timer);
     }
-  }, [isVerified, showBarSelection, cameraEnabled, scanState, scannerSessionId, startCamera, scannerFrozen]);
+  }, [isVerified, showBarSelection, readerMode, scanState, scannerSessionId, startCamera, scannerFrozen]);
 
-  // Effect: Stop camera when disabled or frozen
+  // Effect: Stop camera when not in CAMERA mode or frozen
   useEffect(() => {
-    if (!cameraEnabled || scannerFrozen) stopCamera();
-  }, [cameraEnabled, stopCamera, scannerFrozen]);
+    if (readerMode !== "CAMERA" || scannerFrozen) stopCamera();
+  }, [readerMode, stopCamera, scannerFrozen]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -626,7 +668,6 @@ export default function Bar() {
     
     if (!parsed.valid) {
       isProcessingRef.current = true;
-      setScannerFrozen(true);
       setResult({
         success: false,
         error_code: "QR_INVALID",
@@ -634,10 +675,10 @@ export default function Bar() {
       });
       setScanState("error");
       setManualToken("");
-      dismissTimerRef.current = setTimeout(() => {
-        setScanState("waiting_resume");
-        setShowManualEntry(false);
-      }, RESULT_DISPLAY_MS);
+      setHistoryRefreshTrigger(prev => prev + 1);
+      // Manual entry uses current reader mode behavior
+      transitionToWaitingResume(readerMode);
+      setShowManualEntry(false);
       return;
     }
 
@@ -656,14 +697,21 @@ export default function Bar() {
     processToken(lastDecodedValueRef.current);
   };
 
-  // Toggle camera
-  const toggleCamera = () => {
-    if (cameraEnabled) {
+  // Change reader mode
+  const handleReaderModeChange = (mode: string) => {
+    if (mode === "CAMERA" || mode === "USB_SCANNER") {
+      // Stop camera before mode change
       stopCamera();
-      setCameraEnabled(false);
-    } else {
-      setScannerSessionId(prev => prev + 1);
-      setCameraEnabled(true);
+      setScannerFrozen(false);
+      setReaderMode(mode);
+      localStorage.setItem(READER_MODE_KEY, mode);
+      
+      // Reset state for new mode
+      if (mode === "CAMERA") {
+        setScannerSessionId(prev => prev + 1);
+      } else {
+        focusScannerInput();
+      }
     }
   };
 
@@ -995,36 +1043,55 @@ export default function Bar() {
         {/* Control Bar */}
         <div className="flex items-center justify-between p-3 bg-muted/50 border-b border-border">
           <div className="flex items-center gap-2">
-            {/* Scanner ready indicator - prominent */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-full text-sm font-bold shadow-sm animate-pulse">
-              <ScanLine className="w-4 h-4" />
-              <span>LISTO PARA ESCANEAR</span>
-            </div>
+            {/* Reader Mode Selector */}
+            <ToggleGroup 
+              type="single" 
+              value={readerMode} 
+              onValueChange={handleReaderModeChange}
+              className="bg-background border rounded-lg"
+            >
+              <ToggleGroupItem 
+                value="USB_SCANNER" 
+                aria-label="USB Scanner Mode"
+                className="gap-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <Usb className="w-4 h-4" />
+                <span className="hidden sm:inline">USB</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem 
+                value="CAMERA" 
+                aria-label="Camera Mode"
+                className="gap-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <Camera className="w-4 h-4" />
+                <span className="hidden sm:inline">Cámara</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
             
-            {/* Camera toggle */}
-            <Button variant={cameraEnabled ? "default" : "outline"} size="sm" onClick={toggleCamera} className="gap-2">
-              <Camera className="w-4 h-4" />
-              {cameraEnabled ? "Cámara ON" : "Cámara"}
-            </Button>
+            {/* Scanner status indicator */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-medium">
+              <ScanLine className="w-4 h-4" />
+              <span className="hidden sm:inline">LISTO</span>
+            </div>
           </div>
           
           <div className="flex items-center gap-2">
             {/* Limpiar */}
             <Button variant="outline" size="sm" onClick={resetToReady} className="gap-1">
               <Trash2 className="w-4 h-4" />
-              Limpiar
+              <span className="hidden sm:inline">Limpiar</span>
             </Button>
             
             {/* Reintentar */}
             <Button variant="outline" size="sm" onClick={handleRetry} disabled={!lastDecodedValueRef.current} className="gap-1">
               <RotateCcw className="w-4 h-4" />
-              Reintentar
+              <span className="hidden sm:inline">Reintentar</span>
             </Button>
             
             {/* Manual entry toggle */}
             <Button variant={showManualEntry ? "default" : "outline"} size="sm" onClick={() => setShowManualEntry(!showManualEntry)} className="gap-1">
               <Keyboard className="w-4 h-4" />
-              Manual
+              <span className="hidden sm:inline">Manual</span>
             </Button>
           </div>
         </div>
@@ -1050,42 +1117,55 @@ export default function Bar() {
               </div>
             )}
 
-            {/* Camera viewport (optional) */}
-            {cameraEnabled && (
-              <div className="flex-1 relative bg-black min-h-[300px]">
+            {/* Camera viewport (CAMERA mode) */}
+            {readerMode === "CAMERA" && (
+              <div className="flex-1 relative bg-background min-h-[300px]">
                 <div key={scannerSessionId} id={`qr-reader-${scannerSessionId}`} className="w-full h-full" />
                 
                 {!scannerReady && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                    <Loader2 className="w-12 h-12 animate-spin text-white" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-background">
+                    <div className="text-center">
+                      <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+                      <p className="text-muted-foreground">Iniciando cámara...</p>
+                    </div>
                   </div>
                 )}
                 
                 {scannerReady && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="w-64 h-64 border-4 border-white/50 rounded-2xl" />
+                    <div className="w-64 h-64 border-4 border-primary/50 rounded-2xl" />
                   </div>
                 )}
+                
+                <div className="absolute bottom-4 left-0 right-0 text-center">
+                  <p className="text-sm text-muted-foreground bg-background/80 inline-block px-4 py-2 rounded-full">
+                    Apunta la cámara al código QR
+                  </p>
+                </div>
               </div>
             )}
 
-            {/* No camera view - USB scanner ready */}
-            {!cameraEnabled && (
+            {/* USB Scanner ready view */}
+            {readerMode === "USB_SCANNER" && (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-32 h-32 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6">
-                  <ScanLine className="w-16 h-16 text-green-600 dark:text-green-400" />
+                <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+                  <Usb className="w-16 h-16 text-primary" />
                 </div>
-                <h2 className="text-2xl font-bold text-foreground mb-2">Listo para escanear</h2>
-                <p className="text-muted-foreground max-w-md">
-                  Escanea un código QR con el lector USB. El sistema procesará automáticamente el código.
+                <h2 className="text-2xl font-bold text-foreground mb-2">Modo USB Activo</h2>
+                <p className="text-muted-foreground max-w-md mb-4">
+                  El escáner USB está listo. Escanea un código QR y se procesará automáticamente.
                 </p>
+                <div className="text-sm text-muted-foreground bg-muted px-4 py-2 rounded-full">
+                  El cursor está enfocado en el campo oculto
+                </div>
                 
                 {debugMode && (
                   <div className="mt-6 p-4 bg-muted rounded-lg text-left text-xs font-mono max-w-sm w-full">
                     <p>Estado: {scanState}</p>
+                    <p>Modo: {readerMode}</p>
                     <p>Buffer: {scanBufferRef.current || "(vacío)"}</p>
                     <p>Último: {lastParsedToken || "(ninguno)"}</p>
-                    <p>Cámara: {cameraAvailable ? "disponible" : "no disponible"}</p>
+                    <p>Cámara disponible: {cameraAvailable ? "sí" : "no"}</p>
                   </div>
                 )}
               </div>
