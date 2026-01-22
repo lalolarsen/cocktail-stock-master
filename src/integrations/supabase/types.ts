@@ -302,6 +302,8 @@ export type Database = {
           id: string
           jornada_id: string | null
           notes: string | null
+          payment_method: string | null
+          pos_id: string | null
           source_id: string | null
           source_type: string | null
           venue_id: string | null
@@ -316,6 +318,8 @@ export type Database = {
           id?: string
           jornada_id?: string | null
           notes?: string | null
+          payment_method?: string | null
+          pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
           venue_id?: string | null
@@ -330,6 +334,8 @@ export type Database = {
           id?: string
           jornada_id?: string | null
           notes?: string | null
+          payment_method?: string | null
+          pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
           venue_id?: string | null
@@ -340,6 +346,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
             referencedColumns: ["id"]
           },
           {
@@ -747,45 +760,75 @@ export type Database = {
       }
       jornada_financial_summary: {
         Row: {
+          cancelled_sales_total: number
+          cancelled_transactions_count: number
+          cash_difference: number | null
+          cash_expenses: number | null
+          cash_sales: number | null
           closed_at: string
           closed_by: string
-          costo_ventas: number
+          counted_cash: number | null
           created_at: string
-          gastos_operacionales: number
+          expected_cash: number | null
+          expenses_by_type: Json
+          expenses_total: number
+          gross_sales_total: number
           id: string
-          ingresos_brutos: number
           jornada_id: string
-          margen_bruto: number
-          resultado_periodo: number
-          utilidad_bruta: number
+          net_operational_result: number
+          net_sales_total: number
+          opening_cash: number | null
+          pos_id: string | null
+          sales_by_payment: Json
+          transactions_count: number
           venue_id: string
         }
         Insert: {
+          cancelled_sales_total?: number
+          cancelled_transactions_count?: number
+          cash_difference?: number | null
+          cash_expenses?: number | null
+          cash_sales?: number | null
           closed_at?: string
           closed_by: string
-          costo_ventas?: number
+          counted_cash?: number | null
           created_at?: string
-          gastos_operacionales?: number
+          expected_cash?: number | null
+          expenses_by_type?: Json
+          expenses_total?: number
+          gross_sales_total?: number
           id?: string
-          ingresos_brutos?: number
           jornada_id: string
-          margen_bruto?: number
-          resultado_periodo?: number
-          utilidad_bruta?: number
+          net_operational_result?: number
+          net_sales_total?: number
+          opening_cash?: number | null
+          pos_id?: string | null
+          sales_by_payment?: Json
+          transactions_count?: number
           venue_id: string
         }
         Update: {
+          cancelled_sales_total?: number
+          cancelled_transactions_count?: number
+          cash_difference?: number | null
+          cash_expenses?: number | null
+          cash_sales?: number | null
           closed_at?: string
           closed_by?: string
-          costo_ventas?: number
+          counted_cash?: number | null
           created_at?: string
-          gastos_operacionales?: number
+          expected_cash?: number | null
+          expenses_by_type?: Json
+          expenses_total?: number
+          gross_sales_total?: number
           id?: string
-          ingresos_brutos?: number
           jornada_id?: string
-          margen_bruto?: number
-          resultado_periodo?: number
-          utilidad_bruta?: number
+          net_operational_result?: number
+          net_sales_total?: number
+          opening_cash?: number | null
+          pos_id?: string | null
+          sales_by_payment?: Json
+          transactions_count?: number
           venue_id?: string
         }
         Relationships: [
@@ -799,8 +842,15 @@ export type Database = {
           {
             foreignKeyName: "jornada_financial_summary_jornada_id_fkey"
             columns: ["jornada_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_financial_summary_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
             referencedColumns: ["id"]
           },
           {
@@ -2575,6 +2625,10 @@ export type Database = {
         Returns: Json
       }
       factory_reset_non_demo: { Args: never; Returns: Json }
+      generate_jornada_financial_summaries: {
+        Args: { p_closed_by: string; p_jornada_id: string }
+        Returns: undefined
+      }
       generate_pickup_token: { Args: { p_sale_id: string }; Returns: Json }
       generate_product_code: { Args: never; Returns: string }
       generate_qr_token: { Args: never; Returns: string }

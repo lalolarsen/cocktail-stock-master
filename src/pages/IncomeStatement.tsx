@@ -76,12 +76,11 @@ interface Expense {
 }
 
 interface FrozenSummary {
-  ingresos_brutos: number;
-  costo_ventas: number;
-  utilidad_bruta: number;
-  margen_bruto: number;
-  gastos_operacionales: number;
-  resultado_periodo: number;
+  gross_sales_total: number;
+  net_sales_total: number;
+  expenses_total: number;
+  expenses_by_type: { operacional?: number; no_operacional?: number };
+  net_operational_result: number;
   closed_at: string;
 }
 
@@ -145,21 +144,31 @@ export default function IncomeStatement() {
             .from("jornada_financial_summary")
             .select("*")
             .eq("jornada_id", selectedJornadaId)
+            .is("pos_id", null)
             .maybeSingle();
 
           if (summaryData) {
-            setFrozenSummary(summaryData as FrozenSummary);
+            // Cast to the new schema (types.ts may not be updated yet)
+            const summary = summaryData as unknown as FrozenSummary;
+            setFrozenSummary(summary);
             // Still fetch expenses for detail view
             const { data: expensesData } = await supabase
               .from("expenses")
               .select("*")
               .eq("jornada_id", selectedJornadaId)
               .order("created_at", { ascending: false });
-            setExpenses(expensesData || []);
             
             // Set breakdown from frozen data
-            setIncomeBreakdown({ sale: 0, ticket: 0, manual: 0, total: summaryData.ingresos_brutos });
-            setCostOfSales({ total_cost: summaryData.costo_ventas, products_count: 0, items_count: 0 });
+            setIncomeBreakdown({ sale: 0, ticket: 0, manual: 0, total: summary.gross_sales_total });
+            setCostOfSales({ total_cost: 0, products_count: 0, items_count: 0 });
+            setExpenses([{ 
+              id: 'frozen', 
+              description: 'Gastos (snapshot)', 
+              amount: summary.expenses_total, 
+              expense_type: 'operacional', 
+              category: null, 
+              created_at: summary.closed_at 
+            }]);
             setLoading(false);
             return;
           }
@@ -237,12 +246,14 @@ export default function IncomeStatement() {
   const netResult = useMemo(() => grossProfit - totalExpenses, [grossProfit, totalExpenses]);
 
   // Use frozen data if available for display
-  const displayIngresos = frozenSummary ? frozenSummary.ingresos_brutos : incomeBreakdown.total;
-  const displayCosto = frozenSummary ? frozenSummary.costo_ventas : costOfSales.total_cost;
-  const displayGastos = frozenSummary ? frozenSummary.gastos_operacionales : totalExpenses;
-  const displayUtilidad = frozenSummary ? frozenSummary.utilidad_bruta : grossProfit;
-  const displayMargen = frozenSummary ? frozenSummary.margen_bruto : grossMargin;
-  const displayResultado = frozenSummary ? frozenSummary.resultado_periodo : netResult;
+  const displayIngresos = frozenSummary ? frozenSummary.gross_sales_total : incomeBreakdown.total;
+  const displayCosto = frozenSummary ? (frozenSummary.gross_sales_total - frozenSummary.net_sales_total) : costOfSales.total_cost;
+  const displayGastos = frozenSummary ? frozenSummary.expenses_total : totalExpenses;
+  const displayUtilidad = frozenSummary ? frozenSummary.net_sales_total : grossProfit;
+  const displayMargen = frozenSummary 
+    ? (frozenSummary.gross_sales_total > 0 ? ((frozenSummary.net_sales_total / frozenSummary.gross_sales_total) * 100) : 0) 
+    : grossMargin;
+  const displayResultado = frozenSummary ? frozenSummary.net_operational_result : netResult;
 
   // Presets
   const setPreset = (preset: "today" | "currentJornada" | "currentMonth") => {

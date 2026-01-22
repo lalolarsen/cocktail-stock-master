@@ -31,6 +31,7 @@ import { OutsideJornadaSales } from "./OutsideJornadaSales";
 import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
 import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
 import { CashReconciliationDialog } from "./CashReconciliationDialog";
+import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { formatCLP } from "@/lib/currency";
 
 interface Jornada {
@@ -54,12 +55,21 @@ interface JornadaStats {
 interface FinancialSummary {
   id: string;
   jornada_id: string;
-  ingresos_brutos: number;
-  costo_ventas: number;
-  utilidad_bruta: number;
-  margen_bruto: number;
-  gastos_operacionales: number;
-  resultado_periodo: number;
+  pos_id: string | null;
+  gross_sales_total: number;
+  sales_by_payment: { cash?: number; card?: number; transfer?: number };
+  transactions_count: number;
+  cancelled_sales_total: number;
+  net_sales_total: number;
+  expenses_total: number;
+  expenses_by_type: { operacional?: number; no_operacional?: number };
+  opening_cash: number;
+  cash_sales: number;
+  cash_expenses: number;
+  expected_cash: number;
+  counted_cash: number;
+  cash_difference: number;
+  net_operational_result: number;
   closed_at: string;
   closed_by: string;
 }
@@ -77,6 +87,7 @@ export function JornadaManagement() {
   const [loading, setLoading] = useState(true);
   const [showCashOpening, setShowCashOpening] = useState(false);
   const [showReconciliation, setShowReconciliation] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState<{ jornadaId: string; numero: number; fecha: string } | null>(null);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeJornada, setActiveJornada] = useState<Jornada | null>(null);
@@ -132,14 +143,17 @@ export function JornadaManagement() {
 
   const fetchFinancialSummaries = async (jornadaIds: string[]) => {
     try {
+      // Only fetch the overall summaries (pos_id is null)
       const { data } = await supabase
         .from("jornada_financial_summary")
         .select("*")
-        .in("jornada_id", jornadaIds);
+        .in("jornada_id", jornadaIds)
+        .is("pos_id", null);
 
       const summaries: Record<string, FinancialSummary> = {};
       (data || []).forEach((s) => {
-        summaries[s.jornada_id] = s as FinancialSummary;
+        // Cast to our interface since types.ts may not be regenerated yet
+        summaries[s.jornada_id] = s as unknown as FinancialSummary;
       });
       setFinancialSummaries(summaries);
     } catch (error) {
@@ -279,12 +293,11 @@ export function JornadaManagement() {
       [`Cerrada: ${format(new Date(summary.closed_at), "dd/MM/yyyy HH:mm", { locale: es })}`],
       [""],
       ["Concepto", "Monto (CLP)"],
-      ["Ingresos Brutos", summary.ingresos_brutos],
-      ["Costo de Ventas", -summary.costo_ventas],
-      ["Utilidad Bruta", summary.utilidad_bruta],
-      ["Margen Bruto (%)", summary.margen_bruto],
-      ["Gastos Operacionales", -summary.gastos_operacionales],
-      ["Resultado del Período", summary.resultado_periodo],
+      ["Ventas Brutas", summary.gross_sales_total],
+      ["Ventas Canceladas", -summary.cancelled_sales_total],
+      ["Ventas Netas", summary.net_sales_total],
+      ["Gastos Totales", -summary.expenses_total],
+      ["Resultado Operacional", summary.net_operational_result],
     ];
 
     const csv = rows.map((row) => row.join(",")).join("\n");
@@ -613,43 +626,55 @@ export function JornadaManagement() {
                                       Cerrada el {format(new Date(financialSummaries[jornada.id].closed_at), "dd/MM/yyyy HH:mm", { locale: es })}
                                     </span>
                                   </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      exportJornadaCSV(jornada);
-                                    }}
-                                    className="gap-2"
-                                  >
-                                    <Download className="h-4 w-4" />
-                                    Exportar CSV
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowSummary({ 
+                                          jornadaId: jornada.id, 
+                                          numero: jornada.numero_jornada, 
+                                          fecha: jornada.fecha 
+                                        });
+                                      }}
+                                    >
+                                      Ver Detalle
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        exportJornadaCSV(jornada);
+                                      }}
+                                      className="gap-2"
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      CSV
+                                    </Button>
+                                  </div>
                                 </div>
-                                <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+                                <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
                                   <div className="text-center">
-                                    <div className="text-lg font-bold text-primary">{formatCLP(financialSummaries[jornada.id].ingresos_brutos)}</div>
-                                    <div className="text-xs text-muted-foreground">Ingresos Brutos</div>
+                                    <div className="text-lg font-bold text-primary">{formatCLP(financialSummaries[jornada.id].gross_sales_total)}</div>
+                                    <div className="text-xs text-muted-foreground">Ventas Brutas</div>
                                   </div>
                                   <div className="text-center">
-                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].costo_ventas)}</div>
-                                    <div className="text-xs text-muted-foreground">Costo Ventas</div>
+                                    <div className="text-lg font-bold">{financialSummaries[jornada.id].transactions_count}</div>
+                                    <div className="text-xs text-muted-foreground">Transacciones</div>
                                   </div>
                                   <div className="text-center">
-                                    <div className="text-lg font-bold">{formatCLP(financialSummaries[jornada.id].utilidad_bruta)}</div>
-                                    <div className="text-xs text-muted-foreground">Utilidad Bruta</div>
+                                    <div className="text-lg font-bold">{formatCLP(financialSummaries[jornada.id].net_sales_total)}</div>
+                                    <div className="text-xs text-muted-foreground">Ventas Netas</div>
                                   </div>
                                   <div className="text-center">
-                                    <div className="text-lg font-bold">{financialSummaries[jornada.id].margen_bruto}%</div>
-                                    <div className="text-xs text-muted-foreground">Margen</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].gastos_operacionales)}</div>
+                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].expenses_total)}</div>
                                     <div className="text-xs text-muted-foreground">Gastos</div>
                                   </div>
                                   <div className="text-center">
-                                    <div className={`text-lg font-bold ${financialSummaries[jornada.id].resultado_periodo >= 0 ? "text-primary" : "text-destructive"}`}>
-                                      {formatCLP(financialSummaries[jornada.id].resultado_periodo)}
+                                    <div className={`text-lg font-bold ${financialSummaries[jornada.id].net_operational_result >= 0 ? "text-primary" : "text-destructive"}`}>
+                                      {formatCLP(financialSummaries[jornada.id].net_operational_result)}
                                     </div>
                                     <div className="text-xs text-muted-foreground">Resultado</div>
                                   </div>
@@ -719,6 +744,17 @@ export function JornadaManagement() {
           onClose={() => setShowReconciliation(null)}
           onReconciled={handleReconciliationComplete}
           jornadaId={showReconciliation}
+        />
+      )}
+
+      {/* P&L Summary Dialog */}
+      {showSummary && (
+        <JornadaCloseSummaryDialog
+          open={true}
+          onClose={() => setShowSummary(null)}
+          jornadaId={showSummary.jornadaId}
+          jornadaNumber={showSummary.numero}
+          jornadaDate={showSummary.fecha}
         />
       )}
     </Card>
