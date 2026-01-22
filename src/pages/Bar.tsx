@@ -58,14 +58,11 @@ type BarLocation = {
 };
 
 // Explicit scan lifecycle states
-type ScanState = "idle" | "processing" | "success" | "error";
+type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume";
 
-// Timing constants
-const COOLDOWN_MS = 400; // 400ms cooldown between scans (faster recovery)
-const SUCCESS_DISMISS_MS = 1800; // 1.8s display for success
-const USED_DISMISS_MS = 2000; // 2s display for already used
-const ERROR_DISMISS_MS = 800; // 800ms for quick errors (expired, invalid) - fast reset
-const INSUFFICIENT_STOCK_DISMISS_MS = 3000; // 3s for insufficient stock
+// Timing constants - HARD STOP strategy
+const DEDUPE_WINDOW_MS = 5000; // 5s dedupe window - ignore same QR within this window
+const RESULT_DISPLAY_MS = 1200; // 1.2s display for any result before showing resume button
 const PROCESSING_TIMEOUT_MS = 8000;
 
 /**
@@ -152,8 +149,9 @@ export default function Bar() {
   const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showBarSelection, setShowBarSelection] = useState(true);
   
-  // Scanner modes
+  // Scanner modes - HARD STOP: camera is disabled by default and only enabled manually
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [scannerFrozen, setScannerFrozen] = useState(false); // Hard freeze after any decode
   const [cameraAvailable, setCameraAvailable] = useState(true);
   const [scannerSessionId, setScannerSessionId] = useState(0);
   const [scannerReady, setScannerReady] = useState(false);
@@ -171,10 +169,12 @@ export default function Bar() {
   // USB Scanner: hidden input ref and buffer
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const scanBufferRef = useRef("");
-  const lastProcessedTokenRef = useRef<string>("");
-  const lastProcessedTimeRef = useRef<number>(0);
   
-  // Processing lock - prevents concurrent scan processing
+  // HARD DEDUPE: Track last decoded value and time to prevent loops
+  const lastDecodedValueRef = useRef<string>("");
+  const lastDecodedTimeRef = useRef<number>(0);
+  
+  // Processing lock - prevents concurrent scan processing (STRICT)
   const isProcessingRef = useRef(false);
   
   // Backend call tracking
@@ -279,8 +279,26 @@ export default function Bar() {
     }
   }, []);
 
-  // Reset to ready state - used by Limpiar and auto-dismiss
-  const resetToReady = useCallback(() => {
+  // HARD STOP: Force scanner to waiting_resume state after any decode
+  const transitionToWaitingResume = useCallback(() => {
+    clearAllTimers();
+    setScannerFrozen(true);
+    
+    // Stop camera completely when frozen
+    if (cameraRef.current) {
+      cameraRef.current.stop().catch(() => {});
+      cameraRef.current = null;
+      setScannerReady(false);
+    }
+    
+    // After display time, move to waiting_resume state
+    dismissTimerRef.current = setTimeout(() => {
+      setScanState("waiting_resume");
+    }, RESULT_DISPLAY_MS);
+  }, [clearAllTimers]);
+
+  // Resume scanning - called by user action ONLY
+  const resumeScanning = useCallback(() => {
     clearAllTimers();
     
     if (abortControllerRef.current) {
@@ -288,20 +306,30 @@ export default function Bar() {
       abortControllerRef.current = null;
     }
     
-    // Clear all processing locks
+    // Clear all locks
     redeemInFlightRef.current = false;
     isProcessingRef.current = false;
+    setScannerFrozen(false);
     
-    // Clear last token to prevent stale comparisons blocking next scan
-    lastProcessedTokenRef.current = "";
+    // Clear dedupe to allow same QR on manual resume
+    lastDecodedValueRef.current = "";
+    lastDecodedTimeRef.current = 0;
     
     setResult(null);
     setScanState("idle");
     scanBufferRef.current = "";
     
+    // Restart camera if it was enabled
+    if (cameraEnabled) {
+      setScannerSessionId(prev => prev + 1);
+    }
+    
     // Refocus scanner input
     focusScannerInput();
-  }, [clearAllTimers, focusScannerInput]);
+  }, [clearAllTimers, focusScannerInput, cameraEnabled]);
+
+  // Legacy reset alias for manual "Limpiar" button
+  const resetToReady = resumeScanning;
 
   // Process token via backend
   const processToken = useCallback(async (token: string) => {
@@ -313,11 +341,10 @@ export default function Bar() {
       return;
     }
     
-    // Guard 2: Duplicate token within cooldown window
-    if (token === lastProcessedTokenRef.current && 
-        now - lastProcessedTimeRef.current < COOLDOWN_MS) {
-      console.log("[Bar] Duplicate token within cooldown, ignoring");
-      focusScannerInput();
+    // Guard 2: HARD DEDUPE - same QR within 5 second window = ignore completely
+    if (token === lastDecodedValueRef.current && 
+        now - lastDecodedTimeRef.current < DEDUPE_WINDOW_MS) {
+      console.log("[Bar] Duplicate token within 5s dedupe window, ignoring completely");
       return;
     }
 
@@ -326,17 +353,31 @@ export default function Bar() {
       console.log("[Bar] Backend call in flight, ignoring");
       return;
     }
+    
+    // Guard 4: Scanner frozen (waiting for manual resume)
+    if (scannerFrozen) {
+      console.log("[Bar] Scanner frozen, ignoring decode");
+      return;
+    }
 
-    // Set processing lock immediately
+    // Set processing lock IMMEDIATELY
     isProcessingRef.current = true;
     
-    // Update tracking
-    lastProcessedTokenRef.current = token;
-    lastProcessedTimeRef.current = now;
+    // Update dedupe tracking
+    lastDecodedValueRef.current = token;
+    lastDecodedTimeRef.current = now;
     setLastParsedToken(token);
     
     setScanState("processing");
     setResult(null);
+    
+    // HARD STOP: Freeze scanner immediately
+    setScannerFrozen(true);
+    if (cameraRef.current) {
+      cameraRef.current.stop().catch(() => {});
+      cameraRef.current = null;
+      setScannerReady(false);
+    }
 
     abortControllerRef.current = new AbortController();
 
@@ -346,7 +387,6 @@ export default function Bar() {
         abortControllerRef.current.abort();
       }
       redeemInFlightRef.current = false;
-      isProcessingRef.current = false;
       
       setResult({
         success: false,
@@ -354,7 +394,7 @@ export default function Bar() {
         message: "Tiempo de espera agotado - reintenta",
       });
       setScanState("error");
-      dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
+      transitionToWaitingResume();
     }, PROCESSING_TIMEOUT_MS);
 
     try {
@@ -365,7 +405,10 @@ export default function Bar() {
         p_bartender_bar_id: selectedBarId || null,
       });
 
-      if (abortControllerRef.current?.signal.aborted) return;
+      if (abortControllerRef.current?.signal.aborted) {
+        isProcessingRef.current = false;
+        return;
+      }
 
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
@@ -373,11 +416,20 @@ export default function Bar() {
       }
       
       redeemInFlightRef.current = false;
-      // Note: isProcessingRef stays true until auto-dismiss completes
 
       if (error) throw error;
 
       const resultData = data as RedemptionResult;
+      
+      // Handle TOO_FAST error from backend rate limiting
+      if (resultData.error_code === 'TOO_FAST') {
+        console.log("[Bar] Backend rate limit hit, ignoring");
+        isProcessingRef.current = false;
+        setScannerFrozen(false);
+        setScanState("idle");
+        return;
+      }
+      
       setResult(resultData);
       setScanState(resultData.success ? "success" : "error");
       
@@ -395,19 +447,8 @@ export default function Bar() {
       // Trigger history refresh after any scan
       setHistoryRefreshTrigger(prev => prev + 1);
 
-      // Auto-dismiss - determine timeout based on result type
-      let timeout = SUCCESS_DISMISS_MS;
-      if (!resultData.success) {
-        if (resultData.error_code === 'ALREADY_REDEEMED') {
-          timeout = USED_DISMISS_MS;
-        } else if (resultData.error_code === 'INSUFFICIENT_BAR_STOCK') {
-          timeout = INSUFFICIENT_STOCK_DISMISS_MS;
-        } else {
-          // Fast reset for expired, invalid, not_found, etc.
-          timeout = ERROR_DISMISS_MS;
-        }
-      }
-      dismissTimerRef.current = setTimeout(resetToReady, timeout);
+      // HARD STOP: Transition to waiting_resume after showing result
+      transitionToWaitingResume();
     } catch (error: any) {
       if (abortControllerRef.current?.signal.aborted) {
         isProcessingRef.current = false;
@@ -420,7 +461,6 @@ export default function Bar() {
       }
       
       redeemInFlightRef.current = false;
-      // isProcessingRef stays true until auto-dismiss
       
       console.error("Redemption error:", error);
       setResult({
@@ -433,10 +473,10 @@ export default function Bar() {
       // Trigger history refresh even on errors
       setHistoryRefreshTrigger(prev => prev + 1);
       
-      // Fast auto-dismiss for system errors
-      dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
+      // HARD STOP: Transition to waiting_resume
+      transitionToWaitingResume();
     }
-  }, [resetToReady, selectedBarId, focusScannerInput]);
+  }, [transitionToWaitingResume, selectedBarId, scannerFrozen]);
 
   // Handle USB scanner input (hidden input keydown)
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -452,9 +492,9 @@ export default function Bar() {
       
       if (!rawValue) return;
       
-      // Guard: don't process if already handling a scan
-      if (isProcessingRef.current || scanState !== "idle") {
-        console.log("[Bar] Scan rejected - currently processing or not idle");
+      // Guard: don't process if frozen or not idle
+      if (scannerFrozen || isProcessingRef.current || scanState !== "idle") {
+        console.log("[Bar] Scan rejected - frozen or processing or not idle");
         focusScannerInput();
         return;
       }
@@ -463,19 +503,22 @@ export default function Bar() {
       
       if (!parsed.valid) {
         isProcessingRef.current = true;
+        setScannerFrozen(true);
         setResult({
           success: false,
           error_code: "QR_INVALID",
           message: "Código QR no válido",
         });
         setScanState("error");
-        dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
+        dismissTimerRef.current = setTimeout(() => {
+          setScanState("waiting_resume");
+        }, RESULT_DISPLAY_MS);
         return;
       }
       
       processToken(parsed.token);
     }
-  }, [processToken, resetToReady]);
+  }, [processToken, scannerFrozen, scanState, focusScannerInput]);
 
   // Handle character input from USB scanner
   const handleScannerInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -484,8 +527,8 @@ export default function Bar() {
 
   // Handle camera QR scan
   const handleCameraScan = useCallback((decodedText: string) => {
-    // Guard: don't process if already handling a scan
-    if (isProcessingRef.current || scanState !== "idle") {
+    // Guard: don't process if frozen or not idle
+    if (scannerFrozen || isProcessingRef.current || scanState !== "idle") {
       return;
     }
     
@@ -493,18 +536,21 @@ export default function Bar() {
     
     if (!parsed.valid) {
       isProcessingRef.current = true;
+      setScannerFrozen(true);
       setResult({
         success: false,
         error_code: "QR_INVALID",
         message: "Código QR no válido",
       });
       setScanState("error");
-      dismissTimerRef.current = setTimeout(resetToReady, ERROR_DISMISS_MS);
+      dismissTimerRef.current = setTimeout(() => {
+        setScanState("waiting_resume");
+      }, RESULT_DISPLAY_MS);
       return;
     }
     
     processToken(parsed.token);
-  }, [processToken, resetToReady]);
+  }, [processToken, scannerFrozen, scanState]);
 
   // Start camera scanner
   const startCamera = useCallback(async () => {
@@ -544,18 +590,18 @@ export default function Bar() {
     }
   }, []);
 
-  // Effect: Start camera when enabled
+  // Effect: Start camera when enabled AND not frozen
   useEffect(() => {
-    if (isVerified && !showBarSelection && cameraEnabled && scanState === "idle") {
+    if (isVerified && !showBarSelection && cameraEnabled && scanState === "idle" && !scannerFrozen) {
       const timer = setTimeout(startCamera, 100);
       return () => clearTimeout(timer);
     }
-  }, [isVerified, showBarSelection, cameraEnabled, scanState, scannerSessionId, startCamera]);
+  }, [isVerified, showBarSelection, cameraEnabled, scanState, scannerSessionId, startCamera, scannerFrozen]);
 
-  // Effect: Stop camera when disabled
+  // Effect: Stop camera when disabled or frozen
   useEffect(() => {
-    if (!cameraEnabled) stopCamera();
-  }, [cameraEnabled, stopCamera]);
+    if (!cameraEnabled || scannerFrozen) stopCamera();
+  }, [cameraEnabled, stopCamera, scannerFrozen]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -579,6 +625,8 @@ export default function Bar() {
     const parsed = parseQRToken(input);
     
     if (!parsed.valid) {
+      isProcessingRef.current = true;
+      setScannerFrozen(true);
       setResult({
         success: false,
         error_code: "QR_INVALID",
@@ -587,9 +635,9 @@ export default function Bar() {
       setScanState("error");
       setManualToken("");
       dismissTimerRef.current = setTimeout(() => {
-        resetToReady();
+        setScanState("waiting_resume");
         setShowManualEntry(false);
-      }, ERROR_DISMISS_MS);
+      }, RESULT_DISPLAY_MS);
       return;
     }
 
@@ -599,13 +647,13 @@ export default function Bar() {
 
   // Retry last token
   const handleRetry = () => {
-    if (!lastProcessedTokenRef.current) {
+    if (!lastDecodedValueRef.current) {
       toast.error("No hay token previo para reintentar");
       return;
     }
-    // Reset cooldown to allow retry
-    lastProcessedTimeRef.current = 0;
-    processToken(lastProcessedTokenRef.current);
+    // Clear dedupe to allow retry
+    lastDecodedTimeRef.current = 0;
+    processToken(lastDecodedValueRef.current);
   };
 
   // Toggle camera
@@ -880,7 +928,34 @@ export default function Bar() {
     );
   }
 
-  // Main scanning interface
+  // WAITING RESUME overlay - shows after result display, requires manual action to continue
+  if (scanState === "waiting_resume") {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background p-6">
+        <ScanLine className="w-24 h-24 text-primary mb-6" />
+        <h2 className="text-3xl font-bold text-foreground mb-2">Escaneo completado</h2>
+        <p className="text-muted-foreground text-center mb-8 max-w-sm">
+          Pulsa el botón para escanear el siguiente QR
+        </p>
+        
+        <Button 
+          onClick={resumeScanning} 
+          size="lg"
+          className="h-20 px-12 text-2xl font-bold gap-3"
+        >
+          <ScanLine className="w-8 h-8" />
+          Escanear Siguiente
+        </Button>
+        
+        {debugMode && lastParsedToken && (
+          <p className="mt-6 text-xs text-muted-foreground font-mono">
+            Último: {lastParsedToken.slice(0, 8)}...
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       {isDemoMode && <DemoWatermark />}
@@ -941,7 +1016,7 @@ export default function Bar() {
             </Button>
             
             {/* Reintentar */}
-            <Button variant="outline" size="sm" onClick={handleRetry} disabled={!lastProcessedTokenRef.current} className="gap-1">
+            <Button variant="outline" size="sm" onClick={handleRetry} disabled={!lastDecodedValueRef.current} className="gap-1">
               <RotateCcw className="w-4 h-4" />
               Reintentar
             </Button>
