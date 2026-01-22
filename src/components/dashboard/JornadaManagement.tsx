@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -22,10 +23,10 @@ import {
 import { 
   Loader2, Calendar, History, 
   DollarSign, ShoppingCart, Users, TrendingUp, ChevronDown, ChevronUp,
-  Trash2, Square, Download, Play
+  Trash2, Square, Download, Play, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, parseISO, isToday } from "date-fns";
+import { format, parseISO, isToday, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
 import { OutsideJornadaSales } from "./OutsideJornadaSales";
 import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
@@ -33,6 +34,10 @@ import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
 import { CashReconciliationDialog } from "./CashReconciliationDialog";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { formatCLP } from "@/lib/currency";
+import { logAuditEvent } from "@/lib/monitoring";
+
+// Configurable threshold for stale jornada detection (in hours)
+const STALE_JORNADA_THRESHOLD_HOURS = 24;
 
 interface Jornada {
   id: string;
@@ -91,6 +96,8 @@ export function JornadaManagement() {
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeJornada, setActiveJornada] = useState<Jornada | null>(null);
+  const [showForceCloseConfirm, setShowForceCloseConfirm] = useState<Jornada | null>(null);
+  const [forceCloseLoading, setForceCloseLoading] = useState(false);
 
   useEffect(() => {
     fetchJornadas();
@@ -238,6 +245,92 @@ export function JornadaManagement() {
     fetchJornadas();
   };
 
+  // Check if a jornada is stale (open for more than threshold hours)
+  const isStaleJornada = (jornada: Jornada): boolean => {
+    if (jornada.estado !== "activa") return false;
+    const openedAt = new Date(`${jornada.fecha}T${jornada.hora_apertura || "00:00:00"}`);
+    const hoursOpen = differenceInHours(new Date(), openedAt);
+    return hoursOpen >= STALE_JORNADA_THRESHOLD_HOURS;
+  };
+
+  // Force close a stale jornada (admin recovery action)
+  const handleForceClose = async () => {
+    if (!showForceCloseConfirm) return;
+    
+    setForceCloseLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Debe iniciar sesión para realizar esta acción");
+        return;
+      }
+
+      // Get venue_id from jornada
+      const { data: jornadaData } = await supabase
+        .from("jornadas")
+        .select("venue_id")
+        .eq("id", showForceCloseConfirm.id)
+        .single();
+
+      // Update jornada to closed
+      const { error: updateError } = await supabase
+        .from("jornadas")
+        .update({
+          estado: "cerrada",
+          hora_cierre: format(new Date(), "HH:mm:ss"),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", showForceCloseConfirm.id);
+
+      if (updateError) throw updateError;
+
+      // Log to jornada_audit_log with forced_close action
+      await supabase.from("jornada_audit_log").insert({
+        jornada_id: showForceCloseConfirm.id,
+        venue_id: jornadaData?.venue_id || null,
+        actor_user_id: user.id,
+        actor_source: "ui",
+        action: "forced_close",
+        reason: `Jornada forzadamente cerrada por admin - abierta por más de ${STALE_JORNADA_THRESHOLD_HOURS} horas`,
+        meta: {
+          arqueo_skipped: true,
+          jornada_numero: showForceCloseConfirm.numero_jornada,
+          fecha: showForceCloseConfirm.fecha,
+          hora_apertura: showForceCloseConfirm.hora_apertura,
+        },
+      });
+
+      // Log to app audit events
+      await logAuditEvent({
+        action: "jornada_forced_close",
+        status: "success",
+        metadata: {
+          jornada_id: showForceCloseConfirm.id,
+          jornada_numero: showForceCloseConfirm.numero_jornada,
+        },
+      });
+
+      toast.success("Jornada cerrada forzosamente. El arqueo fue omitido.");
+      setShowForceCloseConfirm(null);
+      fetchJornadas();
+    } catch (error) {
+      console.error("Error force closing jornada:", error);
+      toast.error("Error al forzar cierre de jornada");
+      
+      await logAuditEvent({
+        action: "jornada_forced_close",
+        status: "fail",
+        metadata: {
+          jornada_id: showForceCloseConfirm.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    } finally {
+      setForceCloseLoading(false);
+    }
+  };
+
+
   const handleCloseJornada = (jornadaId: string) => {
     setShowReconciliation(jornadaId);
   };
@@ -309,10 +402,20 @@ export function JornadaManagement() {
     toast.success("CSV exportado");
   };
 
-  const getStatusBadge = (estado: string) => {
+  const getStatusBadge = (estado: string, jornada?: Jornada) => {
+    // Check if this jornada is stale
+    if (jornada && isStaleJornada(jornada)) {
+      return (
+        <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Obsoleta
+        </Badge>
+      );
+    }
+    
     switch (estado) {
       case "activa":
-        return <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Abierta</Badge>;
+        return <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30">Abierta</Badge>;
       case "cerrada":
         return <Badge variant="secondary">Cerrada</Badge>;
       default:
@@ -370,31 +473,52 @@ export function JornadaManagement() {
 
       {/* Current Jornada Status */}
       {activeJornada ? (
-        <Card className="p-4 mb-6 border-green-500/30 bg-green-500/5">
+        <Card className={`p-4 mb-6 ${isStaleJornada(activeJornada) ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-green-600" />
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isStaleJornada(activeJornada) ? "bg-amber-500/20" : "bg-green-500/20"}`}>
+                {isStaleJornada(activeJornada) ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                ) : (
+                  <Calendar className="w-5 h-5 text-green-600" />
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-semibold">
                     Jornada {activeJornada.numero_jornada}
                   </span>
-                  {getStatusBadge(activeJornada.estado)}
+                  {getStatusBadge(activeJornada.estado, activeJornada)}
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {formatDate(activeJornada.fecha)} • Abierta desde {activeJornada.hora_apertura}
                 </p>
+                {isStaleJornada(activeJornada) && (
+                  <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                    ⚠️ Esta jornada lleva más de {STALE_JORNADA_THRESHOLD_HOURS}h abierta. Considere forzar el cierre.
+                  </p>
+                )}
               </div>
             </div>
-            <Button
-              variant="destructive"
-              onClick={() => handleCloseJornada(activeJornada.id)}
-            >
-              <Square className="w-4 h-4 mr-2" />
-              Cerrar Jornada
-            </Button>
+            <div className="flex gap-2">
+              {isStaleJornada(activeJornada) && (
+                <Button
+                  variant="outline"
+                  className="border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                  onClick={() => setShowForceCloseConfirm(activeJornada)}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Forzar Cierre
+                </Button>
+              )}
+              <Button
+                variant="destructive"
+                onClick={() => handleCloseJornada(activeJornada.id)}
+              >
+                <Square className="w-4 h-4 mr-2" />
+                Cerrar Jornada
+              </Button>
+            </div>
           </div>
         </Card>
       ) : (
@@ -576,9 +700,21 @@ export function JornadaManagement() {
                         <TableCell>
                           {stats ? formatCLP(stats.total_ventas) : "-"}
                         </TableCell>
-                        <TableCell>{getStatusBadge(jornada.estado)}</TableCell>
+                        <TableCell>{getStatusBadge(jornada.estado, jornada)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                            {jornada.estado === "activa" && isStaleJornada(jornada) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                onClick={() => setShowForceCloseConfirm(jornada)}
+                                disabled={actionLoading === jornada.id}
+                                title="Forzar cierre de jornada"
+                              >
+                                <AlertTriangle className="w-4 h-4" />
+                              </Button>
+                            )}
                             {jornada.estado === "activa" && (
                               <Button
                                 size="sm"
@@ -757,6 +893,62 @@ export function JornadaManagement() {
           jornadaDate={showSummary.fecha}
         />
       )}
+
+      {/* Force Close Confirmation Dialog */}
+      <Dialog open={!!showForceCloseConfirm} onOpenChange={() => setShowForceCloseConfirm(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="w-5 h-5" />
+              Forzar Cierre de Jornada
+            </DialogTitle>
+            <DialogDescription className="pt-2 space-y-3">
+              <p>
+                Esta acción cerrará la <strong>Jornada #{showForceCloseConfirm?.numero_jornada}</strong> de forma forzada.
+              </p>
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm">
+                <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">⚠️ Advertencias:</p>
+                <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                  <li>El arqueo de caja será <strong>omitido</strong></li>
+                  <li>No se generará resumen financiero automático</li>
+                  <li>Esta acción es <strong>irreversible</strong></li>
+                  <li>Se registrará en el log de auditoría</li>
+                </ul>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Use esta opción solo para recuperar jornadas obsoletas que impiden la operación normal.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowForceCloseConfirm(null)}
+              disabled={forceCloseLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleForceClose}
+              disabled={forceCloseLoading}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {forceCloseLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Cerrando...
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Confirmar Cierre Forzado
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
