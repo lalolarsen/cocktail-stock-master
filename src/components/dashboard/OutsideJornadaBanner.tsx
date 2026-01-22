@@ -2,14 +2,15 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Calendar, Play } from "lucide-react";
+import { AlertTriangle, Play, ShieldAlert } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 
 interface OutsideJornadaBannerProps {
   onOpenJornada?: () => void;
+  blockSales?: boolean;
 }
 
-export function OutsideJornadaBanner({ onOpenJornada }: OutsideJornadaBannerProps) {
+export function OutsideJornadaBanner({ onOpenJornada, blockSales = false }: OutsideJornadaBannerProps) {
   const [hasActiveJornada, setHasActiveJornada] = useState<boolean | null>(null);
   const { hasRole } = useUserRole();
   const canManageJornada = hasRole("admin") || hasRole("gerencia");
@@ -19,13 +20,11 @@ export function OutsideJornadaBanner({ onOpenJornada }: OutsideJornadaBannerProp
     
     // Subscribe to jornada changes
     const channel = supabase
-      .channel("jornada-status")
+      .channel("jornada-status-banner")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "jornadas" },
-        () => {
-          checkActiveJornada();
-        }
+        () => checkActiveJornada()
       )
       .subscribe();
 
@@ -61,15 +60,44 @@ export function OutsideJornadaBanner({ onOpenJornada }: OutsideJornadaBannerProp
     return null;
   }
 
+  // Show blocking banner if sales should be blocked
+  if (blockSales) {
+    return (
+      <Alert variant="destructive" className="border-red-500/50 bg-red-500/10">
+        <ShieldAlert className="h-5 w-5 text-red-600" />
+        <AlertTitle className="text-red-800 dark:text-red-100 font-semibold">
+          Ventas Bloqueadas
+        </AlertTitle>
+        <AlertDescription className="flex items-center justify-between">
+          <span className="text-red-700 dark:text-red-200">
+            No hay jornada abierta. Un administrador debe abrir una jornada para poder vender.
+          </span>
+          {canManageJornada && onOpenJornada && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-4 border-red-600 text-red-700 hover:bg-red-600 hover:text-white"
+              onClick={onOpenJornada}
+            >
+              <Play className="w-4 h-4 mr-1" />
+              Abrir Jornada
+            </Button>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Show warning banner (legacy behavior)
   return (
     <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-200">
       <AlertTriangle className="h-5 w-5 text-amber-600" />
       <AlertTitle className="text-amber-800 dark:text-amber-100 font-semibold">
-        Sin Jornada Activa
+        Sin Jornada Abierta
       </AlertTitle>
       <AlertDescription className="flex items-center justify-between">
         <span className="text-amber-700 dark:text-amber-200">
-          Las ventas realizadas ahora quedarán marcadas como "fuera de jornada" y deberán asignarse antes del cierre final.
+          No hay jornada abierta. Contacta a un administrador para comenzar a vender.
         </span>
         {canManageJornada && onOpenJornada && (
           <Button
@@ -119,13 +147,11 @@ export function useActiveJornada() {
 
     // Subscribe to jornada changes for realtime updates
     const channel = supabase
-      .channel("active-jornada-check")
+      .channel("active-jornada-hook")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "jornadas" },
-        () => {
-          checkJornada();
-        }
+        () => checkJornada()
       )
       .subscribe();
 

@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +39,7 @@ interface CashAmount {
 interface JornadaCashOpeningDialogProps {
   open: boolean;
   onClose: () => void;
-  jornadaId: string;
+  jornadaId: string | null; // null means create new jornada
   onSuccess: () => void;
 }
 
@@ -135,36 +134,23 @@ export function JornadaCashOpeningDialog({
         amount: item.amount,
       }));
 
-      // Log audit event for opening
-      await supabase.from("jornada_audit_log").insert({
-        jornada_id: jornadaId,
-        action: "opened",
-        actor_source: "ui",
-        reason: "Admin inició jornada con efectivo inicial",
-        meta: { 
-          cash_amounts: cashData,
-          total_cash: cashData.reduce((sum, item) => sum + item.amount, 0),
-        },
-      });
-
-      const { data, error } = await supabase.rpc("start_jornada_with_cash", {
-        p_jornada_id: jornadaId,
-        p_cash_amounts: cashData,
+      // Use the new open_jornada_manual RPC function
+      const { data, error } = await supabase.rpc("open_jornada_manual", {
+        p_opening_cash_amounts: cashData,
       });
 
       if (error) throw error;
 
-      const result = data as { success: boolean; error?: string };
+      const result = data as { success: boolean; error?: string; jornada_id?: string; numero_jornada?: number };
       if (!result.success) {
-        throw new Error(result.error || "Error al iniciar jornada");
+        throw new Error(result.error || "Error al abrir jornada");
       }
 
-      toast.success("Jornada iniciada con arqueo de caja");
       onSuccess();
       onClose();
     } catch (error: any) {
-      console.error("Error starting jornada:", error);
-      toast.error(error.message || "Error al iniciar jornada");
+      console.error("Error opening jornada:", error);
+      toast.error(error.message || "Error al abrir jornada");
     } finally {
       setSaving(false);
     }
@@ -178,7 +164,7 @@ export function JornadaCashOpeningDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-primary" />
-            Efectivo Inicial por Caja
+            Abrir Jornada
           </DialogTitle>
           <DialogDescription>
             Ingresa el monto de efectivo inicial en cada caja para comenzar la jornada.
@@ -248,10 +234,10 @@ export function JornadaCashOpeningDialog({
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Iniciando...
+                Abriendo...
               </>
             ) : (
-              "Iniciar Jornada"
+              "Abrir Jornada"
             )}
           </Button>
         </DialogFooter>

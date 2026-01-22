@@ -321,6 +321,12 @@ export default function Sales() {
       return;
     }
 
+    // Block sales if no open jornada
+    if (!hasActiveJornada) {
+      toast.error("No hay jornada abierta. Contacta a un administrador.");
+      return;
+    }
+
     setLoading(true);
     setIssuingDocument(true);
 
@@ -680,7 +686,7 @@ export default function Sales() {
               Salir
             </Button>
           </div>
-          <OutsideJornadaBanner />
+          <OutsideJornadaBanner blockSales={true} />
         </div>
 
         <div className="max-w-7xl mx-auto p-4">

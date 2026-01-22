@@ -2536,6 +2536,10 @@ export type Database = {
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
+      close_jornada_manual: {
+        Args: { p_cash_closings?: Json; p_jornada_id: string }
+        Returns: Json
+      }
       close_jornada_with_summary: {
         Args: { p_jornada_id: string }
         Returns: Json
@@ -2624,6 +2628,7 @@ export type Database = {
           quantity: number
         }[]
       }
+      get_open_jornada: { Args: never; Returns: Json }
       get_worker_by_rut: {
         Args: { p_rut_code: string; p_venue_id?: string }
         Returns: {
@@ -2672,6 +2677,10 @@ export type Database = {
         Returns: string
       }
       migrate_stock_to_lots: { Args: never; Returns: Json }
+      open_jornada_manual: {
+        Args: { p_opening_cash_amounts?: Json }
+        Returns: Json
+      }
       record_login_attempt: {
         Args: {
           p_ip_address?: string
