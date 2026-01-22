@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -11,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -23,17 +20,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { 
-  Loader2, Plus, Calendar, History, Settings, Sparkles, 
+  Loader2, Calendar, History, 
   DollarSign, ShoppingCart, Users, TrendingUp, ChevronDown, ChevronUp,
-  Trash2, Play, Square, Download
+  Trash2, Square, Download, Play
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfWeek, parseISO, isToday } from "date-fns";
+import { format, parseISO, isToday } from "date-fns";
 import { es } from "date-fns/locale";
-import { JornadaConfig } from "./JornadaConfig";
 import { OutsideJornadaSales } from "./OutsideJornadaSales";
 import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
 import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
+import { CashReconciliationDialog } from "./CashReconciliationDialog";
 import { formatCLP } from "@/lib/currency";
 
 interface Jornada {
@@ -78,21 +75,28 @@ export function JornadaManagement() {
   const [jornadaStats, setJornadaStats] = useState<Record<string, JornadaStats>>({});
   const [financialSummaries, setFinancialSummaries] = useState<Record<string, FinancialSummary>>({});
   const [loading, setLoading] = useState(true);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showCloseConfirm, setShowCloseConfirm] = useState<string | null>(null);
-  const [showCashOpening, setShowCashOpening] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [showCashOpening, setShowCashOpening] = useState(false);
+  const [showReconciliation, setShowReconciliation] = useState<string | null>(null);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [newJornada, setNewJornada] = useState({
-    fecha: format(new Date(), "yyyy-MM-dd"),
-    hora_apertura: "18:00",
-    hora_cierre: "02:00",
-    motivo: "",
-  });
+  const [activeJornada, setActiveJornada] = useState<Jornada | null>(null);
 
   useEffect(() => {
     fetchJornadas();
+    
+    // Subscribe to jornada changes
+    const channel = supabase
+      .channel("jornada-management")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "jornadas" },
+        () => fetchJornadas()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchJornadas = async () => {
@@ -105,6 +109,10 @@ export function JornadaManagement() {
 
       if (error) throw error;
       setJornadas(data || []);
+      
+      // Find active jornada
+      const active = data?.find(j => j.estado === "activa") || null;
+      setActiveJornada(active);
       
       // Fetch stats and financial summaries for each jornada
       if (data && data.length > 0) {
@@ -202,118 +210,40 @@ export function JornadaManagement() {
       .sort((a, b) => new Date(b.semana_inicio).getTime() - new Date(a.semana_inicio).getTime());
   };
 
-  const addSpecialJornada = async () => {
-    setSaving(true);
-    try {
-      const fecha = new Date(newJornada.fecha);
-      const weekStart = startOfWeek(fecha, { weekStartsOn: 1 });
-      const weekStartStr = format(weekStart, "yyyy-MM-dd");
-
-      const { data: existingJornadas } = await supabase
-        .from("jornadas")
-        .select("numero_jornada")
-        .eq("semana_inicio", weekStartStr)
-        .order("numero_jornada", { ascending: false })
-        .limit(1);
-
-      const nextNumber = existingJornadas && existingJornadas.length > 0
-        ? existingJornadas[0].numero_jornada + 1
-        : 1;
-
-      const { error } = await supabase.from("jornadas").insert({
-        fecha: newJornada.fecha,
-        semana_inicio: weekStartStr,
-        numero_jornada: nextNumber,
-        hora_apertura: newJornada.hora_apertura,
-        hora_cierre: null,
-        estado: "pendiente",
-      });
-
-      if (error) throw error;
-
-      toast.success("Jornada especial creada correctamente");
-      setShowAddDialog(false);
-      setNewJornada({
-        fecha: format(new Date(), "yyyy-MM-dd"),
-        hora_apertura: "18:00",
-        hora_cierre: "02:00",
-        motivo: "",
-      });
-      fetchJornadas();
-    } catch (error) {
-      console.error("Error adding special jornada:", error);
-      toast.error("Error al crear jornada especial");
-    } finally {
-      setSaving(false);
+  const handleOpenJornada = () => {
+    if (activeJornada) {
+      toast.error("Ya existe una jornada abierta. Ciérrela antes de abrir una nueva.");
+      return;
     }
+    setShowCashOpening(true);
   };
 
-  const startJornada = (jornadaId: string) => {
-    // Open cash opening dialog instead of direct start
-    setShowCashOpening(jornadaId);
-  };
-
-  const handleCashOpeningSuccess = () => {
-    setShowCashOpening(null);
+  const handleOpeningSuccess = () => {
+    setShowCashOpening(false);
+    toast.success("Jornada abierta exitosamente");
     fetchJornadas();
   };
 
-  const closeJornada = async (jornadaId: string) => {
-    setActionLoading(jornadaId);
-    try {
-      const jornada = jornadas.find(j => j.id === jornadaId);
-      
-      // Log audit event before closing
-      await supabase.from("jornada_audit_log").insert({
-        jornada_id: jornadaId,
-        action: "closed",
-        actor_source: "ui",
-        reason: "Admin cerró jornada manualmente desde el panel",
-        meta: { jornada_estado_previo: jornada?.estado },
-      });
+  const handleCloseJornada = (jornadaId: string) => {
+    setShowReconciliation(jornadaId);
+  };
 
-      // Use the new close_jornada_with_summary function
-      const { data, error } = await supabase.rpc("close_jornada_with_summary", {
-        p_jornada_id: jornadaId,
-      });
-
-      if (error) throw error;
-
-      const result = data as { success: boolean; error?: string; resultado_periodo?: number };
-      
-      if (!result.success) {
-        throw new Error(result.error || "Error desconocido");
-      }
-
-      toast.success(
-        `Jornada cerrada con resultado: ${formatCLP(result.resultado_periodo || 0)}`
-      );
-      setShowCloseConfirm(null);
-      fetchJornadas();
-
-      // Trigger financial summary email (non-blocking)
-      supabase.functions
-        .invoke("send-financial-summary")
-        .then(({ error: emailError }) => {
-          if (emailError) {
-            console.warn("Financial summary email trigger failed:", emailError);
-          } else {
-            console.log("Financial summary emails queued");
-          }
-        })
-        .catch((err) => console.warn("Email trigger error:", err));
-    } catch (error: any) {
-      console.error("Error closing jornada:", error);
-      toast.error(error.message || "Error al cerrar jornada");
-    } finally {
-      setActionLoading(null);
-    }
+  const handleReconciliationComplete = () => {
+    setShowReconciliation(null);
+    toast.success("Jornada cerrada exitosamente");
+    fetchJornadas();
   };
 
   const deleteJornada = async (jornadaId: string) => {
     const stats = jornadaStats[jornadaId];
     if (stats && stats.cantidad_ventas > 0) {
       toast.error("No se puede eliminar una jornada con ventas registradas");
+      return;
+    }
+
+    const jornada = jornadas.find(j => j.id === jornadaId);
+    if (jornada?.estado === "activa") {
+      toast.error("No se puede eliminar una jornada abierta");
       return;
     }
 
@@ -369,11 +299,9 @@ export function JornadaManagement() {
   const getStatusBadge = (estado: string) => {
     switch (estado) {
       case "activa":
-        return <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Activa</Badge>;
+        return <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Abierta</Badge>;
       case "cerrada":
         return <Badge variant="secondary">Cerrada</Badge>;
-      case "pendiente":
-        return <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-500/30">Pendiente</Badge>;
       default:
         return <Badge variant="outline">{estado}</Badge>;
     }
@@ -421,78 +349,59 @@ export function JornadaManagement() {
           <Calendar className="w-5 h-5" />
           <h3 className="text-lg font-semibold">Gestión de Jornadas</h3>
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Jornada Especial
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                Agregar Jornada Especial
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <p className="text-sm text-muted-foreground">
-                Crea una jornada adicional para eventos especiales fuera del horario regular.
-              </p>
-              <div className="space-y-2">
-                <Label>Fecha del evento</Label>
-                <Input
-                  type="date"
-                  value={newJornada.fecha}
-                  onChange={(e) => setNewJornada({ ...newJornada, fecha: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Hora de apertura</Label>
-                  <Input
-                    type="time"
-                    value={newJornada.hora_apertura}
-                    onChange={(e) => setNewJornada({ ...newJornada, hora_apertura: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Hora de cierre (estimada)</Label>
-                  <Input
-                    type="time"
-                    value={newJornada.hora_cierre}
-                    onChange={(e) => setNewJornada({ ...newJornada, hora_cierre: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Motivo (opcional)</Label>
-                <Input
-                  placeholder="Ej: Evento privado, Fiesta de año nuevo..."
-                  value={newJornada.motivo}
-                  onChange={(e) => setNewJornada({ ...newJornada, motivo: e.target.value })}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={addSpecialJornada} disabled={saving}>
-                {saving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Plus className="w-4 h-4 mr-2" />
-                )}
-                Crear Jornada
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={handleOpenJornada} disabled={!!activeJornada}>
+          <Play className="w-4 h-4 mr-2" />
+          Abrir Jornada
+        </Button>
       </div>
 
+      {/* Current Jornada Status */}
+      {activeJornada ? (
+        <Card className="p-4 mb-6 border-green-500/30 bg-green-500/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold">
+                    Jornada {activeJornada.numero_jornada}
+                  </span>
+                  {getStatusBadge(activeJornada.estado)}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {formatDate(activeJornada.fecha)} • Abierta desde {activeJornada.hora_apertura}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => handleCloseJornada(activeJornada.id)}
+            >
+              <Square className="w-4 h-4 mr-2" />
+              Cerrar Jornada
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <span className="text-lg font-semibold text-amber-700 dark:text-amber-300">Sin jornada abierta</span>
+              <p className="text-sm text-muted-foreground">
+                Las ventas están bloqueadas. Abre una jornada para comenzar a vender.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Tabs defaultValue="summary" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="summary" className="flex items-center gap-2">
             <Calendar className="w-4 h-4" />
             Resumen
@@ -504,10 +413,6 @@ export function JornadaManagement() {
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="w-4 h-4" />
             Historial
-          </TabsTrigger>
-          <TabsTrigger value="config" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Configuración
           </TabsTrigger>
         </TabsList>
 
@@ -661,25 +566,11 @@ export function JornadaManagement() {
                         <TableCell>{getStatusBadge(jornada.estado)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                            {jornada.estado === "pendiente" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => startJornada(jornada.id)}
-                                disabled={actionLoading === jornada.id}
-                              >
-                                {actionLoading === jornada.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Play className="w-4 h-4" />
-                                )}
-                              </Button>
-                            )}
                             {jornada.estado === "activa" && (
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => setShowCloseConfirm(jornada.id)}
+                                onClick={() => handleCloseJornada(jornada.id)}
                                 disabled={actionLoading === jornada.id}
                                 title="Cerrar jornada"
                               >
@@ -690,13 +581,14 @@ export function JornadaManagement() {
                                 )}
                               </Button>
                             )}
-                            {jornada.estado === "pendiente" && (!stats || stats.cantidad_ventas === 0) && (
+                            {jornada.estado === "cerrada" && (!stats || stats.cantidad_ventas === 0) && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="text-destructive hover:text-destructive"
                                 onClick={() => deleteJornada(jornada.id)}
                                 disabled={actionLoading === jornada.id}
+                                title="Eliminar jornada"
                               >
                                 {actionLoading === jornada.id ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -764,7 +656,7 @@ export function JornadaManagement() {
                                 </div>
                               </div>
                             ) : stats ? (
-                              // Show live stats for active/pending jornadas
+                              // Show live stats for active jornadas
                               <div className="grid grid-cols-4 gap-4 py-2">
                                 <div className="text-center">
                                   <div className="text-2xl font-bold">{formatCLP(stats.total_ventas)}</div>
@@ -804,63 +696,29 @@ export function JornadaManagement() {
               </TableBody>
             </Table>
           </div>
-        </TabsContent>
-
-        <TabsContent value="config" className="space-y-6">
-          <JornadaConfig />
-          <JornadaCashSettingsCard />
+          
+          {/* Cash Settings */}
+          <div className="mt-6">
+            <JornadaCashSettingsCard />
+          </div>
         </TabsContent>
       </Tabs>
 
-      {/* Close Jornada Confirmation Dialog */}
-      <Dialog open={!!showCloseConfirm} onOpenChange={() => setShowCloseConfirm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Square className="w-5 h-5" />
-              Cerrar Jornada
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Al cerrar la jornada se creará un <strong>resumen financiero inmutable</strong> con los siguientes datos:
-            </p>
-            <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
-              <li>Ingresos brutos (ventas, entradas, manuales)</li>
-              <li>Costo de ventas (consumo de inventario)</li>
-              <li>Gastos operacionales</li>
-              <li>Resultado del período</li>
-            </ul>
-            <p className="text-sm font-medium text-destructive">
-              Una vez cerrada, no se podrán agregar más registros a esta jornada.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCloseConfirm(null)}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={() => showCloseConfirm && closeJornada(showCloseConfirm)} 
-              disabled={actionLoading === showCloseConfirm}
-            >
-              {actionLoading === showCloseConfirm ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Square className="w-4 h-4 mr-2" />
-              )}
-              Cerrar Jornada
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Cash Opening Dialog */}
-      {showCashOpening && (
-        <JornadaCashOpeningDialog
+      <JornadaCashOpeningDialog
+        open={showCashOpening}
+        onClose={() => setShowCashOpening(false)}
+        jornadaId={null}
+        onSuccess={handleOpeningSuccess}
+      />
+
+      {/* Cash Reconciliation Dialog */}
+      {showReconciliation && (
+        <CashReconciliationDialog
           open={true}
-          onClose={() => setShowCashOpening(null)}
-          jornadaId={showCashOpening}
-          onSuccess={handleCashOpeningSuccess}
+          onClose={() => setShowReconciliation(null)}
+          onReconciled={handleReconciliationComplete}
+          jornadaId={showReconciliation}
         />
       )}
     </Card>
