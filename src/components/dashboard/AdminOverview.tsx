@@ -11,31 +11,15 @@ import {
   QrCode, 
   Store, 
   Package, 
-  Play, 
-  Square, 
   ClipboardList, 
   UtensilsCrossed,
   AlertTriangle,
   Warehouse,
   Clock,
-  ExternalLink,
-  Loader2
+  ExternalLink
 } from "lucide-react";
 import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
-import { toast } from "sonner";
-import { CashReconciliationDialog } from "./CashReconciliationDialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 interface Jornada {
   id: string;
@@ -83,12 +67,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [warehouseAlerts, setWarehouseAlerts] = useState<AlertItem[]>([]);
   const [barAlerts, setBarAlerts] = useState<AlertItem[]>([]);
   const [expiryAlerts, setExpiryAlerts] = useState<AlertItem[]>([]);
-  
-  // Jornada actions state
-  const [syncing, setSyncing] = useState(false);
-  const [showOpeningDialog, setShowOpeningDialog] = useState(false);
-  const [showReconciliation, setShowReconciliation] = useState(false);
-  const [openingCash, setOpeningCash] = useState("");
 
   useEffect(() => {
     fetchData();
@@ -295,89 +273,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     }
   };
 
-  // Jornada actions
-  const handleOpenJornada = () => {
-    setOpeningCash("");
-    setShowOpeningDialog(true);
-  };
-
-  const confirmOpenJornada = async () => {
-    const opening = parseFloat(openingCash) || 0;
-    setSyncing(true);
-    setShowOpeningDialog(false);
-    
-    try {
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5);
-      const today = now.toISOString().split("T")[0];
-
-      const daysSinceMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - daysSinceMonday);
-      const weekStartStr = weekStart.toISOString().split("T")[0];
-
-      const { data: weekJornadas } = await supabase
-        .from("jornadas")
-        .select("numero_jornada")
-        .eq("semana_inicio", weekStartStr)
-        .order("numero_jornada", { ascending: false });
-
-      const lastNum = weekJornadas?.[0]?.numero_jornada || 0;
-
-      const { data: newJornada, error } = await supabase
-        .from("jornadas")
-        .insert({
-          numero_jornada: lastNum + 1,
-          semana_inicio: weekStartStr,
-          fecha: today,
-          hora_apertura: currentTime,
-          estado: "activa",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      await supabase.from("cash_registers").insert({
-        jornada_id: newJornada.id,
-        opening_cash: opening,
-      });
-
-      toast.success("Jornada abierta");
-      fetchData();
-    } catch (error) {
-      console.error("Error:", error);
-      toast.error("Error al abrir jornada");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handleCloseJornada = () => {
-    if (!jornada) return;
-    setShowReconciliation(true);
-  };
-
-  const handleReconciliationComplete = async () => {
-    setShowReconciliation(false);
-    setSyncing(true);
-    
-    try {
-      const currentTime = new Date().toTimeString().slice(0, 5);
-      await supabase
-        .from("jornadas")
-        .update({ estado: "cerrada", hora_cierre: currentTime })
-        .eq("id", jornada!.id);
-      
-      toast.success("Jornada cerrada");
-      fetchData();
-    } catch (error) {
-      toast.error("Error al cerrar jornada");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const getJornadaStatus = () => {
     if (!jornada) return { label: "Sin jornada", variant: "outline" as const };
     if (jornada.estado === "activa") return { label: "Activa", variant: "default" as const };
@@ -482,31 +377,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
             <CardTitle className="text-lg font-semibold">Acciones rápidas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* A) Primary action - Jornada control */}
-            {jornada?.estado === "activa" ? (
-              <Button 
-                size="lg" 
-                variant="destructive"
-                className="w-full h-12 gap-3 text-base font-medium"
-                onClick={handleCloseJornada}
-                disabled={syncing}
-              >
-                {syncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Square className="h-5 w-5" />}
-                Cerrar jornada
-              </Button>
-            ) : (
-              <Button 
-                size="lg" 
-                className="w-full h-12 gap-3 text-base font-medium"
-                onClick={handleOpenJornada}
-                disabled={syncing}
-              >
-                {syncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-                Abrir jornada
-              </Button>
-            )}
-
-            {/* B) Secondary operational actions */}
+            {/* Secondary operational actions */}
             <div className="grid grid-cols-2 gap-3">
               <Button 
                 size="lg" 
@@ -529,7 +400,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
               </Button>
             </div>
 
-            {/* C) Management shortcuts */}
+            {/* Management shortcuts */}
             <div className="flex gap-3 pt-1">
               <Button 
                 variant="ghost"
@@ -606,45 +477,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         </CardContent>
       </Card>
 
-      {/* Opening Cash Dialog */}
-      <Dialog open={showOpeningDialog} onOpenChange={setShowOpeningDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Apertura de Caja</DialogTitle>
-            <DialogDescription>Ingresa el efectivo inicial para esta jornada</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="opening-cash">Efectivo Inicial</Label>
-              <Input
-                id="opening-cash"
-                type="number"
-                placeholder="0"
-                value={openingCash}
-                onChange={(e) => setOpeningCash(e.target.value)}
-                min="0"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowOpeningDialog(false)}>Cancelar</Button>
-            <Button onClick={confirmOpenJornada} disabled={syncing}>
-              {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Abrir Jornada
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cash Reconciliation Dialog */}
-      {jornada && (
-        <CashReconciliationDialog
-          open={showReconciliation}
-          onClose={() => setShowReconciliation(false)}
-          onReconciled={handleReconciliationComplete}
-          jornadaId={jornada.id}
-        />
-      )}
     </div>
   );
 }
