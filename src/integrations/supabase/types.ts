@@ -2708,6 +2708,10 @@ export type Database = {
         Returns: boolean
       }
       initialize_warehouse_stock: { Args: never; Returns: undefined }
+      inspect_jornada_payment_methods: {
+        Args: { p_jornada_id: string }
+        Returns: Json
+      }
       is_account_locked: {
         Args: { p_rut_code: string; p_venue_id: string }
         Returns: boolean

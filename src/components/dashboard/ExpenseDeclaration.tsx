@@ -56,6 +56,7 @@ export function ExpenseDeclaration() {
   const [expenseType, setExpenseType] = useState<"operacional" | "no_operacional">("operacional");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "debit" | "credit" | "transfer">("cash");
   const [page, setPage] = useState(0);
   
   const queryClient = useQueryClient();
@@ -128,6 +129,7 @@ export function ExpenseDeclaration() {
         amount: parseFloat(amount),
         expense_type: expenseType,
         category,
+        payment_method: paymentMethod,
         jornada_id: activeJornada?.id || null,
         created_by: user.id,
         notes: notes || null
@@ -169,6 +171,7 @@ export function ExpenseDeclaration() {
     setExpenseType("operacional");
     setCategory("");
     setNotes("");
+    setPaymentMethod("cash");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -255,6 +258,21 @@ export function ExpenseDeclaration() {
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment-method">Método de Pago *</Label>
+                <Select value={paymentMethod} onValueChange={(v: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Efectivo</SelectItem>
+                    <SelectItem value="debit">Débito</SelectItem>
+                    <SelectItem value="credit">Crédito</SelectItem>
+                    <SelectItem value="transfer">Transferencia</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

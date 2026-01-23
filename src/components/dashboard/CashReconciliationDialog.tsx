@@ -201,10 +201,28 @@ export function CashReconciliationDialog({
         throw new Error(error.message || "Error al cerrar jornada");
       }
 
-      // Check RPC response for success
-      const result = data as { success: boolean; error?: string };
+      // Check RPC response for success with detailed error info
+      const result = data as { 
+        success: boolean; 
+        error?: string; 
+        failing_step?: string;
+        sql_error?: string;
+        sql_state?: string;
+      };
+      
       if (!result?.success) {
-        throw new Error(result?.error || "Error desconocido al cerrar jornada");
+        const errorDetails = result?.failing_step 
+          ? `[${result.failing_step}] ${result?.error || 'Error desconocido'}`
+          : result?.error || 'Error desconocido al cerrar jornada';
+        
+        console.error("Close jornada failed:", {
+          step: result?.failing_step,
+          error: result?.error,
+          sql_error: result?.sql_error,
+          sql_state: result?.sql_state
+        });
+        
+        throw new Error(errorDetails);
       }
 
       toast.success("Jornada cerrada exitosamente");

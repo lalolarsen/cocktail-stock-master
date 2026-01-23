@@ -134,9 +134,9 @@ export function JornadaCashOpeningDialog({
         amount: item.amount,
       }));
 
-      // Use the new open_jornada_manual RPC function
+      // Use the open_jornada_manual RPC function
       const { data, error } = await supabase.rpc("open_jornada_manual", {
-        p_opening_cash_amounts: cashData,
+        p_cash_amounts: cashData,
       });
 
       if (error) throw error;
