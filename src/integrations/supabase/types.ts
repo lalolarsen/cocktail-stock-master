@@ -1233,8 +1233,10 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          is_cash_register: boolean
           location_id: string
           name: string
+          pos_type: string
           updated_at: string
           venue_id: string | null
         }
@@ -1242,8 +1244,10 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_cash_register?: boolean
           location_id: string
           name: string
+          pos_type?: string
           updated_at?: string
           venue_id?: string | null
         }
@@ -1251,8 +1255,10 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_cash_register?: boolean
           location_id?: string
           name?: string
+          pos_type?: string
           updated_at?: string
           venue_id?: string | null
         }
@@ -1755,6 +1761,7 @@ export type Database = {
           point_of_sale: string
           pos_id: string | null
           receipt_source: string | null
+          sale_category: string
           sale_number: string
           seller_id: string
           total_amount: number
@@ -1772,6 +1779,7 @@ export type Database = {
           point_of_sale: string
           pos_id?: string | null
           receipt_source?: string | null
+          sale_category?: string
           sale_number: string
           seller_id: string
           total_amount?: number
@@ -1789,6 +1797,7 @@ export type Database = {
           point_of_sale?: string
           pos_id?: string | null
           receipt_source?: string | null
+          sale_category?: string
           sale_number?: string
           seller_id?: string
           total_amount?: number
