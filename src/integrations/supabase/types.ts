@@ -1157,6 +1157,7 @@ export type Database = {
           expires_at: string
           id: string
           issued_at: string
+          jornada_id: string | null
           metadata: Json | null
           redeemed_at: string | null
           redeemed_by: string | null
@@ -1165,6 +1166,7 @@ export type Database = {
           status: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id: string | null
           token: string
+          venue_id: string | null
         }
         Insert: {
           bar_location_id?: string | null
@@ -1174,6 +1176,7 @@ export type Database = {
           expires_at?: string
           id?: string
           issued_at?: string
+          jornada_id?: string | null
           metadata?: Json | null
           redeemed_at?: string | null
           redeemed_by?: string | null
@@ -1182,6 +1185,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id?: string | null
           token?: string
+          venue_id?: string | null
         }
         Update: {
           bar_location_id?: string | null
@@ -1191,6 +1195,7 @@ export type Database = {
           expires_at?: string
           id?: string
           issued_at?: string
+          jornada_id?: string | null
           metadata?: Json | null
           redeemed_at?: string | null
           redeemed_by?: string | null
@@ -1199,6 +1204,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id?: string | null
           token?: string
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -1216,6 +1222,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pickup_tokens_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pickup_tokens_sale_id_fkey"
             columns: ["sale_id"]
             isOneToOne: false
@@ -1227,6 +1240,13 @@ export type Database = {
             columns: ["ticket_sale_id"]
             isOneToOne: false
             referencedRelation: "ticket_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_tokens_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
