@@ -2731,10 +2731,7 @@ export type Database = {
         Returns: string
       }
       migrate_stock_to_lots: { Args: never; Returns: Json }
-      open_jornada_manual: {
-        Args: { p_opening_cash_amounts?: Json }
-        Returns: Json
-      }
+      open_jornada_manual: { Args: { p_cash_amounts?: Json }; Returns: Json }
       record_login_attempt: {
         Args: {
           p_ip_address?: string
