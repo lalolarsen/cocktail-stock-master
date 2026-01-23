@@ -182,59 +182,36 @@ export function CashReconciliationDialog({
 
     setSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user");
+      // Prepare cash closings data for RPC
+      const cashClosings = posReconciliations.map((pos) => ({
+        pos_id: pos.posId,
+        closing_cash_counted: parseFloat(pos.closingCashCounted) || 0,
+        notes: pos.notes || null,
+      }));
 
-      // Prepare all closing records
-      const closingRecords = posReconciliations.map((pos) => {
-        const closingCashCounted = parseFloat(pos.closingCashCounted) || 0;
-        const difference = closingCashCounted - pos.expectedCash;
-
-        return {
-          venue_id: venueId,
-          jornada_id: jornadaId,
-          pos_id: pos.posId,
-          opening_cash_amount: pos.openingCash,
-          cash_sales_total: pos.cashSalesTotal,
-          expected_cash: pos.expectedCash,
-          closing_cash_counted: closingCashCounted,
-          difference,
-          notes: pos.notes || null,
-          created_by: user.id,
-        };
+      // Call the atomic close_jornada_manual RPC function
+      // This handles: save arqueo, update jornada status, generate summaries, log audit
+      const { data, error } = await supabase.rpc("close_jornada_manual", {
+        p_jornada_id: jornadaId,
+        p_cash_closings: cashClosings,
       });
 
-      // Upsert all closing records (handles both insert and update)
-      const { error } = await supabase
-        .from("jornada_cash_closings")
-        .upsert(closingRecords, {
-          onConflict: "jornada_id,pos_id",
-        });
+      if (error) {
+        console.error("RPC error:", error);
+        throw new Error(error.message || "Error al cerrar jornada");
+      }
 
-      if (error) throw error;
+      // Check RPC response for success
+      const result = data as { success: boolean; error?: string };
+      if (!result?.success) {
+        throw new Error(result?.error || "Error desconocido al cerrar jornada");
+      }
 
-      // Log the action in jornada_audit_log
-      await supabase.from("jornada_audit_log").insert({
-        jornada_id: jornadaId,
-        venue_id: venueId,
-        actor_user_id: user.id,
-        actor_source: "ui",
-        action: "cash_reconciliation_completed",
-        meta: {
-          pos_count: posReconciliations.length,
-          total_expected: posReconciliations.reduce((sum, pos) => sum + pos.expectedCash, 0),
-          total_counted: posReconciliations.reduce(
-            (sum, pos) => sum + (parseFloat(pos.closingCashCounted) || 0),
-            0
-          ),
-        },
-      });
-
-      toast.success("Arqueo de caja registrado para todas las cajas");
+      toast.success("Jornada cerrada exitosamente");
       onReconciled();
-    } catch (error) {
-      console.error("Error saving reconciliation:", error);
-      toast.error("Error al guardar arqueo");
+    } catch (error: any) {
+      console.error("Error closing jornada:", error);
+      toast.error(error.message || "Error al cerrar jornada. No se guardaron cambios.");
     } finally {
       setSubmitting(false);
     }
