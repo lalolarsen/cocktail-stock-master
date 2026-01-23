@@ -2894,7 +2894,12 @@ export type Database = {
       location_type: "warehouse" | "bar"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
       payment_method: "cash" | "debit" | "credit" | "transfer"
-      pickup_token_status: "issued" | "redeemed" | "expired" | "cancelled"
+      pickup_token_status:
+        | "issued"
+        | "redeemed"
+        | "expired"
+        | "cancelled"
+        | "pending"
       product_category: "ml" | "gramos" | "unidades"
       redemption_result:
         | "success"
@@ -3040,7 +3045,13 @@ export const Constants = {
       location_type: ["warehouse", "bar"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
       payment_method: ["cash", "debit", "credit", "transfer"],
-      pickup_token_status: ["issued", "redeemed", "expired", "cancelled"],
+      pickup_token_status: [
+        "issued",
+        "redeemed",
+        "expired",
+        "cancelled",
+        "pending",
+      ],
       product_category: ["ml", "gramos", "unidades"],
       redemption_result: [
         "success",
