@@ -282,7 +282,8 @@ export default function Tickets() {
       const { data, error } = await supabase.rpc("create_ticket_sale_with_covers", {
         p_items: items,
         p_payment_method: "cash",
-        p_jornada_id: activeJornadaId
+        p_jornada_id: activeJornadaId,
+        p_pos_id: selectedPosId || null
       });
 
       if (error) throw error;

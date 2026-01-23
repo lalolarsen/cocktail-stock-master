@@ -2390,6 +2390,7 @@ export type Database = {
           jornada_id: string | null
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           payment_status: string
+          pos_id: string | null
           sold_by_worker_id: string
           ticket_number: string
           total: number
@@ -2401,6 +2402,7 @@ export type Database = {
           jornada_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           payment_status?: string
+          pos_id?: string | null
           sold_by_worker_id: string
           ticket_number: string
           total: number
@@ -2412,6 +2414,7 @@ export type Database = {
           jornada_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           payment_status?: string
+          pos_id?: string | null
           sold_by_worker_id?: string
           ticket_number?: string
           total?: number
@@ -2423,6 +2426,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_sales_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
             referencedColumns: ["id"]
           },
           {
@@ -2643,15 +2653,26 @@ export type Database = {
         }
         Returns: Json
       }
-      create_ticket_sale_with_covers: {
-        Args: {
-          p_items: Json
-          p_jornada_id?: string
-          p_payment_method?: string
-          p_venue_id?: string
-        }
-        Returns: Json
-      }
+      create_ticket_sale_with_covers:
+        | {
+            Args: {
+              p_items: Json
+              p_jornada_id?: string
+              p_payment_method?: string
+              p_venue_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_items: Json
+              p_jornada_id?: string
+              p_payment_method?: string
+              p_pos_id?: string
+              p_venue_id?: string
+            }
+            Returns: Json
+          }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
         Returns: Json
