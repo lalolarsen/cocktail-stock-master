@@ -13,7 +13,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Download, Store, TrendingUp, TrendingDown, DollarSign, CreditCard, Banknote, ArrowRightLeft, AlertTriangle, CheckCircle } from "lucide-react";
+import { 
+  Loader2, Download, Store, TrendingUp, TrendingDown, DollarSign, 
+  CreditCard, Banknote, ArrowRightLeft, AlertTriangle, CheckCircle,
+  QrCode, Clock, XCircle
+} from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -32,6 +36,7 @@ interface FinancialSummary {
   venue_id: string;
   jornada_id: string;
   pos_id: string | null;
+  pos_type?: string | null;
   gross_sales_total: number;
   sales_by_payment: { cash?: number; card?: number; transfer?: number };
   transactions_count: number;
@@ -49,6 +54,12 @@ interface FinancialSummary {
   net_operational_result: number;
   closed_by: string;
   closed_at: string;
+  // Token metrics
+  tokens_issued_count: number;
+  tokens_redeemed_count: number;
+  tokens_pending_count: number;
+  tokens_expired_count: number;
+  tokens_cancelled_count: number;
 }
 
 interface POSTerminal {
@@ -118,7 +129,7 @@ export function JornadaCloseSummaryDialog({
     if (!overallSummary) return;
 
     const rows: string[][] = [
-      ["RESUMEN DE CIERRE DE JORNADA"],
+      ["ESTADO DE RESULTADO OPERATIVO - CIERRE DE JORNADA"],
       [`Jornada #${jornadaNumber || "N/A"}`],
       [`Fecha: ${jornadaDate ? format(new Date(jornadaDate), "dd/MM/yyyy", { locale: es }) : "N/A"}`],
       [`Generado: ${format(new Date(overallSummary.closed_at), "dd/MM/yyyy HH:mm", { locale: es })}`],
@@ -149,13 +160,21 @@ export function JornadaCloseSummaryDialog({
       ["Efectivo Contado", overallSummary.counted_cash.toString()],
       ["Diferencia", overallSummary.cash_difference.toString()],
       [""],
+      ["=== TOKENS QR (Ley de Entrega) ==="],
+      ["Tokens Emitidos", (overallSummary.tokens_issued_count || 0).toString()],
+      ["Tokens Canjeados", (overallSummary.tokens_redeemed_count || 0).toString()],
+      ["Tokens Pendientes", (overallSummary.tokens_pending_count || 0).toString()],
+      ["Tokens Expirados", (overallSummary.tokens_expired_count || 0).toString()],
+      ["Tokens Cancelados", (overallSummary.tokens_cancelled_count || 0).toString()],
+      [""],
       ["=== DETALLE POR POS ==="],
     ];
 
     // Add per-POS rows
     posSummaries.forEach((pos) => {
       const posName = posTerminals[pos.pos_id!]?.name || pos.pos_id;
-      rows.push([""], [`--- ${posName} ---`]);
+      const posType = pos.pos_type === "alcohol_sales" ? "(Alcohol)" : pos.pos_type === "ticket_sales" ? "(Entradas)" : "";
+      rows.push([""], [`--- ${posName} ${posType} ---`]);
       rows.push(["Ventas Brutas", pos.gross_sales_total.toString()]);
       rows.push(["Transacciones", pos.transactions_count.toString()]);
       rows.push(["Ventas Netas", pos.net_sales_total.toString()]);
@@ -164,19 +183,32 @@ export function JornadaCloseSummaryDialog({
       rows.push(["Efectivo Esperado", pos.expected_cash.toString()]);
       rows.push(["Efectivo Contado", pos.counted_cash.toString()]);
       rows.push(["Diferencia", pos.cash_difference.toString()]);
+      if (pos.tokens_redeemed_count > 0) {
+        rows.push(["Tokens Canjeados", pos.tokens_redeemed_count.toString()]);
+      }
     });
 
     const csv = rows.map((row) => row.map(cell => `"${cell}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `cierre_jornada_${jornadaNumber || jornadaId.slice(0, 8)}_${format(new Date(), "yyyyMMdd")}.csv`;
+    link.download = `estado_resultado_jornada_${jornadaNumber || jornadaId.slice(0, 8)}_${format(new Date(), "yyyyMMdd")}.csv`;
     link.click();
     toast.success("CSV exportado");
   };
 
+  const getPosTypeLabel = (posType?: string | null) => {
+    switch (posType) {
+      case "alcohol_sales": return "Alcohol";
+      case "ticket_sales": return "Entradas";
+      default: return null;
+    }
+  };
+
   const SummaryCard = ({ summary, title, isPOS = false }: { summary: FinancialSummary; title: string; isPOS?: boolean }) => {
     const hasCashDifference = Math.abs(summary.cash_difference) > 0.01;
+    const posTypeLabel = getPosTypeLabel(summary.pos_type);
+    const hasPendingTokens = (summary.tokens_pending_count || 0) > 0;
     
     return (
       <Card className="p-4 space-y-4">
@@ -184,6 +216,11 @@ export function JornadaCloseSummaryDialog({
           <div className="flex items-center gap-2">
             {isPOS && <Store className="w-4 h-4 text-primary" />}
             <span className="font-semibold">{title}</span>
+            {posTypeLabel && (
+              <Badge variant="outline" className="text-xs">
+                {posTypeLabel}
+              </Badge>
+            )}
           </div>
           <Badge variant={summary.net_operational_result >= 0 ? "default" : "destructive"}>
             {summary.net_operational_result >= 0 ? (
@@ -239,6 +276,46 @@ export function JornadaCloseSummaryDialog({
           </div>
         </div>
 
+        {/* Token Metrics - Only show for overall or if has redeemed tokens */}
+        {(!isPOS || (summary.tokens_redeemed_count || 0) > 0) && (summary.tokens_issued_count || 0) > 0 && (
+          <div className="border-t pt-3">
+            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+              <QrCode className="w-3 h-3" />
+              Tokens QR
+            </div>
+            <div className="grid grid-cols-5 gap-1 text-xs">
+              <div className="text-center p-1 bg-blue-500/10 rounded">
+                <div className="font-medium text-blue-600">{summary.tokens_issued_count || 0}</div>
+                <div className="text-muted-foreground text-[10px]">Emitidos</div>
+              </div>
+              <div className="text-center p-1 bg-green-500/10 rounded">
+                <div className="font-medium text-green-600">{summary.tokens_redeemed_count || 0}</div>
+                <div className="text-muted-foreground text-[10px]">Canjeados</div>
+              </div>
+              <div className={`text-center p-1 rounded ${hasPendingTokens ? "bg-yellow-500/20" : "bg-muted"}`}>
+                <div className={`font-medium ${hasPendingTokens ? "text-yellow-600" : ""}`}>
+                  {summary.tokens_pending_count || 0}
+                </div>
+                <div className="text-muted-foreground text-[10px]">Pendientes</div>
+              </div>
+              <div className="text-center p-1 bg-muted rounded">
+                <div className="font-medium">{summary.tokens_expired_count || 0}</div>
+                <div className="text-muted-foreground text-[10px]">Expirados</div>
+              </div>
+              <div className="text-center p-1 bg-muted rounded">
+                <div className="font-medium">{summary.tokens_cancelled_count || 0}</div>
+                <div className="text-muted-foreground text-[10px]">Cancelados</div>
+              </div>
+            </div>
+            {hasPendingTokens && !isPOS && (
+              <div className="mt-2 flex items-center gap-1 text-xs text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded">
+                <Clock className="w-3 h-3" />
+                {summary.tokens_pending_count} tokens pendientes de canje
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Cash Reconciliation */}
         <div className="border-t pt-3">
           <div className="text-xs text-muted-foreground mb-2">Arqueo de Caja</div>
@@ -289,10 +366,10 @@ export function JornadaCloseSummaryDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
-            Resumen de Cierre - Jornada #{jornadaNumber || "N/A"}
+            Estado de Resultado Operativo - Jornada #{jornadaNumber || "N/A"}
           </DialogTitle>
           <DialogDescription>
-            Estado de resultados operacional por POS y general
+            Resumen financiero y de tokens por POS y general
           </DialogDescription>
         </DialogHeader>
 

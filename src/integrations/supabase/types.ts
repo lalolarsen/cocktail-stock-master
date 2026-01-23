@@ -781,6 +781,11 @@ export type Database = {
           pos_id: string | null
           pos_type: string | null
           sales_by_payment: Json
+          tokens_cancelled_count: number | null
+          tokens_expired_count: number | null
+          tokens_issued_count: number | null
+          tokens_pending_count: number | null
+          tokens_redeemed_count: number | null
           transactions_count: number
           venue_id: string
         }
@@ -806,6 +811,11 @@ export type Database = {
           pos_id?: string | null
           pos_type?: string | null
           sales_by_payment?: Json
+          tokens_cancelled_count?: number | null
+          tokens_expired_count?: number | null
+          tokens_issued_count?: number | null
+          tokens_pending_count?: number | null
+          tokens_redeemed_count?: number | null
           transactions_count?: number
           venue_id: string
         }
@@ -831,6 +841,11 @@ export type Database = {
           pos_id?: string | null
           pos_type?: string | null
           sales_by_payment?: Json
+          tokens_cancelled_count?: number | null
+          tokens_expired_count?: number | null
+          tokens_issued_count?: number | null
+          tokens_pending_count?: number | null
+          tokens_redeemed_count?: number | null
           transactions_count?: number
           venue_id?: string
         }
