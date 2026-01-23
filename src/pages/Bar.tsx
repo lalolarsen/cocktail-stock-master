@@ -894,16 +894,18 @@ export default function Bar() {
     );
   }
 
-  // Full-screen INSUFFICIENT STOCK overlay
-  if (scanState === "error" && result?.error_code === "INSUFFICIENT_BAR_STOCK") {
+  // Full-screen INSUFFICIENT STOCK overlay - stays on reader, no navigation
+  if (scanState === "error" && (result?.error_code === "INSUFFICIENT_BAR_STOCK" || result?.error_code === "INSUFFICIENT_STOCK")) {
     const delivery = getDeliveryDisplay(result.deliver);
-    const missingItems = result.missing?.slice(0, 3) || [];
+    const missingItems = result.missing?.slice(0, 5) || [];
     
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-amber-600 text-white" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-amber-600 text-white" onClick={resetToReady}>
         <Package className="w-24 h-24 mb-4" />
         <h1 className="text-4xl font-black mb-2 tracking-tight text-center">SIN STOCK</h1>
-        <p className="text-xl opacity-90 text-center mb-4">{result.bar_name}</p>
+        {result.bar_name && (
+          <p className="text-xl opacity-90 text-center mb-4">{result.bar_name}</p>
+        )}
         
         <div className="bg-white/20 rounded-xl p-4 w-full max-w-sm mb-4">
           <p className="text-sm opacity-80 text-center mb-1">Pedido:</p>
@@ -925,16 +927,15 @@ export default function Bar() {
         
         <p className="text-lg mt-4 opacity-80 text-center">El QR sigue válido - prueba en otra barra</p>
         
-        <div className="flex flex-col gap-3 mt-6 w-full max-w-sm">
-          <Button onClick={() => changeBarSelection()} variant="secondary" className="w-full h-14 text-lg font-bold bg-white hover:bg-white/90 text-amber-700 border-0 shadow-lg">
-            <MapPin className="w-5 h-5 mr-2" />
-            Cambiar Barra
-          </Button>
-          <Button onClick={resetToReady} variant="outline" className="w-full h-12 text-base font-semibold bg-transparent border-white/50 text-white hover:bg-white/10">
-            <RefreshCw className="w-5 h-5 mr-2" />
-            Siguiente
-          </Button>
-        </div>
+        <Button 
+          onClick={(e) => { e.stopPropagation(); resetToReady(); }} 
+          variant="secondary" 
+          className="mt-6 h-16 px-10 text-xl font-bold bg-white hover:bg-white/90 text-amber-700 border-0 shadow-lg"
+        >
+          <RefreshCw className="w-6 h-6 mr-2" />
+          Escanear siguiente
+        </Button>
+        <p className="mt-3 text-sm opacity-60">Toca cualquier parte para continuar</p>
       </div>
     );
   }
