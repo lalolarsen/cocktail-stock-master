@@ -2758,12 +2758,10 @@ export type Database = {
         }
         Returns: undefined
       }
-      redeem_pickup_token:
-        | { Args: { p_token: string }; Returns: Json }
-        | {
-            Args: { p_bartender_bar_id?: string; p_token: string }
-            Returns: Json
-          }
+      redeem_pickup_token: {
+        Args: { p_bartender_bar_id?: string; p_token: string }
+        Returns: Json
+      }
       reset_demo_data: { Args: never; Returns: Json }
       seed_demo_data: { Args: never; Returns: Json }
       start_jornada_with_cash: {
