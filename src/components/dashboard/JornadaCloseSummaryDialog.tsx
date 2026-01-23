@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Loader2, Download, Store, TrendingUp, TrendingDown, DollarSign, 
   CreditCard, Banknote, ArrowRightLeft, AlertTriangle, CheckCircle,
-  QrCode, Clock, XCircle
+  QrCode, Clock, PieChart, Package
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { toast } from "sonner";
@@ -60,6 +60,18 @@ interface FinancialSummary {
   tokens_pending_count: number;
   tokens_expired_count: number;
   tokens_cancelled_count: number;
+  // COGS & Margin (Cost Law)
+  cogs_total: number;
+  gross_margin: number;
+  gross_margin_pct: number;
+  cost_data_complete: boolean;
+  missing_cost_items: unknown; // JSONB from DB
+}
+
+interface MissingCostItem {
+  type: string;
+  name: string;
+  issues: string[];
 }
 
 interface POSTerminal {
@@ -75,7 +87,8 @@ export function JornadaCloseSummaryDialog({
   jornadaDate,
 }: JornadaCloseSummaryDialogProps) {
   const [loading, setLoading] = useState(true);
-  const [summaries, setSummaries] = useState<FinancialSummary[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_summaries, setSummaries] = useState<FinancialSummary[]>([]);
   const [posTerminals, setPosTerminals] = useState<Record<string, POSTerminal>>({});
   const [overallSummary, setOverallSummary] = useState<FinancialSummary | null>(null);
   const [posSummaries, setPosSummaries] = useState<FinancialSummary[]>([]);
@@ -109,7 +122,7 @@ export function JornadaCloseSummaryDialog({
       setPosTerminals(posMap);
 
       // Separate overall from per-POS summaries
-      const all = (summaryData || []) as FinancialSummary[];
+      const all = (summaryData || []) as unknown as FinancialSummary[];
       setSummaries(all);
       
       const overall = all.find((s) => s.pos_id === null);
@@ -160,6 +173,12 @@ export function JornadaCloseSummaryDialog({
       ["Efectivo Contado", overallSummary.counted_cash.toString()],
       ["Diferencia", overallSummary.cash_difference.toString()],
       [""],
+      ["=== COSTO Y MARGEN (Ley de Costos) ==="],
+      ["Costo de Ventas (COGS)", (overallSummary.cogs_total || 0).toString()],
+      ["Margen Bruto", (overallSummary.gross_margin || 0).toString()],
+      ["Margen Bruto %", `${overallSummary.gross_margin_pct || 0}%`],
+      ["Datos de Costos Completos", overallSummary.cost_data_complete ? "Sí" : "No"],
+      [""],
       ["=== TOKENS QR (Ley de Entrega) ==="],
       ["Tokens Emitidos", (overallSummary.tokens_issued_count || 0).toString()],
       ["Tokens Canjeados", (overallSummary.tokens_redeemed_count || 0).toString()],
@@ -209,6 +228,8 @@ export function JornadaCloseSummaryDialog({
     const hasCashDifference = Math.abs(summary.cash_difference) > 0.01;
     const posTypeLabel = getPosTypeLabel(summary.pos_type);
     const hasPendingTokens = (summary.tokens_pending_count || 0) > 0;
+    const hasCostIssues = !summary.cost_data_complete;
+    const missingItems = (summary.missing_cost_items || []) as MissingCostItem[];
     
     return (
       <Card className="p-4 space-y-4">
@@ -270,11 +291,55 @@ export function JornadaCloseSummaryDialog({
             <div className="font-medium text-orange-600">{formatCLP(summary.expenses_by_type?.operacional || 0)}</div>
             <div className="text-xs text-muted-foreground">Gastos Op.</div>
           </div>
-          <div className="text-center p-2 bg-red-500/10 rounded">
-            <div className="font-medium text-red-600">{formatCLP(summary.expenses_by_type?.no_operacional || 0)}</div>
+          <div className="text-center p-2 bg-destructive/10 rounded">
+            <div className="font-medium text-destructive">{formatCLP(summary.expenses_by_type?.no_operacional || 0)}</div>
             <div className="text-xs text-muted-foreground">Gastos No Op.</div>
           </div>
         </div>
+
+        {/* COGS & Margin Section (Cost Law) - Only show for overall */}
+        {!isPOS && (
+          <div className="border-t pt-3">
+            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+              <PieChart className="w-3 h-3" />
+              Costo y Margen Bruto
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div className="text-center p-2 bg-muted rounded">
+                <div className="font-medium">{formatCLP(summary.cogs_total || 0)}</div>
+                <div className="text-xs text-muted-foreground">COGS</div>
+              </div>
+              <div className={`text-center p-2 rounded ${(summary.gross_margin || 0) >= 0 ? "bg-primary/10" : "bg-destructive/10"}`}>
+                <div className={`font-medium ${(summary.gross_margin || 0) >= 0 ? "text-primary" : "text-destructive"}`}>
+                  {formatCLP(summary.gross_margin || 0)}
+                </div>
+                <div className="text-xs text-muted-foreground">Margen Bruto</div>
+              </div>
+              <div className={`text-center p-2 rounded ${(summary.gross_margin_pct || 0) >= 30 ? "bg-primary/10" : (summary.gross_margin_pct || 0) >= 20 ? "bg-muted" : "bg-destructive/10"}`}>
+                <div className={`font-medium ${(summary.gross_margin_pct || 0) >= 30 ? "text-primary" : (summary.gross_margin_pct || 0) < 20 ? "text-destructive" : ""}`}>
+                  {summary.gross_margin_pct || 0}%
+                </div>
+                <div className="text-xs text-muted-foreground">Margen %</div>
+              </div>
+            </div>
+            {hasCostIssues && missingItems.length > 0 && (
+              <div className="mt-2 p-2 bg-destructive/10 rounded border border-destructive/30">
+                <div className="flex items-center gap-1 text-xs text-destructive font-medium mb-1">
+                  <Package className="w-3 h-3" />
+                  Costos incompletos: faltan costos/recetas
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
+                  {missingItems.slice(0, 5).map((item, idx) => (
+                    <li key={idx}>• {item.name} ({item.type}): {item.issues?.join(", ") || "sin datos"}</li>
+                  ))}
+                  {missingItems.length > 5 && (
+                    <li className="text-destructive">... y {missingItems.length - 5} más</li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Token Metrics - Only show for overall or if has redeemed tokens */}
         {(!isPOS || (summary.tokens_redeemed_count || 0) > 0) && (summary.tokens_issued_count || 0) > 0 && (

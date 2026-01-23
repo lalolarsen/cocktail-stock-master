@@ -122,6 +122,12 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const handleEditSave = async () => {
     if (!selectedProduct) return;
 
+    // Cost Law: Validate cost_per_unit is required and >= 0
+    if (editForm.cost_per_unit === undefined || editForm.cost_per_unit === null || editForm.cost_per_unit < 0) {
+      toast.error("El costo por unidad es requerido y debe ser >= 0 (Ley de Costos)");
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("products")
@@ -347,14 +353,19 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="edit-cost">Costo por Unidad</Label>
+                <Label htmlFor="edit-cost">Costo por Unidad *</Label>
                 <Input
                   id="edit-cost"
                   type="number"
                   step="0.01"
+                  min="0"
                   value={editForm.cost_per_unit}
                   onChange={(e) => setEditForm({ ...editForm, cost_per_unit: Number(e.target.value) })}
+                  className={editForm.cost_per_unit === undefined || editForm.cost_per_unit < 0 ? "border-destructive" : ""}
                 />
+                {(editForm.cost_per_unit === undefined || editForm.cost_per_unit < 0) && (
+                  <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
+                )}
               </div>
             </div>
 

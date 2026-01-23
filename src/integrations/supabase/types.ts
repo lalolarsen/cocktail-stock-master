@@ -224,6 +224,7 @@ export type Database = {
           name: string
           price: number
           venue_id: string | null
+          waste_ml_per_serving: number | null
         }
         Insert: {
           category?: string
@@ -233,6 +234,7 @@ export type Database = {
           name: string
           price?: number
           venue_id?: string | null
+          waste_ml_per_serving?: number | null
         }
         Update: {
           category?: string
@@ -242,6 +244,7 @@ export type Database = {
           name?: string
           price?: number
           venue_id?: string | null
+          waste_ml_per_serving?: number | null
         }
         Relationships: [
           {
@@ -767,14 +770,19 @@ export type Database = {
           cash_sales: number | null
           closed_at: string
           closed_by: string
+          cogs_total: number | null
+          cost_data_complete: boolean | null
           counted_cash: number | null
           created_at: string
           expected_cash: number | null
           expenses_by_type: Json
           expenses_total: number
+          gross_margin: number | null
+          gross_margin_pct: number | null
           gross_sales_total: number
           id: string
           jornada_id: string
+          missing_cost_items: Json | null
           net_operational_result: number
           net_sales_total: number
           opening_cash: number | null
@@ -797,14 +805,19 @@ export type Database = {
           cash_sales?: number | null
           closed_at?: string
           closed_by: string
+          cogs_total?: number | null
+          cost_data_complete?: boolean | null
           counted_cash?: number | null
           created_at?: string
           expected_cash?: number | null
           expenses_by_type?: Json
           expenses_total?: number
+          gross_margin?: number | null
+          gross_margin_pct?: number | null
           gross_sales_total?: number
           id?: string
           jornada_id: string
+          missing_cost_items?: Json | null
           net_operational_result?: number
           net_sales_total?: number
           opening_cash?: number | null
@@ -827,14 +840,19 @@ export type Database = {
           cash_sales?: number | null
           closed_at?: string
           closed_by?: string
+          cogs_total?: number | null
+          cost_data_complete?: boolean | null
           counted_cash?: number | null
           created_at?: string
           expected_cash?: number | null
           expenses_by_type?: Json
           expenses_total?: number
+          gross_margin?: number | null
+          gross_margin_pct?: number | null
           gross_sales_total?: number
           id?: string
           jornada_id?: string
+          missing_cost_items?: Json | null
           net_operational_result?: number
           net_sales_total?: number
           opening_cash?: number | null
@@ -1369,7 +1387,7 @@ export type Database = {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
           code: string
-          cost_per_unit: number | null
+          cost_per_unit: number
           created_at: string | null
           current_stock: number
           id: string
@@ -1383,7 +1401,7 @@ export type Database = {
         Insert: {
           category: Database["public"]["Enums"]["product_category"]
           code: string
-          cost_per_unit?: number | null
+          cost_per_unit?: number
           created_at?: string | null
           current_stock?: number
           id?: string
@@ -1397,7 +1415,7 @@ export type Database = {
         Update: {
           category?: Database["public"]["Enums"]["product_category"]
           code?: string
-          cost_per_unit?: number | null
+          cost_per_unit?: number
           created_at?: string | null
           current_stock?: number
           id?: string
@@ -2140,8 +2158,10 @@ export type Database = {
           source_type: string | null
           stock_lot_id: string | null
           to_location_id: string | null
+          total_cost_snapshot: number | null
           transfer_id: string | null
           unit_cost: number | null
+          unit_cost_snapshot: number | null
         }
         Insert: {
           created_at?: string | null
@@ -2156,8 +2176,10 @@ export type Database = {
           source_type?: string | null
           stock_lot_id?: string | null
           to_location_id?: string | null
+          total_cost_snapshot?: number | null
           transfer_id?: string | null
           unit_cost?: number | null
+          unit_cost_snapshot?: number | null
         }
         Update: {
           created_at?: string | null
@@ -2172,8 +2194,10 @@ export type Database = {
           source_type?: string | null
           stock_lot_id?: string | null
           to_location_id?: string | null
+          total_cost_snapshot?: number | null
           transfer_id?: string | null
           unit_cost?: number | null
+          unit_cost_snapshot?: number | null
         }
         Relationships: [
           {
@@ -2642,6 +2666,14 @@ export type Database = {
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
+      check_jornada_cost_completeness: {
+        Args: { p_jornada_id: string }
+        Returns: {
+          is_complete: boolean
+          missing_items: Json
+          total_cogs: number
+        }[]
+      }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       close_jornada_manual: {
         Args: { p_cash_closings?: Json; p_jornada_id: string }
@@ -2845,6 +2877,14 @@ export type Database = {
           p_transferred_by: string
         }
         Returns: Json
+      }
+      validate_cocktail_cost: {
+        Args: { p_cocktail_id: string }
+        Returns: {
+          is_valid: boolean
+          missing_ingredients: string[]
+          total_cost: number
+        }[]
       }
     }
     Enums: {

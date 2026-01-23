@@ -112,6 +112,12 @@ export function NewProductWizard({
       return;
     }
 
+    // Cost Law: unit_cost is required
+    if (!productCost || parseFloat(productCost) < 0) {
+      toast.error("El costo unitario es requerido y debe ser >= 0");
+      return;
+    }
+
     if (hasSimilarProducts && !confirmNotDuplicate) {
       toast.error("Debe confirmar que el producto no es duplicado");
       return;
@@ -129,7 +135,7 @@ export function NewProductWizard({
           code: codeData || `P${Date.now()}`,
           category: productCategory as "ml" | "gramos" | "unidades",
           unit: productCategory === "ml" ? "ml" : productCategory === "gramos" ? "g" : "un",
-          cost_per_unit: productCost ? parseFloat(productCost) : null,
+          cost_per_unit: parseFloat(productCost), // Required by Cost Law
           minimum_stock: minStock ? parseFloat(minStock) : 10,
           current_stock: 0,
           is_active_in_sales: false, // NOT active until approved
@@ -256,14 +262,19 @@ export function NewProductWizard({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Costo unitario</Label>
+                <Label>Costo unitario *</Label>
                 <Input
                   type="number"
                   min="0"
+                  step="0.01"
                   value={productCost}
                   onChange={(e) => setProductCost(e.target.value)}
-                  placeholder="Opcional"
+                  placeholder="Requerido"
+                  className={!productCost || parseFloat(productCost) < 0 ? "border-destructive" : ""}
                 />
+                {(!productCost || parseFloat(productCost) < 0) && (
+                  <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
+                )}
               </div>
             </div>
 
