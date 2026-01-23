@@ -779,6 +779,7 @@ export type Database = {
           net_sales_total: number
           opening_cash: number | null
           pos_id: string | null
+          pos_type: string | null
           sales_by_payment: Json
           transactions_count: number
           venue_id: string
@@ -803,6 +804,7 @@ export type Database = {
           net_sales_total?: number
           opening_cash?: number | null
           pos_id?: string | null
+          pos_type?: string | null
           sales_by_payment?: Json
           transactions_count?: number
           venue_id: string
@@ -827,6 +829,7 @@ export type Database = {
           net_sales_total?: number
           opening_cash?: number | null
           pos_id?: string | null
+          pos_type?: string | null
           sales_by_payment?: Json
           transactions_count?: number
           venue_id?: string
