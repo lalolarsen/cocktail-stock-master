@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Clock, MapPin } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -12,14 +12,18 @@ type RedemptionLogEntry = {
   result: string;
   redeemed_at: string;
   created_at: string;
+  pos_id: string | null;
   metadata: {
     deliver?: {
       name?: string;
       quantity?: number;
       source?: string;
+      sale_number?: string;
+      ticket_number?: string;
       items?: { name: string; quantity: number }[];
     };
     missing?: { product_name: string }[];
+    bar_name?: string;
   } | null;
 };
 
@@ -50,6 +54,18 @@ function getResultInfo(result: string) {
         icon: XCircle, 
         className: "bg-red-500/20 text-red-400 border-red-500/30" 
       };
+    case "expired":
+      return { 
+        label: "Expirado", 
+        icon: Clock, 
+        className: "bg-orange-500/20 text-orange-400 border-orange-500/30" 
+      };
+    case "cancelled":
+      return { 
+        label: "Cancelado", 
+        icon: XCircle, 
+        className: "bg-gray-500/20 text-gray-400 border-gray-500/30" 
+      };
     default:
       return { 
         label: "Inválido", 
@@ -59,7 +75,7 @@ function getResultInfo(result: string) {
   }
 }
 
-function getItemDisplay(metadata: RedemptionLogEntry["metadata"]): { name: string; quantity: number } {
+function getItemDisplay(metadata: RedemptionLogEntry["metadata"]): { name: string; quantity: number; items?: { name: string; quantity: number }[] } {
   if (!metadata?.deliver) return { name: "—", quantity: 0 };
   
   const deliver = metadata.deliver;
@@ -73,7 +89,7 @@ function getItemDisplay(metadata: RedemptionLogEntry["metadata"]): { name: strin
       return { name: deliver.items[0].name, quantity: deliver.items[0].quantity };
     }
     const totalQty = deliver.items.reduce((sum, item) => sum + item.quantity, 0);
-    return { name: `${deliver.items.length} items`, quantity: totalQty };
+    return { name: `${deliver.items.length} items`, quantity: totalQty, items: deliver.items };
   }
   
   return { name: "—", quantity: 0 };
@@ -82,6 +98,11 @@ function getItemDisplay(metadata: RedemptionLogEntry["metadata"]): { name: strin
 function getSourceLabel(metadata: RedemptionLogEntry["metadata"]): string | null {
   if (!metadata?.deliver?.source) return null;
   return metadata.deliver.source === "ticket" ? "Cover" : "Caja";
+}
+
+function getOrderNumber(metadata: RedemptionLogEntry["metadata"]): string | null {
+  if (!metadata?.deliver) return null;
+  return metadata.deliver.sale_number || metadata.deliver.ticket_number || null;
 }
 
 export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionHistoryProps) {
@@ -93,10 +114,10 @@ export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionH
     
     const { data, error } = await supabase
       .from("pickup_redemptions_log")
-      .select("id, result, redeemed_at, created_at, metadata")
+      .select("id, result, redeemed_at, created_at, pos_id, metadata")
       .eq("pos_id", barLocationId)
       .order("created_at", { ascending: false })
-      .limit(15);
+      .limit(20);
     
     if (!error && data) {
       setEntries(data as RedemptionLogEntry[]);
@@ -141,6 +162,7 @@ export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionH
           const Icon = resultInfo.icon;
           const itemDisplay = getItemDisplay(entry.metadata);
           const source = getSourceLabel(entry.metadata);
+          const orderNumber = getOrderNumber(entry.metadata);
           const isNewest = index === 0;
           
           return (
@@ -157,7 +179,8 @@ export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionH
                 <div className="flex items-center gap-2 min-w-0">
                   <Icon className={cn("w-4 h-4 flex-shrink-0", 
                     entry.result === "success" ? "text-green-400" :
-                    entry.result === "already_redeemed" ? "text-yellow-400" : "text-red-400"
+                    entry.result === "already_redeemed" ? "text-yellow-400" : 
+                    entry.result === "expired" ? "text-orange-400" : "text-red-400"
                   )} />
                   <span className="font-medium text-foreground truncate text-sm">
                     {itemDisplay.name}
@@ -173,7 +196,22 @@ export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionH
                 </span>
               </div>
               
-              <div className="flex items-center gap-2 mt-1.5">
+              {/* Multi-item details */}
+              {itemDisplay.items && itemDisplay.items.length > 1 && (
+                <div className="mt-1.5 pl-6 space-y-0.5">
+                  {itemDisplay.items.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="text-xs text-muted-foreground flex justify-between">
+                      <span>{item.name}</span>
+                      <span>x{item.quantity}</span>
+                    </div>
+                  ))}
+                  {itemDisplay.items.length > 3 && (
+                    <span className="text-xs text-muted-foreground">+{itemDisplay.items.length - 3} más</span>
+                  )}
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <Badge 
                   variant="outline" 
                   className={cn("text-xs py-0 h-5", resultInfo.className)}
@@ -183,6 +221,11 @@ export function RedemptionHistory({ barLocationId, refreshTrigger }: RedemptionH
                 {source && (
                   <span className="text-xs text-muted-foreground">
                     {source}
+                  </span>
+                )}
+                {orderNumber && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    #{orderNumber}
                   </span>
                 )}
                 {entry.result === "stock_error" && entry.metadata?.missing?.[0] && (

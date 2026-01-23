@@ -66,9 +66,9 @@ type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume";
 
 // Timing constants - HARD STOP strategy for CAMERA mode
 const DEDUPE_WINDOW_MS = 5000; // 5s dedupe window - ignore same QR within this window
-const RESULT_DISPLAY_MS = 1500; // 1.5s display for any result before showing resume button (CAMERA) or auto-reset (USB)
+const RESULT_DISPLAY_MS = 2000; // 2s display for any result before showing resume button (CAMERA) or auto-reset (USB)
 const PROCESSING_TIMEOUT_MS = 8000;
-const USB_AUTO_RESET_MS = 2000; // USB mode auto-resets to idle after result display
+const USB_AUTO_RESET_MS = 2500; // USB mode auto-resets to idle after result display (slightly longer for reading)
 
 // LocalStorage key for reader mode preference
 const READER_MODE_KEY = "bartender_reader_mode";
@@ -966,39 +966,39 @@ export default function Bar() {
         <Loader2 className="w-24 h-24 animate-spin text-primary mb-6" />
         <h2 className="text-2xl font-bold text-foreground">Validando...</h2>
         {debugMode && lastParsedToken && (
-          <p className="mt-4 text-xs text-muted-foreground font-mono">Token: {lastParsedToken.slice(0, 8)}...</p>
+          <p className="mt-4 text-xs font-mono text-muted-foreground">
+            Último: {lastParsedToken.slice(0, 8)}...
+          </p>
         )}
-        <Button variant="outline" onClick={resetToReady} className="mt-8 h-12 px-6 text-base font-semibold">
-          <Trash2 className="w-4 h-4 mr-2" />
-          Cancelar
-        </Button>
       </div>
     );
   }
 
-  // WAITING RESUME overlay - shows after result display, requires manual action to continue
-  if (scanState === "waiting_resume") {
+  // CAMERA mode: Waiting for manual resume after result shown
+  if (scanState === "waiting_resume" && readerMode === "CAMERA") {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background p-6">
-        <ScanLine className="w-24 h-24 text-primary mb-6" />
-        <h2 className="text-3xl font-bold text-foreground mb-2">Escaneo completado</h2>
-        <p className="text-muted-foreground text-center mb-8 max-w-sm">
-          Pulsa el botón para escanear el siguiente QR
+        <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center mb-6">
+          <Camera className="w-12 h-12 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Cámara pausada</h2>
+        <p className="text-muted-foreground text-center mb-6 max-w-sm">
+          Presiona el botón para reactivar el escáner
         </p>
-        
         <Button 
           onClick={resumeScanning} 
-          size="lg"
-          className="h-20 px-12 text-2xl font-bold gap-3"
+          size="lg" 
+          className="h-16 px-10 text-xl font-bold gap-3"
         >
-          <ScanLine className="w-8 h-8" />
-          Escanear Siguiente
+          <ScanLine className="w-6 h-6" />
+          Escanear siguiente
         </Button>
         
-        {debugMode && lastParsedToken && (
-          <p className="mt-6 text-xs text-muted-foreground font-mono">
-            Último: {lastParsedToken.slice(0, 8)}...
-          </p>
+        {debugMode && (
+          <div className="mt-6 p-4 bg-muted rounded-lg text-xs font-mono">
+            <p>Estado: {scanState}</p>
+            <p>Último token: {lastParsedToken || "(ninguno)"}</p>
+          </div>
         )}
       </div>
     );
@@ -1172,20 +1172,45 @@ export default function Bar() {
             )}
           </div>
 
-          {/* Right: History Panel (desktop only) */}
-          {!isMobile && selectedBarId && (
-            <div className="hidden md:flex w-80 lg:w-96 border-l border-border bg-card flex-col">
-              <div className="p-4 border-b border-border flex items-center gap-2">
-                <History className="w-5 h-5 text-muted-foreground" />
-                <h2 className="font-semibold text-foreground">Historial de canjes</h2>
+          {/* Right: History Panel (desktop) / Bottom drawer toggle (mobile) */}
+          {selectedBarId && (
+            <>
+              {/* Desktop: Side panel */}
+              <div className="hidden md:flex w-80 lg:w-96 border-l border-border bg-card flex-col">
+                <div className="p-4 border-b border-border flex items-center gap-2">
+                  <History className="w-5 h-5 text-muted-foreground" />
+                  <h2 className="font-semibold text-foreground">Historial de canjes</h2>
+                </div>
+                <div className="flex-1 p-3 overflow-hidden">
+                  <RedemptionHistory 
+                    barLocationId={selectedBarId} 
+                    refreshTrigger={historyRefreshTrigger} 
+                  />
+                </div>
               </div>
-              <div className="flex-1 p-3 overflow-hidden">
-                <RedemptionHistory 
-                  barLocationId={selectedBarId} 
-                  refreshTrigger={historyRefreshTrigger} 
-                />
-              </div>
-            </div>
+              
+              {/* Mobile: Collapsible history at bottom */}
+              {isMobile && (
+                <div className="md:hidden border-t border-border bg-card">
+                  <details className="group">
+                    <summary className="flex items-center justify-between p-3 cursor-pointer list-none">
+                      <div className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Historial de canjes</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground group-open:hidden">Expandir ▼</span>
+                      <span className="text-xs text-muted-foreground hidden group-open:inline">Cerrar ▲</span>
+                    </summary>
+                    <div className="p-3 pt-0 max-h-48 overflow-y-auto">
+                      <RedemptionHistory 
+                        barLocationId={selectedBarId} 
+                        refreshTrigger={historyRefreshTrigger} 
+                      />
+                    </div>
+                  </details>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
