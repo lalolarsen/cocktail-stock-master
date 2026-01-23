@@ -49,6 +49,8 @@ type POSTerminal = {
   name: string;
   location_id: string;
   is_active: boolean;
+  pos_type: string;
+  is_cash_register: boolean;
 };
 
 // BarLocation removed - bar is determined at redemption time, not at sale
@@ -168,6 +170,7 @@ export default function Sales() {
       .from("pos_terminals")
       .select("*")
       .eq("is_active", true)
+      .eq("pos_type", "alcohol_sales") // Only alcohol sales POS for this module
       .order("name");
     
     if (!error && data) {
@@ -176,8 +179,11 @@ export default function Sales() {
         setSelectedPosId(data[0].id);
       }
       const savedPosId = localStorage.getItem("selectedPosId");
+      // Only restore if it's an alcohol_sales POS
       if (savedPosId && data.some(p => p.id === savedPosId)) {
         setSelectedPosId(savedPosId);
+      } else if (data.length > 0 && !savedPosId) {
+        // If no saved selection but terminals exist, don't auto-select
       }
     }
   };
@@ -370,6 +376,7 @@ export default function Sales() {
           jornada_id: activeJornadaId || null,
           outside_jornada: !hasActiveJornada,
           receipt_source: receiptSource,
+          sale_category: "alcohol", // Alcohol sales module
         })
         .select()
         .single();

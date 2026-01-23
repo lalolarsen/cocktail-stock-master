@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
@@ -50,7 +50,14 @@ interface RecentSale {
   cover_count: number;
 }
 
-type Step = "select-tickets" | "success";
+interface POSTerminal {
+  id: string;
+  name: string;
+  pos_type: string;
+  is_cash_register: boolean;
+}
+
+type Step = "select-pos" | "select-tickets" | "success";
 
 export default function Tickets() {
   const navigate = useNavigate();
@@ -61,7 +68,12 @@ export default function Tickets() {
   const [processing, setProcessing] = useState(false);
   const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
   const [activeJornadaId, setActiveJornadaId] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>("select-tickets");
+  const [step, setStep] = useState<Step>("select-pos");
+  
+  // POS selection
+  const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
+  const [selectedPosId, setSelectedPosId] = useState<string>("");
+  const [selectedPosName, setSelectedPosName] = useState<string>("");
   
   // Recent sales
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
@@ -70,10 +82,40 @@ export default function Tickets() {
   const [loadingTokens, setLoadingTokens] = useState(false);
 
   useEffect(() => {
-    fetchTicketTypes();
+    fetchPosTerminals();
     fetchActiveJornada();
-    fetchRecentSales();
   }, []);
+
+  const fetchPosTerminals = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("pos_terminals")
+        .select("id, name, pos_type, is_cash_register")
+        .eq("is_active", true)
+        .eq("pos_type", "ticket_sales") // Only ticket sales POS for this module
+        .order("name");
+
+      if (!error && data) {
+        setPosTerminals(data);
+        // Restore saved selection
+        const savedPosId = localStorage.getItem("selectedTicketPosId");
+        if (savedPosId && data.some(p => p.id === savedPosId)) {
+          const pos = data.find(p => p.id === savedPosId);
+          setSelectedPosId(savedPosId);
+          setSelectedPosName(pos?.name || "");
+        }
+        // Auto-proceed if only one POS
+        if (data.length === 1) {
+          setSelectedPosId(data[0].id);
+          setSelectedPosName(data[0].name);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching POS terminals:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -86,6 +128,21 @@ export default function Tickets() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [cart, processing, step]);
+
+  const confirmPosSelection = () => {
+    if (!selectedPosId) {
+      toast.error("Selecciona una caja");
+      return;
+    }
+    const pos = posTerminals.find(p => p.id === selectedPosId);
+    if (pos) {
+      setSelectedPosName(pos.name);
+      localStorage.setItem("selectedTicketPosId", pos.id);
+    }
+    fetchTicketTypes();
+    fetchRecentSales();
+    setStep("select-tickets");
+  };
 
   const fetchTicketTypes = async () => {
     try {
@@ -342,6 +399,78 @@ export default function Tickets() {
     );
   }
 
+  // POS Selection Screen
+  if (step === "select-pos") {
+    return (
+      <>
+        {isDemoMode && <DemoWatermark />}
+        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+          <div className="max-w-lg mx-auto space-y-6 pt-12">
+            <div className="text-center space-y-2">
+              <Ticket className="w-16 h-16 mx-auto text-primary" />
+              <h1 className="text-3xl font-bold">Configurar Caja</h1>
+              <p className="text-muted-foreground">Selecciona tu punto de venta de tickets</p>
+            </div>
+
+            <Card className="p-6 space-y-6">
+              <div className="space-y-3">
+                <p className="flex items-center gap-2 text-lg font-medium">
+                  <Store className="w-5 h-5" />
+                  Caja de Tickets
+                </p>
+                {posTerminals.length === 0 ? (
+                  <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
+                    No hay cajas de tickets disponibles. Contacta al administrador.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {posTerminals.map((pos) => (
+                      <Card
+                        key={pos.id}
+                        onClick={() => setSelectedPosId(pos.id)}
+                        className={`p-4 cursor-pointer transition-all hover:scale-105 ${
+                          selectedPosId === pos.id
+                            ? "border-primary bg-primary/10 ring-2 ring-primary"
+                            : "hover:border-primary/50"
+                        }`}
+                      >
+                        <div className="text-center">
+                          <Store className={`w-8 h-8 mx-auto mb-2 ${selectedPosId === pos.id ? "text-primary" : "text-muted-foreground"}`} />
+                          <p className="font-semibold">{pos.name}</p>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={confirmPosSelection}
+                disabled={!selectedPosId || posTerminals.length === 0}
+                className="w-full"
+                size="lg"
+              >
+                Comenzar a Vender
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate("/auth");
+                }}
+                className="w-full gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                Cerrar Sesión
+              </Button>
+            </Card>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // Success Screen
   if (step === "success" && saleResult) {
     return (
@@ -404,7 +533,15 @@ export default function Tickets() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Ticket className="h-7 w-7 text-primary" />
-                <h1 className="text-2xl font-bold">Venta de Entradas</h1>
+                <div>
+                  <h1 className="text-2xl font-bold">Venta de Entradas</h1>
+                  {selectedPosName && (
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Store className="h-3 w-3" />
+                      {selectedPosName}
+                    </p>
+                  )}
+                </div>
                 {isDemoMode && (
                   <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
                     Ticket Seller
