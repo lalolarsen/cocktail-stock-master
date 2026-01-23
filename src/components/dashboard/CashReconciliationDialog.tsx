@@ -70,7 +70,7 @@ export function CashReconciliationDialog({
       const currentVenueId = profile?.venue_id;
       setVenueId(currentVenueId);
 
-      // Get all active POS terminals
+      // Get all active POS terminals that are cash registers only
       const { data: posTerminals, error: posError } = await supabase
         .from("pos_terminals")
         .select(`
@@ -78,7 +78,8 @@ export function CashReconciliationDialog({
           name,
           location:stock_locations(name)
         `)
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .eq("is_cash_register", true);
 
       if (posError) throw posError;
 

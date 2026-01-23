@@ -48,12 +48,16 @@ interface StockLocation {
   created_at: string;
 }
 
+type POSType = "alcohol_sales" | "ticket_sales" | "bar_redemption";
+
 interface POSTerminal {
   id: string;
   name: string;
   location_id: string;
   is_active: boolean;
   created_at: string;
+  pos_type: POSType;
+  is_cash_register: boolean;
   location?: StockLocation;
 }
 
@@ -69,7 +73,7 @@ export function POSBarsManagement() {
   
   // Form states
   const [locationForm, setLocationForm] = useState<{ name: string; type: "bar" | "warehouse" }>({ name: "", type: "bar" });
-  const [posForm, setPosForm] = useState({ name: "", locationId: "", createNewBar: false, newBarName: "" });
+  const [posForm, setPosForm] = useState({ name: "", locationId: "", createNewBar: false, newBarName: "", posType: "alcohol_sales" as POSType });
   const [editingLocation, setEditingLocation] = useState<StockLocation | null>(null);
   const [editingPOS, setEditingPOS] = useState<POSTerminal | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "location" | "pos"; item: StockLocation | POSTerminal } | null>(null);
@@ -164,24 +168,36 @@ export function POSBarsManagement() {
         return;
       }
       
+      const isCashRegister = posForm.posType !== "bar_redemption";
+      
       if (editingPOS) {
         const { error } = await supabase
           .from("pos_terminals")
-          .update({ name: posForm.name, location_id: locationId })
+          .update({ 
+            name: posForm.name, 
+            location_id: locationId,
+            pos_type: posForm.posType,
+            is_cash_register: isCashRegister
+          })
           .eq("id", editingPOS.id);
         if (error) throw error;
         toast.success("Terminal actualizado");
       } else {
         const { error } = await supabase
           .from("pos_terminals")
-          .insert({ name: posForm.name, location_id: locationId });
+          .insert({ 
+            name: posForm.name, 
+            location_id: locationId,
+            pos_type: posForm.posType,
+            is_cash_register: isCashRegister
+          });
         if (error) throw error;
         toast.success("Terminal creado");
       }
       
       setShowPOSDialog(false);
       setEditingPOS(null);
-      setPosForm({ name: "", locationId: "", createNewBar: false, newBarName: "" });
+      setPosForm({ name: "", locationId: "", createNewBar: false, newBarName: "", posType: "alcohol_sales" });
       fetchData();
     } catch (error: any) {
       console.error("Error:", error);
@@ -234,7 +250,7 @@ export function POSBarsManagement() {
 
   const openEditPOS = (pos: POSTerminal) => {
     setEditingPOS(pos);
-    setPosForm({ name: pos.name, locationId: pos.location_id, createNewBar: false, newBarName: "" });
+    setPosForm({ name: pos.name, locationId: pos.location_id, createNewBar: false, newBarName: "", posType: pos.pos_type || "alcohol_sales" });
     setShowPOSDialog(true);
   };
 
@@ -304,6 +320,13 @@ export function POSBarsManagement() {
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Store className="w-3 h-3" />
                             <span>{terminal.location?.name || "Sin barra"}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {terminal.pos_type === "alcohol_sales" ? "Venta Alcohol" : 
+                               terminal.pos_type === "ticket_sales" ? "Venta Tickets" : "Lector Barra"}
+                            </Badge>
+                            {!terminal.is_cash_register && (
+                              <Badge variant="secondary" className="text-xs">Sin Caja</Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -504,6 +527,28 @@ export function POSBarsManagement() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Tipo de Terminal</Label>
+              <Select
+                value={posForm.posType}
+                onValueChange={(v) => setPosForm({ ...posForm, posType: v as POSType })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alcohol_sales">Venta de Alcohol (con caja)</SelectItem>
+                  <SelectItem value="ticket_sales">Venta de Tickets (con caja)</SelectItem>
+                  <SelectItem value="bar_redemption">Lector de Barra (sin caja)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {posForm.posType === "bar_redemption" 
+                  ? "Este terminal no participará en apertura/cierre de caja"
+                  : "Este terminal participará en apertura/cierre de caja"}
+              </p>
             </div>
           </div>
           <DialogFooter>

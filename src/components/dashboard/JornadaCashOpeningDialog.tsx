@@ -68,11 +68,12 @@ export function JornadaCashOpeningDialog({
   const loadData = async () => {
     setLoading(true);
     try {
-      // Fetch active POS terminals
+      // Fetch active POS terminals that are cash registers only
       const { data: posData } = await supabase
         .from("pos_terminals")
         .select("id, name")
         .eq("is_active", true)
+        .eq("is_cash_register", true)
         .order("name");
 
       // Fetch cash settings
