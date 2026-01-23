@@ -300,9 +300,9 @@ export type Database = {
           description: string
           expense_type: string
           id: string
-          jornada_id: string | null
+          jornada_id: string
           notes: string | null
-          payment_method: string | null
+          payment_method: string
           pos_id: string | null
           source_id: string | null
           source_type: string | null
@@ -316,9 +316,9 @@ export type Database = {
           description: string
           expense_type: string
           id?: string
-          jornada_id?: string | null
+          jornada_id: string
           notes?: string | null
-          payment_method?: string | null
+          payment_method?: string
           pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
@@ -332,9 +332,9 @@ export type Database = {
           description?: string
           expense_type?: string
           id?: string
-          jornada_id?: string | null
+          jornada_id?: string
           notes?: string | null
-          payment_method?: string | null
+          payment_method?: string
           pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
@@ -1797,7 +1797,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: string
           point_of_sale: string
-          pos_id: string | null
+          pos_id: string
           receipt_source: string | null
           sale_category: string
           sale_number: string
@@ -1815,7 +1815,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale: string
-          pos_id?: string | null
+          pos_id: string
           receipt_source?: string | null
           sale_category?: string
           sale_number: string
@@ -1833,7 +1833,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale?: string
-          pos_id?: string | null
+          pos_id?: string
           receipt_source?: string | null
           sale_category?: string
           sale_number?: string
