@@ -12,7 +12,7 @@ import { useDemoMode } from "@/hooks/useDemoMode";
 import { Html5Qrcode } from "html5-qrcode";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { RedemptionHistory } from "@/components/bar/RedemptionHistory";
+// Removed: RedemptionHistory - replaced with local in-memory history
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logAuditEvent } from "@/lib/monitoring";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -58,11 +58,23 @@ type BarLocation = {
   type: string;
 };
 
+// Local scan history entry (in-memory, instant updates)
+type ScanHistoryEntry = {
+  id: string;
+  time: Date;
+  status: "SUCCESS" | "ALREADY_REDEEMED" | "EXPIRED" | "INVALID" | "CANCELLED" | "INSUFFICIENT_STOCK" | "ERROR";
+  label: string;
+  tokenShort: string;
+};
+
 // Reader modes
 type ReaderMode = "USB_SCANNER" | "CAMERA";
 
 // Explicit scan lifecycle states
 type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume";
+
+// Max history entries to keep
+const MAX_HISTORY_ENTRIES = 20;
 
 // Timing constants - HARD STOP strategy for CAMERA mode
 const DEDUPE_WINDOW_MS = 5000; // 5s dedupe window - ignore same QR within this window
@@ -140,13 +152,48 @@ function getDeliveryDisplay(deliver?: DeliverInfo): { name: string; quantity: nu
   return { name: "Pedido", quantity: 1 };
 }
 
+// Helper to map error codes to history status
+function mapErrorCodeToStatus(errorCode?: string): ScanHistoryEntry["status"] {
+  switch (errorCode) {
+    case "ALREADY_REDEEMED": return "ALREADY_REDEEMED";
+    case "TOKEN_EXPIRED": return "EXPIRED";
+    case "QR_INVALID":
+    case "TOKEN_NOT_FOUND": return "INVALID";
+    case "SALE_CANCELLED": return "CANCELLED";
+    case "INSUFFICIENT_BAR_STOCK":
+    case "INSUFFICIENT_STOCK": return "INSUFFICIENT_STOCK";
+    default: return "ERROR";
+  }
+}
+
+// Helper to generate history label
+function generateHistoryLabel(result: RedemptionResult): string {
+  if (result.success) {
+    const delivery = getDeliveryDisplay(result.deliver);
+    return `ENTREGAR: ${delivery.name} x${delivery.quantity}`;
+  }
+  
+  switch (result.error_code) {
+    case "ALREADY_REDEEMED": return "YA CANJEADO";
+    case "TOKEN_EXPIRED": return "VENCIDO";
+    case "QR_INVALID": return "QR INVÁLIDO";
+    case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
+    case "SALE_CANCELLED": return "CANCELADO";
+    case "INSUFFICIENT_BAR_STOCK":
+    case "INSUFFICIENT_STOCK": return "SIN STOCK";
+    case "TIMEOUT": return "TIMEOUT";
+    default: return result.message || "ERROR";
+  }
+}
+
 export default function Bar() {
   const { isDemoMode } = useDemoMode();
   const isMobile = useIsMobile();
   const [isVerified, setIsVerified] = useState(true);
   
-  // History refresh trigger - increments after each scan attempt
-  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0);
+  // Local in-memory scan history (instant updates)
+  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+  
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -484,8 +531,15 @@ export default function Bar() {
         },
       });
       
-      // Trigger history refresh after any scan
-      setHistoryRefreshTrigger(prev => prev + 1);
+      // Add to local scan history immediately
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(),
+        time: new Date(),
+        status: resultData.success ? "SUCCESS" : mapErrorCodeToStatus(resultData.error_code),
+        label: generateHistoryLabel(resultData),
+        tokenShort: token.slice(-6),
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
 
       // HARD STOP: Transition to waiting_resume after showing result
       transitionToWaitingResume(readerMode);
@@ -503,15 +557,23 @@ export default function Bar() {
       redeemInFlightRef.current = false;
       
       console.error("Redemption error:", error);
-      setResult({
+      const errorResult: RedemptionResult = {
         success: false,
         error_code: "SYSTEM_ERROR",
         message: error.message || "Error al procesar el código",
-      });
+      };
+      setResult(errorResult);
       setScanState("error");
       
-      // Trigger history refresh even on errors
-      setHistoryRefreshTrigger(prev => prev + 1);
+      // Add error to local scan history
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(),
+        time: new Date(),
+        status: "ERROR",
+        label: "ERROR DE SISTEMA",
+        tokenShort: token.slice(-6),
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       
       // HARD STOP: Transition to waiting_resume
       transitionToWaitingResume(readerMode);
@@ -549,7 +611,15 @@ export default function Bar() {
           message: "Código QR no válido",
         });
         setScanState("error");
-        setHistoryRefreshTrigger(prev => prev + 1);
+        // Add invalid QR to history
+        const historyEntry: ScanHistoryEntry = {
+          id: crypto.randomUUID(),
+          time: new Date(),
+          status: "INVALID",
+          label: "QR INVÁLIDO",
+          tokenShort: rawValue.slice(-6) || "??????",
+        };
+        setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         // USB mode: auto-reset after display
         transitionToWaitingResume("USB_SCANNER");
         return;
@@ -582,7 +652,15 @@ export default function Bar() {
         message: "Código QR no válido",
       });
       setScanState("error");
-      setHistoryRefreshTrigger(prev => prev + 1);
+      // Add invalid QR to history
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(),
+        time: new Date(),
+        status: "INVALID",
+        label: "QR INVÁLIDO",
+        tokenShort: decodedText.slice(-6) || "??????",
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       // Camera mode: require manual resume
       transitionToWaitingResume("CAMERA");
       return;
@@ -674,8 +752,16 @@ export default function Bar() {
         message: "Código inválido",
       });
       setScanState("error");
+      // Add invalid to history
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(),
+        time: new Date(),
+        status: "INVALID",
+        label: "CÓDIGO INVÁLIDO",
+        tokenShort: input.slice(-6) || "??????",
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       setManualToken("");
-      setHistoryRefreshTrigger(prev => prev + 1);
       // Manual entry uses current reader mode behavior
       transitionToWaitingResume(readerMode);
       setShowManualEntry(false);
@@ -1180,13 +1266,58 @@ export default function Bar() {
               <div className="hidden md:flex w-80 lg:w-96 border-l border-border bg-card flex-col">
                 <div className="p-4 border-b border-border flex items-center gap-2">
                   <History className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="font-semibold text-foreground">Historial de canjes</h2>
+                  <h2 className="font-semibold text-foreground">Historial de sesión</h2>
+                  <span className="text-xs text-muted-foreground ml-auto">({scanHistory.length})</span>
                 </div>
-                <div className="flex-1 p-3 overflow-hidden">
-                  <RedemptionHistory 
-                    barLocationId={selectedBarId} 
-                    refreshTrigger={historyRefreshTrigger} 
-                  />
+                <div className="flex-1 p-3 overflow-y-auto">
+                  {scanHistory.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <History className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Aún no hay canjes en esta sesión.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {scanHistory.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`p-3 rounded-lg border ${
+                            entry.status === "SUCCESS"
+                              ? "bg-green-500/10 border-green-500/30"
+                              : entry.status === "ALREADY_REDEEMED"
+                              ? "bg-orange-500/10 border-orange-500/30"
+                              : entry.status === "INSUFFICIENT_STOCK"
+                              ? "bg-amber-500/10 border-amber-500/30"
+                              : "bg-red-500/10 border-red-500/30"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium truncate ${
+                                entry.status === "SUCCESS" ? "text-green-700 dark:text-green-400" : 
+                                entry.status === "ALREADY_REDEEMED" ? "text-orange-700 dark:text-orange-400" :
+                                entry.status === "INSUFFICIENT_STOCK" ? "text-amber-700 dark:text-amber-400" :
+                                "text-red-700 dark:text-red-400"
+                              }`}>
+                                {entry.label}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {format(entry.time, "HH:mm:ss")} • ...{entry.tokenShort}
+                              </p>
+                            </div>
+                            {entry.status === "SUCCESS" ? (
+                              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                            ) : entry.status === "ALREADY_REDEEMED" ? (
+                              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                            ) : entry.status === "INSUFFICIENT_STOCK" ? (
+                              <Package className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -1197,16 +1328,48 @@ export default function Bar() {
                     <summary className="flex items-center justify-between p-3 cursor-pointer list-none">
                       <div className="flex items-center gap-2">
                         <History className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Historial de canjes</span>
+                        <span className="text-sm font-medium">Historial ({scanHistory.length})</span>
                       </div>
                       <span className="text-xs text-muted-foreground group-open:hidden">Expandir ▼</span>
                       <span className="text-xs text-muted-foreground hidden group-open:inline">Cerrar ▲</span>
                     </summary>
                     <div className="p-3 pt-0 max-h-48 overflow-y-auto">
-                      <RedemptionHistory 
-                        barLocationId={selectedBarId} 
-                        refreshTrigger={historyRefreshTrigger} 
-                      />
+                      {scanHistory.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          Aún no hay canjes en esta sesión.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {scanHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className={`p-2 rounded-lg border text-xs ${
+                                entry.status === "SUCCESS"
+                                  ? "bg-green-500/10 border-green-500/30"
+                                  : entry.status === "ALREADY_REDEEMED"
+                                  ? "bg-orange-500/10 border-orange-500/30"
+                                  : entry.status === "INSUFFICIENT_STOCK"
+                                  ? "bg-amber-500/10 border-amber-500/30"
+                                  : "bg-red-500/10 border-red-500/30"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`font-medium truncate ${
+                                  entry.status === "SUCCESS" ? "text-green-700 dark:text-green-400" : 
+                                  entry.status === "ALREADY_REDEEMED" ? "text-orange-700 dark:text-orange-400" :
+                                  entry.status === "INSUFFICIENT_STOCK" ? "text-amber-700 dark:text-amber-400" :
+                                  "text-red-700 dark:text-red-400"
+                                }`}>
+                                  {entry.label}
+                                </span>
+                                <span className="text-muted-foreground flex-shrink-0">
+                                  {format(entry.time, "HH:mm")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </details>
                 </div>
