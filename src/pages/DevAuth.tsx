@@ -63,11 +63,23 @@ export default function DevAuth() {
       });
 
       if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          toast.error("Credenciales incorrectas");
-        } else {
-          toast.error(error.message);
-        }
+        // Log full error object for debugging
+        console.error("Supabase Auth Error:", {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+          name: error.name,
+          fullError: error,
+        });
+
+        // Build detailed error message
+        const errorDetails = [
+          error.message,
+          error.status ? `Status: ${error.status}` : null,
+          error.code ? `Code: ${error.code}` : null,
+        ].filter(Boolean).join(" | ");
+
+        toast.error(errorDetails, { duration: 8000 });
         setLoading(false);
         return;
       }
@@ -75,8 +87,8 @@ export default function DevAuth() {
       // Redirect happens via onAuthStateChange
       toast.success("Sesión iniciada");
     } catch (error: any) {
-      console.error("Login error:", error);
-      toast.error("Error al iniciar sesión");
+      console.error("Login catch error:", error);
+      toast.error(`Error: ${error?.message || "Error desconocido"}`);
     } finally {
       setLoading(false);
     }
