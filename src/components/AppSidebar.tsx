@@ -80,7 +80,7 @@ const accountingLinks: ExternalLink[] = [
 // Settings section
 const settingsViews: MenuItem[] = [
   { title: "Notificaciones", value: "notifications", icon: Bell, adminOnly: true },
-  { title: "Tipos de Entrada", value: "tickets", icon: Ticket, adminOnly: true },
+  { title: "Tipos de Entrada", value: "tickets", icon: Ticket, adminOnly: true, featureFlag: "tickets_module" },
 ];
 
 const settingsLinks: ExternalLink[] = [
@@ -218,7 +218,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
           <SidebarGroupLabel>Configuración</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filterByRole(settingsViews, isReadOnly).map(renderMenuItem)}
+              {filterByFeatureFlags(filterByRole(settingsViews, isReadOnly), isEnabled).map(renderMenuItem)}
               {filterByRole(settingsLinks, isReadOnly).map(renderExternalLink)}
             </SidebarMenu>
           </SidebarGroupContent>

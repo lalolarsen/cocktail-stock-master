@@ -575,14 +575,14 @@ export default function PurchasesImport() {
       <main className="p-6 max-w-5xl mx-auto space-y-6">
         {/* No Access - Feature disabled */}
         {step === "no-access" && (
-          <Card className="border-destructive/30">
+          <Card className="border-muted">
             <CardContent className="py-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-                <Lock className="h-8 w-8 text-destructive" />
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                <Lock className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">Función no disponible</h2>
+              <h2 className="text-2xl font-bold mb-2">Función desactivada</h2>
               <p className="text-muted-foreground mb-6">
-                Esta función no está habilitada para tu local. Contacta al administrador para más información.
+                El Lector de Facturas no está habilitado para este local. Contacta al administrador para habilitarlo.
               </p>
               <div className="flex justify-center gap-4">
                 <Button variant="outline" onClick={() => navigate("/admin")}>

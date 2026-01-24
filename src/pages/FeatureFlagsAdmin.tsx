@@ -16,7 +16,8 @@ interface FeatureFlag {
   created_at: string;
 }
 
-const FEATURE_DESCRIPTIONS: Record<string, { name: string; description: string }> = {
+// Central feature definitions - also exported for use in other components
+export const FEATURE_DESCRIPTIONS: Record<string, { name: string; description: string }> = {
   invoice_reader: {
     name: "Lector de Facturas",
     description: "Importar facturas de compra con OCR y mapeo automático de productos",
@@ -36,6 +37,10 @@ const FEATURE_DESCRIPTIONS: Record<string, { name: string; description: string }
   erp_accounting: {
     name: "Contabilidad ERP",
     description: "Integración con sistemas ERP y contabilidad",
+  },
+  tickets_module: {
+    name: "Módulo de Entradas",
+    description: "Venta de entradas y gestión de covers para eventos",
   },
 };
 
