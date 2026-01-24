@@ -402,6 +402,30 @@ export type Database = {
           },
         ]
       }
+      feature_flags_master: {
+        Row: {
+          created_at: string
+          default_enabled: boolean
+          description: string | null
+          key: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          default_enabled?: boolean
+          description?: string | null
+          key: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          default_enabled?: boolean
+          description?: string | null
+          key?: string
+          name?: string
+        }
+        Relationships: []
+      }
       gross_income_entries: {
         Row: {
           amount: number
@@ -2559,6 +2583,42 @@ export type Database = {
         }
         Relationships: []
       }
+      venue_feature_flags: {
+        Row: {
+          enabled: boolean
+          flag_key: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          enabled: boolean
+          flag_key: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          enabled?: boolean
+          flag_key?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_feature_flags_flag_key_fkey"
+            columns: ["flag_key"]
+            isOneToOne: false
+            referencedRelation: "feature_flags_master"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "venue_feature_flags_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           created_at: string
@@ -2759,6 +2819,16 @@ export type Database = {
           total_quantity: number
         }[]
       }
+      get_effective_flags: {
+        Args: { p_venue_id: string }
+        Returns: {
+          description: string
+          enabled: boolean
+          flag_key: string
+          flag_name: string
+          is_overridden: boolean
+        }[]
+      }
       get_expiring_lots: {
         Args: { p_days_ahead?: number; p_venue_id: string }
         Returns: {
@@ -2842,7 +2912,12 @@ export type Database = {
         Returns: Json
       }
       reset_demo_data: { Args: never; Returns: Json }
+      reset_venue_flags: { Args: { p_venue_id: string }; Returns: undefined }
       seed_demo_data: { Args: never; Returns: Json }
+      set_venue_flag: {
+        Args: { p_enabled: boolean; p_flag_key: string; p_venue_id: string }
+        Returns: undefined
+      }
       start_jornada_with_cash: {
         Args: { p_cash_amounts?: Json; p_jornada_id: string }
         Returns: Json
