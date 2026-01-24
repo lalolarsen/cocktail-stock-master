@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { Session } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -16,7 +17,9 @@ import {
   Shield,
   RefreshCw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  LogIn,
+  AlertCircle
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { FEATURE_DESCRIPTIONS } from "./FeatureFlagsAdmin";
@@ -38,22 +41,48 @@ interface FeatureFlag {
 
 export default function DeveloperPanel() {
   const navigate = useNavigate();
-  const { role, loading: roleLoading, hasRole } = useUserRole();
+  const { loading: roleLoading, hasRole } = useUserRole();
+  
+  // Supabase Auth session state
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
+  // Data state
   const [venues, setVenues] = useState<Venue[]>([]);
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedVenues, setExpandedVenues] = useState<Set<string>>(new Set());
 
+  // Check Supabase Auth session on mount
   useEffect(() => {
-    if (!roleLoading && hasRole("developer")) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setAuthLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Fetch data only when session exists and user has developer role
+  useEffect(() => {
+    if (session && !roleLoading && hasRole("developer")) {
       fetchData();
     }
-  }, [roleLoading, hasRole]);
+  }, [session, roleLoading, hasRole]);
 
   const fetchData = async () => {
-    setLoading(true);
+    setDataLoading(true);
+    setDataError(null);
     try {
       // Fetch all venues
       const { data: venuesData, error: venuesError } = await supabase
@@ -71,11 +100,12 @@ export default function DeveloperPanel() {
 
       if (flagsError) throw flagsError;
       setFlags(flagsData || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching data:", error);
+      setDataError(error?.message || "Error al cargar datos");
       toast.error("Error al cargar datos");
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
@@ -187,11 +217,17 @@ export default function DeveloperPanel() {
     return flag?.enabled ?? false;
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
   const filteredVenues = venues.filter(venue =>
     venue.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (roleLoading || loading) {
+  // Loading auth session
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -199,6 +235,47 @@ export default function DeveloperPanel() {
     );
   }
 
+  // No Supabase session - show login required screen
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="flex h-14 items-center gap-4 border-b bg-card px-6">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Button>
+        </header>
+        <main className="p-6 max-w-md mx-auto mt-20">
+          <Card>
+            <CardContent className="py-12 text-center space-y-6">
+              <LogIn className="h-16 w-16 mx-auto text-primary" />
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Developer login required</h2>
+                <p className="text-muted-foreground">
+                  Debes iniciar sesión con una cuenta autorizada para acceder al panel de desarrollo.
+                </p>
+              </div>
+              <Button onClick={() => navigate("/auth")} className="gap-2">
+                <LogIn className="h-4 w-4" />
+                Ir a /auth
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Session exists but still checking role
+  if (roleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Session exists but user is not developer
   if (!hasRole("developer")) {
     return (
       <div className="min-h-screen bg-background">
@@ -223,10 +300,53 @@ export default function DeveloperPanel() {
     );
   }
 
+  // Data loading state
+  if (dataLoading && venues.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Cargando datos...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Data error state
+  if (dataError && venues.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="flex h-14 items-center gap-4 border-b bg-card px-6">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Button>
+        </header>
+        <main className="p-6 max-w-md mx-auto mt-20">
+          <Card>
+            <CardContent className="py-12 text-center space-y-6">
+              <AlertCircle className="h-16 w-16 mx-auto text-destructive" />
+              <div>
+                <h2 className="text-xl font-bold mb-2">Error al cargar datos</h2>
+                <p className="text-muted-foreground text-sm font-mono bg-muted p-2 rounded">
+                  {dataError}
+                </p>
+              </div>
+              <Button onClick={fetchData} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Reintentar
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="flex h-14 items-center gap-4 border-b bg-card px-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Salir
         </Button>
@@ -236,8 +356,18 @@ export default function DeveloperPanel() {
             Panel de Desarrollo
           </h1>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={fetchData} 
+          disabled={dataLoading}
+          className="gap-2"
+        >
+          {dataLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
           Actualizar
         </Button>
       </header>
