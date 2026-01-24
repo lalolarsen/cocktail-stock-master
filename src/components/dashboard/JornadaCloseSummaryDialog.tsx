@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Loader2, Download, Store, TrendingUp, TrendingDown, DollarSign, 
-  CreditCard, Banknote, ArrowRightLeft, AlertTriangle, CheckCircle,
+  CreditCard, Banknote, AlertTriangle, CheckCircle,
   QrCode, Clock, PieChart, Package
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
@@ -159,7 +159,6 @@ export function JornadaCloseSummaryDialog({
       ["Ventas por Método de Pago"],
       ["Efectivo", (overallSummary.sales_by_payment?.cash || 0).toString()],
       ["Tarjeta", (overallSummary.sales_by_payment?.card || 0).toString()],
-      ["Transferencia", (overallSummary.sales_by_payment?.transfer || 0).toString()],
       [""],
       ["Gastos por Tipo"],
       ["Operacionales", (overallSummary.expenses_by_type?.operacional || 0).toString()],
@@ -278,10 +277,6 @@ export function JornadaCloseSummaryDialog({
           <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded">
             <CreditCard className="w-3 h-3" />
             {formatCLP(summary.sales_by_payment?.card || 0)}
-          </div>
-          <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded">
-            <ArrowRightLeft className="w-3 h-3" />
-            {formatCLP(summary.sales_by_payment?.transfer || 0)}
           </div>
         </div>
 

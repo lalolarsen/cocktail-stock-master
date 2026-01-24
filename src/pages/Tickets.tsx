@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote, ArrowRightLeft, MoreHorizontal } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type PaymentMethodType = "cash" | "card" | "transfer" | "other";
+type PaymentMethodType = "cash" | "card";
 interface TicketType {
   id: string;
   name: string;
@@ -376,8 +376,6 @@ export default function Tickets() {
   const paymentMethodLabels: Record<PaymentMethodType, { label: string; icon: React.ReactNode }> = {
     cash: { label: "Efectivo", icon: <Banknote className="h-4 w-4" /> },
     card: { label: "Tarjeta", icon: <CreditCard className="h-4 w-4" /> },
-    transfer: { label: "Transferencia", icon: <ArrowRightLeft className="h-4 w-4" /> },
-    other: { label: "Otro", icon: <MoreHorizontal className="h-4 w-4" /> },
   };
 
   const viewSaleQRs = async (saleId: string) => {
@@ -753,18 +751,6 @@ export default function Tickets() {
                             <span className="flex items-center gap-2">
                               <CreditCard className="h-4 w-4" />
                               Tarjeta
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="transfer">
-                            <span className="flex items-center gap-2">
-                              <ArrowRightLeft className="h-4 w-4" />
-                              Transferencia
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="other">
-                            <span className="flex items-center gap-2">
-                              <MoreHorizontal className="h-4 w-4" />
-                              Otro
                             </span>
                           </SelectItem>
                         </SelectContent>

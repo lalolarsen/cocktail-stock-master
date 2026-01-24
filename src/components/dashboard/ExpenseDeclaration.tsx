@@ -56,7 +56,7 @@ export function ExpenseDeclaration() {
   const [expenseType, setExpenseType] = useState<"operacional" | "no_operacional">("operacional");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "debit" | "credit" | "transfer">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   const [page, setPage] = useState(0);
   
   const queryClient = useQueryClient();
@@ -262,15 +262,13 @@ export function ExpenseDeclaration() {
 
               <div className="space-y-2">
                 <Label htmlFor="payment-method">Método de Pago *</Label>
-                <Select value={paymentMethod} onValueChange={(v: "cash" | "debit" | "credit" | "transfer") => setPaymentMethod(v)}>
+                <Select value={paymentMethod} onValueChange={(v: "cash" | "card") => setPaymentMethod(v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Efectivo</SelectItem>
-                    <SelectItem value="debit">Débito</SelectItem>
-                    <SelectItem value="credit">Crédito</SelectItem>
-                    <SelectItem value="transfer">Transferencia</SelectItem>
+                    <SelectItem value="card">Tarjeta</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

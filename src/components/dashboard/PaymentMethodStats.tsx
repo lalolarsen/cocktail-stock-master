@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, CreditCard, Banknote, Smartphone, TrendingUp, Calendar } from "lucide-react";
+import { Loader2, CreditCard, Banknote, TrendingUp, Calendar } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import {
   Select,
@@ -45,9 +45,7 @@ interface Jornada {
 
 const PAYMENT_CONFIG = {
   cash: { label: "Efectivo", color: "#22c55e", icon: Banknote },
-  debit: { label: "Débito", color: "#3b82f6", icon: CreditCard },
-  credit: { label: "Crédito", color: "#8b5cf6", icon: CreditCard },
-  transfer: { label: "Transferencia", color: "#f59e0b", icon: Smartphone },
+  card: { label: "Tarjeta", color: "#3b82f6", icon: CreditCard },
 };
 
 export function PaymentMethodStats() {

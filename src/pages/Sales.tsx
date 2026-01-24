@@ -359,8 +359,8 @@ export default function Sales() {
       const isCardPayment = paymentMethod === "card";
       const shouldIssueInternally = receiptMode === "unified" || !isCardPayment;
       const receiptSource = (isCardPayment && receiptMode === "hybrid") ? "external" : "internal";
-      // Map simplified payment method to database enum
-      const dbPaymentMethod = isCardPayment ? "debit" : "cash";
+      // Payment method is now directly compatible with DB enum (cash | card)
+      const dbPaymentMethod = paymentMethod;
 
       const { data: sale, error: saleError } = await supabase
         .from("sales")
