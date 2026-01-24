@@ -29,6 +29,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     // Redirect based on user's primary role to their appropriate portal
     const primaryRole = roles[0];
     switch (primaryRole) {
+      case "developer":
+        return <Navigate to="/developer" replace />;
       case "admin":
         return <Navigate to="/admin" replace />;
       case "gerencia":
