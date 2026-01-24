@@ -6,7 +6,8 @@ export type FeatureKey =
   | 'invoice_to_expense'
   | 'advanced_inventory'
   | 'advanced_reporting'
-  | 'erp_accounting';
+  | 'erp_accounting'
+  | 'tickets_module';
 
 interface FeatureFlags {
   [key: string]: boolean;

@@ -373,6 +373,7 @@ export type Database = {
           enabled: boolean
           feature_key: string
           id: string
+          updated_at: string | null
           venue_id: string
         }
         Insert: {
@@ -380,6 +381,7 @@ export type Database = {
           enabled?: boolean
           feature_key: string
           id?: string
+          updated_at?: string | null
           venue_id: string
         }
         Update: {
@@ -387,6 +389,7 @@ export type Database = {
           enabled?: boolean
           feature_key?: string
           id?: string
+          updated_at?: string | null
           venue_id?: string
         }
         Relationships: [
@@ -2803,6 +2806,7 @@ export type Database = {
         Args: { p_rut_code: string; p_venue_id: string }
         Returns: boolean
       }
+      is_feature_enabled: { Args: { flag_key: string }; Returns: boolean }
       log_admin_action: {
         Args: {
           p_action: string

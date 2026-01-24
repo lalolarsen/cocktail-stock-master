@@ -24,6 +24,7 @@ import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { FeatureGate } from "./components/FeatureGate";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -138,6 +139,7 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
+            {/* Feature-gated routes handle their own FeatureGate internally */}
             <Route
               path="/admin/catalog/pending"
               element={
@@ -190,7 +192,9 @@ const App = () => {
               path="/tickets"
               element={
                 <ProtectedRoute allowedRoles={["ticket_seller", "admin"]}>
-                  <Tickets />
+                  <FeatureGate feature="tickets_module" featureName="Módulo de Entradas">
+                    <Tickets />
+                  </FeatureGate>
                 </ProtectedRoute>
               }
             />
