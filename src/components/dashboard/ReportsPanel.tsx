@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Popover,
   PopoverContent,
@@ -24,6 +25,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
+type SaleCategory = "all" | "alcohol" | "ticket";
+
 type Sale = {
   id: string;
   sale_number: string;
@@ -32,6 +35,7 @@ type Sale = {
   point_of_sale: string;
   is_cancelled: boolean;
   seller_id: string;
+  sale_category: string;
 };
 
 type SaleWithSeller = Sale & {
@@ -50,6 +54,7 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState<SaleCategory>("all");
   
   // Aggregated totals (fetched separately to avoid loading all rows)
   const [totals, setTotals] = useState({ totalSales: 0, totalCancelled: 0, activeCount: 0, cancelledCount: 0 });
@@ -62,8 +67,8 @@ export function ReportsPanel() {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      // Fetch paginated sales with only needed columns
-      const { data, error, count } = await supabase
+      // Fetch paginated sales with sale_category included
+      let query = supabase
         .from("sales")
         .select(`
           id,
@@ -72,10 +77,18 @@ export function ReportsPanel() {
           total_amount,
           point_of_sale,
           is_cancelled,
-          seller_id
+          seller_id,
+          sale_category
         `, { count: "exact" })
         .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
+        .lte("created_at", endDate.toISOString());
+      
+      // Apply category filter
+      if (categoryFilter !== "all") {
+        query = query.eq("sale_category", categoryFilter);
+      }
+      
+      const { data, error, count } = await query
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -115,21 +128,26 @@ export function ReportsPanel() {
     if (!startDate || !endDate) return;
 
     try {
+      // Base query builder
+      const buildQuery = (isCancelled: boolean) => {
+        let query = supabase
+          .from("sales")
+          .select("total_amount")
+          .gte("created_at", startDate.toISOString())
+          .lte("created_at", endDate.toISOString())
+          .eq("is_cancelled", isCancelled);
+        
+        if (categoryFilter !== "all") {
+          query = query.eq("sale_category", categoryFilter);
+        }
+        return query;
+      };
+      
       // Fetch active sales total
-      const { data: activeData } = await supabase
-        .from("sales")
-        .select("total_amount")
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
-        .eq("is_cancelled", false);
+      const { data: activeData } = await buildQuery(false);
 
       // Fetch cancelled sales total
-      const { data: cancelledData } = await supabase
-        .from("sales")
-        .select("total_amount")
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
-        .eq("is_cancelled", true);
+      const { data: cancelledData } = await buildQuery(true);
 
       const totalSales = (activeData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
       const totalCancelled = (cancelledData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
@@ -149,26 +167,27 @@ export function ReportsPanel() {
     if (startDate && endDate) {
       fetchSales();
     }
-  }, [startDate, endDate, page]);
+  }, [startDate, endDate, page, categoryFilter]);
 
   useEffect(() => {
     if (startDate && endDate) {
-      setPage(0); // Reset page when dates change
+      setPage(0); // Reset page when dates or category change
       fetchTotals();
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, categoryFilter]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const handleExport = () => {
     if (sales.length === 0) return;
     
-    const headers = ["Número", "Fecha", "Vendedor", "Punto de Venta", "Total", "Estado"];
+    const headers = ["Número", "Fecha", "Vendedor", "Punto de Venta", "Categoría", "Total", "Estado"];
     const rows = sales.map(sale => [
       sale.sale_number,
       format(new Date(sale.created_at), "dd/MM/yyyy HH:mm"),
       sale.seller.full_name || sale.seller.email,
       sale.point_of_sale,
+      sale.sale_category === "ticket" ? "Ticket" : "Alcohol",
       sale.total_amount.toString(),
       sale.is_cancelled ? "Cancelada" : "Activa"
     ]);
@@ -273,6 +292,17 @@ export function ReportsPanel() {
         </div>
       </Card>
 
+      {/* Category Filter Tabs */}
+      {(startDate && endDate) && (
+        <Tabs value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as SaleCategory)} className="w-full">
+          <TabsList>
+            <TabsTrigger value="all">Todas</TabsTrigger>
+            <TabsTrigger value="alcohol">Alcohol</TabsTrigger>
+            <TabsTrigger value="ticket">Tickets</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
       {/* Summary Cards */}
       {(startDate && endDate) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -334,7 +364,8 @@ export function ReportsPanel() {
                   <TableHead>Número</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Vendedor</TableHead>
-                  <TableHead>Punto de Venta</TableHead>
+                  <TableHead>POS</TableHead>
+                  <TableHead>Categoría</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
@@ -356,6 +387,11 @@ export function ReportsPanel() {
                       {sale.seller.full_name || sale.seller.email}
                     </TableCell>
                     <TableCell>{sale.point_of_sale}</TableCell>
+                    <TableCell>
+                      <Badge variant={sale.sale_category === "ticket" ? "secondary" : "outline"}>
+                        {sale.sale_category === "ticket" ? "Ticket" : "Alcohol"}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="font-semibold">
                       {formatCLP(sale.total_amount)}
                     </TableCell>

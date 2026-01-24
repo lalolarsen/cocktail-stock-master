@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
@@ -284,6 +285,12 @@ export default function Tickets() {
       return;
     }
 
+    // CRITICAL: Block sales if no active jornada (jornada_id is now NOT NULL)
+    if (!activeJornadaId) {
+      toast.error("No hay jornada activa. Contacta a un administrador.");
+      return;
+    }
+
     setProcessing(true);
 
     try {
@@ -543,6 +550,46 @@ export default function Tickets() {
 
   // Main ticket selection screen
   const coversIncluded = getTotalCoversIncluded();
+
+  // Block UI if no active jornada
+  if (!activeJornadaId && step === "select-tickets") {
+    return (
+      <>
+        {isDemoMode && <DemoWatermark />}
+        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+          <div className="max-w-lg mx-auto space-y-6 pt-12">
+            <div className="text-center space-y-2">
+              <ShieldAlert className="w-16 h-16 mx-auto text-destructive" />
+              <h1 className="text-3xl font-bold">Ventas Bloqueadas</h1>
+            </div>
+
+            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+              <ShieldAlert className="h-5 w-5" />
+              <AlertTitle className="font-semibold">No hay jornada activa</AlertTitle>
+              <AlertDescription>
+                Un administrador debe abrir una jornada para poder vender entradas.
+                Contacta a gerencia para iniciar operaciones.
+              </AlertDescription>
+            </Alert>
+
+            <Card className="p-6">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate("/auth");
+                }}
+                className="w-full gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                Cerrar Sesión
+              </Button>
+            </Card>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
