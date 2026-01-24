@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store } from "lucide-react";
+import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote, ArrowRightLeft, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
@@ -13,7 +13,15 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { DemoWatermark } from "@/components/DemoWatermark";
 import { useDemoLogging } from "@/hooks/useDemoLogging";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
+type PaymentMethodType = "cash" | "card" | "transfer" | "other";
 interface TicketType {
   id: string;
   name: string;
@@ -80,7 +88,9 @@ export default function Tickets() {
   const [selectedHistorySale, setSelectedHistorySale] = useState<string | null>(null);
   const [historyTokens, setHistoryTokens] = useState<Array<{ id: string; token: string; status: string; cocktail_name?: string }>>([]);
   const [loadingTokens, setLoadingTokens] = useState(false);
-
+  
+  // Payment method selection - undefined means not selected (placeholder state)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | undefined>(undefined);
   useEffect(() => {
     fetchPosTerminals();
     fetchActiveJornada();
@@ -120,14 +130,14 @@ export default function Tickets() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && cart.size > 0 && !processing && step === "select-tickets") {
+      if (e.key === "Enter" && cart.size > 0 && !processing && step === "select-tickets" && paymentMethod) {
         e.preventDefault();
         handleCheckout();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart, processing, step]);
+  }, [cart, processing, step, paymentMethod]);
 
   const confirmPosSelection = () => {
     if (!selectedPosId) {
@@ -269,6 +279,11 @@ export default function Tickets() {
       return;
     }
 
+    if (!paymentMethod) {
+      toast.error("Selecciona un método de pago");
+      return;
+    }
+
     setProcessing(true);
 
     try {
@@ -281,7 +296,7 @@ export default function Tickets() {
 
       const { data, error } = await supabase.rpc("create_ticket_sale_with_covers", {
         p_items: items,
-        p_payment_method: "cash",
+        p_payment_method: paymentMethod,
         p_jornada_id: activeJornadaId,
         p_pos_id: selectedPosId || null
       });
@@ -355,6 +370,14 @@ export default function Tickets() {
     setSaleResult(null);
     setStep("select-tickets");
     setSelectedHistorySale(null);
+    setPaymentMethod(undefined); // Reset payment method for new sale
+  };
+
+  const paymentMethodLabels: Record<PaymentMethodType, { label: string; icon: React.ReactNode }> = {
+    cash: { label: "Efectivo", icon: <Banknote className="h-4 w-4" /> },
+    card: { label: "Tarjeta", icon: <CreditCard className="h-4 w-4" /> },
+    transfer: { label: "Transferencia", icon: <ArrowRightLeft className="h-4 w-4" /> },
+    other: { label: "Otro", icon: <MoreHorizontal className="h-4 w-4" /> },
   };
 
   const viewSaleQRs = async (saleId: string) => {
@@ -698,18 +721,68 @@ export default function Tickets() {
                       </p>
                     )}
 
+                    {/* Payment Method Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Método de Pago *</label>
+                      <Select
+                        value={paymentMethod ?? ""}
+                        onValueChange={(value) => {
+                          if (value) {
+                            setPaymentMethod(value as PaymentMethodType);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={!paymentMethod ? "text-muted-foreground" : ""}>
+                          <SelectValue placeholder="Seleccionar método">
+                            {paymentMethod && (
+                              <span className="flex items-center gap-2">
+                                {paymentMethodLabels[paymentMethod].icon}
+                                {paymentMethodLabels[paymentMethod].label}
+                              </span>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">
+                            <span className="flex items-center gap-2">
+                              <Banknote className="h-4 w-4" />
+                              Efectivo
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="card">
+                            <span className="flex items-center gap-2">
+                              <CreditCard className="h-4 w-4" />
+                              Tarjeta
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="transfer">
+                            <span className="flex items-center gap-2">
+                              <ArrowRightLeft className="h-4 w-4" />
+                              Transferencia
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="other">
+                            <span className="flex items-center gap-2">
+                              <MoreHorizontal className="h-4 w-4" />
+                              Otro
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <Button
                       size="lg"
                       className="w-full h-12"
                       onClick={handleCheckout}
-                      disabled={processing || cart.size === 0}
+                      disabled={processing || cart.size === 0 || !paymentMethod}
                     >
                       {processing ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
                       ) : (
                         <>
-                          <CreditCard className="h-5 w-5 mr-2" />
-                          Cobrar
+                          {paymentMethod ? paymentMethodLabels[paymentMethod].icon : <CreditCard className="h-5 w-5" />}
+                          <span className="ml-2">Cobrar</span>
                         </>
                       )}
                     </Button>
