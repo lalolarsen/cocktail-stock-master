@@ -200,15 +200,8 @@ const App = () => {
               }
             />
             <Route path="/help" element={<Help />} />
-            {/* Developer panel - hidden from sidebars, only accessible via direct URL */}
-            <Route
-              path="/developer"
-              element={
-                <ProtectedRoute allowedRoles={["developer"]}>
-                  <DeveloperPanel />
-                </ProtectedRoute>
-              }
-            />
+            {/* Developer panel - hidden from sidebars, role-based auth without ProtectedRoute */}
+            <Route path="/developer" element={<DeveloperPanel />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
