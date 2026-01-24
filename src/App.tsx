@@ -22,6 +22,7 @@ import PurchasesImport from "./pages/PurchasesImport";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
+import DeveloperPanel from "./pages/DeveloperPanel";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FeatureGate } from "./components/FeatureGate";
@@ -199,6 +200,15 @@ const App = () => {
               }
             />
             <Route path="/help" element={<Help />} />
+            {/* Developer panel - hidden from sidebars, only accessible via direct URL */}
+            <Route
+              path="/developer"
+              element={
+                <ProtectedRoute allowedRoles={["developer"]}>
+                  <DeveloperPanel />
+                </ProtectedRoute>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

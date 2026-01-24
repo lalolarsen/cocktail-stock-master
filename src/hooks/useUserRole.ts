@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 
-export type AppRole = "admin" | "vendedor" | "gerencia" | "bar" | "ticket_seller";
+export type AppRole = "admin" | "vendedor" | "gerencia" | "bar" | "ticket_seller" | "developer";
 
 export function useUserRole() {
   const [user, setUser] = useState<User | null>(null);
@@ -63,8 +63,8 @@ export function useUserRole() {
       }
 
       setRoles(fetchedRoles);
-      // Set primary role (first one, prioritizing admin > gerencia > vendedor > bar)
-      const priorityOrder: AppRole[] = ["admin", "gerencia", "vendedor", "bar"];
+      // Set primary role (first one, prioritizing developer > admin > gerencia > vendedor > bar)
+      const priorityOrder: AppRole[] = ["developer", "admin", "gerencia", "vendedor", "bar", "ticket_seller"];
       const primaryRole = priorityOrder.find(r => fetchedRoles.includes(r)) || fetchedRoles[0] || null;
       setRole(primaryRole);
     } catch (error) {
