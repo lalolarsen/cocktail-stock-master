@@ -294,6 +294,79 @@ export type Database = {
           },
         ]
       }
+      developer_feature_flags: {
+        Row: {
+          id: string
+          is_enabled: boolean
+          key: string
+          updated_at: string
+          updated_by: string | null
+          venue_id: string
+        }
+        Insert: {
+          id?: string
+          is_enabled?: boolean
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          venue_id: string
+        }
+        Update: {
+          id?: string
+          is_enabled?: boolean
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "developer_feature_flags_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      developer_flag_audit: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          from_enabled: boolean | null
+          id: string
+          key: string
+          to_enabled: boolean
+          venue_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          from_enabled?: boolean | null
+          id?: string
+          key: string
+          to_enabled: boolean
+          venue_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          from_enabled?: boolean | null
+          id?: string
+          key?: string
+          to_enabled?: boolean
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "developer_flag_audit_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount: number
@@ -2768,6 +2841,16 @@ export type Database = {
           p_pos_id?: string
           p_venue_id?: string
         }
+        Returns: Json
+      }
+      dev_expire_old_tokens: { Args: never; Returns: Json }
+      dev_recalculate_jornada_summaries: {
+        Args: { p_jornada_id: string }
+        Returns: Json
+      }
+      dev_reset_flags_to_stable: { Args: { p_venue_id: string }; Returns: Json }
+      dev_set_feature_flag: {
+        Args: { p_is_enabled: boolean; p_key: string; p_venue_id: string }
         Returns: Json
       }
       enqueue_jornada_closed_notifications: {
