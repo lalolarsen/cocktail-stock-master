@@ -2700,26 +2700,16 @@ export type Database = {
         }
         Returns: Json
       }
-      create_ticket_sale_with_covers:
-        | {
-            Args: {
-              p_items: Json
-              p_jornada_id?: string
-              p_payment_method?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_items: Json
-              p_jornada_id?: string
-              p_payment_method?: string
-              p_pos_id?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
+      create_ticket_sale_with_covers: {
+        Args: {
+          p_items: Json
+          p_jornada_id?: string
+          p_payment_method?: string
+          p_pos_id?: string
+          p_venue_id?: string
+        }
+        Returns: Json
+      }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
         Returns: Json
