@@ -2893,7 +2893,7 @@ export type Database = {
       document_type: "boleta" | "factura"
       location_type: "warehouse" | "bar"
       movement_type: "entrada" | "salida" | "ajuste" | "compra"
-      payment_method: "cash" | "debit" | "credit" | "transfer"
+      payment_method: "cash" | "debit" | "credit" | "transfer" | "card"
       pickup_token_status:
         | "issued"
         | "redeemed"
@@ -3044,7 +3044,7 @@ export const Constants = {
       document_type: ["boleta", "factura"],
       location_type: ["warehouse", "bar"],
       movement_type: ["entrada", "salida", "ajuste", "compra"],
-      payment_method: ["cash", "debit", "credit", "transfer"],
+      payment_method: ["cash", "debit", "credit", "transfer", "card"],
       pickup_token_status: [
         "issued",
         "redeemed",
