@@ -252,12 +252,12 @@ export default function DeveloperPanel() {
               <div>
                 <h2 className="text-2xl font-bold mb-2">Developer login required</h2>
                 <p className="text-muted-foreground">
-                  Debes iniciar sesión con una cuenta autorizada para acceder al panel de desarrollo.
+                  Debes iniciar sesión con una cuenta de desarrollador para acceder al panel.
                 </p>
               </div>
-              <Button onClick={() => navigate("/auth")} className="gap-2">
+              <Button onClick={() => navigate("/dev-auth")} className="gap-2">
                 <LogIn className="h-4 w-4" />
-                Ir a /auth
+                Ir a /dev-auth
               </Button>
             </CardContent>
           </Card>

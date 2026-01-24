@@ -12,6 +12,7 @@ import PickupTokens from "./pages/PickupTokens";
 import PickupRedemptions from "./pages/PickupRedemptions";
 import Bar from "./pages/Bar";
 import Auth from "./pages/Auth";
+import DevAuth from "./pages/DevAuth";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import SystemSettings from "./pages/SystemSettings";
@@ -76,6 +77,7 @@ const App = () => {
               }
             />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/dev-auth" element={<DevAuth />} />
             <Route
               path="/admin"
               element={
