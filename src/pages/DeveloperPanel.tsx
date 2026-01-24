@@ -203,7 +203,7 @@ export default function DeveloperPanel() {
     return (
       <div className="min-h-screen bg-background">
         <header className="flex h-14 items-center gap-4 border-b bg-card px-6">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Volver
           </Button>
