@@ -8,7 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { toast } from "sonner";
 import { Loader2, Code2, ArrowLeft, Mail } from "lucide-react";
 
+type AuthMode = "signin" | "signup";
+
 export default function DevAuth() {
+  const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,7 +44,70 @@ export default function DevAuth() {
     return email.includes("@") && email.length >= 5;
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (error) {
+      console.error("Supabase Auth Error:", {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name,
+        fullError: error,
+      });
+
+      const errorDetails = [
+        error.message,
+        error.status ? `Status: ${error.status}` : null,
+        error.code ? `Code: ${error.code}` : null,
+      ].filter(Boolean).join(" | ");
+
+      toast.error(errorDetails, { duration: 8000 });
+      return false;
+    }
+
+    toast.success("Sesión iniciada");
+    return true;
+  };
+
+  const handleSignUp = async () => {
+    const { error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/dev-auth`,
+      },
+    });
+
+    if (error) {
+      console.error("Supabase SignUp Error:", {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name,
+        fullError: error,
+      });
+
+      const errorDetails = [
+        error.message,
+        error.status ? `Status: ${error.status}` : null,
+        error.code ? `Code: ${error.code}` : null,
+      ].filter(Boolean).join(" | ");
+
+      toast.error(errorDetails, { duration: 8000 });
+      return false;
+    }
+
+    toast.success("Cuenta creada. Ahora inicia sesión.", { duration: 5000 });
+    setMode("signin");
+    setPassword("");
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateEmail(email)) {
@@ -57,37 +123,13 @@ export default function DevAuth() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (error) {
-        // Log full error object for debugging
-        console.error("Supabase Auth Error:", {
-          message: error.message,
-          status: error.status,
-          code: error.code,
-          name: error.name,
-          fullError: error,
-        });
-
-        // Build detailed error message
-        const errorDetails = [
-          error.message,
-          error.status ? `Status: ${error.status}` : null,
-          error.code ? `Code: ${error.code}` : null,
-        ].filter(Boolean).join(" | ");
-
-        toast.error(errorDetails, { duration: 8000 });
-        setLoading(false);
-        return;
+      if (mode === "signin") {
+        await handleSignIn();
+      } else {
+        await handleSignUp();
       }
-
-      // Redirect happens via onAuthStateChange
-      toast.success("Sesión iniciada");
     } catch (error: any) {
-      console.error("Login catch error:", error);
+      console.error("Auth catch error:", error);
       toast.error(`Error: ${error?.message || "Error desconocido"}`);
     } finally {
       setLoading(false);
@@ -109,13 +151,43 @@ export default function DevAuth() {
           <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-2">
             <Code2 className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Developer Login</CardTitle>
+          <CardTitle className="text-2xl">
+            {mode === "signin" ? "Developer Login" : "Crear cuenta Developer"}
+          </CardTitle>
           <CardDescription>
-            Acceso exclusivo para desarrolladores
+            {mode === "signin" 
+              ? "Acceso exclusivo para desarrolladores" 
+              : "Registra una nueva cuenta de desarrollador"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <form onSubmit={handleLogin} className="space-y-4">
+          {/* Mode Toggle */}
+          <div className="flex rounded-lg bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setMode("signin")}
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                mode === "signin"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Iniciar sesión
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                mode === "signup"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Crear cuenta
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
@@ -129,6 +201,7 @@ export default function DevAuth() {
                   required
                   autoComplete="email"
                   className="pl-10"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -143,7 +216,8 @@ export default function DevAuth() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                autoComplete="current-password"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                disabled={loading}
               />
             </div>
 
@@ -155,13 +229,20 @@ export default function DevAuth() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verificando...
+                  {mode === "signin" ? "Verificando..." : "Creando cuenta..."}
                 </>
               ) : (
-                "Iniciar sesión"
+                mode === "signin" ? "Iniciar sesión" : "Crear cuenta"
               )}
             </Button>
           </form>
+
+          {mode === "signup" && (
+            <p className="text-xs text-muted-foreground text-center">
+              Nota: Crear una cuenta no otorga acceso automático al panel de desarrollador. 
+              Un administrador debe asignar el rol 'developer'.
+            </p>
+          )}
 
           <div className="text-center">
             <Button
