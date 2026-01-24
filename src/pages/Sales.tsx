@@ -327,8 +327,8 @@ export default function Sales() {
       return;
     }
 
-    // Block sales if no open jornada
-    if (!hasActiveJornada) {
+    // CRITICAL: Block sales if no open jornada (jornada_id is now NOT NULL)
+    if (!hasActiveJornada || !activeJornadaId) {
       toast.error("No hay jornada abierta. Contacta a un administrador.");
       return;
     }
@@ -373,8 +373,7 @@ export default function Sales() {
           payment_status: "paid",
           pos_id: selectedPosId,
           bar_location_id: null, // Bar determined at redemption
-          jornada_id: activeJornadaId || null,
-          outside_jornada: !hasActiveJornada,
+          jornada_id: activeJornadaId, // Required: NOT NULL
           receipt_source: receiptSource,
           sale_category: "alcohol", // Alcohol sales module
         })

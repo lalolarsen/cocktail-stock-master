@@ -28,7 +28,7 @@ import {
 import { toast } from "sonner";
 import { format, parseISO, isToday, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
-import { OutsideJornadaSales } from "./OutsideJornadaSales";
+// OutsideJornadaSales removed - all sales now require jornada_id (NOT NULL)
 import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
 import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
 import { CashReconciliationDialog } from "./CashReconciliationDialog";
@@ -553,13 +553,17 @@ export function JornadaManagement() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Pending / Outside Jornada Sales Tab */}
+        {/* Info Tab - Previously "Pending / Outside Jornada Sales" */}
         <TabsContent value="pending" className="space-y-4">
-          <OutsideJornadaSales />
           <Card className="p-6">
-            <p className="text-muted-foreground text-center">
-              Las ventas fuera de jornada deben asignarse a una jornada antes del cierre final.
-            </p>
+            <div className="text-center space-y-2">
+              <p className="text-muted-foreground">
+                Todas las ventas ahora requieren una jornada activa.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Las ventas fuera de jornada ya no son posibles desde la actualización del sistema.
+              </p>
+            </div>
           </Card>
         </TabsContent>
 

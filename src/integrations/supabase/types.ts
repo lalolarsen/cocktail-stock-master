@@ -1810,8 +1810,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_cancelled: boolean | null
-          jornada_id: string | null
-          outside_jornada: boolean
+          jornada_id: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: string
           point_of_sale: string
@@ -1828,8 +1827,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
-          jornada_id?: string | null
-          outside_jornada?: boolean
+          jornada_id: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale: string
@@ -1846,8 +1844,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
-          jornada_id?: string | null
-          outside_jornada?: boolean
+          jornada_id?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale?: string
