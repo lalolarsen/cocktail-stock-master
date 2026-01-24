@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Calendar, 
   DollarSign, 
@@ -16,10 +17,12 @@ import {
   AlertTriangle,
   Warehouse,
   Clock,
-  ExternalLink
+  ExternalLink,
+  ShieldAlert
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatCLP } from "@/lib/currency";
+import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 
 interface Jornada {
   id: string;
@@ -67,6 +70,8 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [warehouseAlerts, setWarehouseAlerts] = useState<AlertItem[]>([]);
   const [barAlerts, setBarAlerts] = useState<AlertItem[]>([]);
   const [expiryAlerts, setExpiryAlerts] = useState<AlertItem[]>([]);
+  const [orphanSalesCount, setOrphanSalesCount] = useState(0);
+  const [showOrphanDialog, setShowOrphanDialog] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -79,10 +84,22 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         fetchJornada(),
         fetchTodayStats(),
         fetchBarStatuses(),
-        fetchAlerts()
+        fetchAlerts(),
+        fetchOrphanSalesCount()
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOrphanSalesCount = async () => {
+    const { count, error } = await supabase
+      .from("sales")
+      .select("*", { count: "exact", head: true })
+      .is("jornada_id", null);
+    
+    if (!error) {
+      setOrphanSalesCount(count || 0);
     }
   };
 
@@ -293,6 +310,37 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Orphan Sales Alert Banner */}
+      {!isReadOnly && orphanSalesCount > 0 && (
+        <Alert className="border-amber-500/50 bg-amber-500/10">
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-amber-700">
+              Hay <strong>{orphanSalesCount}</strong> ventas sin jornada. Debes reasignarlas para que entren al estado de resultados.
+            </span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowOrphanDialog(true)}
+              className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
+            >
+              Reasignar ventas
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Orphan Sales Recovery Dialog */}
+      <OrphanSalesRecoveryDialog
+        open={showOrphanDialog}
+        onOpenChange={setShowOrphanDialog}
+        orphanCount={orphanSalesCount}
+        onRecoveryComplete={() => {
+          fetchOrphanSalesCount();
+          fetchTodayStats();
+        }}
+      />
+
       {/* A) Estado de hoy */}
       <Card>
         <CardHeader className="pb-3">
