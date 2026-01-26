@@ -2872,6 +2872,7 @@ export type Database = {
         Args: { p_venue_id: string }
         Returns: string
       }
+      get_berlin_venue_id: { Args: never; Returns: string }
       get_cost_of_sales_by_date_range: {
         Args: { p_from_date: string; p_to_date: string }
         Returns: {

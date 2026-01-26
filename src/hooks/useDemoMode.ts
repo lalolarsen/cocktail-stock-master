@@ -18,12 +18,22 @@ export function useDemoMode() {
 
   const checkDemoMode = async () => {
     try {
-      // Check if there's a demo venue
-      const { data: venue } = await supabase
+      // Check for Berlín venue (primary pilot) or any demo venue
+      let { data: venue } = await supabase
         .from("venues")
         .select("id, name, is_demo")
-        .eq("is_demo", true)
+        .eq("slug", "berlin-valdivia")
         .single();
+      
+      // Fallback to any demo venue
+      if (!venue) {
+        const { data: demoVenue } = await supabase
+          .from("venues")
+          .select("id, name, is_demo")
+          .eq("is_demo", true)
+          .single();
+        venue = demoVenue;
+      }
 
       if (venue) {
         setDemoVenue(venue);
