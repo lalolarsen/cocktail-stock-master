@@ -39,10 +39,11 @@ export function VenueSelector({ selectedVenueId, onSelectVenue }: VenueSelectorP
     queryFn: async () => {
       const { data, error } = await supabase
         .from("venues")
-        .select("id, name, is_demo")
+        .select("id, name, is_demo, slug")
+        .order("is_demo", { ascending: false }) // Berlín/demo first
         .order("name");
       if (error) throw error;
-      return data as Venue[];
+      return data as (Venue & { slug?: string })[];
     },
     retry: false,
     staleTime: 1000 * 60 * 5,
@@ -84,7 +85,9 @@ export function VenueSelector({ selectedVenueId, onSelectVenue }: VenueSelectorP
               <span className="text-muted-foreground">Seleccionar venue...</span>
             )}
             {selectedVenue?.is_demo && (
-              <Badge variant="secondary" className="text-xs">Demo</Badge>
+              <Badge variant="secondary" className="text-xs bg-primary/20 text-primary">
+                {selectedVenue.name.includes('Berlín') ? 'Piloto' : 'Demo'}
+              </Badge>
             )}
           </div>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -113,7 +116,9 @@ export function VenueSelector({ selectedVenueId, onSelectVenue }: VenueSelectorP
                   />
                   <span className="flex-1 truncate">{venue.name}</span>
                   {venue.is_demo && (
-                    <Badge variant="secondary" className="text-xs ml-2">Demo</Badge>
+                    <Badge variant="secondary" className="text-xs ml-2 bg-primary/20 text-primary">
+                      {venue.name.includes('Berlín') ? 'Piloto' : 'Demo'}
+                    </Badge>
                   )}
                 </CommandItem>
               ))}
