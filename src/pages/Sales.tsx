@@ -9,8 +9,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import PickupQRDialog from "@/components/PickupQRDialog";
-import { DemoWatermark } from "@/components/DemoWatermark";
-import { useDemoMode } from "@/hooks/useDemoMode";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
@@ -56,7 +54,6 @@ type POSTerminal = {
 // BarLocation removed - bar is determined at redemption time, not at sale
 
 export default function Sales() {
-  const { isDemoMode } = useDemoMode();
   const { activeJornadaId, hasActiveJornada } = useActiveJornada();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
@@ -623,55 +620,51 @@ export default function Sales() {
   // Success Screen after sale
   if (showSuccessScreen && lastSaleData) {
     return (
-      <>
-        {isDemoMode && <DemoWatermark />}
-        <div className={`min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4 ${isDemoMode ? 'pt-14' : ''}`}>
-          <Card className="max-w-md w-full p-8 text-center space-y-6">
-            <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
-              <Check className="w-10 h-10 text-green-500" />
-            </div>
-            
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">¡Venta Exitosa!</h1>
-              <p className="text-4xl font-bold text-primary">{lastSaleData.saleNumber}</p>
-              <p className="text-2xl font-semibold text-muted-foreground">
-                {formatCLP(lastSaleData.total)}
-              </p>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center space-y-6">
+          <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
+            <Check className="w-10 h-10 text-green-500" />
+          </div>
+          
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold">¡Venta Exitosa!</h1>
+            <p className="text-4xl font-bold text-primary">{lastSaleData.saleNumber}</p>
+            <p className="text-2xl font-semibold text-muted-foreground">
+              {formatCLP(lastSaleData.total)}
+            </p>
+          </div>
 
-            {lastSaleData.pickupData && (
-              <div className="border-t pt-6">
-                <PickupQRDialog
-                  open={true}
-                  onClose={() => {}}
-                  token={lastSaleData.pickupData.token}
-                  saleNumber={lastSaleData.saleNumber}
-                  expiresAt={lastSaleData.pickupData.expiresAt}
-                  items={lastSaleData.pickupData.items}
-                  total={lastSaleData.total}
-                  barName={lastSaleData.pickupData.barName}
-                  embedded
-                />
-              </div>
-            )}
+          {lastSaleData.pickupData && (
+            <div className="border-t pt-6">
+              <PickupQRDialog
+                open={true}
+                onClose={() => {}}
+                token={lastSaleData.pickupData.token}
+                saleNumber={lastSaleData.saleNumber}
+                expiresAt={lastSaleData.pickupData.expiresAt}
+                items={lastSaleData.pickupData.items}
+                total={lastSaleData.total}
+                barName={lastSaleData.pickupData.barName}
+                embedded
+              />
+            </div>
+          )}
 
-            <Button
-              onClick={handleNewSale}
-              size="lg"
-              className="w-full text-lg py-6"
-            >
-              Nueva Venta
-            </Button>
-          </Card>
-        </div>
-      </>
+          <Button
+            onClick={handleNewSale}
+            size="lg"
+            className="w-full text-lg py-6"
+          >
+            Nueva Venta
+          </Button>
+        </Card>
+      </div>
     );
   }
 
   return (
     <>
-      {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-14' : ''}`}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         {/* Compact Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useDemoMode } from "@/hooks/useDemoMode";
 import { AdminOverview } from "@/components/dashboard/AdminOverview";
 import { ProductsList } from "@/components/dashboard/ProductsList";
 import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
@@ -16,8 +15,6 @@ import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation"
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
-import { DemoWatermark } from "@/components/DemoWatermark";
-import { DemoModeBanner } from "@/components/DemoModeBanner";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -28,7 +25,6 @@ type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "exp
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
-  const { isDemoMode, demoVenue, refreshDemoStatus } = useDemoMode();
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
@@ -91,8 +87,7 @@ export default function Admin() {
 
   return (
     <SidebarProvider>
-      {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-10' : ''}`}>
+      <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
         
         <main className="flex-1 overflow-auto">
@@ -114,9 +109,6 @@ export default function Admin() {
           <div className="p-6 space-y-6 animate-fade-in">
             {activeView === "overview" && (
               <div className="space-y-6">
-                {isDemoMode && !isReadOnly && (
-                  <DemoModeBanner isAdmin={true} onDemoActivated={refreshDemoStatus} />
-                )}
                 <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
               </div>
             )}

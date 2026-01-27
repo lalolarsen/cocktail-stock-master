@@ -12,7 +12,6 @@ import { formatCLP } from "@/lib/currency";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { DemoWatermark } from "@/components/DemoWatermark";
 import { useDemoLogging } from "@/hooks/useDemoLogging";
 import {
   Select,
@@ -431,9 +430,7 @@ export default function Tickets() {
   // POS Selection Screen
   if (step === "select-pos") {
     return (
-      <>
-        {isDemoMode && <DemoWatermark />}
-        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
           <div className="max-w-lg mx-auto space-y-6 pt-12">
             <div className="text-center space-y-2">
               <Ticket className="w-16 h-16 mx-auto text-primary" />
@@ -494,18 +491,15 @@ export default function Tickets() {
                 Cerrar Sesión
               </Button>
             </Card>
-          </div>
         </div>
-      </>
+      </div>
     );
   }
 
   // Success Screen
   if (step === "success" && saleResult) {
     return (
-      <>
-        {isDemoMode && <DemoWatermark />}
-        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center ${isDemoMode ? 'pt-14' : ''}`}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center">
           <Card className="w-full max-w-lg p-6 text-center space-y-6">
             <div className="flex items-center justify-center gap-2 text-green-600">
               <Check className="h-8 w-8" />
@@ -544,7 +538,6 @@ export default function Tickets() {
           </Button>
         </Card>
       </div>
-      </>
     );
   }
 
@@ -554,9 +547,7 @@ export default function Tickets() {
   // Block UI if no active jornada
   if (!activeJornadaId && step === "select-tickets") {
     return (
-      <>
-        {isDemoMode && <DemoWatermark />}
-        <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 ${isDemoMode ? 'pt-14' : ''}`}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
           <div className="max-w-lg mx-auto space-y-6 pt-12">
             <div className="text-center space-y-2">
               <ShieldAlert className="w-16 h-16 mx-auto text-destructive" />
@@ -587,14 +578,11 @@ export default function Tickets() {
             </Card>
           </div>
         </div>
-      </>
     );
   }
 
   return (
-    <>
-      {isDemoMode && <DemoWatermark />}
-      <div className={`min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 ${isDemoMode ? 'pt-14' : ''}`}>
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="flex flex-col lg:flex-row min-h-screen">
           {/* Left: Ticket Grid (70%) */}
           <div className="flex-1 lg:w-[70%] p-4 space-y-4">
@@ -898,6 +886,5 @@ export default function Tickets() {
         </div>
       </div>
     </div>
-    </>
   );
 }
