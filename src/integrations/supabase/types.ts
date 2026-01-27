@@ -2052,6 +2052,62 @@ export type Database = {
           },
         ]
       }
+      sidebar_config: {
+        Row: {
+          created_at: string
+          external_path: string | null
+          feature_flag: string | null
+          icon_name: string
+          id: string
+          is_enabled: boolean
+          menu_key: string
+          menu_label: string
+          role: string
+          sort_order: number
+          updated_at: string
+          venue_id: string
+          view_type: string
+        }
+        Insert: {
+          created_at?: string
+          external_path?: string | null
+          feature_flag?: string | null
+          icon_name?: string
+          id?: string
+          is_enabled?: boolean
+          menu_key: string
+          menu_label: string
+          role: string
+          sort_order?: number
+          updated_at?: string
+          venue_id: string
+          view_type: string
+        }
+        Update: {
+          created_at?: string
+          external_path?: string | null
+          feature_flag?: string | null
+          icon_name?: string
+          id?: string
+          is_enabled?: boolean
+          menu_key?: string
+          menu_label?: string
+          role?: string
+          sort_order?: number
+          updated_at?: string
+          venue_id?: string
+          view_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sidebar_config_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_alerts: {
         Row: {
           alert_type: string
@@ -2851,6 +2907,10 @@ export type Database = {
         Returns: Json
       }
       dev_reset_flags_to_stable: { Args: { p_venue_id: string }; Returns: Json }
+      dev_save_sidebar_config: {
+        Args: { p_items: Json; p_role: string; p_venue_id: string }
+        Returns: Json
+      }
       dev_set_feature_flag: {
         Args: { p_is_enabled: boolean; p_key: string; p_venue_id: string }
         Returns: Json
@@ -2929,6 +2989,10 @@ export type Database = {
         }[]
       }
       get_open_jornada: { Args: never; Returns: Json }
+      get_sidebar_config: {
+        Args: { p_role: string; p_venue_id: string }
+        Returns: Json
+      }
       get_venue_flags: {
         Args: { p_venue_id: string }
         Returns: {

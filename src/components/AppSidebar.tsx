@@ -1,5 +1,6 @@
 import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useFeatureFlags, FeatureKey } from "@/hooks/useFeatureFlags";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { useUserRole, AppRole } from "@/hooks/useUserRole";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -33,10 +35,25 @@ type MenuItem = {
   value: ViewType;
   icon: typeof Wine;
   featureFlag?: FeatureKey;
-  path?: string; // Optional path for external navigation
+  path?: string;
 };
 
-// Role-specific menu configurations - minimal and focused
+// Icon mapping for dynamic config
+const ICON_MAP: Record<string, typeof Wine> = {
+  Wine,
+  Package,
+  Martini,
+  Users,
+  Calendar,
+  FileText,
+  Receipt,
+  Warehouse,
+  ArrowRightLeft,
+  Bell,
+  Ticket,
+};
+
+// Default role-specific menu configurations (fallback)
 const ADMIN_MENU: MenuItem[] = [
   { title: "Panel General", value: "overview", icon: Wine },
   { title: "Jornadas", value: "jornadas", icon: Calendar, featureFlag: "jornadas" },
@@ -54,7 +71,6 @@ const GERENCIA_MENU: MenuItem[] = [
   { title: "Notificaciones", value: "notifications", icon: Bell },
 ];
 
-// External navigation items for gerencia
 const GERENCIA_EXTERNAL_PATHS = [
   { title: "Estado de Resultados", path: "/admin/reports/estado-resultados", icon: FileText },
   { title: "Auditoría Retiros", path: "/admin/pickups", icon: Receipt },
@@ -72,7 +88,35 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   const { isEnabled } = useFeatureFlags();
   const { state } = useSidebar();
   const { role } = useUserRole();
+  const { venue } = useActiveVenue();
   const isCollapsed = state === "collapsed";
+
+  // Fetch custom sidebar config for this venue/role
+  const { data: customConfig } = useQuery({
+    queryKey: ["sidebar-config-active", venue?.id, role],
+    queryFn: async () => {
+      if (!venue?.id || !role) return null;
+      const { data, error } = await supabase.rpc("get_sidebar_config", {
+        p_venue_id: venue.id,
+        p_role: role,
+      });
+      if (error) {
+        console.error("Error fetching sidebar config:", error);
+        return null;
+      }
+      return data as unknown as Array<{
+        menu_key: string;
+        menu_label: string;
+        icon_name: string;
+        view_type: string;
+        feature_flag: string | null;
+        external_path: string | null;
+        is_enabled: boolean;
+      }> | null;
+    },
+    enabled: !!venue?.id && !!role,
+    staleTime: 1000 * 60 * 5,
+  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -83,13 +127,49 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     navigate(path);
   };
 
-  // Get menu items based on role
-  const getMenuItems = (): MenuItem[] => {
-    if (isReadOnly || role === "gerencia") {
-      return filterByFeatureFlags(GERENCIA_MENU, isEnabled);
+  // Convert custom config to menu items
+  const getMenuItemsFromConfig = (): { internal: MenuItem[]; external: Array<{ title: string; path: string; icon: typeof Wine }> } => {
+    if (!customConfig || customConfig.length === 0) {
+      // Fallback to hardcoded defaults
+      const isGerencia = isReadOnly || role === "gerencia";
+      const defaultItems = isGerencia 
+        ? filterByFeatureFlags(GERENCIA_MENU, isEnabled)
+        : filterByFeatureFlags(ADMIN_MENU, isEnabled);
+      const externalItems = isGerencia ? GERENCIA_EXTERNAL_PATHS : [];
+      return { internal: defaultItems, external: externalItems };
     }
-    return filterByFeatureFlags(ADMIN_MENU, isEnabled);
+
+    const internal: MenuItem[] = [];
+    const external: Array<{ title: string; path: string; icon: typeof Wine }> = [];
+
+    customConfig.forEach(item => {
+      if (!item.is_enabled) return;
+      
+      // Check feature flag
+      if (item.feature_flag && !isEnabled(item.feature_flag as FeatureKey)) return;
+
+      const icon = ICON_MAP[item.icon_name] || Wine;
+
+      if (item.external_path) {
+        external.push({
+          title: item.menu_label,
+          path: item.external_path,
+          icon,
+        });
+      } else {
+        internal.push({
+          title: item.menu_label,
+          value: item.view_type as ViewType,
+          icon,
+          featureFlag: item.feature_flag as FeatureKey | undefined,
+        });
+      }
+    });
+
+    return { internal, external };
   };
+
+  const { internal: menuItems, external: externalLinks } = getMenuItemsFromConfig();
 
   // Render a menu item
   const renderMenuItem = (item: MenuItem) => {
@@ -112,7 +192,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     );
   };
 
-  // Render external link (no external icon)
+  // Render external link
   const renderExternalLink = (link: { title: string; path: string; icon: typeof Wine }) => (
     <SidebarMenuItem key={link.path}>
       <SidebarMenuButton
@@ -125,8 +205,6 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
-
-  const menuItems = getMenuItems();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
@@ -158,13 +236,13 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
           </SidebarGroup>
         )}
 
-        {/* External links for Gerencia */}
-        {(isReadOnly || role === "gerencia") && GERENCIA_EXTERNAL_PATHS.length > 0 && (
+        {/* External links */}
+        {externalLinks.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Contabilidad</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {GERENCIA_EXTERNAL_PATHS.map(renderExternalLink)}
+                {externalLinks.map(renderExternalLink)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

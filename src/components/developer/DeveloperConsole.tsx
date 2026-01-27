@@ -16,13 +16,15 @@ import {
   LayoutDashboard,
   Flag,
   ClipboardList,
-  Wrench
+  Wrench,
+  PanelLeft
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OverviewTab } from "./OverviewTab";
 import { FlagsTab } from "./FlagsTab";
 import { AuditTab } from "./AuditTab";
 import { ToolsTab } from "./ToolsTab";
+import { SidebarConfigTab } from "./SidebarConfigTab";
 
 export default function DeveloperConsole() {
   const navigate = useNavigate();
@@ -141,7 +143,7 @@ export default function DeveloperConsole() {
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto">
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 max-w-md">
+          <TabsList className="grid w-full grid-cols-5 max-w-xl">
             <TabsTrigger value="overview" className="gap-1.5">
               <LayoutDashboard className="h-4 w-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -149,6 +151,10 @@ export default function DeveloperConsole() {
             <TabsTrigger value="flags" className="gap-1.5">
               <Flag className="h-4 w-4" />
               <span className="hidden sm:inline">Flags</span>
+            </TabsTrigger>
+            <TabsTrigger value="sidebar" className="gap-1.5">
+              <PanelLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Sidebar</span>
             </TabsTrigger>
             <TabsTrigger value="audit" className="gap-1.5">
               <ClipboardList className="h-4 w-4" />
@@ -169,6 +175,13 @@ export default function DeveloperConsole() {
           
           <TabsContent value="flags">
             <FlagsTab 
+              selectedVenueId={selectedVenueId} 
+              onSelectVenue={setSelectedVenueId} 
+            />
+          </TabsContent>
+          
+          <TabsContent value="sidebar">
+            <SidebarConfigTab 
               selectedVenueId={selectedVenueId} 
               onSelectVenue={setSelectedVenueId} 
             />
