@@ -25,15 +25,23 @@ import {
   Clock, 
   Loader2,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  UserPlus
 } from "lucide-react";
 
 interface ToolsTabProps {
   selectedVenueId: string | null;
 }
 
+// Berlin venue ID
+const BERLIN_VENUE_ID = "4e128e76-980d-4233-a438-92aa02cfb50b";
+
 export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
   const [jornadaIdForRecalc, setJornadaIdForRecalc] = useState("");
+  const [workerRut, setWorkerRut] = useState("21238851-3");
+  const [workerPin, setWorkerPin] = useState("2123");
+  const [workerName, setWorkerName] = useState("Admin Berlín");
+  const [workerRole, setWorkerRole] = useState<"admin" | "vendedor" | "bar" | "ticket_seller">("admin");
 
   // Reset Demo Data
   const resetDemoMutation = useMutation({
@@ -91,6 +99,30 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
     },
     onError: (error: Error) => {
       console.error("Expire tokens error:", error);
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
+  // Create Worker User
+  const createWorkerMutation = useMutation({
+    mutationFn: async (params: { venue_id: string; rut_code: string; pin: string; full_name: string; role: string }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+
+      const response = await supabase.functions.invoke("create-worker-user", {
+        body: params,
+      });
+
+      if (response.error) throw new Error(response.error.message);
+      if (!response.data.success) throw new Error(response.data.error || "Unknown error");
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(`Usuario creado: ${data.full_name} (${data.rut_code})`);
+      console.log("Create worker successful:", data);
+    },
+    onError: (error: Error) => {
+      console.error("Create worker error:", error);
       toast.error(`Error: ${error.message}`);
     },
   });
@@ -250,6 +282,112 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
               </AlertDialogContent>
             </AlertDialog>
           </div>
+
+          {/* Create Worker User */}
+          <div className="p-4 border rounded-lg space-y-3 border-primary/50 bg-primary/5">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-primary" />
+                Crear Usuario Worker
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Crea un usuario operacional para el venue Berlín con Supabase Auth.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="worker-rut" className="text-xs">RUT</Label>
+                <Input
+                  id="worker-rut"
+                  placeholder="21238851-3"
+                  value={workerRut}
+                  onChange={(e) => setWorkerRut(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label htmlFor="worker-pin" className="text-xs">PIN</Label>
+                <Input
+                  id="worker-pin"
+                  type="text"
+                  placeholder="2123"
+                  value={workerPin}
+                  onChange={(e) => setWorkerPin(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="worker-name" className="text-xs">Nombre Completo</Label>
+                <Input
+                  id="worker-name"
+                  placeholder="Admin Berlín"
+                  value={workerName}
+                  onChange={(e) => setWorkerName(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="worker-role" className="text-xs">Rol</Label>
+                <select
+                  id="worker-role"
+                  value={workerRole}
+                  onChange={(e) => setWorkerRole(e.target.value as any)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="vendedor">Vendedor</option>
+                  <option value="bar">Bartender</option>
+                  <option value="ticket_seller">Ticket Seller</option>
+                </select>
+              </div>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  disabled={!workerRut.trim() || !workerPin.trim() || !workerName.trim()}
+                  className="gap-2"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Crear Usuario Berlín
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Crear usuario worker?</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2">
+                      <p>Se creará un usuario con los siguientes datos:</p>
+                      <div className="p-3 bg-muted rounded text-xs font-mono space-y-1">
+                        <div><strong>Venue:</strong> Berlín Valdivia</div>
+                        <div><strong>RUT:</strong> {workerRut}</div>
+                        <div><strong>PIN:</strong> {workerPin}</div>
+                        <div><strong>Nombre:</strong> {workerName}</div>
+                        <div><strong>Rol:</strong> {workerRole}</div>
+                      </div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => createWorkerMutation.mutate({
+                      venue_id: BERLIN_VENUE_ID,
+                      rut_code: workerRut,
+                      pin: workerPin,
+                      full_name: workerName,
+                      role: workerRole,
+                    })}
+                    disabled={createWorkerMutation.isPending}
+                  >
+                    {createWorkerMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Crear Usuario
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
 
@@ -276,7 +414,13 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 Tokens expirados: {(expireTokensMutation.data as any)?.expired_count || 0}
               </div>
             )}
-            {!resetDemoMutation.isSuccess && !recalcMutation.isSuccess && !expireTokensMutation.isSuccess && (
+            {createWorkerMutation.isSuccess && (
+              <div className="flex items-center gap-2 text-primary">
+                <CheckCircle2 className="h-4 w-4" />
+                Usuario creado: {(createWorkerMutation.data as any)?.full_name}
+              </div>
+            )}
+            {!resetDemoMutation.isSuccess && !recalcMutation.isSuccess && !expireTokensMutation.isSuccess && !createWorkerMutation.isSuccess && (
               <div className="text-muted-foreground">
                 No hay operaciones recientes
               </div>
