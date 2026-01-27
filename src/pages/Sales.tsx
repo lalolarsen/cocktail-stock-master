@@ -12,6 +12,7 @@ import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import {
@@ -58,6 +59,7 @@ type POSTerminal = {
 export default function Sales() {
   const { activeJornadaId, hasActiveJornada } = useActiveJornada();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
+  const { venue } = useActiveVenue();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [pointOfSale, setPointOfSale] = useState("");
@@ -122,12 +124,12 @@ export default function Sales() {
   }, []);
 
   useEffect(() => {
-    if (isVerified && !showPosSelection) {
+    if (isVerified && !showPosSelection && venue?.id) {
       fetchCocktails();
       fetchRecentSales();
       fetchUserPointOfSale();
     }
-  }, [isVerified, showPosSelection]);
+  }, [isVerified, showPosSelection, venue?.id]);
 
   // Save POS selection to localStorage
   useEffect(() => {
@@ -204,9 +206,12 @@ export default function Sales() {
   };
 
   const fetchCocktails = async () => {
+    if (!venue?.id) return;
+    
     const { data, error } = await supabase
       .from("cocktails")
       .select("*")
+      .eq("venue_id", venue.id)
       .order("name");
 
     if (error) {

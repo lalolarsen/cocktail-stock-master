@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wine, Pencil, Trash2, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,7 @@ interface Cocktail {
   description: string | null;
   price: number;
   category: string;
+  venue_id: string;
 }
 
 interface Ingredient {
@@ -67,6 +69,7 @@ interface CocktailsMenuProps {
 }
 
 export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
+  const { venue } = useActiveVenue();
   const [cocktails, setCocktails] = useState<CocktailWithIngredients[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +87,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   });
 
   useEffect(() => {
+    if (!venue?.id) return;
+    
     fetchCocktails();
     fetchProducts();
     
@@ -100,7 +105,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [venue?.id]);
 
   const fetchProducts = async () => {
     const { data, error } = await supabase
@@ -117,10 +122,13 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   };
 
   const fetchCocktails = async () => {
+    if (!venue?.id) return;
+    
     setLoading(true);
     const { data: cocktailsData, error: cocktailsError } = await supabase
       .from("cocktails")
       .select("*")
+      .eq("venue_id", venue.id)
       .order("name");
 
     if (cocktailsError) {
@@ -247,8 +255,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         .delete()
         .eq("cocktail_id", selectedCocktail.id);
 
-      // Insert new ingredients
-      if (editForm.ingredients.length > 0) {
+      // Insert new ingredients with venue_id
+      if (editForm.ingredients.length > 0 && venue?.id) {
         const { error: ingredientsError } = await supabase
           .from("cocktail_ingredients")
           .insert(
@@ -256,6 +264,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               cocktail_id: selectedCocktail.id,
               product_id: ing.product_id,
               quantity: ing.quantity,
+              venue_id: venue.id,
             }))
           );
 
@@ -272,8 +281,13 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   };
 
   const handleAdd = async () => {
+    if (!venue?.id) {
+      toast.error("No se pudo determinar el venue activo");
+      return;
+    }
+    
     try {
-      // Insert cocktail
+      // Insert cocktail with venue_id
       const { data: cocktailData, error: cocktailError } = await supabase
         .from("cocktails")
         .insert({
@@ -281,13 +295,14 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           description: editForm.description,
           price: editForm.price,
           category: editForm.category,
+          venue_id: venue.id,
         })
         .select()
         .single();
 
       if (cocktailError) throw cocktailError;
 
-      // Insert ingredients
+      // Insert ingredients with venue_id
       if (editForm.ingredients.length > 0) {
         const { error: ingredientsError } = await supabase
           .from("cocktail_ingredients")
@@ -296,6 +311,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               cocktail_id: cocktailData.id,
               product_id: ing.product_id,
               quantity: ing.quantity,
+              venue_id: venue.id,
             }))
           );
 
