@@ -315,6 +315,17 @@ export function ReplenishmentManager() {
 
     setSubmitting(true);
     try {
+      // Get venue_id from user profile
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("venue_id")
+        .eq("id", user!.id)
+        .single();
+      
+      const venueId = profile?.venue_id;
+      if (!venueId) throw new Error("No venue assigned");
+
       // Create plan
       const { data: planData, error: planError } = await supabase
         .from("replenishment_plans")
@@ -323,7 +334,8 @@ export function ReplenishmentManager() {
           jornada_id: selectedJornadaId || null,
           plan_date: format(planDate, "yyyy-MM-dd"),
           status: "draft",
-          created_by: (await supabase.auth.getUser()).data.user?.id,
+          created_by: user?.id,
+          venue_id: venueId,
         })
         .select()
         .single();
@@ -336,6 +348,7 @@ export function ReplenishmentManager() {
         to_location_id: item.to_location_id,
         product_id: item.product_id,
         quantity: item.quantity,
+        venue_id: venueId,
       }));
 
       const { error: itemsError } = await supabase.from("replenishment_plan_items").insert(items);

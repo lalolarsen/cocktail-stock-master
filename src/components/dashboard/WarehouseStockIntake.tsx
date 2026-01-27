@@ -171,6 +171,17 @@ export function WarehouseStockIntake({
 
     setSubmittingManual(true);
     try {
+      // Get venue_id from user profile
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("venue_id")
+        .eq("id", user!.id)
+        .single();
+      
+      const venueId = profile?.venue_id;
+      if (!venueId) throw new Error("No venue assigned");
+
       const unitCost = manualUnitCost ? parseFloat(manualUnitCost) : null;
       
       // Create stock movement
@@ -184,6 +195,7 @@ export function WarehouseStockIntake({
           unit_cost: unitCost,
           source_type: "manual",
           notes: `${manualReason}${manualNotes ? `: ${manualNotes}` : ""}`,
+          venue_id: venueId,
         });
 
       if (movementError) throw movementError;
@@ -196,6 +208,7 @@ export function WarehouseStockIntake({
             location_id: warehouseId,
             product_id: manualProductId,
             quantity: quantity,
+            venue_id: venueId,
           },
           {
             onConflict: "location_id,product_id",
@@ -220,7 +233,7 @@ export function WarehouseStockIntake({
         } else {
           await supabase
             .from("stock_balances")
-            .insert({ location_id: warehouseId, product_id: manualProductId, quantity });
+            .insert({ location_id: warehouseId, product_id: manualProductId, quantity, venue_id: venueId });
         }
       }
 
@@ -345,6 +358,17 @@ export function WarehouseStockIntake({
 
     setSubmittingExcel(true);
     try {
+      // Get venue_id from user profile
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("venue_id")
+        .eq("id", user!.id)
+        .single();
+      
+      const venueId = profile?.venue_id;
+      if (!venueId) throw new Error("No venue assigned");
+
       let successCount = 0;
 
       for (const row of validRows) {
@@ -357,6 +381,7 @@ export function WarehouseStockIntake({
           unit_cost: row.unit_cost || null,
           source_type: "excel",
           notes: "Importación desde Excel",
+          venue_id: venueId,
         });
 
         // Update stock balance
@@ -381,6 +406,7 @@ export function WarehouseStockIntake({
             location_id: warehouseId,
             product_id: row.matched_product_id,
             quantity: row.quantity,
+            venue_id: venueId,
           });
         }
 

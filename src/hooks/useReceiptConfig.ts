@@ -53,6 +53,18 @@ export function useReceiptConfig(): ReceiptConfig {
 
   const updateReceiptMode = async (mode: ReceiptMode): Promise<boolean> => {
     try {
+      // Get venue_id from user profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user");
+      
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("venue_id")
+        .eq("id", user.id)
+        .single();
+      
+      if (!profile?.venue_id) throw new Error("No venue assigned");
+      
       // Upsert the config - use known ID or create new
       const configId = id || "00000000-0000-0000-0000-000000000001";
       
@@ -62,6 +74,7 @@ export function useReceiptConfig(): ReceiptConfig {
           id: configId,
           receipt_mode: mode,
           updated_at: new Date().toISOString(),
+          venue_id: profile.venue_id
         }, {
           onConflict: "id"
         });

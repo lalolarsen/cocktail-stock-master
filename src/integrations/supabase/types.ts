@@ -22,6 +22,7 @@ export type Database = {
           details: Json | null
           id: string
           target_worker_id: string | null
+          venue_id: string
         }
         Insert: {
           action: string
@@ -30,6 +31,7 @@ export type Database = {
           details?: Json | null
           id?: string
           target_worker_id?: string | null
+          venue_id: string
         }
         Update: {
           action?: string
@@ -38,6 +40,7 @@ export type Database = {
           details?: Json | null
           id?: string
           target_worker_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -52,6 +55,13 @@ export type Database = {
             columns: ["target_worker_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -145,6 +155,7 @@ export type Database = {
           jornada_id: string
           opening_cash: number
           updated_at: string
+          venue_id: string
         }
         Insert: {
           closing_cash?: number | null
@@ -155,6 +166,7 @@ export type Database = {
           jornada_id: string
           opening_cash?: number
           updated_at?: string
+          venue_id: string
         }
         Update: {
           closing_cash?: number | null
@@ -165,6 +177,7 @@ export type Database = {
           jornada_id?: string
           opening_cash?: number
           updated_at?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -172,6 +185,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: true
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_registers_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -575,6 +595,7 @@ export type Database = {
           id: string
           receipt_mode: string
           updated_at: string
+          venue_id: string
         }
         Insert: {
           active_provider?: string
@@ -583,6 +604,7 @@ export type Database = {
           id?: string
           receipt_mode?: string
           updated_at?: string
+          venue_id: string
         }
         Update: {
           active_provider?: string
@@ -591,8 +613,17 @@ export type Database = {
           id?: string
           receipt_mode?: string
           updated_at?: string
+          venue_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "invoicing_config_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jornada_audit_log: {
         Row: {
@@ -852,6 +883,7 @@ export type Database = {
           hora_apertura: string
           hora_cierre: string
           id: string
+          venue_id: string
         }
         Insert: {
           activo?: boolean
@@ -860,6 +892,7 @@ export type Database = {
           hora_apertura: string
           hora_cierre: string
           id?: string
+          venue_id: string
         }
         Update: {
           activo?: boolean
@@ -868,8 +901,17 @@ export type Database = {
           hora_apertura?: string
           hora_cierre?: string
           id?: string
+          venue_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "jornada_config_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jornada_financial_summary: {
         Row: {
@@ -1101,6 +1143,7 @@ export type Database = {
           login_at: string
           user_agent: string | null
           user_id: string
+          venue_id: string
         }
         Insert: {
           id?: string
@@ -1109,6 +1152,7 @@ export type Database = {
           login_at?: string
           user_agent?: string | null
           user_id: string
+          venue_id: string
         }
         Update: {
           id?: string
@@ -1117,6 +1161,7 @@ export type Database = {
           login_at?: string
           user_agent?: string | null
           user_id?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1124,6 +1169,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "login_history_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -1251,6 +1303,7 @@ export type Database = {
           redeemed_at: string
           result: Database["public"]["Enums"]["redemption_result"]
           sale_id: string | null
+          venue_id: string
         }
         Insert: {
           bartender_id: string
@@ -1262,6 +1315,7 @@ export type Database = {
           redeemed_at?: string
           result: Database["public"]["Enums"]["redemption_result"]
           sale_id?: string | null
+          venue_id: string
         }
         Update: {
           bartender_id?: string
@@ -1273,6 +1327,7 @@ export type Database = {
           redeemed_at?: string
           result?: Database["public"]["Enums"]["redemption_result"]
           sale_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1287,6 +1342,13 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_redemptions_log_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -1784,6 +1846,7 @@ export type Database = {
           quantity: number
           replenishment_plan_id: string
           to_location_id: string
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -1792,6 +1855,7 @@ export type Database = {
           quantity: number
           replenishment_plan_id: string
           to_location_id: string
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -1800,6 +1864,7 @@ export type Database = {
           quantity?: number
           replenishment_plan_id?: string
           to_location_id?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1823,6 +1888,13 @@ export type Database = {
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "replenishment_plan_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       replenishment_plans: {
@@ -1836,6 +1908,7 @@ export type Database = {
           plan_date: string
           status: Database["public"]["Enums"]["replenishment_plan_status"]
           updated_at: string
+          venue_id: string
         }
         Insert: {
           applied_at?: string | null
@@ -1847,6 +1920,7 @@ export type Database = {
           plan_date?: string
           status?: Database["public"]["Enums"]["replenishment_plan_status"]
           updated_at?: string
+          venue_id: string
         }
         Update: {
           applied_at?: string | null
@@ -1858,6 +1932,7 @@ export type Database = {
           plan_date?: string
           status?: Database["public"]["Enums"]["replenishment_plan_status"]
           updated_at?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1865,6 +1940,13 @@ export type Database = {
             columns: ["jornada_id"]
             isOneToOne: false
             referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "replenishment_plans_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -1878,6 +1960,7 @@ export type Database = {
           sale_id: string
           subtotal: number
           unit_price: number
+          venue_id: string
         }
         Insert: {
           cocktail_id: string
@@ -1887,6 +1970,7 @@ export type Database = {
           sale_id: string
           subtotal: number
           unit_price: number
+          venue_id: string
         }
         Update: {
           cocktail_id?: string
@@ -1896,6 +1980,7 @@ export type Database = {
           sale_id?: string
           subtotal?: number
           unit_price?: number
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1910,6 +1995,13 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -2015,6 +2107,7 @@ export type Database = {
           sale_id: string
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -2033,6 +2126,7 @@ export type Database = {
           sale_id: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -2051,6 +2145,7 @@ export type Database = {
           sale_id?: string
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2058,6 +2153,13 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: true
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -2127,6 +2229,7 @@ export type Database = {
           jornada_id: string | null
           message: string
           product_id: string | null
+          venue_id: string
         }
         Insert: {
           alert_type?: string
@@ -2136,6 +2239,7 @@ export type Database = {
           jornada_id?: string | null
           message: string
           product_id?: string | null
+          venue_id: string
         }
         Update: {
           alert_type?: string
@@ -2145,6 +2249,7 @@ export type Database = {
           jornada_id?: string | null
           message?: string
           product_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2161,6 +2266,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "stock_alerts_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       stock_balances: {
@@ -2171,6 +2283,7 @@ export type Database = {
           product_id: string
           quantity: number
           updated_at: string
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -2179,6 +2292,7 @@ export type Database = {
           product_id: string
           quantity?: number
           updated_at?: string
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -2187,6 +2301,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           updated_at?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2201,6 +2316,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_balances_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -2325,6 +2447,7 @@ export type Database = {
           transfer_id: string | null
           unit_cost: number | null
           unit_cost_snapshot: number | null
+          venue_id: string
         }
         Insert: {
           created_at?: string | null
@@ -2343,6 +2466,7 @@ export type Database = {
           transfer_id?: string | null
           unit_cost?: number | null
           unit_cost_snapshot?: number | null
+          venue_id: string
         }
         Update: {
           created_at?: string | null
@@ -2361,6 +2485,7 @@ export type Database = {
           transfer_id?: string | null
           unit_cost?: number | null
           unit_cost_snapshot?: number | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2412,6 +2537,13 @@ export type Database = {
             referencedRelation: "stock_transfers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "stock_movements_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       stock_predictions: {
@@ -2422,6 +2554,7 @@ export type Database = {
           predicted_consumption: number
           prediction_period: string
           product_id: string | null
+          venue_id: string
         }
         Insert: {
           confidence_score?: number | null
@@ -2430,6 +2563,7 @@ export type Database = {
           predicted_consumption: number
           prediction_period: string
           product_id?: string | null
+          venue_id: string
         }
         Update: {
           confidence_score?: number | null
@@ -2438,6 +2572,7 @@ export type Database = {
           predicted_consumption?: number
           prediction_period?: string
           product_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2445,6 +2580,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_predictions_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -2456,6 +2598,7 @@ export type Database = {
           product_id: string
           quantity: number
           transfer_id: string
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -2463,6 +2606,7 @@ export type Database = {
           product_id: string
           quantity: number
           transfer_id: string
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -2470,6 +2614,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           transfer_id?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2486,6 +2631,13 @@ export type Database = {
             referencedRelation: "stock_transfers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "stock_transfer_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       stock_transfers: {
@@ -2497,6 +2649,7 @@ export type Database = {
           notes: string | null
           to_location_id: string
           transferred_by: string
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -2506,6 +2659,7 @@ export type Database = {
           notes?: string | null
           to_location_id: string
           transferred_by: string
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -2515,6 +2669,7 @@ export type Database = {
           notes?: string | null
           to_location_id?: string
           transferred_by?: string
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2538,6 +2693,13 @@ export type Database = {
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "stock_transfers_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ticket_sale_items: {
@@ -2549,6 +2711,7 @@ export type Database = {
           ticket_sale_id: string
           ticket_type_id: string
           unit_price: number
+          venue_id: string
         }
         Insert: {
           created_at?: string | null
@@ -2558,6 +2721,7 @@ export type Database = {
           ticket_sale_id: string
           ticket_type_id: string
           unit_price: number
+          venue_id: string
         }
         Update: {
           created_at?: string | null
@@ -2567,6 +2731,7 @@ export type Database = {
           ticket_sale_id?: string
           ticket_type_id?: string
           unit_price?: number
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2581,6 +2746,13 @@ export type Database = {
             columns: ["ticket_type_id"]
             isOneToOne: false
             referencedRelation: "ticket_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_sale_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -3003,6 +3175,7 @@ export type Database = {
         Args: { p_role: string; p_venue_id: string }
         Returns: Json
       }
+      get_user_venue_id: { Args: never; Returns: string }
       get_venue_flags: {
         Args: { p_venue_id: string }
         Returns: {
