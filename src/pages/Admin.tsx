@@ -15,13 +15,13 @@ import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation"
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
+import { VenueResetPanel } from "@/components/dashboard/VenueResetPanel";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Badge } from "@/components/ui/badge";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { VenueGuard } from "@/components/VenueGuard";
-import { Menu, Eye } from "lucide-react";
+import { Menu } from "lucide-react";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -107,6 +107,9 @@ export default function Admin() {
             </header>
 
           <div className="p-6 space-y-6 animate-fade-in">
+            {/* Developer-only venue reset panel */}
+            <VenueResetPanel />
+            
             {activeView === "overview" && (
               <div className="space-y-6">
                 <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
