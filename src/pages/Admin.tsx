@@ -94,21 +94,15 @@ export default function Admin() {
           <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
           
           <main className="flex-1 overflow-auto">
-            <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
+            <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
                     <Menu className="w-5 h-5" />
                   </SidebarTrigger>
-                  <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
-                  {isReadOnly && (
-                    <Badge variant="secondary" className="flex items-center gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
-                      <Eye className="w-3 h-3" />
-                      Gerencia – solo lectura
-                    </Badge>
-                  )}
+                  <h1 className="text-xl font-semibold text-foreground">{getViewTitle()}</h1>
                 </div>
-                <VenueIndicator variant="header" />
+                <VenueIndicator variant="header" showRole />
               </div>
             </header>
 
