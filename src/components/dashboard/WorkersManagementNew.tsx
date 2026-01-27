@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   Loader2, Users, Key, Save, Plus, UserPlus, History, Clock, 
-  Power, PowerOff, RefreshCw, Eye, EyeOff, Shield, ShoppingCart, Wine
+  Power, PowerOff, RefreshCw, Eye, EyeOff, Shield, ShoppingCart, Wine, Sparkles
 } from "lucide-react";
 import {
   Table,
@@ -74,6 +74,7 @@ const AVAILABLE_ROLES: { value: AppRole; label: string; icon: any; color: string
   { value: "gerencia", label: "Gerencia", icon: Eye, color: "text-amber-500" },
   { value: "vendedor", label: "Vendedor", icon: ShoppingCart, color: "text-green-500" },
   { value: "bar", label: "Barra", icon: Wine, color: "text-purple-500" },
+  { value: "ticket_seller", label: "Ticketero", icon: Sparkles, color: "text-amber-400" },
 ];
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
