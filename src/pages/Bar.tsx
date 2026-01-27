@@ -7,8 +7,6 @@ import { toast } from "sonner";
 import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine, History, Usb } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import { DemoWatermark } from "@/components/DemoWatermark";
-import { useDemoMode } from "@/hooks/useDemoMode";
 import { Html5Qrcode } from "html5-qrcode";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -187,7 +185,6 @@ function generateHistoryLabel(result: RedemptionResult): string {
 }
 
 export default function Bar() {
-  const { isDemoMode } = useDemoMode();
   const isMobile = useIsMobile();
   const [isVerified, setIsVerified] = useState(true);
   
@@ -1093,8 +1090,6 @@ export default function Bar() {
 
   return (
     <>
-      {isDemoMode && <DemoWatermark />}
-      
       {/* HIDDEN USB SCANNER INPUT - Always present, always focused */}
       <input
         ref={scannerInputRef}
@@ -1107,7 +1102,7 @@ export default function Bar() {
         tabIndex={-1}
       />
       
-      <div className={`min-h-screen bg-background flex flex-col ${isDemoMode ? 'pt-10' : ''}`}>
+      <div className="min-h-screen bg-background flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border bg-card">
           <div className="flex flex-col" onClick={handleHeaderTap}>

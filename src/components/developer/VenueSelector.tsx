@@ -84,9 +84,9 @@ export function VenueSelector({ selectedVenueId, onSelectVenue }: VenueSelectorP
             ) : (
               <span className="text-muted-foreground">Seleccionar venue...</span>
             )}
-            {selectedVenue?.is_demo && (
+            {selectedVenue?.name.includes('Berlín') && (
               <Badge variant="secondary" className="text-xs bg-primary/20 text-primary">
-                {selectedVenue.name.includes('Berlín') ? 'Piloto' : 'Demo'}
+                Piloto
               </Badge>
             )}
           </div>
@@ -115,9 +115,9 @@ export function VenueSelector({ selectedVenueId, onSelectVenue }: VenueSelectorP
                     )}
                   />
                   <span className="flex-1 truncate">{venue.name}</span>
-                  {venue.is_demo && (
+                  {venue.name.includes('Berlín') && (
                     <Badge variant="secondary" className="text-xs ml-2 bg-primary/20 text-primary">
-                      {venue.name.includes('Berlín') ? 'Piloto' : 'Demo'}
+                      Piloto
                     </Badge>
                   )}
                 </CommandItem>
