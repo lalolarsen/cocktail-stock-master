@@ -73,7 +73,7 @@ const VIEW_TYPES = [
 ];
 
 const FEATURE_FLAGS = [
-  "", "ventas_alcohol", "ventas_tickets", "qr_cover", "inventario", 
+  "none", "ventas_alcohol", "ventas_tickets", "qr_cover", "inventario", 
   "reposicion", "importacion_excel", "jornadas", "arqueo", "reportes",
   "contabilidad_basica", "contabilidad_avanzada", "lector_facturas"
 ];
@@ -408,16 +408,16 @@ export function SidebarConfigTab({ selectedVenueId, onSelectVenue }: SidebarConf
                         <div>
                           <Label className="text-xs text-muted-foreground">Feature Flag</Label>
                           <Select 
-                            value={item.feature_flag || ""} 
-                            onValueChange={(v) => updateItem(index, "feature_flag", v || null)}
+                            value={item.feature_flag || "none"} 
+                            onValueChange={(v) => updateItem(index, "feature_flag", v === "none" ? null : v)}
                           >
                             <SelectTrigger className="h-8 text-sm">
                               <SelectValue placeholder="Ninguno" />
                             </SelectTrigger>
                             <SelectContent>
                               {FEATURE_FLAGS.map(f => (
-                                <SelectItem key={f || "none"} value={f}>
-                                  {f || "(ninguno)"}
+                                <SelectItem key={f} value={f}>
+                                  {f === "none" ? "(ninguno)" : f}
                                 </SelectItem>
                               ))}
                             </SelectContent>
