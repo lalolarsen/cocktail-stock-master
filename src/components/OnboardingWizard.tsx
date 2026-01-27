@@ -214,13 +214,16 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   };
 
   const saveInvoicingConfig = async () => {
+    if (!venueId) return;
+    
     const { error } = await supabase
       .from("invoicing_config")
       .upsert({
         id: "00000000-0000-0000-0000-000000000001",
         active_provider: invoicingProvider,
-        config: {}
-      });
+        config: {},
+        venue_id: venueId
+      }, { onConflict: "id" });
     
     if (error && error.code !== "23505") throw error;
   };

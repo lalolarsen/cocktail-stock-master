@@ -392,6 +392,7 @@ export default function Sales() {
         quantity: item.quantity,
         unit_price: item.cocktail.price,
         subtotal: item.cocktail.price * item.quantity,
+        venue_id: venue?.id,
       }));
 
       const { error: itemsError } = await supabase

@@ -226,6 +226,7 @@ export default function Auth() {
       await supabase.from("login_history").insert({
         user_id: authData.user!.id,
         user_agent: navigator.userAgent,
+        venue_id: worker.venue_id,
       });
 
       // Fetch roles and route
