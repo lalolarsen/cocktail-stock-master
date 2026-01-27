@@ -397,6 +397,44 @@ export type Database = {
           },
         ]
       }
+      developer_reset_audit: {
+        Row: {
+          deleted_rows: number
+          developer_user_id: string
+          executed_at: string
+          id: number
+          table_key: string
+          table_name: string
+          venue_id: string
+        }
+        Insert: {
+          deleted_rows: number
+          developer_user_id: string
+          executed_at?: string
+          id?: number
+          table_key: string
+          table_name: string
+          venue_id: string
+        }
+        Update: {
+          deleted_rows?: number
+          developer_user_id?: string
+          executed_at?: string
+          id?: number
+          table_key?: string
+          table_name?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "developer_reset_audit_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount: number
@@ -1951,6 +1989,36 @@ export type Database = {
           },
         ]
       }
+      resettable_tables: {
+        Row: {
+          created_at: string
+          danger_level: number
+          description: string | null
+          is_enabled: boolean
+          key: string
+          sort_order: number
+          table_name: string
+        }
+        Insert: {
+          created_at?: string
+          danger_level?: number
+          description?: string | null
+          is_enabled?: boolean
+          key: string
+          sort_order?: number
+          table_name: string
+        }
+        Update: {
+          created_at?: string
+          danger_level?: number
+          description?: string | null
+          is_enabled?: boolean
+          key?: string
+          sort_order?: number
+          table_name?: string
+        }
+        Relationships: []
+      }
       sale_items: {
         Row: {
           cocktail_id: string
@@ -3095,6 +3163,18 @@ export type Database = {
       }
       dev_set_feature_flag: {
         Args: { p_is_enabled: boolean; p_key: string; p_venue_id: string }
+        Returns: Json
+      }
+      developer_get_table_counts: {
+        Args: { p_venue_id: string }
+        Returns: Json
+      }
+      developer_reset_table: {
+        Args: { p_table_key: string; p_venue_id: string }
+        Returns: number
+      }
+      developer_reset_venue_operational: {
+        Args: { p_venue_id: string }
         Returns: Json
       }
       enqueue_jornada_closed_notifications: {
