@@ -1,6 +1,7 @@
 import { MapPin } from "lucide-react";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 
 interface VenueIndicatorProps {
   variant?: "header" | "sidebar";
@@ -8,7 +9,7 @@ interface VenueIndicatorProps {
 }
 
 export function VenueIndicator({ variant = "header", className = "" }: VenueIndicatorProps) {
-  const { displayName, isLoading, error } = useActiveVenue();
+  const { displayName, isLoading, error, isDemo } = useActiveVenue();
 
   if (isLoading) {
     return (
@@ -28,6 +29,11 @@ export function VenueIndicator({ variant = "header", className = "" }: VenueIndi
       <div className={`flex items-center gap-2 px-2 py-1.5 rounded-lg bg-primary/10 text-primary ${className}`}>
         <MapPin className="w-4 h-4 shrink-0" />
         <span className="text-sm font-medium truncate">{displayName}</span>
+        {isDemo && (
+          <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400">
+            DEMO
+          </Badge>
+        )}
       </div>
     );
   }
@@ -37,6 +43,11 @@ export function VenueIndicator({ variant = "header", className = "" }: VenueIndi
     <div className={`flex items-center gap-1.5 text-muted-foreground ${className}`}>
       <MapPin className="w-4 h-4 shrink-0" />
       <span className="text-sm font-medium">{displayName}</span>
+      {isDemo && (
+        <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 ml-1">
+          DEMO
+        </Badge>
+      )}
     </div>
   );
 }

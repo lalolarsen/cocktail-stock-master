@@ -34,32 +34,21 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Get Berlín venue (primary pilot venue) or fallback to demo
+    // Get Demo DiStock venue (NOT Berlín - that's production)
     let { data: venue } = await supabaseAdmin
       .from("venues")
       .select("id")
-      .eq("slug", "berlin-valdivia")
+      .eq("slug", "demo-distock")
       .single();
 
     if (!venue) {
-      // Fallback: try any demo venue
-      const { data: demoVenue } = await supabaseAdmin
-        .from("venues")
-        .select("id")
-        .eq("is_demo", true)
-        .single();
-      
-      if (demoVenue) {
-        venue = demoVenue;
-      } else {
-        // Seed demo data to create Berlín
-        const { data: seedResult, error: seedError } = await supabaseAdmin.rpc("seed_demo_data");
-        if (seedError) {
-          console.error("Error seeding demo data:", seedError);
-          throw new Error("Failed to seed demo data");
-        }
-        venue = { id: seedResult.venue_id };
+      // Seed demo data to create Demo DiStock venue
+      const { data: seedResult, error: seedError } = await supabaseAdmin.rpc("seed_demo_data");
+      if (seedError) {
+        console.error("Error seeding demo data:", seedError);
+        throw new Error("Failed to seed demo data");
       }
+      venue = { id: (seedResult as { venue_id: string }).venue_id };
     }
 
     const venueId = venue.id;

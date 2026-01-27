@@ -5,6 +5,7 @@ export interface ActiveVenue {
   id: string;
   name: string;
   slug: string;
+  isDemo: boolean;
 }
 
 interface UseActiveVenueReturn {
@@ -12,6 +13,7 @@ interface UseActiveVenueReturn {
   isLoading: boolean;
   error: string | null;
   displayName: string | null;
+  isDemo: boolean;
 }
 
 export function useActiveVenue(): UseActiveVenueReturn {
@@ -49,7 +51,7 @@ export function useActiveVenue(): UseActiveVenueReturn {
         // Fetch venue details
         const { data: venueData, error: venueError } = await supabase
           .from("venues")
-          .select("id, name, slug")
+          .select("id, name, slug, is_demo")
           .eq("id", profile.venue_id)
           .single();
 
@@ -63,6 +65,7 @@ export function useActiveVenue(): UseActiveVenueReturn {
           id: venueData.id,
           name: venueData.name,
           slug: venueData.slug,
+          isDemo: venueData.is_demo || venueData.slug === 'demo-distock',
         });
       } catch (err) {
         console.error("Error fetching active venue:", err);
@@ -88,7 +91,9 @@ export function useActiveVenue(): UseActiveVenueReturn {
     ? formatVenueName(venue.name)
     : null;
 
-  return { venue, isLoading, error, displayName };
+  const isDemo = venue?.isDemo || venue?.slug === 'demo-distock';
+
+  return { venue, isLoading, error, displayName, isDemo };
 }
 
 // Format venue name: "Berlín Valdivia" → "Berlín – Valdivia"
