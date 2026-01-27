@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { VenueResetPanel } from "@/components/dashboard/VenueResetPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -185,6 +186,9 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
 
   return (
     <div className="space-y-4">
+      {/* Berlin Full Reset Panel */}
+      <VenueResetPanel />
+      
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

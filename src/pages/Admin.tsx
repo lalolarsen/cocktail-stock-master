@@ -15,7 +15,7 @@ import { InventoryByLocation } from "@/components/dashboard/InventoryByLocation"
 import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
-import { VenueResetPanel } from "@/components/dashboard/VenueResetPanel";
+
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -107,9 +107,6 @@ export default function Admin() {
             </header>
 
           <div className="p-6 space-y-6 animate-fade-in">
-            {/* Developer-only venue reset panel */}
-            <VenueResetPanel />
-            
             {activeView === "overview" && (
               <div className="space-y-6">
                 <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
