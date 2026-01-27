@@ -1496,37 +1496,49 @@ export type Database = {
       }
       pos_terminals: {
         Row: {
+          business_type: string | null
+          code: string | null
           created_at: string
           id: string
           is_active: boolean
           is_cash_register: boolean
           location_id: string
           name: string
+          pos_kind: string | null
           pos_type: string
           updated_at: string
           venue_id: string | null
+          zone: string | null
         }
         Insert: {
+          business_type?: string | null
+          code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
           is_cash_register?: boolean
           location_id: string
           name: string
+          pos_kind?: string | null
           pos_type?: string
           updated_at?: string
           venue_id?: string | null
+          zone?: string | null
         }
         Update: {
+          business_type?: string | null
+          code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
           is_cash_register?: boolean
           location_id?: string
           name?: string
+          pos_kind?: string | null
           pos_type?: string
           updated_at?: string
           venue_id?: string | null
+          zone?: string | null
         }
         Relationships: [
           {
