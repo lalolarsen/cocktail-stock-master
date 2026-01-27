@@ -19,6 +19,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { VenueIndicator } from "@/components/VenueIndicator";
+import { VenueGuard } from "@/components/VenueGuard";
 import { Menu, Eye } from "lucide-react";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
@@ -86,25 +88,29 @@ export default function Admin() {
   };
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
-        
-        <main className="flex-1 overflow-auto">
-          <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
-            <div className="flex items-center gap-4">
-              <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
-                <Menu className="w-5 h-5" />
-              </SidebarTrigger>
-              <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
-              {isReadOnly && (
-                <Badge variant="secondary" className="flex items-center gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
-                  <Eye className="w-3 h-3" />
-                  Gerencia – solo lectura
-                </Badge>
-              )}
-            </div>
-          </header>
+    <VenueGuard>
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+          <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
+          
+          <main className="flex-1 overflow-auto">
+            <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
+                    <Menu className="w-5 h-5" />
+                  </SidebarTrigger>
+                  <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
+                  {isReadOnly && (
+                    <Badge variant="secondary" className="flex items-center gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <Eye className="w-3 h-3" />
+                      Gerencia – solo lectura
+                    </Badge>
+                  )}
+                </div>
+                <VenueIndicator variant="header" />
+              </div>
+            </header>
 
           <div className="p-6 space-y-6 animate-fade-in">
             {activeView === "overview" && (
@@ -190,5 +196,6 @@ export default function Admin() {
         </main>
       </div>
     </SidebarProvider>
+  </VenueGuard>
   );
 }

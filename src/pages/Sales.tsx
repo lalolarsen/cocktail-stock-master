@@ -12,6 +12,8 @@ import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
+import { VenueGuard } from "@/components/VenueGuard";
+import { VenueIndicator } from "@/components/VenueIndicator";
 import {
   Select,
   SelectContent,
@@ -663,7 +665,8 @@ export default function Sales() {
   }
 
   return (
-    <>
+    <VenueGuard>
+      <>
       <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         {/* Compact Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
@@ -680,10 +683,13 @@ export default function Sales() {
                 </Button>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Salir
-            </Button>
+            <div className="flex items-center gap-4">
+              <VenueIndicator variant="header" />
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Salir
+              </Button>
+            </div>
           </div>
           <OutsideJornadaBanner blockSales={true} />
         </div>
@@ -956,6 +962,7 @@ export default function Sales() {
           barName={pickupQRData.barName}
         />
       )}
-    </>
+      </>
+    </VenueGuard>
   );
 }
