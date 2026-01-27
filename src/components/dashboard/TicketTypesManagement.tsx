@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { Plus, Edit, Trash2, Ticket, Wine, Loader2 } from "lucide-react";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 
 interface TicketType {
   id: string;
@@ -29,6 +30,7 @@ interface Cocktail {
 }
 
 export function TicketTypesManagement() {
+  const { venue } = useActiveVenue();
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,14 +47,18 @@ export function TicketTypesManagement() {
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (venue?.id) {
+      fetchData();
+    }
+  }, [venue?.id]);
 
   const fetchData = async () => {
+    if (!venue?.id) return;
+    
     try {
       const [typesRes, cocktailsRes] = await Promise.all([
-        supabase.from("ticket_types").select("*").order("price"),
-        supabase.from("cocktails").select("id, name").order("name")
+        supabase.from("ticket_types").select("*").eq("venue_id", venue.id).order("price"),
+        supabase.from("cocktails").select("id, name").eq("venue_id", venue.id).order("name")
       ]);
 
       if (typesRes.error) throw typesRes.error;

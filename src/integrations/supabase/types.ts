@@ -183,6 +183,7 @@ export type Database = {
           id: string
           product_id: string
           quantity: number
+          venue_id: string
         }
         Insert: {
           cocktail_id: string
@@ -190,6 +191,7 @@ export type Database = {
           id?: string
           product_id: string
           quantity: number
+          venue_id: string
         }
         Update: {
           cocktail_id?: string
@@ -197,6 +199,7 @@ export type Database = {
           id?: string
           product_id?: string
           quantity?: number
+          venue_id?: string
         }
         Relationships: [
           {
@@ -213,6 +216,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cocktail_ingredients_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cocktails: {
@@ -223,7 +233,7 @@ export type Database = {
           id: string
           name: string
           price: number
-          venue_id: string | null
+          venue_id: string
           waste_ml_per_serving: number | null
         }
         Insert: {
@@ -233,7 +243,7 @@ export type Database = {
           id?: string
           name: string
           price?: number
-          venue_id?: string | null
+          venue_id: string
           waste_ml_per_serving?: number | null
         }
         Update: {
@@ -243,7 +253,7 @@ export type Database = {
           id?: string
           name?: string
           price?: number
-          venue_id?: string | null
+          venue_id?: string
           waste_ml_per_serving?: number | null
         }
         Relationships: [
