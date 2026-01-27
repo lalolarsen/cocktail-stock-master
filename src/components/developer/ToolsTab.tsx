@@ -18,6 +18,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   RefreshCw, 
   Trash2, 
@@ -26,22 +33,42 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  UserPlus
+  UserPlus,
+  Building2
 } from "lucide-react";
 
 interface ToolsTabProps {
   selectedVenueId: string | null;
 }
 
-// Berlin venue ID
-const BERLIN_VENUE_ID = "4e128e76-980d-4233-a438-92aa02cfb50b";
+interface Venue {
+  id: string;
+  name: string;
+  slug: string;
+  is_demo: boolean;
+}
 
 export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
   const [jornadaIdForRecalc, setJornadaIdForRecalc] = useState("");
-  const [workerRut, setWorkerRut] = useState("21238851-3");
-  const [workerPin, setWorkerPin] = useState("2123");
-  const [workerName, setWorkerName] = useState("Admin Berlín");
-  const [workerRole, setWorkerRole] = useState<"admin" | "vendedor" | "bar" | "ticket_seller">("admin");
+  const [workerRut, setWorkerRut] = useState("");
+  const [workerPin, setWorkerPin] = useState("");
+  const [workerName, setWorkerName] = useState("");
+  const [workerRole, setWorkerRole] = useState<"admin" | "vendedor" | "bar" | "ticket_seller" | "gerencia">("vendedor");
+  const [workerVenueId, setWorkerVenueId] = useState<string>("");
+  const [cleanVenueId, setCleanVenueId] = useState<string>("");
+
+  // Fetch all venues for selectors
+  const { data: venues = [] } = useQuery({
+    queryKey: ["dev-venues-tools"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("venues")
+        .select("id, name, slug, is_demo")
+        .order("name");
+      if (error) throw error;
+      return data as Venue[];
+    },
+  });
 
   // Reset Demo Data
   const resetDemoMutation = useMutation({
@@ -58,6 +85,27 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
     },
     onError: (error: Error) => {
       console.error("Reset demo error:", error);
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
+  // Clean Venue Data (general purpose)
+  const cleanVenueMutation = useMutation({
+    mutationFn: async (venueId: string) => {
+      const { data, error } = await supabase.rpc("dev_clean_venue_data", {
+        p_venue_id: venueId,
+      });
+      if (error) throw error;
+      const result = data as { success: boolean; error?: string; deleted_sales?: number; deleted_jornadas?: number };
+      if (!result.success) throw new Error(result.error || "Unknown error");
+      return result;
+    },
+    onSuccess: (data) => {
+      toast.success(`Venue limpiado: ${data.deleted_sales} ventas, ${data.deleted_jornadas} jornadas eliminadas`);
+      console.log("Clean venue successful:", data);
+    },
+    onError: (error: Error) => {
+      console.error("Clean venue error:", error);
       toast.error(`Error: ${error.message}`);
     },
   });
@@ -120,12 +168,20 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
     onSuccess: (data) => {
       toast.success(`Usuario creado: ${data.full_name} (${data.rut_code})`);
       console.log("Create worker successful:", data);
+      // Clear form
+      setWorkerRut("");
+      setWorkerPin("");
+      setWorkerName("");
+      setWorkerRole("vendedor");
     },
     onError: (error: Error) => {
       console.error("Create worker error:", error);
       toast.error(`Error: ${error.message}`);
     },
   });
+
+  const selectedVenueForWorker = venues.find(v => v.id === workerVenueId);
+  const selectedVenueForClean = venues.find(v => v.id === cleanVenueId);
 
   return (
     <div className="space-y-4">
@@ -140,6 +196,90 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Clean Venue Data */}
+          <div className="p-4 border border-destructive/50 rounded-lg space-y-3 bg-destructive/5">
+            <div>
+              <h3 className="font-medium flex items-center gap-2 text-destructive">
+                <Trash2 className="h-4 w-4" />
+                Limpiar Datos de Venue
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Elimina TODOS los datos transaccionales (ventas, jornadas, tokens, etc.) de un venue específico.
+                Preserva configuración, productos y trabajadores.
+              </p>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Label className="text-xs">Seleccionar Venue</Label>
+                <Select value={cleanVenueId} onValueChange={setCleanVenueId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar venue..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {venues.map((venue) => (
+                      <SelectItem key={venue.id} value={venue.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-3 w-3" />
+                          {venue.name}
+                          {venue.is_demo && (
+                            <Badge variant="secondary" className="text-xs ml-1">Demo</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    disabled={!cleanVenueId}
+                    className="gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Limpiar Venue
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-destructive">
+                      ⚠️ ¿Limpiar datos del venue?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-3">
+                        <p>Esta acción eliminará <strong>TODOS</strong> los datos transaccionales de:</p>
+                        <div className="p-3 bg-destructive/10 border border-destructive/30 rounded text-sm font-medium">
+                          {selectedVenueForClean?.name || "Venue seleccionado"}
+                        </div>
+                        <p className="text-xs">
+                          Se eliminarán: ventas, jornadas, tokens, movimientos de stock, cierres de caja.
+                          <br />
+                          Se preservarán: productos, trabajadores, configuración.
+                        </p>
+                        <p className="text-destructive font-medium text-sm">
+                          Esta acción NO se puede deshacer.
+                        </p>
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => cleanVenueMutation.mutate(cleanVenueId)}
+                      disabled={cleanVenueMutation.isPending}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {cleanVenueMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Sí, limpiar venue
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+
           {/* Reset Demo Data */}
           <div className="p-4 border rounded-lg space-y-3">
             <div className="flex items-center justify-between">
@@ -149,14 +289,14 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                   Reset Demo Data
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Limpia datos de demo (ventas, jornadas, tokens) preservando usuarios y configuración.
+                  Limpia datos del venue "Demo DiStock" únicamente.
                 </p>
               </div>
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" className="gap-2">
-                  <Trash2 className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
                   Reset Demo
                 </Button>
               </AlertDialogTrigger>
@@ -165,7 +305,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                   <AlertDialogTitle>¿Resetear datos de demo?</AlertDialogTitle>
                   <AlertDialogDescription>
                     Esta acción eliminará ventas, jornadas, tokens y otros datos transaccionales
-                    del venue demo. Los usuarios y configuración se preservarán.
+                    del venue "Demo DiStock". Los usuarios y configuración se preservarán.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -173,7 +313,6 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                   <AlertDialogAction
                     onClick={() => resetDemoMutation.mutate()}
                     disabled={resetDemoMutation.isPending}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
                     {resetDemoMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     Confirmar Reset
@@ -291,15 +430,36 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 Crear Usuario Worker
               </h3>
               <p className="text-sm text-muted-foreground">
-                Crea un usuario operacional para el venue Berlín con Supabase Auth.
+                Crea un usuario operacional para cualquier venue con Supabase Auth.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label className="text-xs">Venue</Label>
+                <Select value={workerVenueId} onValueChange={setWorkerVenueId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar venue..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {venues.map((venue) => (
+                      <SelectItem key={venue.id} value={venue.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-3 w-3" />
+                          {venue.name}
+                          {venue.is_demo && (
+                            <Badge variant="secondary" className="text-xs ml-1">Demo</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label htmlFor="worker-rut" className="text-xs">RUT</Label>
                 <Input
                   id="worker-rut"
-                  placeholder="21238851-3"
+                  placeholder="12345678-9"
                   value={workerRut}
                   onChange={(e) => setWorkerRut(e.target.value)}
                   className="font-mono text-sm"
@@ -310,7 +470,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 <Input
                   id="worker-pin"
                   type="text"
-                  placeholder="2123"
+                  placeholder="1234"
                   value={workerPin}
                   onChange={(e) => setWorkerPin(e.target.value)}
                   className="font-mono text-sm"
@@ -320,7 +480,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 <Label htmlFor="worker-name" className="text-xs">Nombre Completo</Label>
                 <Input
                   id="worker-name"
-                  placeholder="Admin Berlín"
+                  placeholder="Juan Pérez"
                   value={workerName}
                   onChange={(e) => setWorkerName(e.target.value)}
                   className="text-sm"
@@ -328,17 +488,18 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
               </div>
               <div className="col-span-2">
                 <Label htmlFor="worker-role" className="text-xs">Rol</Label>
-                <select
-                  id="worker-role"
-                  value={workerRole}
-                  onChange={(e) => setWorkerRole(e.target.value as any)}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="vendedor">Vendedor</option>
-                  <option value="bar">Bartender</option>
-                  <option value="ticket_seller">Ticket Seller</option>
-                </select>
+                <Select value={workerRole} onValueChange={(v) => setWorkerRole(v as any)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="gerencia">Gerencia</SelectItem>
+                    <SelectItem value="vendedor">Vendedor</SelectItem>
+                    <SelectItem value="bar">Bartender</SelectItem>
+                    <SelectItem value="ticket_seller">Ticket Seller</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <AlertDialog>
@@ -346,11 +507,11 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 <Button 
                   variant="default" 
                   size="sm" 
-                  disabled={!workerRut.trim() || !workerPin.trim() || !workerName.trim()}
+                  disabled={!workerVenueId || !workerRut.trim() || !workerPin.trim() || !workerName.trim()}
                   className="gap-2"
                 >
                   <UserPlus className="h-4 w-4" />
-                  Crear Usuario Berlín
+                  Crear Usuario
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -360,7 +521,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                     <div className="space-y-2">
                       <p>Se creará un usuario con los siguientes datos:</p>
                       <div className="p-3 bg-muted rounded text-xs font-mono space-y-1">
-                        <div><strong>Venue:</strong> Berlín Valdivia</div>
+                        <div><strong>Venue:</strong> {selectedVenueForWorker?.name || "-"}</div>
                         <div><strong>RUT:</strong> {workerRut}</div>
                         <div><strong>PIN:</strong> {workerPin}</div>
                         <div><strong>Nombre:</strong> {workerName}</div>
@@ -373,7 +534,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => createWorkerMutation.mutate({
-                      venue_id: BERLIN_VENUE_ID,
+                      venue_id: workerVenueId,
                       rut_code: workerRut,
                       pin: workerPin,
                       full_name: workerName,
@@ -396,6 +557,12 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
         <CardContent className="p-4">
           <h4 className="text-sm font-medium mb-3">Estado de operaciones recientes</h4>
           <div className="space-y-2 text-sm">
+            {cleanVenueMutation.isSuccess && (
+              <div className="flex items-center gap-2 text-primary">
+                <CheckCircle2 className="h-4 w-4" />
+                Venue limpiado: {(cleanVenueMutation.data as any)?.deleted_sales} ventas, {(cleanVenueMutation.data as any)?.deleted_jornadas} jornadas
+              </div>
+            )}
             {resetDemoMutation.isSuccess && (
               <div className="flex items-center gap-2 text-primary">
                 <CheckCircle2 className="h-4 w-4" />
@@ -420,7 +587,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
                 Usuario creado: {(createWorkerMutation.data as any)?.full_name}
               </div>
             )}
-            {!resetDemoMutation.isSuccess && !recalcMutation.isSuccess && !expireTokensMutation.isSuccess && !createWorkerMutation.isSuccess && (
+            {!cleanVenueMutation.isSuccess && !resetDemoMutation.isSuccess && !recalcMutation.isSuccess && !expireTokensMutation.isSuccess && !createWorkerMutation.isSuccess && (
               <div className="text-muted-foreground">
                 No hay operaciones recientes
               </div>
