@@ -2844,6 +2844,7 @@ export type Database = {
         }
         Returns: Json
       }
+      dev_clean_venue_data: { Args: { p_venue_id: string }; Returns: Json }
       dev_expire_old_tokens: { Args: never; Returns: Json }
       dev_recalculate_jornada_summaries: {
         Args: { p_jornada_id: string }
