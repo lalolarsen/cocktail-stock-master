@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useFeatureFlags, FeatureKey } from "@/hooks/useFeatureFlags";
+import { VenueIndicator } from "@/components/VenueIndicator";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -153,7 +154,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="p-4 space-y-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
             <Wine className="w-6 h-6 text-primary-foreground" />
@@ -167,6 +168,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
             </div>
           )}
         </div>
+        {!isCollapsed && <VenueIndicator variant="sidebar" />}
       </SidebarHeader>
 
       <SidebarContent>

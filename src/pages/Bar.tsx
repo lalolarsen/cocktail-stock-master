@@ -14,6 +14,8 @@ import { es } from "date-fns/locale";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logAuditEvent } from "@/lib/monitoring";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { VenueGuard } from "@/components/VenueGuard";
+import { VenueIndicator } from "@/components/VenueIndicator";
 
 type MissingItem = {
   product_name: string;
@@ -1089,7 +1091,8 @@ export default function Bar() {
   }
 
   return (
-    <>
+    <VenueGuard>
+      <>
       {/* HIDDEN USB SCANNER INPUT - Always present, always focused */}
       <input
         ref={scannerInputRef}
@@ -1116,7 +1119,8 @@ export default function Bar() {
             </div>
             {userName && <p className="text-xs text-muted-foreground">{userName}</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <VenueIndicator variant="header" />
             <Button variant="ghost" size="sm" onClick={changeBarSelection}>Cambiar</Button>
             <Button variant="ghost" size="sm" onClick={handleLogout}><LogOut className="w-4 h-4" /></Button>
           </div>
@@ -1373,6 +1377,7 @@ export default function Bar() {
           )}
         </div>
       </div>
-    </>
+      </>
+    </VenueGuard>
   );
 }

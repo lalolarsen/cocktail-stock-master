@@ -13,6 +13,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDemoLogging } from "@/hooks/useDemoLogging";
+import { VenueGuard } from "@/components/VenueGuard";
+import { VenueIndicator } from "@/components/VenueIndicator";
 import {
   Select,
   SelectContent,
@@ -582,6 +584,7 @@ export default function Tickets() {
   }
 
   return (
+    <VenueGuard>
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="flex flex-col lg:flex-row min-h-screen">
           {/* Left: Ticket Grid (70%) */}
@@ -599,26 +602,24 @@ export default function Tickets() {
                     </p>
                   )}
                 </div>
-                {isDemoMode && (
-                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                    Ticket Seller
-                  </Badge>
-                )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  setCart(new Map());
-                  setSaleResult(null);
-                  navigate("/auth");
-                }}
-                className="gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Salir</span>
-              </Button>
+              <div className="flex items-center gap-4">
+                <VenueIndicator variant="header" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setCart(new Map());
+                    setSaleResult(null);
+                    navigate("/auth");
+                  }}
+                  className="gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:inline">Salir</span>
+                </Button>
+              </div>
             </div>
 
           {/* Ticket Types Grid */}
@@ -886,5 +887,6 @@ export default function Tickets() {
         </div>
       </div>
     </div>
+    </VenueGuard>
   );
 }
