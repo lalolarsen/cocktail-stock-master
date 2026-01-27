@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertCircle, Flag, Loader2, RotateCcw } from "lucide-react";
+import { AlertCircle, Flag, Loader2, RotateCcw, ShoppingCart, Ticket, QrCode, Package, ArrowRightLeft, FileUp, Calendar, Wallet, FileText, Calculator, Receipt, FileCheck } from "lucide-react";
 import { VenueSelector } from "./VenueSelector";
 import {
   AlertDialog,
@@ -20,43 +20,74 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Separator } from "@/components/ui/separator";
 
 interface FlagsTabProps {
   selectedVenueId: string | null;
   onSelectVenue: (venueId: string | null) => void;
 }
 
-const KNOWN_FLAGS = [
-  { key: "FEATURE_TICKETS", name: "Módulo de Tickets", description: "Ventas de entradas/covers" },
-  { key: "FEATURE_QR_REDEMPTION", name: "Canje QR", description: "Tokens de retiro en barra" },
-  { key: "FEATURE_MULTI_POS", name: "Multi POS", description: "Múltiples puntos de venta" },
-  { key: "FEATURE_INVOICING", name: "Facturación Electrónica", description: "Boletas y facturas SII" },
-  { key: "FEATURE_EXPIRES_TRACKING", name: "Tracking de Vencimientos", description: "Control de lotes y fechas" },
-  { key: "FEATURE_INVOICE_STOCK_READER", name: "Lector de Facturas", description: "OCR de documentos de compra" },
+// Organized feature flags by category
+const FLAG_CATEGORIES = [
+  {
+    name: "Ventas",
+    icon: ShoppingCart,
+    flags: [
+      { key: "ventas_alcohol", name: "Ventas de Alcohol", description: "Venta de bebidas alcohólicas en barra", icon: ShoppingCart },
+      { key: "ventas_tickets", name: "Ventas de Tickets", description: "Módulo de venta de entradas/covers", icon: Ticket },
+      { key: "qr_cover", name: "QR Cover", description: "Tokens de retiro de cover en barra", icon: QrCode },
+    ],
+  },
+  {
+    name: "Inventario",
+    icon: Package,
+    flags: [
+      { key: "inventario", name: "Inventario", description: "Gestión de inventario y stock", icon: Package },
+      { key: "reposicion", name: "Reposición", description: "Control de reposición entre ubicaciones", icon: ArrowRightLeft },
+      { key: "importacion_excel", name: "Importación Excel", description: "Importar facturas desde Excel", icon: FileUp },
+    ],
+  },
+  {
+    name: "Operaciones",
+    icon: Calendar,
+    flags: [
+      { key: "jornadas", name: "Jornadas", description: "Gestión de jornadas laborales", icon: Calendar },
+      { key: "arqueo", name: "Arqueo de Caja", description: "Control y cierre de caja", icon: Wallet },
+      { key: "reportes", name: "Reportes", description: "Acceso a reportes y estadísticas", icon: FileText },
+    ],
+  },
+  {
+    name: "Contabilidad",
+    icon: Calculator,
+    flags: [
+      { key: "contabilidad_basica", name: "Contabilidad Básica", description: "Ingresos, gastos y estado de resultados", icon: Calculator },
+      { key: "contabilidad_avanzada", name: "Contabilidad Avanzada", description: "Facturación electrónica SII", icon: Receipt },
+      { key: "lector_facturas", name: "Lector de Facturas", description: "OCR de documentos de compra", icon: FileCheck },
+    ],
+  },
 ];
 
-interface DevFlag {
-  id: string;
-  venue_id: string;
-  key: string;
-  is_enabled: boolean;
-  updated_at: string;
+interface VenueFlag {
+  flag_key: string;
+  flag_name: string;
+  description: string;
+  enabled: boolean;
 }
 
 export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
   const queryClient = useQueryClient();
   const [updatingFlag, setUpdatingFlag] = useState<string | null>(null);
 
+  // Fetch flags using the new RPC
   const { data: flags = [], isLoading, isError, error } = useQuery({
-    queryKey: ["dev-flags", selectedVenueId],
+    queryKey: ["venue-flags", selectedVenueId],
     queryFn: async () => {
       if (!selectedVenueId) return [];
-      const { data, error } = await supabase
-        .from("developer_feature_flags")
-        .select("*")
-        .eq("venue_id", selectedVenueId);
+      const { data, error } = await supabase.rpc("get_venue_flags", {
+        p_venue_id: selectedVenueId,
+      });
       if (error) throw error;
-      return data as DevFlag[];
+      return data as VenueFlag[];
     },
     enabled: !!selectedVenueId,
     retry: false,
@@ -75,7 +106,7 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
       return result;
     },
     onSuccess: (_, { key, isEnabled }) => {
-      queryClient.invalidateQueries({ queryKey: ["dev-flags", selectedVenueId] });
+      queryClient.invalidateQueries({ queryKey: ["venue-flags", selectedVenueId] });
       queryClient.invalidateQueries({ queryKey: ["dev-flag-audit"] });
       toast.success(`${key} ${isEnabled ? "activado" : "desactivado"}`);
     },
@@ -96,7 +127,7 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dev-flags", selectedVenueId] });
+      queryClient.invalidateQueries({ queryKey: ["venue-flags", selectedVenueId] });
       queryClient.invalidateQueries({ queryKey: ["dev-flag-audit"] });
       toast.success("Flags reseteados a valores estables v1.0");
     },
@@ -116,9 +147,12 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
   };
 
   const getFlagEnabled = (key: string): boolean => {
-    const flag = flags.find(f => f.key === key);
-    return flag?.is_enabled ?? false;
+    const flag = flags.find(f => f.flag_key === key);
+    return flag?.enabled ?? false;
   };
+
+  const enabledCount = flags.filter(f => f.enabled).length;
+  const totalCount = flags.length;
 
   return (
     <div className="space-y-4">
@@ -129,7 +163,7 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
             Feature Flags
           </CardTitle>
           <CardDescription>
-            Gestiona banderas de funcionalidades para el venue seleccionado
+            Gestiona funcionalidades habilitadas para cada venue
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -139,33 +173,40 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
           />
 
           {selectedVenueId && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <RotateCcw className="h-4 w-4" />
-                  Reset to Stable v1.0
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>¿Resetear flags?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Esto establecerá todos los flags a sus valores estables predeterminados (v1.0).
-                    Solo FEATURE_QR_REDEMPTION quedará activado.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={() => resetMutation.mutate()}
-                    disabled={resetMutation.isPending}
-                  >
-                    {resetMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Confirmar Reset
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {enabledCount}/{totalCount} activos
+                </Badge>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <RotateCcw className="h-4 w-4" />
+                    Reset to Stable
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Resetear flags?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esto establecerá todos los flags a sus valores estables predeterminados.
+                      Las funciones básicas (ventas, inventario, jornadas, arqueo, reportes, contabilidad básica) quedarán activas.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => resetMutation.mutate()}
+                      disabled={resetMutation.isPending}
+                    >
+                      {resetMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Confirmar Reset
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -204,47 +245,57 @@ export function FlagsTab({ selectedVenueId, onSelectVenue }: FlagsTabProps) {
       )}
 
       {selectedVenueId && !isLoading && !isError && (
-        <Card>
-          <CardContent className="p-4 space-y-2">
-            {KNOWN_FLAGS.map(flagDef => {
-              const isEnabled = getFlagEnabled(flagDef.key);
-              const isUpdating = updatingFlag === flagDef.key;
+        <div className="space-y-4">
+          {FLAG_CATEGORIES.map((category) => (
+            <Card key={category.name}>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <category.icon className="h-4 w-4 text-muted-foreground" />
+                  {category.name}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                {category.flags.map((flagDef, index) => {
+                  const isEnabled = getFlagEnabled(flagDef.key);
+                  const isUpdating = updatingFlag === flagDef.key;
 
-              return (
-                <div
-                  key={flagDef.key}
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{flagDef.name}</span>
-                      <Badge 
-                        variant={isEnabled ? "default" : "outline"} 
-                        className="text-xs"
-                      >
-                        {isEnabled ? "ON" : "OFF"}
-                      </Badge>
+                  return (
+                    <div key={flagDef.key}>
+                      {index > 0 && <Separator className="my-2" />}
+                      <div className="flex items-center justify-between py-2">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <flagDef.icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{flagDef.name}</span>
+                              <Badge 
+                                variant={isEnabled ? "default" : "secondary"} 
+                                className="text-xs"
+                              >
+                                {isEnabled ? "ON" : "OFF"}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {flagDef.description}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isUpdating && <Loader2 className="h-4 w-4 animate-spin" />}
+                          <Switch
+                            checked={isEnabled}
+                            disabled={isUpdating}
+                            onCheckedChange={() => handleToggle(flagDef.key, isEnabled)}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {flagDef.description}
-                    </p>
-                    <code className="text-xs text-muted-foreground font-mono">
-                      {flagDef.key}
-                    </code>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isUpdating && <Loader2 className="h-4 w-4 animate-spin" />}
-                    <Switch
-                      checked={isEnabled}
-                      disabled={isUpdating}
-                      onCheckedChange={() => handleToggle(flagDef.key, isEnabled)}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

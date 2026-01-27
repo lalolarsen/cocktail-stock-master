@@ -1,5 +1,5 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp, FileUp, Activity } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, FileCheck, ExternalLink, QrCode, Monitor, Warehouse, ArrowRightLeft, HelpCircle, Bell, Settings, Ticket, Banknote, TrendingUp, FileUp, Activity, Wallet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -35,7 +35,7 @@ type MenuItem = {
   featureFlag?: FeatureKey;
 };
 
-type ExternalLink = {
+type ExternalLinkItem = {
   title: string;
   icon: typeof Wine;
   path: string;
@@ -47,49 +47,49 @@ type ExternalLink = {
 const operationsItems: MenuItem[] = [
   { title: "Panel General", value: "overview", icon: Wine },
   { title: "Barras y POS", value: "pos", icon: Monitor, adminOnly: true },
-  { title: "Inventario", value: "inventory", icon: Warehouse },
-  { title: "Reposición", value: "replenishment", icon: ArrowRightLeft, adminOnly: true },
-  { title: "Productos", value: "products", icon: Package },
-  { title: "Menú", value: "menu", icon: Martini },
+  { title: "Inventario", value: "inventory", icon: Warehouse, featureFlag: "inventario" },
+  { title: "Reposición", value: "replenishment", icon: ArrowRightLeft, adminOnly: true, featureFlag: "reposicion" },
+  { title: "Productos", value: "products", icon: Package, featureFlag: "inventario" },
+  { title: "Menú", value: "menu", icon: Martini, featureFlag: "ventas_alcohol" },
 ];
 
 // Purchases section
-const purchaseLinks: ExternalLink[] = [
-  { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true, featureFlag: "invoice_reader" },
+const purchaseLinks: ExternalLinkItem[] = [
+  { title: "Importar Factura", icon: FileUp, path: "/admin/purchases/import", adminOnly: true, featureFlag: "lector_facturas" },
   { title: "Catálogo Pendiente", icon: Package, path: "/admin/catalog/pending", adminOnly: true },
 ];
 
 // People section
 const peopleItems: MenuItem[] = [
-  { title: "Jornadas", value: "jornadas", icon: Calendar, adminOnly: true },
+  { title: "Jornadas", value: "jornadas", icon: Calendar, adminOnly: true, featureFlag: "jornadas" },
   { title: "Trabajadores", value: "workers", icon: Users },
 ];
 
 // Accounting section (mix of views and external links)
 const accountingViews: MenuItem[] = [
-  { title: "Declaración de Gastos", value: "expenses", icon: Receipt },
-  { title: "Reportes", value: "reports", icon: FileText },
+  { title: "Declaración de Gastos", value: "expenses", icon: Receipt, featureFlag: "contabilidad_basica" },
+  { title: "Reportes", value: "reports", icon: FileText, featureFlag: "reportes" },
 ];
 
-const accountingLinks: ExternalLink[] = [
-  { title: "Ingresos", icon: Banknote, path: "/admin/income" },
-  { title: "Estado de Resultados", icon: TrendingUp, path: "/admin/reports/estado-resultados" },
-  { title: "Documentos", icon: FileCheck, path: "/admin/documents" },
-  { title: "Auditoría Retiros", icon: QrCode, path: "/admin/pickups" },
+const accountingLinks: ExternalLinkItem[] = [
+  { title: "Ingresos", icon: Banknote, path: "/admin/income", featureFlag: "contabilidad_basica" },
+  { title: "Estado de Resultados", icon: TrendingUp, path: "/admin/reports/estado-resultados", featureFlag: "contabilidad_basica" },
+  { title: "Documentos", icon: FileCheck, path: "/admin/documents", featureFlag: "contabilidad_avanzada" },
+  { title: "Auditoría Retiros", icon: QrCode, path: "/admin/pickups", featureFlag: "qr_cover" },
 ];
 
 // Settings section
 const settingsViews: MenuItem[] = [
   { title: "Notificaciones", value: "notifications", icon: Bell, adminOnly: true },
-  { title: "Tipos de Entrada", value: "tickets", icon: Ticket, adminOnly: true, featureFlag: "tickets_module" },
+  { title: "Tipos de Entrada", value: "tickets", icon: Ticket, adminOnly: true, featureFlag: "ventas_tickets" },
 ];
 
-const settingsLinks: ExternalLink[] = [
+const settingsLinks: ExternalLinkItem[] = [
   { title: "Monitoreo", icon: Activity, path: "/admin/monitoring", adminOnly: true },
-  { title: "Feature Flags", icon: Settings, path: "/admin/feature-flags", adminOnly: true },
   { title: "Sistema", icon: Settings, path: "/admin/system", adminOnly: true },
   { title: "Ayuda", icon: HelpCircle, path: "/help" },
 ];
+
 // Helper to filter items by role
 const filterByRole = <T extends { adminOnly?: boolean }>(items: T[], isReadOnly: boolean): T[] => 
   isReadOnly ? items.filter(item => !item.adminOnly) : items;
@@ -116,6 +116,11 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     navigate(path);
   };
 
+  // Apply both filters
+  const filterItems = <T extends { adminOnly?: boolean; featureFlag?: FeatureKey }>(items: T[]): T[] => {
+    return filterByFeatureFlags(filterByRole(items, isReadOnly), isEnabled);
+  };
+
   // Render a menu item (view-based)
   const renderMenuItem = (item: MenuItem) => {
     const isActive = activeView === item.value;
@@ -138,7 +143,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   };
 
   // Render an external link
-  const renderExternalLink = (link: ExternalLink) => (
+  const renderExternalLink = (link: ExternalLinkItem) => (
     <SidebarMenuItem key={link.path}>
       <SidebarMenuButton
         onClick={() => handleExternalNavigation(link.path)}
@@ -151,6 +156,15 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
+
+  // Get filtered items
+  const filteredOperations = filterItems(operationsItems);
+  const filteredPurchaseLinks = filterItems(purchaseLinks);
+  const filteredPeopleItems = filterItems(peopleItems);
+  const filteredAccountingViews = filterItems(accountingViews);
+  const filteredAccountingLinks = filterItems(accountingLinks);
+  const filteredSettingsViews = filterItems(settingsViews);
+  const filteredSettingsLinks = filterItems(settingsLinks);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
@@ -173,58 +187,66 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
       <SidebarContent>
         {/* Operations Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Operaciones</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterByRole(operationsItems, isReadOnly).map(renderMenuItem)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {filteredOperations.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Operaciones</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredOperations.map(renderMenuItem)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Purchases Section */}
-        {!isReadOnly && filterByFeatureFlags(purchaseLinks, isEnabled).length > 0 && (
+        {filteredPurchaseLinks.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Compras</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {filterByFeatureFlags(filterByRole(purchaseLinks, isReadOnly), isEnabled).map(renderExternalLink)}
+                {filteredPurchaseLinks.map(renderExternalLink)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
 
         {/* People Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Equipo</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterByRole(peopleItems, isReadOnly).map(renderMenuItem)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {filteredPeopleItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Equipo</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredPeopleItems.map(renderMenuItem)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Accounting Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Contabilidad</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterByRole(accountingViews, isReadOnly).map(renderMenuItem)}
-              {filterByRole(accountingLinks, isReadOnly).map(renderExternalLink)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {(filteredAccountingViews.length > 0 || filteredAccountingLinks.length > 0) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Contabilidad</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredAccountingViews.map(renderMenuItem)}
+                {filteredAccountingLinks.map(renderExternalLink)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Settings Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Configuración</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterByFeatureFlags(filterByRole(settingsViews, isReadOnly), isEnabled).map(renderMenuItem)}
-              {filterByRole(settingsLinks, isReadOnly).map(renderExternalLink)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {(filteredSettingsViews.length > 0 || filteredSettingsLinks.length > 0) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Configuración</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredSettingsViews.map(renderMenuItem)}
+                {filteredSettingsLinks.map(renderExternalLink)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">

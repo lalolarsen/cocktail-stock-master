@@ -2927,6 +2927,15 @@ export type Database = {
         }[]
       }
       get_open_jornada: { Args: never; Returns: Json }
+      get_venue_flags: {
+        Args: { p_venue_id: string }
+        Returns: {
+          description: string
+          enabled: boolean
+          flag_key: string
+          flag_name: string
+        }[]
+      }
       get_worker_by_rut: {
         Args: { p_rut_code: string; p_venue_id?: string }
         Returns: {

@@ -1,13 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
+// All feature keys available in the system
 export type FeatureKey = 
+  | 'ventas_alcohol'
+  | 'ventas_tickets'
+  | 'qr_cover'
+  | 'inventario'
+  | 'reposicion'
+  | 'importacion_excel'
+  | 'jornadas'
+  | 'arqueo'
+  | 'reportes'
+  | 'contabilidad_basica'
+  | 'contabilidad_avanzada'
+  | 'lector_facturas'
+  // Legacy keys (mapped to new keys)
+  | 'tickets_module'
   | 'invoice_reader'
   | 'invoice_to_expense'
   | 'advanced_inventory'
   | 'advanced_reporting'
-  | 'erp_accounting'
-  | 'tickets_module';
+  | 'erp_accounting';
+
+// Map legacy keys to new keys
+const KEY_MAPPING: Record<string, string> = {
+  'tickets_module': 'ventas_tickets',
+  'invoice_reader': 'lector_facturas',
+  'invoice_to_expense': 'contabilidad_basica',
+  'advanced_inventory': 'inventario',
+  'advanced_reporting': 'reportes',
+  'erp_accounting': 'contabilidad_avanzada',
+};
 
 interface FeatureFlags {
   [key: string]: boolean;
@@ -46,11 +70,10 @@ export function useFeatureFlags(): UseFeatureFlagsReturn {
         return;
       }
 
-      // Fetch feature flags for the venue
-      const { data: featureFlags, error } = await supabase
-        .from('feature_flags')
-        .select('feature_key, enabled')
-        .eq('venue_id', profile.venue_id);
+      // Fetch effective feature flags using RPC
+      const { data: featureFlags, error } = await supabase.rpc('get_venue_flags', {
+        p_venue_id: profile.venue_id
+      });
 
       if (error) {
         console.error('Error fetching feature flags:', error);
@@ -60,8 +83,8 @@ export function useFeatureFlags(): UseFeatureFlagsReturn {
       }
 
       const flagsMap: FeatureFlags = {};
-      featureFlags?.forEach(flag => {
-        flagsMap[flag.feature_key] = flag.enabled;
+      featureFlags?.forEach((flag: { flag_key: string; enabled: boolean }) => {
+        flagsMap[flag.flag_key] = flag.enabled;
       });
 
       setFlags(flagsMap);
@@ -87,7 +110,14 @@ export function useFeatureFlags(): UseFeatureFlagsReturn {
   }, [fetchFlags]);
 
   const isEnabled = useCallback((key: FeatureKey): boolean => {
-    return flags[key] === true;
+    // Map legacy keys to new keys
+    const mappedKey = KEY_MAPPING[key] || key;
+    
+    // Default to true for backwards compatibility if flag doesn't exist
+    if (!(mappedKey in flags)) {
+      return true;
+    }
+    return flags[mappedKey] === true;
   }, [flags]);
 
   return {
@@ -104,16 +134,14 @@ export async function checkFeatureFlag(
   venueId: string,
   featureKey: FeatureKey
 ): Promise<boolean> {
-  const { data, error } = await supabaseClient
-    .from('feature_flags')
-    .select('enabled')
-    .eq('venue_id', venueId)
-    .eq('feature_key', featureKey)
-    .single();
+  const { data, error } = await supabaseClient.rpc('get_venue_flags', {
+    p_venue_id: venueId
+  });
 
   if (error || !data) {
     return false;
   }
 
-  return data.enabled === true;
+  const flag = data.find((f: { flag_key: string }) => f.flag_key === featureKey);
+  return flag?.enabled === true;
 }
