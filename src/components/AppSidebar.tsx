@@ -84,11 +84,8 @@ const settingsViews: MenuItem[] = [
   { title: "Tipos de Entrada", value: "tickets", icon: Ticket, adminOnly: true, featureFlag: "ventas_tickets" },
 ];
 
-const settingsLinks: ExternalLinkItem[] = [
-  { title: "Monitoreo", icon: Activity, path: "/admin/monitoring", adminOnly: true },
-  { title: "Sistema", icon: Settings, path: "/admin/system", adminOnly: true },
-  { title: "Ayuda", icon: HelpCircle, path: "/help" },
-];
+// Technical links removed - now only in /developer console
+const settingsLinks: ExternalLinkItem[] = [];
 
 // Helper to filter items by role
 const filterByRole = <T extends { adminOnly?: boolean }>(items: T[], isReadOnly: boolean): T[] => 
