@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Store, Monitor, Trash2, Edit, MapPin } from "lucide-react";
+import { Plus, Store, Monitor, Trash2, Edit, MapPin, Info } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface StockLocation {
   id: string;
@@ -53,12 +54,12 @@ type POSType = "alcohol_sales" | "ticket_sales" | "bar_redemption";
 interface POSTerminal {
   id: string;
   name: string;
-  location_id: string;
+  location_id: string | null;
   is_active: boolean;
   created_at: string;
   pos_type: POSType;
   is_cash_register: boolean;
-  location?: StockLocation;
+  location?: StockLocation | null;
 }
 
 export function POSBarsManagement() {
@@ -73,7 +74,11 @@ export function POSBarsManagement() {
   
   // Form states
   const [locationForm, setLocationForm] = useState<{ name: string; type: "bar" | "warehouse" }>({ name: "", type: "bar" });
-  const [posForm, setPosForm] = useState({ name: "", locationId: "", createNewBar: false, newBarName: "", posType: "alcohol_sales" as POSType });
+  const [posForm, setPosForm] = useState({ 
+    name: "", 
+    locationId: "" as string | null, 
+    posType: "alcohol_sales" as POSType 
+  });
   const [editingLocation, setEditingLocation] = useState<StockLocation | null>(null);
   const [editingPOS, setEditingPOS] = useState<POSTerminal | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "location" | "pos"; item: StockLocation | POSTerminal } | null>(null);
@@ -143,32 +148,15 @@ export function POSBarsManagement() {
       return;
     }
     
-    let locationId = posForm.locationId;
+    // Location is only required for bar_redemption terminals
+    if (posForm.posType === "bar_redemption" && !posForm.locationId) {
+      toast.error("Los lectores de barra requieren una ubicación asociada");
+      return;
+    }
     
     try {
-      // If creating new bar, create it first
-      if (posForm.createNewBar) {
-        if (!posForm.newBarName.trim()) {
-          toast.error("Nombre de la barra es requerido");
-          return;
-        }
-        
-        const { data: newLoc, error: locError } = await supabase
-          .from("stock_locations")
-          .insert({ name: posForm.newBarName, type: "bar" })
-          .select()
-          .single();
-        
-        if (locError) throw locError;
-        locationId = newLoc.id;
-      }
-      
-      if (!locationId) {
-        toast.error("Selecciona una barra");
-        return;
-      }
-      
       const isCashRegister = posForm.posType !== "bar_redemption";
+      const locationId = posForm.locationId || null;
       
       if (editingPOS) {
         const { error } = await supabase
@@ -197,7 +185,7 @@ export function POSBarsManagement() {
       
       setShowPOSDialog(false);
       setEditingPOS(null);
-      setPosForm({ name: "", locationId: "", createNewBar: false, newBarName: "", posType: "alcohol_sales" });
+      setPosForm({ name: "", locationId: null, posType: "alcohol_sales" });
       fetchData();
     } catch (error: any) {
       console.error("Error:", error);
@@ -236,7 +224,6 @@ export function POSBarsManagement() {
       fetchData();
     } catch (error: any) {
       console.error("Error:", error);
-      // Likely has related data
       toast.error("No se puede eliminar: tiene datos asociados. Desactívalo en su lugar.");
       setShowDeleteDialog(false);
     }
@@ -250,8 +237,25 @@ export function POSBarsManagement() {
 
   const openEditPOS = (pos: POSTerminal) => {
     setEditingPOS(pos);
-    setPosForm({ name: pos.name, locationId: pos.location_id, createNewBar: false, newBarName: "", posType: pos.pos_type || "alcohol_sales" });
+    setPosForm({ 
+      name: pos.name, 
+      locationId: pos.location_id || null, 
+      posType: pos.pos_type || "alcohol_sales" 
+    });
     setShowPOSDialog(true);
+  };
+
+  const getPOSTypeBadge = (type: POSType) => {
+    switch (type) {
+      case "alcohol_sales":
+        return <Badge variant="outline" className="text-xs">Venta Alcohol</Badge>;
+      case "ticket_sales":
+        return <Badge variant="outline" className="text-xs">Venta Tickets</Badge>;
+      case "bar_redemption":
+        return <Badge variant="secondary" className="text-xs">Lector Barra</Badge>;
+      default:
+        return null;
+    }
   };
 
   if (loading) {
@@ -291,6 +295,13 @@ export function POSBarsManagement() {
             </TabsList>
             
             <TabsContent value="pos" className="space-y-4">
+              <Alert className="border-primary/20 bg-primary/5">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Ley de Oro:</strong> Los terminales de venta no requieren ubicación. El inventario solo se descuenta cuando el QR es redimido en cualquier barra.
+                </AlertDescription>
+              </Alert>
+              
               <div className="flex justify-end">
                 <Button onClick={() => setShowPOSDialog(true)} className="gap-2">
                   <Plus className="w-4 h-4" />
@@ -318,12 +329,15 @@ export function POSBarsManagement() {
                         <div>
                           <h3 className="font-semibold text-lg">{terminal.name}</h3>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Store className="w-3 h-3" />
-                            <span>{terminal.location?.name || "Sin barra"}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {terminal.pos_type === "alcohol_sales" ? "Venta Alcohol" : 
-                               terminal.pos_type === "ticket_sales" ? "Venta Tickets" : "Lector Barra"}
-                            </Badge>
+                            {getPOSTypeBadge(terminal.pos_type)}
+                            {terminal.location ? (
+                              <div className="flex items-center gap-1">
+                                <Store className="w-3 h-3" />
+                                <span>{terminal.location.name}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground/60">Sin ubicación fija</span>
+                            )}
                             {!terminal.is_cash_register && (
                               <Badge variant="secondary" className="text-xs">Sin Caja</Badge>
                             )}
@@ -360,6 +374,13 @@ export function POSBarsManagement() {
             </TabsContent>
             
             <TabsContent value="locations" className="space-y-4">
+              <Alert className="border-primary/20 bg-primary/5">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Las ubicaciones son puntos físicos donde se almacena y entrega inventario. Solo los <strong>Lectores de Barra</strong> (QR scanners) necesitan estar asociados a una ubicación.
+                </AlertDescription>
+              </Alert>
+              
               <div className="flex justify-end">
                 <Button onClick={() => setShowLocationDialog(true)} className="gap-2">
                   <Plus className="w-4 h-4" />
@@ -400,7 +421,9 @@ export function POSBarsManagement() {
                         </div>
                         <div>
                           <h3 className="font-semibold text-lg">{location.name}</h3>
-                          <p className="text-sm text-muted-foreground">{posCount} terminal(es) vinculado(s)</p>
+                          <p className="text-sm text-muted-foreground">
+                            {posCount > 0 ? `${posCount} lector(es) vinculado(s)` : "Sin lectores vinculados"}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -493,26 +516,32 @@ export function POSBarsManagement() {
               />
             </div>
             
-            <div className="space-y-3">
-              <Label>Barra Asociada</Label>
-              
-              {!editingPOS && (
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={posForm.createNewBar}
-                    onCheckedChange={(checked) => setPosForm({ ...posForm, createNewBar: checked })}
-                  />
-                  <span className="text-sm">Crear nueva barra</span>
-                </div>
-              )}
-              
-              {posForm.createNewBar ? (
-                <Input
-                  value={posForm.newBarName}
-                  onChange={(e) => setPosForm({ ...posForm, newBarName: e.target.value })}
-                  placeholder="Nombre de la nueva barra"
-                />
-              ) : (
+            <div className="space-y-2">
+              <Label>Tipo de Terminal</Label>
+              <Select
+                value={posForm.posType}
+                onValueChange={(v) => setPosForm({ ...posForm, posType: v as POSType, locationId: v !== "bar_redemption" ? null : posForm.locationId })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alcohol_sales">Venta de Alcohol (con caja)</SelectItem>
+                  <SelectItem value="ticket_sales">Venta de Tickets (con caja)</SelectItem>
+                  <SelectItem value="bar_redemption">Lector de Barra (sin caja)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {posForm.posType === "bar_redemption" 
+                  ? "Este terminal escanea QR y descuenta inventario de su ubicación"
+                  : "Este terminal genera ventas y QRs. No requiere ubicación fija."}
+              </p>
+            </div>
+            
+            {/* Location only shown for bar_redemption type */}
+            {posForm.posType === "bar_redemption" && (
+              <div className="space-y-2">
+                <Label>Ubicación (Barra)</Label>
                 <Select
                   value={posForm.locationId || ""}
                   onValueChange={(v) => setPosForm({ ...posForm, locationId: v })}
@@ -526,30 +555,11 @@ export function POSBarsManagement() {
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Tipo de Terminal</Label>
-              <Select
-                value={posForm.posType}
-                onValueChange={(v) => setPosForm({ ...posForm, posType: v as POSType })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="alcohol_sales">Venta de Alcohol (con caja)</SelectItem>
-                  <SelectItem value="ticket_sales">Venta de Tickets (con caja)</SelectItem>
-                  <SelectItem value="bar_redemption">Lector de Barra (sin caja)</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {posForm.posType === "bar_redemption" 
-                  ? "Este terminal no participará en apertura/cierre de caja"
-                  : "Este terminal participará en apertura/cierre de caja"}
-              </p>
-            </div>
+                <p className="text-xs text-muted-foreground">
+                  El inventario se descontará de esta ubicación al escanear QR
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPOSDialog(false)}>Cancelar</Button>
