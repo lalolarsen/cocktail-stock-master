@@ -240,136 +240,103 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         }}
       />
 
-      {/* A) Estado de hoy */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            Estado de hoy
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {/* Jornada Status */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Jornada</p>
-              <div className="flex items-center gap-2">
-                <Badge 
-                  variant={jornadaStatus.variant}
-                  className={jornada?.estado === "activa" ? "bg-green-500 hover:bg-green-600" : ""}
-                >
-                  {jornadaStatus.label}
-                </Badge>
-                {jornada?.estado === "activa" && jornada.hora_apertura && (
-                  <span className="text-xs text-muted-foreground">desde {jornada.hora_apertura}</span>
-                )}
+      {/* A) Estado de hoy - Enhanced Visual Design */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Jornada Status Card */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-primary/10" />
+          <CardContent className="relative p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-primary/10">
+                <Calendar className="h-5 w-5 text-primary" />
               </div>
+              <p className="text-sm font-medium text-muted-foreground">Jornada</p>
             </div>
-
-            {/* Gross Income Today */}
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Ingresos brutos</p>
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-green-500" />
-                <span className="text-xl font-bold">{formatCLP(todayStats.grossIncome)}</span>
-              </div>
-            </div>
-
-            {/* Sales Today */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Ventas</p>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold">{formatCLP(todayStats.salesToday)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">{todayStats.transactionsToday} txn</p>
-            </div>
-
-            {/* QRs Redeemed */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">QRs canjeados</p>
-              <div className="flex items-center gap-2">
-                <QrCode className="h-4 w-4 text-blue-500" />
-                <span className="text-xl font-bold">{todayStats.qrsRedeemed}</span>
-              </div>
-            </div>
-
-            {/* Bar Status */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Barras</p>
-              <div className="flex flex-wrap gap-1">
-                {barStatuses.length === 0 ? (
-                  <span className="text-sm text-muted-foreground">Sin barras</span>
-                ) : (
-                  barStatuses.map(bar => (
-                    <Badge 
-                      key={bar.id} 
-                      variant={bar.status === 'operational' ? 'default' : 'destructive'}
-                      className={bar.status === 'operational' ? 'bg-green-500/10 text-green-600 border-green-500/20' : ''}
-                    >
-                      <Store className="h-3 w-3 mr-1" />
-                      {bar.name.replace('Barra ', 'B')}: {bar.status === 'operational' ? 'OK' : 'Baja'}
-                    </Badge>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* B) Acciones rápidas */}
-      {!isReadOnly && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold">Acciones rápidas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Secondary operational actions */}
-            <div className="grid grid-cols-2 gap-3">
-              <Button 
-                size="lg" 
-                variant="secondary"
-                className="h-11 gap-2"
-                onClick={() => onNavigate?.("replenishment")}
+              <Badge 
+                variant={jornadaStatus.variant}
+                className={`text-sm px-3 py-1 ${jornada?.estado === "activa" ? "bg-emerald-500 hover:bg-emerald-600" : ""}`}
               >
-                <ClipboardList className="h-4 w-4" />
-                Preparar reposición
-              </Button>
-
-              <Button 
-                size="lg" 
-                variant="secondary"
-                className="h-11 gap-2"
-                onClick={() => window.location.href = "/admin/income"}
-              >
-                <DollarSign className="h-4 w-4" />
-                Ingresos brutos
-              </Button>
-            </div>
-
-            {/* Management shortcuts */}
-            <div className="flex gap-3 pt-1">
-              <Button 
-                variant="ghost"
-                className="h-9 gap-2 text-muted-foreground hover:text-foreground"
-                onClick={() => onNavigate?.("products")}
-              >
-                <Package className="h-4 w-4" />
-                Productos
-              </Button>
-
-              <Button 
-                variant="ghost"
-                className="h-9 gap-2 text-muted-foreground hover:text-foreground"
-                onClick={() => onNavigate?.("menu")}
-              >
-                <UtensilsCrossed className="h-4 w-4" />
-                Carta
-              </Button>
+                {jornadaStatus.label}
+              </Badge>
+              {jornada?.estado === "activa" && jornada.hora_apertura && (
+                <p className="text-xs text-muted-foreground mt-2">Desde las {jornada.hora_apertura}</p>
+              )}
             </div>
           </CardContent>
         </Card>
-      )}
+
+        {/* Gross Income Card */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10" />
+          <CardContent className="relative p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Ingresos brutos</p>
+            </div>
+            <p className="text-2xl font-bold text-emerald-600">{formatCLP(todayStats.grossIncome)}</p>
+          </CardContent>
+        </Card>
+
+        {/* Sales Card */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-500/10" />
+          <CardContent className="relative p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/10">
+                <DollarSign className="h-5 w-5 text-blue-600" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Ventas</p>
+            </div>
+            <p className="text-2xl font-bold">{formatCLP(todayStats.salesToday)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{todayStats.transactionsToday} transacciones</p>
+          </CardContent>
+        </Card>
+
+        {/* QRs Redeemed Card */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-violet-500/10" />
+          <CardContent className="relative p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-violet-500/10">
+                <QrCode className="h-5 w-5 text-violet-600" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">QRs canjeados</p>
+            </div>
+            <p className="text-2xl font-bold text-violet-600">{todayStats.qrsRedeemed}</p>
+          </CardContent>
+        </Card>
+
+        {/* Bar Status Card */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-amber-500/10" />
+          <CardContent className="relative p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/10">
+                <Store className="h-5 w-5 text-amber-600" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Barras</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {barStatuses.length === 0 ? (
+                <span className="text-sm text-muted-foreground">Sin barras</span>
+              ) : (
+                barStatuses.map(bar => (
+                  <Badge 
+                    key={bar.id} 
+                    variant={bar.status === 'operational' ? 'outline' : 'destructive'}
+                    className={`text-xs ${bar.status === 'operational' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}`}
+                  >
+                    {bar.name.replace('Barra ', '')}: {bar.status === 'operational' ? '✓' : '↓'}
+                  </Badge>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* C) Live Charts & Alerts */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
