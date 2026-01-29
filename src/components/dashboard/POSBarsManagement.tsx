@@ -330,14 +330,6 @@ export function POSBarsManagement() {
                           <h3 className="font-semibold text-lg">{terminal.name}</h3>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             {getPOSTypeBadge(terminal.pos_type)}
-                            {terminal.location ? (
-                              <div className="flex items-center gap-1">
-                                <Store className="w-3 h-3" />
-                                <span>{terminal.location.name}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground/60">Sin ubicación fija</span>
-                            )}
                             {!terminal.is_cash_register && (
                               <Badge variant="secondary" className="text-xs">Sin Caja</Badge>
                             )}
