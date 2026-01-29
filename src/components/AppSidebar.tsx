@@ -115,7 +115,8 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       }> | null;
     },
     enabled: !!venue?.id && !!role,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 30, // 30 seconds - refresh more often for config changes
+    refetchOnWindowFocus: true,
   });
 
   const handleLogout = async () => {
