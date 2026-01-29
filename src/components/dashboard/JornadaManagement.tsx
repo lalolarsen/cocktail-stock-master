@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -12,31 +11,27 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { 
-  Loader2, Calendar, History, 
-  DollarSign, ShoppingCart, Users, TrendingUp, ChevronDown, ChevronUp,
-  Trash2, Square, Download, Play, AlertTriangle
+  Loader2, 
+  Calendar, 
+  History, 
+  BarChart3,
+  AlertTriangle,
+  Settings
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, parseISO, isToday, differenceInHours } from "date-fns";
+import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
-// OutsideJornadaSales removed - all sales now require jornada_id (NOT NULL)
 import { JornadaCashOpeningDialog } from "./JornadaCashOpeningDialog";
 import { JornadaCashSettingsCard } from "./JornadaCashSettingsCard";
 import { CashReconciliationDialog } from "./CashReconciliationDialog";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { formatCLP } from "@/lib/currency";
 import { logAuditEvent } from "@/lib/monitoring";
+import { ActiveJornadaCard } from "./jornada/ActiveJornadaCard";
+import { JornadaHistoryTable } from "./jornada/JornadaHistoryTable";
+import { LiveJornadaStats } from "./jornada/LiveJornadaStats";
 
-// Configurable threshold for stale jornada detection (in hours)
 const STALE_JORNADA_THRESHOLD_HOURS = 24;
 
 interface Jornada {
@@ -79,12 +74,6 @@ interface FinancialSummary {
   closed_by: string;
 }
 
-interface WeeklySummary {
-  semana_inicio: string;
-  total_jornadas: number;
-  jornadas: Jornada[];
-}
-
 export function JornadaManagement() {
   const [jornadas, setJornadas] = useState<Jornada[]>([]);
   const [jornadaStats, setJornadaStats] = useState<Record<string, JornadaStats>>({});
@@ -102,7 +91,6 @@ export function JornadaManagement() {
   useEffect(() => {
     fetchJornadas();
     
-    // Subscribe to jornada changes
     const channel = supabase
       .channel("jornada-management")
       .on(
@@ -128,11 +116,9 @@ export function JornadaManagement() {
       if (error) throw error;
       setJornadas(data || []);
       
-      // Find active jornada
       const active = data?.find(j => j.estado === "activa") || null;
       setActiveJornada(active);
       
-      // Fetch stats and financial summaries for each jornada
       if (data && data.length > 0) {
         const ids = data.map(j => j.id);
         await Promise.all([
@@ -150,7 +136,6 @@ export function JornadaManagement() {
 
   const fetchFinancialSummaries = async (jornadaIds: string[]) => {
     try {
-      // Only fetch the overall summaries (pos_id is null)
       const { data } = await supabase
         .from("jornada_financial_summary")
         .select("*")
@@ -159,7 +144,6 @@ export function JornadaManagement() {
 
       const summaries: Record<string, FinancialSummary> = {};
       (data || []).forEach((s) => {
-        // Cast to our interface since types.ts may not be regenerated yet
         summaries[s.jornada_id] = s as unknown as FinancialSummary;
       });
       setFinancialSummaries(summaries);
@@ -170,7 +154,6 @@ export function JornadaManagement() {
 
   const fetchJornadaStats = async (jornadaIds: string[]) => {
     try {
-      // Fetch sales stats
       const { data: salesData } = await supabase
         .from("sales")
         .select(`
@@ -183,7 +166,6 @@ export function JornadaManagement() {
         .in("jornada_id", jornadaIds)
         .eq("is_cancelled", false);
 
-      // Fetch login stats
       const { data: loginData } = await supabase
         .from("login_history")
         .select("jornada_id")
@@ -211,26 +193,6 @@ export function JornadaManagement() {
     }
   };
 
-  const getWeeklySummaries = (): WeeklySummary[] => {
-    const weekMap = new Map<string, Jornada[]>();
-
-    jornadas.forEach((jornada) => {
-      const weekStart = jornada.semana_inicio;
-      if (!weekMap.has(weekStart)) {
-        weekMap.set(weekStart, []);
-      }
-      weekMap.get(weekStart)!.push(jornada);
-    });
-
-    return Array.from(weekMap.entries())
-      .map(([semana_inicio, jornadas]) => ({
-        semana_inicio,
-        total_jornadas: jornadas.length,
-        jornadas: jornadas.sort((a, b) => a.numero_jornada - b.numero_jornada),
-      }))
-      .sort((a, b) => new Date(b.semana_inicio).getTime() - new Date(a.semana_inicio).getTime());
-  };
-
   const handleOpenJornada = () => {
     if (activeJornada) {
       toast.error("Ya existe una jornada abierta. Ciérrela antes de abrir una nueva.");
@@ -245,15 +207,6 @@ export function JornadaManagement() {
     fetchJornadas();
   };
 
-  // Check if a jornada is stale (open for more than threshold hours)
-  const isStaleJornada = (jornada: Jornada): boolean => {
-    if (jornada.estado !== "activa") return false;
-    const openedAt = new Date(`${jornada.fecha}T${jornada.hora_apertura || "00:00:00"}`);
-    const hoursOpen = differenceInHours(new Date(), openedAt);
-    return hoursOpen >= STALE_JORNADA_THRESHOLD_HOURS;
-  };
-
-  // Force close a stale jornada (admin recovery action)
   const handleForceClose = async () => {
     if (!showForceCloseConfirm) return;
     
@@ -265,14 +218,12 @@ export function JornadaManagement() {
         return;
       }
 
-      // Get venue_id from jornada
       const { data: jornadaData } = await supabase
         .from("jornadas")
         .select("venue_id")
         .eq("id", showForceCloseConfirm.id)
         .single();
 
-      // Update jornada to closed
       const { error: updateError } = await supabase
         .from("jornadas")
         .update({
@@ -284,7 +235,6 @@ export function JornadaManagement() {
 
       if (updateError) throw updateError;
 
-      // Log to jornada_audit_log with forced_close action
       await supabase.from("jornada_audit_log").insert({
         jornada_id: showForceCloseConfirm.id,
         venue_id: jornadaData?.venue_id || null,
@@ -300,7 +250,6 @@ export function JornadaManagement() {
         },
       });
 
-      // Log to app audit events
       await logAuditEvent({
         action: "jornada_forced_close",
         status: "success",
@@ -329,7 +278,6 @@ export function JornadaManagement() {
       setForceCloseLoading(false);
     }
   };
-
 
   const handleCloseJornada = (jornadaId: string) => {
     setShowReconciliation(jornadaId);
@@ -402,46 +350,12 @@ export function JornadaManagement() {
     toast.success("CSV exportado");
   };
 
-  const getStatusBadge = (estado: string, jornada?: Jornada) => {
-    // Check if this jornada is stale
-    if (jornada && isStaleJornada(jornada)) {
-      return (
-        <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
-          <AlertTriangle className="w-3 h-3 mr-1" />
-          Obsoleta
-        </Badge>
-      );
-    }
-    
-    switch (estado) {
-      case "activa":
-        return <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30">Abierta</Badge>;
-      case "cerrada":
-        return <Badge variant="secondary">Cerrada</Badge>;
-      default:
-        return <Badge variant="outline">{estado}</Badge>;
-    }
+  const handleToggleExpand = (jornadaId: string) => {
+    setExpandedJornada(prev => prev === jornadaId ? null : jornadaId);
   };
 
-  const formatDate = (dateStr: string) => {
-    return format(parseISO(dateStr), "EEEE d 'de' MMMM", { locale: es });
-  };
-
-  const formatWeek = (dateStr: string) => {
-    const date = parseISO(dateStr);
-    return format(date, "'Semana del' d 'de' MMMM", { locale: es });
-  };
-
-  const getTotalStats = () => {
-    return Object.values(jornadaStats).reduce(
-      (acc, stats) => ({
-        total_ventas: acc.total_ventas + stats.total_ventas,
-        cantidad_ventas: acc.cantidad_ventas + stats.cantidad_ventas,
-        productos_vendidos: acc.productos_vendidos + stats.productos_vendidos,
-        logins: acc.logins + stats.logins,
-      }),
-      { total_ventas: 0, cantidad_ventas: 0, productos_vendidos: 0, logins: 0 }
-    );
+  const handleShowSummary = (jornadaId: string, numero: number, fecha: string) => {
+    setShowSummary({ jornadaId, numero, fecha });
   };
 
   if (loading) {
@@ -454,422 +368,87 @@ export function JornadaManagement() {
     );
   }
 
-  const weeklySummaries = getWeeklySummaries();
-  const currentWeekJornadas = weeklySummaries[0]?.total_jornadas || 0;
-  const totalStats = getTotalStats();
-
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5" />
-          <h3 className="text-lg font-semibold">Gestión de Jornadas</h3>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Calendar className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Gestión de Jornadas</h2>
+            <p className="text-sm text-muted-foreground">
+              Control de turnos y resultados operacionales
+            </p>
+          </div>
         </div>
-        <Button onClick={handleOpenJornada} disabled={!!activeJornada}>
-          <Play className="w-4 h-4 mr-2" />
-          Abrir Jornada
-        </Button>
       </div>
 
-      {/* Current Jornada Status */}
-      {activeJornada ? (
-        <Card className={`p-4 mb-6 ${isStaleJornada(activeJornada) ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isStaleJornada(activeJornada) ? "bg-amber-500/20" : "bg-green-500/20"}`}>
-                {isStaleJornada(activeJornada) ? (
-                  <AlertTriangle className="w-5 h-5 text-amber-600" />
-                ) : (
-                  <Calendar className="w-5 h-5 text-green-600" />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-semibold">
-                    Jornada {activeJornada.numero_jornada}
-                  </span>
-                  {getStatusBadge(activeJornada.estado, activeJornada)}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {formatDate(activeJornada.fecha)} • Abierta desde {activeJornada.hora_apertura}
-                </p>
-                {isStaleJornada(activeJornada) && (
-                  <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
-                    ⚠️ Esta jornada lleva más de {STALE_JORNADA_THRESHOLD_HOURS}h abierta. Considere forzar el cierre.
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {isStaleJornada(activeJornada) && (
-                <Button
-                  variant="outline"
-                  className="border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
-                  onClick={() => setShowForceCloseConfirm(activeJornada)}
-                >
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                  Forzar Cierre
-                </Button>
-              )}
-              <Button
-                variant="destructive"
-                onClick={() => handleCloseJornada(activeJornada.id)}
-              >
-                <Square className="w-4 h-4 mr-2" />
-                Cerrar Jornada
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <span className="text-lg font-semibold text-amber-700 dark:text-amber-300">Sin jornada abierta</span>
-              <p className="text-sm text-muted-foreground">
-                Las ventas están bloqueadas. Abre una jornada para comenzar a vender.
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
+      {/* Active Jornada Card */}
+      <ActiveJornadaCard
+        jornada={activeJornada}
+        onOpenJornada={handleOpenJornada}
+        onCloseJornada={handleCloseJornada}
+        onForceClose={(j) => setShowForceCloseConfirm(j)}
+      />
 
-      <Tabs defaultValue="summary" className="space-y-4">
+      {/* Main Content Tabs */}
+      <Tabs defaultValue={activeJornada ? "live" : "history"} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="summary" className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            Resumen
+          <TabsTrigger value="live" className="gap-2" disabled={!activeJornada}>
+            <BarChart3 className="w-4 h-4" />
+            Resultados en Vivo
           </TabsTrigger>
-          <TabsTrigger value="pending" className="flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4" />
-            Pendientes
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
+          <TabsTrigger value="history" className="gap-2">
             <History className="w-4 h-4" />
             Historial
           </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="w-4 h-4" />
+            Configuración
+          </TabsTrigger>
         </TabsList>
 
-        {/* Info Tab - Previously "Pending / Outside Jornada Sales" */}
-        <TabsContent value="pending" className="space-y-4">
-          <Card className="p-6">
-            <div className="text-center space-y-2">
-              <p className="text-muted-foreground">
-                Todas las ventas ahora requieren una jornada activa.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Las ventas fuera de jornada ya no son posibles desde la actualización del sistema.
-              </p>
-            </div>
-          </Card>
+        {/* Live Results Tab */}
+        <TabsContent value="live">
+          {activeJornada ? (
+            <LiveJornadaStats jornadaId={activeJornada.id} />
+          ) : (
+            <Card className="p-8">
+              <div className="text-center text-muted-foreground">
+                <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium mb-2">Sin jornada activa</p>
+                <p className="text-sm">Abre una jornada para ver los resultados en tiempo real</p>
+              </div>
+            </Card>
+          )}
         </TabsContent>
 
-        <TabsContent value="summary" className="space-y-4">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="p-4 bg-primary/5 border-primary/20">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <DollarSign className="w-4 h-4" />
-                Ventas Totales
-              </div>
-              <div className="text-2xl font-bold">{formatCLP(totalStats.total_ventas)}</div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <ShoppingCart className="w-4 h-4" />
-                Transacciones
-              </div>
-              <div className="text-2xl font-bold">{totalStats.cantidad_ventas}</div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <TrendingUp className="w-4 h-4" />
-                Productos
-              </div>
-              <div className="text-2xl font-bold">{totalStats.productos_vendidos}</div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="w-4 h-4" />
-                Sesiones
-              </div>
-              <div className="text-2xl font-bold">{totalStats.logins}</div>
-            </Card>
-          </div>
-
-          {/* Weekly Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 bg-primary/5 border-primary/20">
-              <div className="text-sm text-muted-foreground">Esta semana</div>
-              <div className="text-3xl font-bold">{currentWeekJornadas}</div>
-              <div className="text-sm text-muted-foreground">jornadas</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-muted-foreground">Total histórico</div>
-              <div className="text-3xl font-bold">{jornadas.length}</div>
-              <div className="text-sm text-muted-foreground">jornadas registradas</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-muted-foreground">Promedio por jornada</div>
-              <div className="text-3xl font-bold">
-                {jornadas.length > 0 
-                  ? formatCLP(totalStats.total_ventas / jornadas.length)
-                  : formatCLP(0)}
-              </div>
-              <div className="text-sm text-muted-foreground">en ventas</div>
-            </Card>
-          </div>
-
-          {weeklySummaries.slice(0, 4).map((week) => (
-            <Card key={week.semana_inicio} className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium capitalize">{formatWeek(week.semana_inicio)}</h4>
-                <Badge variant="outline">{week.total_jornadas} jornadas</Badge>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {week.jornadas.map((jornada) => {
-                  const stats = jornadaStats[jornada.id];
-                  return (
-                    <div
-                      key={jornada.id}
-                      className={`px-3 py-2 rounded-lg border text-sm ${
-                        isToday(parseISO(jornada.fecha))
-                          ? "bg-primary/10 border-primary/30"
-                          : "bg-muted/30"
-                      }`}
-                    >
-                      <div className="font-medium">Jornada {jornada.numero_jornada}</div>
-                      <div className="text-xs text-muted-foreground capitalize">
-                        {format(parseISO(jornada.fecha), "EEEE", { locale: es })}
-                      </div>
-                      {stats && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {formatCLP(stats.total_ventas)} • {stats.cantidad_ventas} ventas
-                        </div>
-                      )}
-                      <div className="mt-1">{getStatusBadge(jornada.estado)}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          ))}
-        </TabsContent>
-
+        {/* History Tab */}
         <TabsContent value="history">
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead>Jornada</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Horario</TableHead>
-                  <TableHead>Ventas</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jornadas.map((jornada) => {
-                  const stats = jornadaStats[jornada.id];
-                  const isExpanded = expandedJornada === jornada.id;
-                  
-                  return (
-                    <>
-                      <TableRow 
-                        key={jornada.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setExpandedJornada(isExpanded ? null : jornada.id)}
-                      >
-                        <TableCell>
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          #{jornada.numero_jornada}
-                        </TableCell>
-                        <TableCell className="capitalize">
-                          {formatDate(jornada.fecha)}
-                        </TableCell>
-                        <TableCell>
-                          {jornada.hora_apertura || "--:--"} - {jornada.hora_cierre || "--:--"}
-                        </TableCell>
-                        <TableCell>
-                          {stats ? formatCLP(stats.total_ventas) : "-"}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(jornada.estado, jornada)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                            {jornada.estado === "activa" && isStaleJornada(jornada) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
-                                onClick={() => setShowForceCloseConfirm(jornada)}
-                                disabled={actionLoading === jornada.id}
-                                title="Forzar cierre de jornada"
-                              >
-                                <AlertTriangle className="w-4 h-4" />
-                              </Button>
-                            )}
-                            {jornada.estado === "activa" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleCloseJornada(jornada.id)}
-                                disabled={actionLoading === jornada.id}
-                                title="Cerrar jornada"
-                              >
-                                {actionLoading === jornada.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Square className="w-4 h-4" />
-                                )}
-                              </Button>
-                            )}
-                            {jornada.estado === "cerrada" && (!stats || stats.cantidad_ventas === 0) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => deleteJornada(jornada.id)}
-                                disabled={actionLoading === jornada.id}
-                                title="Eliminar jornada"
-                              >
-                                {actionLoading === jornada.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow key={`${jornada.id}-stats`}>
-                          <TableCell colSpan={7} className="bg-muted/30">
-                            {financialSummaries[jornada.id] ? (
-                              // Show frozen financial summary for closed jornadas
-                              <div className="space-y-3 py-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Badge variant="secondary">Resumen financiero congelado</Badge>
-                                    <span>
-                                      Cerrada el {format(new Date(financialSummaries[jornada.id].closed_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowSummary({ 
-                                          jornadaId: jornada.id, 
-                                          numero: jornada.numero_jornada, 
-                                          fecha: jornada.fecha 
-                                        });
-                                      }}
-                                    >
-                                      Ver Detalle
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        exportJornadaCSV(jornada);
-                                      }}
-                                      className="gap-2"
-                                    >
-                                      <Download className="h-4 w-4" />
-                                      CSV
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold text-primary">{formatCLP(financialSummaries[jornada.id].gross_sales_total)}</div>
-                                    <div className="text-xs text-muted-foreground">Ventas Brutas</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold">{financialSummaries[jornada.id].transactions_count}</div>
-                                    <div className="text-xs text-muted-foreground">Transacciones</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold">{formatCLP(financialSummaries[jornada.id].net_sales_total)}</div>
-                                    <div className="text-xs text-muted-foreground">Ventas Netas</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold text-destructive">{formatCLP(financialSummaries[jornada.id].expenses_total)}</div>
-                                    <div className="text-xs text-muted-foreground">Gastos</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className={`text-lg font-bold ${financialSummaries[jornada.id].net_operational_result >= 0 ? "text-primary" : "text-destructive"}`}>
-                                      {formatCLP(financialSummaries[jornada.id].net_operational_result)}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">Resultado</div>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : stats ? (
-                              // Show live stats for active jornadas
-                              <div className="grid grid-cols-4 gap-4 py-2">
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold">{formatCLP(stats.total_ventas)}</div>
-                                  <div className="text-xs text-muted-foreground">Total Ventas</div>
-                                </div>
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold">{stats.cantidad_ventas}</div>
-                                  <div className="text-xs text-muted-foreground">Transacciones</div>
-                                </div>
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold">{stats.productos_vendidos}</div>
-                                  <div className="text-xs text-muted-foreground">Productos Vendidos</div>
-                                </div>
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold">{stats.logins}</div>
-                                  <div className="text-xs text-muted-foreground">Sesiones</div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-center py-4 text-muted-foreground">
-                                Sin datos registrados
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </>
-                  );
-                })}
-                {jornadas.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No hay jornadas registradas
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          
-          {/* Cash Settings */}
-          <div className="mt-6">
-            <JornadaCashSettingsCard />
-          </div>
+          <JornadaHistoryTable
+            jornadas={jornadas}
+            jornadaStats={jornadaStats}
+            financialSummaries={financialSummaries}
+            expandedJornada={expandedJornada}
+            actionLoading={actionLoading}
+            onToggleExpand={handleToggleExpand}
+            onCloseJornada={handleCloseJornada}
+            onDeleteJornada={deleteJornada}
+            onForceClose={(j) => setShowForceCloseConfirm(j)}
+            onShowSummary={handleShowSummary}
+            onExportCSV={exportJornadaCSV}
+          />
+        </TabsContent>
+
+        {/* Settings Tab */}
+        <TabsContent value="settings">
+          <JornadaCashSettingsCard />
         </TabsContent>
       </Tabs>
 
-      {/* Cash Opening Dialog */}
+      {/* Dialogs */}
       <JornadaCashOpeningDialog
         open={showCashOpening}
         onClose={() => setShowCashOpening(false)}
@@ -877,7 +456,6 @@ export function JornadaManagement() {
         onSuccess={handleOpeningSuccess}
       />
 
-      {/* Cash Reconciliation Dialog */}
       {showReconciliation && (
         <CashReconciliationDialog
           open={true}
@@ -887,7 +465,6 @@ export function JornadaManagement() {
         />
       )}
 
-      {/* P&L Summary Dialog */}
       {showSummary && (
         <JornadaCloseSummaryDialog
           open={true}
@@ -920,7 +497,7 @@ export function JornadaManagement() {
                 </ul>
               </div>
               <p className="text-sm text-muted-foreground">
-                Use esta opción solo para recuperar jornadas obsoletas que impiden la operación normal.
+                Use esta opción solo para recuperar jornadas obsoletas.
               </p>
             </DialogDescription>
           </DialogHeader>
@@ -953,6 +530,6 @@ export function JornadaManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }
