@@ -12,7 +12,7 @@ import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
 import { WarehouseInventory } from "@/components/dashboard/WarehouseInventory";
-import { ReplenishmentManager } from "@/components/dashboard/ReplenishmentManager";
+import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
 
@@ -171,7 +171,7 @@ export default function Admin() {
 
             {activeView === "replenishment" && !isReadOnly && (
               <div className="space-y-6">
-                <ReplenishmentManager />
+                <BarReplenishment />
               </div>
             )}
 
