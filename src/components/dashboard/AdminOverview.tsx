@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
@@ -14,15 +13,14 @@ import {
   Package, 
   ClipboardList, 
   UtensilsCrossed,
-  AlertTriangle,
-  Warehouse,
-  Clock,
-  ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  TrendingUp
 } from "lucide-react";
-import { format } from "date-fns";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
+import { LiveSalesChart } from "./overview/LiveSalesChart";
+import { TopProductsChart } from "./overview/TopProductsChart";
+import { StockAlertsPanel } from "./overview/StockAlertsPanel";
 
 interface Jornada {
   id: string;
@@ -47,16 +45,6 @@ interface BarStatus {
   totalProducts: number;
 }
 
-interface AlertItem {
-  id: string;
-  productName: string;
-  location: string;
-  current: number;
-  minimum: number;
-  type: 'warehouse' | 'bar';
-  expiryDate?: string;
-}
-
 interface Props {
   isReadOnly?: boolean;
   onNavigate?: (view: string) => void;
@@ -67,9 +55,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [jornada, setJornada] = useState<Jornada | null>(null);
   const [todayStats, setTodayStats] = useState<TodayStats>({ salesToday: 0, transactionsToday: 0, qrsRedeemed: 0, grossIncome: 0 });
   const [barStatuses, setBarStatuses] = useState<BarStatus[]>([]);
-  const [warehouseAlerts, setWarehouseAlerts] = useState<AlertItem[]>([]);
-  const [barAlerts, setBarAlerts] = useState<AlertItem[]>([]);
-  const [expiryAlerts, setExpiryAlerts] = useState<AlertItem[]>([]);
   const [orphanSalesCount, setOrphanSalesCount] = useState(0);
   const [showOrphanDialog, setShowOrphanDialog] = useState(false);
 
@@ -84,7 +69,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         fetchJornada(),
         fetchTodayStats(),
         fetchBarStatuses(),
-        fetchAlerts(),
         fetchOrphanSalesCount()
       ]);
     } finally {
@@ -203,91 +187,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     });
 
     setBarStatuses(statuses);
-  };
-
-  const fetchAlerts = async () => {
-    // Get products and locations
-    const { data: products } = await supabase
-      .from("products")
-      .select("id, name, minimum_stock");
-    
-    const { data: locations } = await supabase
-      .from("stock_locations")
-      .select("id, name, type")
-      .eq("is_active", true);
-
-    const { data: balances } = await supabase
-      .from("stock_balances")
-      .select("product_id, location_id, quantity");
-
-    if (!products || !locations || !balances) return;
-
-    const productMap = new Map(products.map(p => [p.id, p]));
-    const locationMap = new Map(locations.map(l => [l.id, l]));
-
-    const warehouse: AlertItem[] = [];
-    const bars: AlertItem[] = [];
-
-    balances.forEach(b => {
-      const product = productMap.get(b.product_id);
-      const location = locationMap.get(b.location_id);
-      if (!product || !location) return;
-
-      const qty = Number(b.quantity);
-      const min = product.minimum_stock;
-
-      if (location.type === 'warehouse' && qty <= min) {
-        warehouse.push({
-          id: b.product_id + b.location_id,
-          productName: product.name,
-          location: location.name,
-          current: qty,
-          minimum: min,
-          type: 'warehouse'
-        });
-      } else if (location.type === 'bar' && qty < min * 0.5) {
-        bars.push({
-          id: b.product_id + b.location_id,
-          productName: product.name,
-          location: location.name,
-          current: qty,
-          minimum: min,
-          type: 'bar'
-        });
-      }
-    });
-
-    setWarehouseAlerts(warehouse.slice(0, 5));
-    setBarAlerts(bars.slice(0, 5));
-
-    // Fetch expiring lots
-    const sevenDaysLater = new Date();
-    sevenDaysLater.setDate(sevenDaysLater.getDate() + 14);
-    
-    const { data: expiringLots } = await supabase
-      .from("stock_lots")
-      .select("id, product_id, location_id, quantity, expires_at")
-      .lte("expires_at", sevenDaysLater.toISOString().split("T")[0])
-      .gt("quantity", 0)
-      .eq("is_depleted", false)
-      .limit(5);
-
-    if (expiringLots) {
-      const expiryItems: AlertItem[] = expiringLots.map(lot => {
-        const product = productMap.get(lot.product_id);
-        const location = locationMap.get(lot.location_id);
-        return {
-          id: lot.id,
-          productName: product?.name || 'Desconocido',
-          location: location?.name || 'Desconocida',
-          current: Number(lot.quantity),
-          minimum: 0,
-          type: 'warehouse',
-          expiryDate: lot.expires_at
-        };
-      });
-      setExpiryAlerts(expiryItems);
-    }
   };
 
   const getJornadaStatus = () => {
@@ -472,114 +371,13 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         </Card>
       )}
 
-      {/* C) Alertas */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Alertas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="warehouse" className="w-full">
-            <TabsList className="w-full grid grid-cols-3">
-              <TabsTrigger value="warehouse" className="flex items-center gap-1">
-                <Warehouse className="h-4 w-4" />
-                Bodega ({warehouseAlerts.length})
-              </TabsTrigger>
-              <TabsTrigger value="bars" className="flex items-center gap-1">
-                <Store className="h-4 w-4" />
-                Barras ({barAlerts.length})
-              </TabsTrigger>
-              <TabsTrigger value="expiry" className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                Vencimientos ({expiryAlerts.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="warehouse" className="mt-4">
-              <AlertList 
-                items={warehouseAlerts} 
-                emptyMessage="Sin alertas de bodega" 
-                onNavigate={onNavigate}
-              />
-            </TabsContent>
-
-            <TabsContent value="bars" className="mt-4">
-              <AlertList 
-                items={barAlerts} 
-                emptyMessage="Sin alertas de barras" 
-                onNavigate={onNavigate}
-              />
-            </TabsContent>
-
-            <TabsContent value="expiry" className="mt-4">
-              <AlertList 
-                items={expiryAlerts} 
-                emptyMessage="Sin productos por vencer" 
-                showExpiry
-                onNavigate={onNavigate}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-    </div>
-  );
-}
-
-// Alert List Component
-function AlertList({ 
-  items, 
-  emptyMessage, 
-  showExpiry = false,
-  onNavigate 
-}: { 
-  items: AlertItem[]; 
-  emptyMessage: string;
-  showExpiry?: boolean;
-  onNavigate?: (view: string) => void;
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>{emptyMessage}</p>
+      {/* C) Live Charts & Alerts */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <LiveSalesChart />
+        <TopProductsChart />
+        <StockAlertsPanel onNavigate={onNavigate} />
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-2">
-      {items.map(item => (
-        <div 
-          key={item.id} 
-          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
-        >
-          <div className="flex-1 min-w-0">
-            <p className="font-medium truncate">{item.productName}</p>
-            <p className="text-sm text-muted-foreground">{item.location}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {showExpiry && item.expiryDate ? (
-              <Badge variant="destructive" className="whitespace-nowrap">
-                Vence: {format(new Date(item.expiryDate), "dd/MM")}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="whitespace-nowrap">
-                {item.current} / {item.minimum}
-              </Badge>
-            )}
-            <Button 
-              size="sm" 
-              variant="ghost"
-              onClick={() => onNavigate?.("inventory")}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
