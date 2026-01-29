@@ -1,9 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Wine, Pencil, Trash2, Plus, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { 
+  Pencil, 
+  Trash2, 
+  Plus, 
+  Loader2, 
+  Search,
+  Wine,
+  Beer,
+  GlassWater,
+  Sparkles,
+  Package,
+  Tag,
+  ChevronDown,
+  ChevronRight
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -24,9 +41,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -34,6 +48,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface Cocktail {
   id: string;
@@ -68,6 +87,25 @@ interface CocktailsMenuProps {
   isReadOnly?: boolean;
 }
 
+// Category display config
+const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; order: number }> = {
+  botellas: { label: "Botellas", icon: Wine, order: 1 },
+  espumantes: { label: "Espumantes", icon: Sparkles, order: 2 },
+  destilados: { label: "Destilados", icon: GlassWater, order: 3 },
+  cocteleria: { label: "Coctelería", icon: Wine, order: 4 },
+  shots: { label: "Shots", icon: GlassWater, order: 5 },
+  botellines: { label: "Botellines", icon: Beer, order: 6 },
+  cervezas_shop: { label: "Cervezas Shop", icon: Beer, order: 7 },
+  sin_alcohol: { label: "Sin Alcohol", icon: GlassWater, order: 8 },
+  promociones: { label: "Promociones", icon: Tag, order: 9 },
+  otros: { label: "Otros", icon: Package, order: 10 },
+};
+
+const getCategoryConfig = (category: string) => {
+  const normalized = category.toLowerCase().replace(/\s+/g, '_');
+  return CATEGORY_CONFIG[normalized] || { label: category, icon: Package, order: 99 };
+};
+
 export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   const { venue } = useActiveVenue();
   const [cocktails, setCocktails] = useState<CocktailWithIngredients[]>([]);
@@ -77,14 +115,49 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
     price: 0,
-    category: "Clásicos",
+    category: "otros",
     ingredients: [] as { product_id: string; quantity: number }[],
   });
+
+  // Group cocktails by category
+  const groupedCocktails = useMemo(() => {
+    const filtered = searchTerm.trim()
+      ? cocktails.filter(c => 
+          c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.category.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : cocktails;
+
+    const groups: Record<string, CocktailWithIngredients[]> = {};
+    filtered.forEach(cocktail => {
+      const category = cocktail.category.toLowerCase().replace(/\s+/g, '_');
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(cocktail);
+    });
+
+    // Sort groups by configured order
+    return Object.entries(groups)
+      .sort(([a], [b]) => {
+        const orderA = getCategoryConfig(a).order;
+        const orderB = getCategoryConfig(b).order;
+        return orderA - orderB;
+      });
+  }, [cocktails, searchTerm]);
+
+  // Auto-expand all categories on load
+  useEffect(() => {
+    if (cocktails.length > 0 && expandedCategories.size === 0) {
+      const allCategories = new Set(cocktails.map(c => c.category.toLowerCase().replace(/\s+/g, '_')));
+      setExpandedCategories(allCategories);
+    }
+  }, [cocktails]);
 
   useEffect(() => {
     if (!venue?.id) return;
@@ -174,6 +247,16 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     setLoading(false);
   };
 
+  const toggleCategory = (category: string) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(category)) {
+      newExpanded.delete(category);
+    } else {
+      newExpanded.add(category);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
   const handleEditClick = (cocktail: CocktailWithIngredients) => {
     setSelectedCocktail(cocktail);
     setEditForm({
@@ -194,7 +277,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       name: "",
       description: "",
       price: 0,
-      category: "Clásicos",
+      category: "otros",
       ingredients: [],
     });
     setAddDialogOpen(true);
@@ -209,13 +292,11 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     if (!selectedCocktail) return;
 
     try {
-      // Delete ingredients first
       await supabase
         .from("cocktail_ingredients")
         .delete()
         .eq("cocktail_id", selectedCocktail.id);
 
-      // Then delete cocktail
       const { error } = await supabase
         .from("cocktails")
         .delete()
@@ -223,12 +304,12 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
       if (error) throw error;
 
-      toast.success("Cóctel eliminado correctamente");
+      toast.success("Producto eliminado correctamente");
       setDeleteDialogOpen(false);
       fetchCocktails();
     } catch (error) {
       console.error("Error deleting cocktail:", error);
-      toast.error("Error al eliminar el cóctel");
+      toast.error("Error al eliminar el producto");
     }
   };
 
@@ -236,7 +317,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     if (!selectedCocktail) return;
 
     try {
-      // Update cocktail
       const { error: cocktailError } = await supabase
         .from("cocktails")
         .update({
@@ -249,13 +329,11 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
       if (cocktailError) throw cocktailError;
 
-      // Delete old ingredients
       await supabase
         .from("cocktail_ingredients")
         .delete()
         .eq("cocktail_id", selectedCocktail.id);
 
-      // Insert new ingredients with venue_id
       if (editForm.ingredients.length > 0 && venue?.id) {
         const { error: ingredientsError } = await supabase
           .from("cocktail_ingredients")
@@ -271,12 +349,12 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         if (ingredientsError) throw ingredientsError;
       }
 
-      toast.success("Cóctel actualizado correctamente");
+      toast.success("Producto actualizado correctamente");
       setEditDialogOpen(false);
       fetchCocktails();
     } catch (error) {
       console.error("Error updating cocktail:", error);
-      toast.error("Error al actualizar el cóctel");
+      toast.error("Error al actualizar el producto");
     }
   };
 
@@ -287,7 +365,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     }
     
     try {
-      // Insert cocktail with venue_id
       const { data: cocktailData, error: cocktailError } = await supabase
         .from("cocktails")
         .insert({
@@ -302,7 +379,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
       if (cocktailError) throw cocktailError;
 
-      // Insert ingredients with venue_id
       if (editForm.ingredients.length > 0) {
         const { error: ingredientsError } = await supabase
           .from("cocktail_ingredients")
@@ -318,12 +394,12 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         if (ingredientsError) throw ingredientsError;
       }
 
-      toast.success("Cóctel agregado correctamente");
+      toast.success("Producto agregado correctamente");
       setAddDialogOpen(false);
       fetchCocktails();
     } catch (error) {
       console.error("Error adding cocktail:", error);
-      toast.error("Error al agregar el cóctel");
+      toast.error("Error al agregar el producto");
     }
   };
 
@@ -347,11 +423,15 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     setEditForm({ ...editForm, ingredients: newIngredients });
   };
 
-  const getUnitDisplay = (category: string, unit: string) => {
-    if (category === "unidades") return "unidades";
-    if (category === "gramos") return "g";
-    return unit;
-  };
+  // Stats
+  const stats = useMemo(() => {
+    const totalItems = cocktails.length;
+    const totalCategories = new Set(cocktails.map(c => c.category)).size;
+    const avgPrice = totalItems > 0 
+      ? Math.round(cocktails.reduce((sum, c) => sum + c.price, 0) / totalItems)
+      : 0;
+    return { totalItems, totalCategories, avgPrice };
+  }, [cocktails]);
 
   if (loading) {
     return (
@@ -363,90 +443,156 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold gradient-text">Menú de Cócteles</h2>
-        {!isReadOnly && (
-          <Button onClick={handleAddClick} className="primary-gradient">
-            <Plus className="w-4 h-4 mr-2" />
-            Agregar Cóctel
-          </Button>
-        )}
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Carta de Productos</h2>
+          <p className="text-muted-foreground text-sm">
+            {stats.totalItems} productos en {stats.totalCategories} categorías
+          </p>
+        </div>
+        <div className="flex gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          {!isReadOnly && (
+            <Button onClick={handleAddClick}>
+              <Plus className="w-4 h-4 mr-2" />
+              Agregar
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {cocktails.map((cocktail) => (
-          <Card key={cocktail.id} className="glass-effect shadow-elegant hover-lift">
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2">
-                  <Wine className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-xl">{cocktail.name}</CardTitle>
-                </div>
-                {!isReadOnly && (
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => handleEditClick(cocktail)}
-                      className="h-8 w-8"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => handleDeleteClick(cocktail)}
-                      className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="text-2xl font-bold">{stats.totalItems}</div>
+          <div className="text-xs text-muted-foreground">Productos</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xl font-bold">{stats.totalCategories}</div>
+          <div className="text-xs text-muted-foreground">Categorías</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xl font-bold">{formatCLP(stats.avgPrice)}</div>
+          <div className="text-xs text-muted-foreground">Precio Promedio</div>
+        </Card>
+      </div>
+
+      {/* Categories */}
+      <div className="space-y-4">
+        {groupedCocktails.map(([category, items]) => {
+          const config = getCategoryConfig(category);
+          const Icon = config.icon;
+          const isExpanded = expandedCategories.has(category);
+
+          return (
+            <Collapsible key={category} open={isExpanded} onOpenChange={() => toggleCategory(category)}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">{config.label}</h3>
+                        <p className="text-xs text-muted-foreground">{items.length} productos</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{items.length}</Badge>
+                      {isExpanded ? (
+                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-              <Badge variant="secondary" className="w-fit">
-                {cocktail.category}
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {cocktail.description && (
-                <p className="text-sm text-muted-foreground">{cocktail.description}</p>
-              )}
-              
-              <div className="space-y-2">
-                <h4 className="font-semibold text-sm">Ingredientes:</h4>
-                <ul className="space-y-1">
-                  {cocktail.ingredients.map((ing) => (
-                    <li key={ing.id} className="text-sm flex justify-between">
-                      <span className="text-muted-foreground">{ing.product_name}</span>
-                      <span className="font-medium">
-                        {ing.quantity} {getUnitDisplay(ing.product_category, ing.product_unit)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="pt-4 border-t border-border">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Precio:</span>
-                  <span className="text-xl font-bold text-primary">
-                    {formatCLP(cocktail.price)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t">
+                    <div className="divide-y">
+                      {items.map((item) => (
+                        <div 
+                          key={item.id} 
+                          className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium truncate">{item.name}</span>
+                            </div>
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 shrink-0">
+                            <span className="text-lg font-bold text-primary tabular-nums">
+                              {formatCLP(item.price)}
+                            </span>
+                            {!isReadOnly && (
+                              <div className="flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleEditClick(item)}
+                                  className="h-8 w-8"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteClick(item)}
+                                  className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          );
+        })}
       </div>
+
+      {groupedCocktails.length === 0 && (
+        <Card className="p-12 text-center">
+          <Wine className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+          <h3 className="text-lg font-semibold mb-2">
+            {searchTerm ? "No se encontraron productos" : "No hay productos en la carta"}
+          </h3>
+          <p className="text-muted-foreground text-sm">
+            {searchTerm 
+              ? "Intenta con otro término de búsqueda" 
+              : "Agrega productos para comenzar a vender"}
+          </p>
+        </Card>
+      )}
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar cóctel?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Se eliminará el cóctel "{selectedCocktail?.name}" 
-              y todos sus ingredientes.
+              Esta acción no se puede deshacer. Se eliminará "{selectedCocktail?.name}" 
+              de la carta.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -462,107 +608,117 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Cóctel</DialogTitle>
+            <DialogTitle>Editar Producto</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nombre</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Nombre</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-price">Precio</Label>
+                <Input
+                  id="edit-price"
+                  type="number"
+                  value={editForm.price}
+                  onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="edit-category">Categoría</Label>
-              <Input
-                id="edit-category"
-                value={editForm.category}
-                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                placeholder="Ej: Clásicos, Refrescantes, Tropicales"
-              />
+              <Select 
+                value={editForm.category} 
+                onValueChange={(value) => setEditForm({ ...editForm, category: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-price">Precio</Label>
-              <Input
-                id="edit-price"
-                type="number"
-                value={editForm.price}
-                onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Descripción</Label>
+              <Label htmlFor="edit-description">Descripción (opcional)</Label>
               <Textarea
                 id="edit-description"
                 value={editForm.description}
                 onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                rows={3}
+                rows={2}
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label>Ingredientes</Label>
-                <Button type="button" size="sm" onClick={addIngredient} variant="outline">
-                  <Plus className="w-4 h-4 mr-1" />
+                <Label>Ingredientes (receta)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
+                  <Plus className="w-3 h-3 mr-1" />
                   Agregar
                 </Button>
               </div>
-
-              {editForm.ingredients.map((ingredient, index) => (
-                <div key={index} className="flex gap-2 items-end">
-                  <div className="flex-1 space-y-2">
-                    <Label>Producto</Label>
-                    <Select
-                      value={ingredient.product_id}
-                      onValueChange={(value) => updateIngredient(index, "product_id", value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar producto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} ({getUnitDisplay(product.category, product.unit)})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-32 space-y-2">
-                    <Label>Cantidad</Label>
-                    <Input
-                      type="number"
-                      value={ingredient.quantity}
-                      onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    onClick={() => removeIngredient(index)}
-                    className="hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+              {editForm.ingredients.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  Sin receta definida (producto simple)
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {editForm.ingredients.map((ing, index) => (
+                    <div key={index} className="flex gap-2 items-center">
+                      <Select
+                        value={ing.product_id || "placeholder"}
+                        onValueChange={(value) => updateIngredient(index, "product_id", value === "placeholder" ? "" : value)}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Seleccionar producto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        placeholder="Cantidad"
+                        value={ing.quantity || ""}
+                        onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeIngredient(index)}
+                        className="h-9 w-9 text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} className="primary-gradient">
-              Guardar Cambios
-            </Button>
+            <Button onClick={handleSave}>Guardar Cambios</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -571,107 +727,117 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Agregar Cóctel</DialogTitle>
+            <DialogTitle>Agregar Producto</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Nombre</Label>
-              <Input
-                id="add-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-name">Nombre</Label>
+                <Input
+                  id="add-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-price">Precio</Label>
+                <Input
+                  id="add-price"
+                  type="number"
+                  value={editForm.price}
+                  onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="add-category">Categoría</Label>
-              <Input
-                id="add-category"
-                value={editForm.category}
-                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                placeholder="Ej: Clásicos, Refrescantes, Tropicales"
-              />
+              <Select 
+                value={editForm.category} 
+                onValueChange={(value) => setEditForm({ ...editForm, category: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="add-price">Precio</Label>
-              <Input
-                id="add-price"
-                type="number"
-                value={editForm.price}
-                onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="add-description">Descripción</Label>
+              <Label htmlFor="add-description">Descripción (opcional)</Label>
               <Textarea
                 id="add-description"
                 value={editForm.description}
                 onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                rows={3}
+                rows={2}
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label>Ingredientes</Label>
-                <Button type="button" size="sm" onClick={addIngredient} variant="outline">
-                  <Plus className="w-4 h-4 mr-1" />
+                <Label>Ingredientes (receta)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
+                  <Plus className="w-3 h-3 mr-1" />
                   Agregar
                 </Button>
               </div>
-
-              {editForm.ingredients.map((ingredient, index) => (
-                <div key={index} className="flex gap-2 items-end">
-                  <div className="flex-1 space-y-2">
-                    <Label>Producto</Label>
-                    <Select
-                      value={ingredient.product_id}
-                      onValueChange={(value) => updateIngredient(index, "product_id", value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar producto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} ({getUnitDisplay(product.category, product.unit)})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-32 space-y-2">
-                    <Label>Cantidad</Label>
-                    <Input
-                      type="number"
-                      value={ingredient.quantity}
-                      onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    onClick={() => removeIngredient(index)}
-                    className="hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+              {editForm.ingredients.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  Sin receta definida (producto simple)
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {editForm.ingredients.map((ing, index) => (
+                    <div key={index} className="flex gap-2 items-center">
+                      <Select
+                        value={ing.product_id || "placeholder"}
+                        onValueChange={(value) => updateIngredient(index, "product_id", value === "placeholder" ? "" : value)}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Seleccionar producto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        placeholder="Cantidad"
+                        value={ing.quantity || ""}
+                        onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeIngredient(index)}
+                        className="h-9 w-9 text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleAdd} className="primary-gradient">
-              Agregar Cóctel
-            </Button>
+            <Button onClick={handleAdd}>Agregar Producto</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
