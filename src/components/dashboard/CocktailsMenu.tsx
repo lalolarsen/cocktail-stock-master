@@ -471,7 +471,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Card className="p-4">
           <div className="text-2xl font-bold">{stats.totalItems}</div>
           <div className="text-xs text-muted-foreground">Productos</div>
@@ -479,10 +479,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         <Card className="p-4">
           <div className="text-2xl font-bold">{stats.totalCategories}</div>
           <div className="text-xs text-muted-foreground">Categorías</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold">{formatCLP(stats.avgPrice)}</div>
-          <div className="text-xs text-muted-foreground">Precio Promedio</div>
         </Card>
       </div>
 
