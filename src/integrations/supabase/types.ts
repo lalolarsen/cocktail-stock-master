@@ -1502,7 +1502,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_cash_register: boolean
-          location_id: string
+          location_id: string | null
           name: string
           pos_kind: string | null
           pos_type: string
@@ -1517,7 +1517,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_cash_register?: boolean
-          location_id: string
+          location_id?: string | null
           name: string
           pos_kind?: string | null
           pos_type?: string
@@ -1532,7 +1532,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_cash_register?: boolean
-          location_id?: string
+          location_id?: string | null
           name?: string
           pos_kind?: string | null
           pos_type?: string
