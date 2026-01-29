@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -48,6 +49,7 @@ const getUnitDisplay = (category: string, unit: string) => {
 };
 
 export function WarehouseInventory() {
+  const { venue } = useActiveVenue();
   const [warehouse, setWarehouse] = useState<StockLocation | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [balances, setBalances] = useState<StockBalance[]>([]);
@@ -55,15 +57,27 @@ export function WarehouseInventory() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (venue?.id) {
+      fetchData();
+    }
+  }, [venue?.id]);
 
   const fetchData = async () => {
+    if (!venue?.id) return;
+    
     try {
+      setLoading(true);
       const [locResult, prodResult, balResult] = await Promise.all([
-        supabase.from("stock_locations").select("*").eq("type", "warehouse").eq("is_active", true).limit(1).maybeSingle(),
-        supabase.from("products").select("*").order("name"),
-        supabase.from("stock_balances").select("*")
+        supabase
+          .from("stock_locations")
+          .select("*")
+          .eq("type", "warehouse")
+          .eq("is_active", true)
+          .eq("venue_id", venue.id)
+          .limit(1)
+          .maybeSingle(),
+        supabase.from("products").select("*").eq("venue_id", venue.id).order("name"),
+        supabase.from("stock_balances").select("*").eq("venue_id", venue.id)
       ]);
       
       if (locResult.error) throw locResult.error;
