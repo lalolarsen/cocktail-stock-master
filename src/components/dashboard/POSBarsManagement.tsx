@@ -377,14 +377,14 @@ export function POSBarsManagement() {
               <Alert className="border-primary/20 bg-primary/5">
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  Las ubicaciones son puntos físicos donde se almacena y entrega inventario. Solo los <strong>Lectores de Barra</strong> (QR scanners) necesitan estar asociados a una ubicación.
+                  Cada <strong>barra</strong> es un punto físico donde se almacena inventario y se redimen QR. La bodega repone a las barras.
                 </AlertDescription>
               </Alert>
               
               <div className="flex justify-end">
                 <Button onClick={() => setShowLocationDialog(true)} className="gap-2">
                   <Plus className="w-4 h-4" />
-                  Nueva Ubicación
+                  Nueva Barra
                 </Button>
               </div>
               
@@ -398,60 +398,55 @@ export function POSBarsManagement() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-lg">{warehouseLocation.name}</h3>
-                        <Badge variant="outline" className="mt-1">Bodega Principal</Badge>
+                        <p className="text-sm text-muted-foreground">Punto de reposición central</p>
                       </div>
                     </div>
-                    <Badge variant="default">Sistema</Badge>
+                    <Badge variant="default">Bodega</Badge>
                   </div>
                 </div>
               )}
               
               {/* Bars */}
               <div className="grid gap-4">
-                {barLocations.map((location) => {
-                  const posCount = terminals.filter(t => t.location_id === location.id).length;
-                  return (
-                    <div
-                      key={location.id}
-                      className="glass-effect p-4 rounded-lg flex items-center justify-between hover-lift"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gradient-to-br from-emerald-500 to-green-500 rounded-lg">
-                          <Store className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{location.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {posCount > 0 ? `${posCount} lector(es) vinculado(s)` : "Sin lectores vinculados"}
-                          </p>
-                        </div>
+                {barLocations.map((location) => (
+                  <div
+                    key={location.id}
+                    className="glass-effect p-4 rounded-lg flex items-center justify-between hover-lift"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-emerald-500 to-green-500 rounded-lg">
+                        <Store className="w-5 h-5 text-white" />
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Badge variant={location.is_active ? "default" : "secondary"}>
-                          {location.is_active ? "Activo" : "Inactivo"}
-                        </Badge>
-                        <Switch
-                          checked={location.is_active}
-                          onCheckedChange={(checked) => handleToggleActive("location", location.id, checked)}
-                        />
-                        <Button size="icon" variant="outline" onClick={() => openEditLocation(location)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="hover:bg-destructive hover:text-destructive-foreground"
-                          onClick={() => {
-                            setDeleteTarget({ type: "location", item: location });
-                            setShowDeleteDialog(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                      <div>
+                        <h3 className="font-semibold text-lg">{location.name}</h3>
+                        <p className="text-sm text-muted-foreground">Punto de inventario y lectura QR</p>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="flex items-center gap-3">
+                      <Badge variant={location.is_active ? "default" : "secondary"}>
+                        {location.is_active ? "Activo" : "Inactivo"}
+                      </Badge>
+                      <Switch
+                        checked={location.is_active}
+                        onCheckedChange={(checked) => handleToggleActive("location", location.id, checked)}
+                      />
+                      <Button size="icon" variant="outline" onClick={() => openEditLocation(location)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={() => {
+                          setDeleteTarget({ type: "location", item: location });
+                          setShowDeleteDialog(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </TabsContent>
           </Tabs>
