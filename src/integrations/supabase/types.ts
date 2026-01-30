@@ -202,7 +202,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_mixer_slot: boolean
-          product_id: string
+          product_id: string | null
           quantity: number
           venue_id: string
         }
@@ -211,7 +211,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_mixer_slot?: boolean
-          product_id: string
+          product_id?: string | null
           quantity: number
           venue_id: string
         }
@@ -220,7 +220,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_mixer_slot?: boolean
-          product_id?: string
+          product_id?: string | null
           quantity?: number
           venue_id?: string
         }
