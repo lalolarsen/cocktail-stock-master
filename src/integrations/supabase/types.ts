@@ -202,6 +202,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_mixer_slot: boolean
+          mixer_category: string | null
           product_id: string | null
           quantity: number
           venue_id: string
@@ -211,6 +212,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_mixer_slot?: boolean
+          mixer_category?: string | null
           product_id?: string | null
           quantity: number
           venue_id: string
@@ -220,6 +222,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_mixer_slot?: boolean
+          mixer_category?: string | null
           product_id?: string | null
           quantity?: number
           venue_id?: string

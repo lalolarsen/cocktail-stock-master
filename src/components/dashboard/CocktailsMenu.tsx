@@ -225,6 +225,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             product_id,
             quantity,
             is_mixer_slot,
+            mixer_category,
             products (
               name,
               category,
@@ -233,15 +234,25 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           `)
           .eq("cocktail_id", cocktail.id);
 
-        const ingredients = (ingredientsData || []).map((ing: any) => ({
-          id: ing.id,
-          product_id: ing.product_id,
-          quantity: ing.quantity,
-          is_mixer_slot: ing.is_mixer_slot || false,
-          product_name: ing.is_mixer_slot ? "Mixer (variable)" : (ing.products?.name || ""),
-          product_category: ing.products?.category || "",
-          product_unit: ing.products?.unit || "",
-        }));
+        const ingredients = (ingredientsData || []).map((ing: any) => {
+          const isMixer = ing.is_mixer_slot || false;
+          let displayName = ing.products?.name || "";
+          if (isMixer) {
+            displayName = ing.mixer_category === "redbull" 
+              ? "Mixer Red Bull (variable)" 
+              : "Mixer Latas (variable)";
+          }
+          return {
+            id: ing.id,
+            product_id: ing.product_id,
+            quantity: ing.quantity,
+            is_mixer_slot: isMixer,
+            mixer_category: ing.mixer_category || null,
+            product_name: displayName,
+            product_category: ing.products?.category || "",
+            product_unit: ing.products?.unit || "",
+          };
+        });
 
         return {
           ...cocktail,
@@ -357,6 +368,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             .insert(
               validIngredients.map(ing => {
                 const isMixer = (ing as any).is_mixer_slot || false;
+                const mixerCategory = (ing as any).mixer_category || null;
                 return {
                   cocktail_id: selectedCocktail.id,
                   // For mixer slots, product_id is null (selected at redemption)
@@ -364,6 +376,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
                   quantity: ing.quantity,
                   venue_id: venue.id,
                   is_mixer_slot: isMixer,
+                  mixer_category: isMixer ? mixerCategory : null,
                 };
               })
             );
@@ -415,12 +428,14 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             .insert(
               validIngredients.map(ing => {
                 const isMixer = (ing as any).is_mixer_slot || false;
+                const mixerCategory = (ing as any).mixer_category || null;
                 return {
                   cocktail_id: cocktailData.id,
                   product_id: isMixer ? null : ing.product_id,
                   quantity: ing.quantity,
                   venue_id: venue.id,
                   is_mixer_slot: isMixer,
+                  mixer_category: isMixer ? mixerCategory : null,
                 };
               })
             );
