@@ -34,6 +34,7 @@ const CATEGORY_TEMPLATES: Record<string, {
     label: string;
     filterCategory?: string; // Filter products by category (ml, g, units)
     filterKeywords?: string[]; // Filter by name keywords
+    mixerCategory?: "latas" | "redbull"; // For mixer selection at bar
     defaultQuantity: number;
     quantityLabel: string;
     required: boolean;
@@ -42,7 +43,7 @@ const CATEGORY_TEMPLATES: Record<string, {
 }> = {
   destilados: {
     label: "Destilados",
-    description: "90ml de destilado + bebida 220cc (mixer seleccionable en barra)",
+    description: "90ml de destilado + mixer (elegido en barra)",
     slots: [
       {
         label: "Destilado",
@@ -53,12 +54,12 @@ const CATEGORY_TEMPLATES: Record<string, {
         isMixerSlot: false,
       },
       {
-        label: "Bebida/Mixer",
-        filterCategory: "units",
+        label: "Mixer Latas",
+        mixerCategory: "latas", // Coca-Cola, Sprite, Fanta, etc. (220ml/350ml)
         defaultQuantity: 1,
         quantityLabel: "unidad",
         required: true,
-        isMixerSlot: true, // Bartender selects at redemption
+        isMixerSlot: true,
       },
     ],
   },
@@ -282,6 +283,10 @@ export const CategoryRecipeEditor = ({
             
             // Mixer slots don't require product selection - it's chosen at redemption
             if (slot.isMixerSlot) {
+              const mixerLabel = slot.mixerCategory === "redbull" 
+                ? "Red Bull (variedad elegida en barra)" 
+                : "Bebida en Lata (elegida en barra)";
+              
               return (
                 <Card key={index} className="p-3 border-dashed border-primary/50 bg-primary/5">
                   <div className="flex items-center gap-3">
@@ -291,7 +296,7 @@ export const CategoryRecipeEditor = ({
                       </Label>
                       <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50 text-muted-foreground text-sm">
                         <GlassWater className="w-4 h-4" />
-                        <span>Elegido por cliente en barra</span>
+                        <span>{mixerLabel}</span>
                       </div>
                     </div>
                     <div className="w-28">
