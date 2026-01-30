@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Zap, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Zap, AlertCircle, GlassWater } from "lucide-react";
 
 interface Product {
   id: string;
@@ -279,7 +279,44 @@ export const CategoryRecipeEditor = ({
         <div className="space-y-3">
           {template.slots.map((slot, index) => {
             const filteredProducts = getFilteredProducts(slot);
-            const currentValue = ingredients[index] || { product_id: "", quantity: slot.defaultQuantity };
+            const currentValue = ingredients[index] || { product_id: "", quantity: slot.defaultQuantity, is_mixer_slot: slot.isMixerSlot };
+            
+            // Mixer slots don't require product selection - it's chosen at redemption
+            if (slot.isMixerSlot) {
+              return (
+                <Card key={index} className="p-3 border-dashed border-primary/50 bg-primary/5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">
+                        {slot.label} <Badge variant="secondary" className="ml-2 text-[10px]">Variable</Badge>
+                      </Label>
+                      <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50 text-muted-foreground text-sm">
+                        <GlassWater className="w-4 h-4" />
+                        <span>Elegido por cliente en barra</span>
+                      </div>
+                    </div>
+                    <div className="w-28">
+                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">
+                        Cantidad ({slot.quantityLabel})
+                      </Label>
+                      <Input
+                        type="number"
+                        value={currentValue.quantity || ""}
+                        onChange={(e) => {
+                          const updated = [...ingredients];
+                          if (!updated[index]) {
+                            updated[index] = { product_id: "", quantity: 0, is_mixer_slot: true };
+                          }
+                          updated[index].quantity = Number(e.target.value);
+                          updated[index].is_mixer_slot = true;
+                          onChange(updated);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </Card>
+              );
+            }
             
             return (
               <Card key={index} className="p-3">
