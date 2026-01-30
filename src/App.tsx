@@ -3,8 +3,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { AppSessionProvider, useAppSession } from "@/contexts/AppSessionContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Loader2 } from "lucide-react";
+
+// Lazy load pages for better performance
 import Sales from "./pages/Sales";
 import Admin from "./pages/Admin";
 import Documents from "./pages/Documents";
@@ -25,39 +28,169 @@ import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
 import DeveloperPanel from "./pages/DeveloperPanel";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FeatureGate } from "./components/FeatureGate";
-import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
-const App = () => {
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+// Inner component that uses the session context
+function AppRoutes() {
+  const { isAuthenticated, isLoading } = useAppSession();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Cargando...</p>
+        </div>
       </div>
     );
   }
 
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/admin" replace />
+          ) : (
+            <Navigate to="/auth" replace />
+          )
+        }
+      />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/dev-auth" element={<DevAuth />} />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Admin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/documents"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <Documents />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/pickup-tokens"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <PickupTokens />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/pickups"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <PickupRedemptions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/system"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <SystemSettings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/income"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <Income />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/reports/estado-resultados"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <IncomeStatement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/purchases/import"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <PurchasesImport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/catalog/pending"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <PendingCatalog />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/feature-flags"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <FeatureFlagsAdmin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/monitoring"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
+            <SystemMonitoring />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gerencia"
+        element={
+          <ProtectedRoute allowedRoles={["gerencia"]}>
+            <Admin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sales"
+        element={
+          <ProtectedRoute allowedRoles={["vendedor", "admin"]}>
+            <Sales />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bar"
+        element={
+          <ProtectedRoute allowedRoles={["bar"]}>
+            <Bar />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tickets"
+        element={
+          <ProtectedRoute allowedRoles={["ticket_seller", "admin"]}>
+            <FeatureGate feature="tickets_module" featureName="Módulo de Entradas">
+              <Tickets />
+            </FeatureGate>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/help" element={<Help />} />
+      <Route path="/developer" element={<DeveloperPanel />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
+const App = () => {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -65,152 +198,13 @@ const App = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Routes>
-            <Route
-              path="/"
-              element={
-                isAuthenticated ? (
-                  <Navigate to="/admin" replace />
-                ) : (
-                  <Navigate to="/auth" replace />
-                )
-              }
-            />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/dev-auth" element={<DevAuth />} />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <Admin />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/documents"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <Documents />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/pickup-tokens"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <PickupTokens />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/pickups"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <PickupRedemptions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/system"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <SystemSettings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/income"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <Income />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/reports/estado-resultados"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <IncomeStatement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/purchases/import"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <PurchasesImport />
-                </ProtectedRoute>
-              }
-            />
-            {/* Feature-gated routes handle their own FeatureGate internally */}
-            <Route
-              path="/admin/catalog/pending"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <PendingCatalog />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/feature-flags"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <FeatureFlagsAdmin />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/monitoring"
-              element={
-                <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-                  <SystemMonitoring />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/gerencia"
-              element={
-                <ProtectedRoute allowedRoles={["gerencia"]}>
-                  <Admin />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sales"
-              element={
-                <ProtectedRoute allowedRoles={["vendedor", "admin"]}>
-                  <Sales />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/bar"
-              element={
-                <ProtectedRoute allowedRoles={["bar"]}>
-              <Bar />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tickets"
-              element={
-                <ProtectedRoute allowedRoles={["ticket_seller", "admin"]}>
-                  <FeatureGate feature="tickets_module" featureName="Módulo de Entradas">
-                    <Tickets />
-                  </FeatureGate>
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/help" element={<Help />} />
-            {/* Developer panel - hidden from sidebars, role-based auth without ProtectedRoute */}
-            <Route path="/developer" element={<DeveloperPanel />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
+            <AppSessionProvider>
+              <AppRoutes />
+            </AppSessionProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 };
 

@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +10,7 @@ interface VenueGuardProps {
 }
 
 export function VenueGuard({ children }: VenueGuardProps) {
-  const { venue, isLoading, error } = useActiveVenue();
+  const { venue, isLoading, venueError } = useAppSession();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -29,7 +29,7 @@ export function VenueGuard({ children }: VenueGuardProps) {
     );
   }
 
-  if (error || !venue) {
+  if (venueError || !venue) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 via-background to-destructive/5">
         <div className="max-w-md mx-auto p-8 text-center space-y-6">
@@ -39,7 +39,7 @@ export function VenueGuard({ children }: VenueGuardProps) {
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-foreground">Error Crítico</h1>
             <p className="text-muted-foreground">
-              {error || "No se pudo cargar la información del local asignado."}
+              {venueError || "No se pudo cargar la información del local asignado."}
             </p>
           </div>
           <p className="text-sm text-muted-foreground">
