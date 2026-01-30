@@ -347,6 +347,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               product_id: ing.product_id,
               quantity: ing.quantity,
               venue_id: venue.id,
+              is_mixer_slot: (ing as any).is_mixer_slot || false,
             }))
           );
 
@@ -392,6 +393,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               product_id: ing.product_id,
               quantity: ing.quantity,
               venue_id: venue.id,
+              is_mixer_slot: (ing as any).is_mixer_slot || false,
             }))
           );
 

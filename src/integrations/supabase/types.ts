@@ -201,6 +201,7 @@ export type Database = {
           cocktail_id: string
           created_at: string | null
           id: string
+          is_mixer_slot: boolean
           product_id: string
           quantity: number
           venue_id: string
@@ -209,6 +210,7 @@ export type Database = {
           cocktail_id: string
           created_at?: string | null
           id?: string
+          is_mixer_slot?: boolean
           product_id: string
           quantity: number
           venue_id: string
@@ -217,6 +219,7 @@ export type Database = {
           cocktail_id?: string
           created_at?: string | null
           id?: string
+          is_mixer_slot?: boolean
           product_id?: string
           quantity?: number
           venue_id?: string
@@ -3125,6 +3128,10 @@ export type Database = {
           total_cogs: number
         }[]
       }
+      check_token_mixer_requirements: {
+        Args: { p_token: string }
+        Returns: Json
+      }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       clean_berlin_demo_data: { Args: never; Returns: Json }
       close_jornada_manual: {
@@ -3341,10 +3348,19 @@ export type Database = {
         }
         Returns: undefined
       }
-      redeem_pickup_token: {
-        Args: { p_bartender_bar_id?: string; p_token: string }
-        Returns: Json
-      }
+      redeem_pickup_token:
+        | {
+            Args: { p_bartender_bar_id?: string; p_token: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_bartender_bar_id?: string
+              p_mixer_overrides?: Json
+              p_token: string
+            }
+            Returns: Json
+          }
       reset_demo_data: { Args: never; Returns: Json }
       reset_venue_data: {
         Args: { p_keep_user_ids?: string[]; p_venue_id: string }
