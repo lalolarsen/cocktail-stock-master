@@ -39,13 +39,10 @@ import { Worker, LoginRecord, AuditLog, AVAILABLE_ROLES } from "./workers/types"
 import { WorkerCard } from "./workers/WorkerCard";
 import { CreateWorkerDialog } from "./workers/CreateWorkerDialog";
 import { WorkerHistoryDialog } from "./workers/WorkerHistoryDialog";
-import { RoleEditor } from "./workers/RoleEditor";
-import { AppRole, useAppSession } from "@/contexts/AppSessionContext";
+import { AppRole } from "@/hooks/useUserRole";
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue, isLoading: venueLoading } = useActiveVenue();
-  const { hasRole } = useAppSession();
-  const isDeveloper = hasRole("developer");
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
@@ -602,11 +599,41 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               />
             </div>
 
-            <RoleEditor
-              selectedRoles={editWorker.roles}
-              onChange={(roles) => setEditWorker({ ...editWorker, roles })}
-              currentUserIsDeveloper={isDeveloper}
-            />
+            <div className="space-y-3">
+              <Label>Roles</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {AVAILABLE_ROLES.map((role) => {
+                  const Icon = role.icon;
+                  const isChecked = editWorker.roles.includes(role.value);
+                  return (
+                    <label
+                      key={role.value}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked 
+                          ? "bg-primary/5 border-primary/20 ring-2 ring-primary/20" 
+                          : "border-border hover:border-primary/40 hover:bg-muted/50"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setEditWorker({ ...editWorker, roles: [...editWorker.roles, role.value] });
+                          } else {
+                            setEditWorker({ 
+                              ...editWorker, 
+                              roles: editWorker.roles.filter((r) => r !== role.value) 
+                            });
+                          }
+                        }}
+                      />
+                      <Icon className={`h-4 w-4 ${isChecked ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className="text-sm font-medium">{role.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>

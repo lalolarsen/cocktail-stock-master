@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, UserPlus, Plus } from "lucide-react";
 import {
   Dialog,
@@ -11,8 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { RoleEditor } from "./RoleEditor";
-import { AppRole, useAppSession } from "@/contexts/AppSessionContext";
+import { AVAILABLE_ROLES } from "./types";
+import { AppRole } from "@/hooks/useUserRole";
 
 interface CreateWorkerDialogProps {
   open: boolean;
@@ -32,9 +33,6 @@ export function CreateWorkerDialog({
   onCreate,
   creating,
 }: CreateWorkerDialogProps) {
-  const { hasRole } = useAppSession();
-  const isDeveloper = hasRole("developer");
-  
   const [newWorker, setNewWorker] = useState({
     rut_code: "",
     full_name: "",
@@ -117,11 +115,41 @@ export function CreateWorkerDialog({
             />
           </div>
 
-          <RoleEditor
-            selectedRoles={newWorker.roles}
-            onChange={(roles) => setNewWorker({ ...newWorker, roles })}
-            currentUserIsDeveloper={isDeveloper}
-          />
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Roles *</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {AVAILABLE_ROLES.map((role) => {
+                const Icon = role.icon;
+                const isChecked = newWorker.roles.includes(role.value);
+                return (
+                  <label
+                    key={role.value}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      isChecked 
+                        ? "bg-primary/5 border-primary/20 ring-2 ring-primary/20" 
+                        : "border-border hover:border-primary/40 hover:bg-muted/50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setNewWorker({ ...newWorker, roles: [...newWorker.roles, role.value] });
+                        } else {
+                          setNewWorker({ 
+                            ...newWorker, 
+                            roles: newWorker.roles.filter((r) => r !== role.value) 
+                          });
+                        }
+                      }}
+                    />
+                    <Icon className={`h-4 w-4 ${isChecked ? "text-primary" : "text-muted-foreground"}`} />
+                    <span className="text-sm font-medium">{role.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="flex gap-3 justify-end pt-2">
             <Button 
