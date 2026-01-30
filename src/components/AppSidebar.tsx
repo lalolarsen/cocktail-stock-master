@@ -1,6 +1,5 @@
 import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -16,10 +15,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { useFeatureFlags, FeatureKey } from "@/hooks/useFeatureFlags";
 import { VenueIndicator } from "@/components/VenueIndicator";
-import { useUserRole, AppRole } from "@/hooks/useUserRole";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
+import { useAppSession, FeatureKey } from "@/contexts/AppSessionContext";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -85,39 +82,9 @@ const filterByFeatureFlags = (
 
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
   const navigate = useNavigate();
-  const { isEnabled } = useFeatureFlags();
   const { state } = useSidebar();
-  const { role } = useUserRole();
-  const { venue } = useActiveVenue();
+  const { role, isEnabled, sidebarConfig } = useAppSession();
   const isCollapsed = state === "collapsed";
-
-  // Fetch custom sidebar config for this venue/role
-  const { data: customConfig } = useQuery({
-    queryKey: ["sidebar-config-active", venue?.id, role],
-    queryFn: async () => {
-      if (!venue?.id || !role) return null;
-      const { data, error } = await supabase.rpc("get_sidebar_config", {
-        p_venue_id: venue.id,
-        p_role: role,
-      });
-      if (error) {
-        console.error("Error fetching sidebar config:", error);
-        return null;
-      }
-      return data as unknown as Array<{
-        menu_key: string;
-        menu_label: string;
-        icon_name: string;
-        view_type: string;
-        feature_flag: string | null;
-        external_path: string | null;
-        is_enabled: boolean;
-      }> | null;
-    },
-    enabled: !!venue?.id && !!role,
-    staleTime: 1000 * 30, // 30 seconds - refresh more often for config changes
-    refetchOnWindowFocus: true,
-  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -128,9 +95,9 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     navigate(path);
   };
 
-  // Convert custom config to menu items
+  // Convert custom config to menu items - uses pre-loaded sidebarConfig
   const getMenuItemsFromConfig = (): { internal: MenuItem[]; external: Array<{ title: string; path: string; icon: typeof Wine }> } => {
-    if (!customConfig || customConfig.length === 0) {
+    if (!sidebarConfig || sidebarConfig.length === 0) {
       // Fallback to hardcoded defaults
       const isGerencia = isReadOnly || role === "gerencia";
       const defaultItems = isGerencia 
@@ -143,7 +110,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     const internal: MenuItem[] = [];
     const external: Array<{ title: string; path: string; icon: typeof Wine }> = [];
 
-    customConfig.forEach(item => {
+    sidebarConfig.forEach(item => {
       if (!item.is_enabled) return;
       
       // Check feature flag
