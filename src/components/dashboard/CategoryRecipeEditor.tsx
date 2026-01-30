@@ -199,6 +199,7 @@ export const CategoryRecipeEditor = ({
         product_id: "",
         quantity: slot.defaultQuantity,
         is_mixer_slot: slot.isMixerSlot || false,
+        mixer_category: slot.isMixerSlot ? slot.mixerCategory : undefined,
       }));
       onChange(initial);
     }
@@ -211,6 +212,7 @@ export const CategoryRecipeEditor = ({
       product_id: "",
       quantity: slot.defaultQuantity,
       is_mixer_slot: slot.isMixerSlot || false,
+      mixer_category: slot.isMixerSlot ? slot.mixerCategory : undefined,
     }));
     onChange(initial);
   };
@@ -271,8 +273,10 @@ export const CategoryRecipeEditor = ({
 
   // Get display value for ingredient selector
   const getIngredientDisplayValue = (ing: IngredientEntry) => {
-    if (ing.is_mixer_slot && ing.mixer_category === "latas") return MIXER_LATAS_ID;
+    // If it's a mixer slot but the category wasn't stored (legacy data), default to latas
+    // so it doesn't render as "Seleccionar producto".
     if (ing.is_mixer_slot && ing.mixer_category === "redbull") return MIXER_REDBULL_ID;
+    if (ing.is_mixer_slot) return MIXER_LATAS_ID;
     return ing.product_id || "placeholder";
   };
 
@@ -360,6 +364,7 @@ export const CategoryRecipeEditor = ({
                           }
                           updated[index].quantity = Number(e.target.value);
                           updated[index].is_mixer_slot = true;
+                          updated[index].mixer_category = slot.mixerCategory;
                           onChange(updated);
                         }}
                       />
