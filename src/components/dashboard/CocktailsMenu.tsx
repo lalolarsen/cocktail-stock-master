@@ -19,8 +19,10 @@ import {
   Package,
   Tag,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  FileSpreadsheet
 } from "lucide-react";
+import { MenuImportDialog } from "./MenuImportDialog";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -117,6 +119,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   
   const [editForm, setEditForm] = useState({
     name: "",
@@ -462,10 +465,16 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             />
           </div>
           {!isReadOnly && (
-            <Button onClick={handleAddClick}>
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Importar
+              </Button>
+              <Button onClick={handleAddClick}>
+                <Plus className="w-4 h-4 mr-2" />
+                Agregar
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -837,6 +846,16 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Dialog */}
+      {venue?.id && (
+        <MenuImportDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          venueId={venue.id}
+          onImportComplete={fetchCocktails}
+        />
+      )}
     </div>
   );
 };
