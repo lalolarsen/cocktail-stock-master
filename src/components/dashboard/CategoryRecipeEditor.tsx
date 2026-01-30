@@ -24,7 +24,12 @@ interface IngredientEntry {
   product_id: string;
   quantity: number;
   is_mixer_slot?: boolean;
+  mixer_category?: "latas" | "redbull"; // For identifying mixer type at redemption
 }
+
+// Virtual mixer IDs for the ingredient selector
+const MIXER_LATAS_ID = "__MIXER_LATAS__";
+const MIXER_REDBULL_ID = "__MIXER_REDBULL__";
 
 // Category-specific recipe templates
 const CATEGORY_TEMPLATES: Record<string, {
@@ -225,8 +230,55 @@ export const CategoryRecipeEditor = ({
     value: string | number
   ) => {
     const updated = [...ingredients];
-    updated[index] = { ...updated[index], [field]: value };
+    
+    // Handle mixer virtual IDs
+    if (field === "product_id") {
+      if (value === MIXER_LATAS_ID) {
+        updated[index] = { 
+          ...updated[index], 
+          product_id: "", 
+          is_mixer_slot: true, 
+          mixer_category: "latas",
+          quantity: updated[index].quantity || 1 
+        };
+        onChange(updated);
+        return;
+      } else if (value === MIXER_REDBULL_ID) {
+        updated[index] = { 
+          ...updated[index], 
+          product_id: "", 
+          is_mixer_slot: true, 
+          mixer_category: "redbull",
+          quantity: updated[index].quantity || 1 
+        };
+        onChange(updated);
+        return;
+      } else {
+        // Regular product - clear mixer flags
+        updated[index] = { 
+          ...updated[index], 
+          product_id: value as string, 
+          is_mixer_slot: false, 
+          mixer_category: undefined 
+        };
+        onChange(updated);
+        return;
+      }
+    }
+    
+    if (field === "quantity") {
+      updated[index] = { ...updated[index], quantity: value as number };
+    } else {
+      updated[index] = { ...updated[index], product_id: value as string };
+    }
     onChange(updated);
+  };
+
+  // Get display value for ingredient selector
+  const getIngredientDisplayValue = (ing: IngredientEntry) => {
+    if (ing.is_mixer_slot && ing.mixer_category === "latas") return MIXER_LATAS_ID;
+    if (ing.is_mixer_slot && ing.mixer_category === "redbull") return MIXER_REDBULL_ID;
+    return ing.product_id || "placeholder";
   };
 
   // Get product name by id
@@ -471,44 +523,63 @@ export const CategoryRecipeEditor = ({
         </p>
       ) : (
         <div className="space-y-2">
-          {ingredients.map((ing, index) => (
-            <div key={index} className="flex gap-2 items-center">
-              <Select
-                value={ing.product_id || "placeholder"}
-                onValueChange={(value) => 
-                  updateIngredient(index, "product_id", value === "placeholder" ? "" : value)
-                }
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Seleccionar producto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} <span className="text-muted-foreground">({p.unit})</span>
+          {ingredients.map((ing, index) => {
+            const displayValue = getIngredientDisplayValue(ing);
+            const isMixer = ing.is_mixer_slot;
+            
+            return (
+              <div key={index} className="flex gap-2 items-center">
+                <Select
+                  value={displayValue}
+                  onValueChange={(value) => 
+                    updateIngredient(index, "product_id", value === "placeholder" ? "" : value)
+                  }
+                >
+                  <SelectTrigger className={`flex-1 ${isMixer ? "border-primary/50 bg-primary/5" : ""}`}>
+                    <SelectValue placeholder="Seleccionar producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
+                    
+                    {/* Mixer options - always at top */}
+                    <SelectItem value={MIXER_LATAS_ID} className="font-medium text-primary">
+                      🥤 Mixer Latas (Coca-Cola, Sprite, etc.)
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                type="number"
-                className="w-24"
-                placeholder="Cantidad"
-                value={ing.quantity || ""}
-                onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => removeIngredient(index)}
-                className="h-9 w-9 text-destructive"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          ))}
+                    <SelectItem value={MIXER_REDBULL_ID} className="font-medium text-primary">
+                      ⚡ Mixer Red Bull (todas las variedades)
+                    </SelectItem>
+                    
+                    {/* Separator */}
+                    <div className="h-px bg-border my-1" />
+                    
+                    {/* Regular products */}
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} <span className="text-muted-foreground">({p.unit})</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  className="w-24"
+                  placeholder={isMixer ? "1" : "Cantidad"}
+                  value={ing.quantity || ""}
+                  onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
+                  disabled={isMixer} // Mixers are always 1 unit
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeIngredient(index)}
+                  className="h-9 w-9 text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
