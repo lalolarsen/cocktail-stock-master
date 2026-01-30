@@ -282,10 +282,13 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       description: cocktail.description || "",
       price: cocktail.price,
       category: cocktail.category,
-      ingredients: cocktail.ingredients.map(ing => ({
+      ingredients: cocktail.ingredients.map((ing: any) => ({
         product_id: ing.product_id || "",
         quantity: ing.quantity,
         is_mixer_slot: ing.is_mixer_slot || false,
+        // Needed so the recipe editor can re-select the correct virtual mixer option
+        // (Mixer Latas vs Mixer Red Bull) when reopening the edit dialog.
+        mixer_category: ing.mixer_category ?? undefined,
       })),
     });
     setEditDialogOpen(true);
