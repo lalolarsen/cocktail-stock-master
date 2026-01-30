@@ -18,7 +18,9 @@ export function VenueGuard({ children }: VenueGuardProps) {
     navigate("/auth");
   };
 
-  if (isLoading) {
+  // Show loading screen while session is initializing OR while venue is being fetched
+  // Only show error if loading is complete AND there's an error/no venue
+  if (isLoading || (!venueError && !venue)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="flex flex-col items-center gap-4">
