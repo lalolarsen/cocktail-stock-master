@@ -1,5 +1,5 @@
-import { Shield, Eye, ShoppingCart, Wine, Sparkles } from "lucide-react";
-import { AppRole } from "@/hooks/useUserRole";
+import { Shield, Eye, ShoppingCart, Wine, Sparkles, Code } from "lucide-react";
+import { AppRole } from "@/contexts/AppSessionContext";
 
 export interface Worker {
   id: string;
@@ -30,31 +30,54 @@ export interface AuditLog {
 export const AVAILABLE_ROLES: { 
   value: AppRole; 
   label: string; 
-  icon: any; 
+  icon: any;
+  description?: string;
 }[] = [
+  { 
+    value: "developer", 
+    label: "Desarrollador", 
+    icon: Code,
+    description: "Acceso completo al sistema y panel de desarrollo",
+  },
   { 
     value: "admin", 
     label: "Administrador", 
-    icon: Shield, 
+    icon: Shield,
+    description: "Gestión completa del venue",
   },
   { 
     value: "gerencia", 
     label: "Gerencia", 
-    icon: Eye, 
+    icon: Eye,
+    description: "Solo lectura de reportes y estadísticas",
   },
   { 
     value: "vendedor", 
     label: "Vendedor", 
-    icon: ShoppingCart, 
+    icon: ShoppingCart,
+    description: "Punto de venta y operaciones",
   },
   { 
     value: "bar", 
     label: "Barra", 
-    icon: Wine, 
+    icon: Wine,
+    description: "Canje de tokens y preparación",
   },
   { 
     value: "ticket_seller", 
     label: "Ticketero", 
-    icon: Sparkles, 
+    icon: Sparkles,
+    description: "Venta de entradas",
   },
 ];
+
+// Roles that "developer" inherits (has access to all)
+export const DEVELOPER_INHERITS_ALL = true;
+
+// Get displayable roles (excludes developer for normal workers)
+export function getAssignableRoles(currentUserIsDeveloper: boolean): typeof AVAILABLE_ROLES {
+  if (currentUserIsDeveloper) {
+    return AVAILABLE_ROLES;
+  }
+  return AVAILABLE_ROLES.filter(r => r.value !== "developer");
+}
