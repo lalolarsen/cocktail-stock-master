@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +79,7 @@ const AVAILABLE_ROLES: { value: AppRole; label: string; icon: any; color: string
 ];
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
+  const { venue } = useActiveVenue();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
@@ -180,71 +182,52 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       return;
     }
 
+    if (!venue?.id) {
+      toast.error("No se pudo determinar el venue actual");
+      return;
+    }
+
     setCreating(true);
 
     try {
-      // Generate internal email
-      const internalEmail = `${normalizedRut}@coctelstock.local`;
-
-      // Create user via Supabase Auth with internal email and PIN as password
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: internalEmail,
-        password: newWorker.pin,
-        options: {
-          data: {
-            full_name: newWorker.full_name,
-          },
+      // Use the edge function to create worker with proper venue_id and roles
+      // The edge function handles: auth user creation, profile upsert, role assignment
+      const primaryRole = newWorker.roles[0]; // Edge function takes single role
+      
+      const response = await supabase.functions.invoke("create-worker-user", {
+        body: {
+          venue_id: venue.id,
+          rut_code: normalizedRut,
+          pin: newWorker.pin,
+          full_name: newWorker.full_name,
+          role: primaryRole,
         },
       });
 
-      if (authError) {
-        if (authError.message.includes("already registered")) {
-          toast.error("Este RUT ya está registrado");
-        } else {
-          throw authError;
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || "Error desconocido al crear usuario");
+      }
+
+      const userId = response.data.user_id;
+
+      // If multiple roles selected, add additional roles
+      if (newWorker.roles.length > 1) {
+        for (const role of newWorker.roles.slice(1)) {
+          await supabase.from("worker_roles").insert({
+            worker_id: userId,
+            role,
+          });
         }
-        return;
-      }
-
-      if (!authData.user) {
-        throw new Error("No se pudo crear el usuario");
-      }
-
-      // Update profile with RUT and internal email
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: newWorker.full_name,
-          rut_code: normalizedRut,
-          internal_email: internalEmail,
-          is_active: true,
-        })
-        .eq("id", authData.user.id);
-
-      if (profileError) {
-        console.error("Profile update error:", profileError);
-      }
-
-      // Assign roles to worker_roles table
-      for (const role of newWorker.roles) {
-        await supabase.from("worker_roles").insert({
-          worker_id: authData.user.id,
-          role,
-        });
-      }
-
-      // Also add to user_roles for backward compatibility
-      for (const role of newWorker.roles) {
-        await supabase.from("user_roles").insert({
-          user_id: authData.user.id,
-          role,
-        });
       }
 
       // Log admin action
       await supabase.rpc("log_admin_action", {
         p_action: "create_worker",
-        p_target_worker_id: authData.user.id,
+        p_target_worker_id: userId,
         p_details: { rut: maskRut(normalizedRut), roles: newWorker.roles },
       });
 
@@ -254,7 +237,11 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       fetchWorkers();
     } catch (error: any) {
       console.error("Error creating worker:", error);
-      toast.error("Error al crear trabajador: " + (error.message || "Error desconocido"));
+      if (error.message?.includes("already registered") || error.message?.includes("already exists")) {
+        toast.error("Este RUT ya está registrado");
+      } else {
+        toast.error("Error al crear trabajador: " + (error.message || "Error desconocido"));
+      }
     } finally {
       setCreating(false);
     }
