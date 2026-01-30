@@ -5,29 +5,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
-  Loader2, Users, Key, Save, Plus, UserPlus, History, Clock, 
-  Power, PowerOff, RefreshCw, Eye, EyeOff, Shield, ShoppingCart, Wine, Sparkles
+  Loader2, Users, Key, RefreshCw, Search, 
+  UserX, Filter, Grid3X3, List
 } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,45 +21,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { Worker, LoginRecord, AuditLog, AVAILABLE_ROLES } from "./workers/types";
+import { WorkerCard } from "./workers/WorkerCard";
+import { CreateWorkerDialog } from "./workers/CreateWorkerDialog";
+import { WorkerHistoryDialog } from "./workers/WorkerHistoryDialog";
 import { AppRole } from "@/hooks/useUserRole";
-
-interface Worker {
-  id: string;
-  email: string;
-  full_name: string | null;
-  rut_code: string | null;
-  is_active: boolean;
-  internal_email: string | null;
-  roles: AppRole[];
-  created_at?: string;
-}
-
-interface LoginRecord {
-  id: string;
-  login_at: string;
-  user_agent: string | null;
-}
-
-interface AuditLog {
-  id: string;
-  action: string;
-  target_worker_id: string | null;
-  details: any;
-  created_at: string;
-  admin_name?: string;
-}
-
-const AVAILABLE_ROLES: { value: AppRole; label: string; icon: any; color: string }[] = [
-  { value: "admin", label: "Administrador", icon: Shield, color: "text-blue-500" },
-  { value: "gerencia", label: "Gerencia", icon: Eye, color: "text-amber-500" },
-  { value: "vendedor", label: "Vendedor", icon: ShoppingCart, color: "text-green-500" },
-  { value: "bar", label: "Barra", icon: Wine, color: "text-purple-500" },
-  { value: "ticket_seller", label: "Ticketero", icon: Sparkles, color: "text-amber-400" },
-];
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue } = useActiveVenue();
@@ -90,16 +53,15 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showResetPinDialog, setShowResetPinDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Form states
-  const [newWorker, setNewWorker] = useState({
-    rut_code: "",
-    full_name: "",
-    pin: "",
-    roles: [] as AppRole[],
-  });
+  const [deleting, setDeleting] = useState(false);
+  
+  // UI State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<AppRole[]>([]);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const [editWorker, setEditWorker] = useState({
     full_name: "",
@@ -114,29 +76,24 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
   const fetchWorkers = async () => {
     try {
-      // Get all profiles
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id, email, full_name, rut_code, is_active, internal_email, created_at");
 
       if (profilesError) throw profilesError;
 
-      // Get worker_roles
       const { data: workerRoles } = await supabase
         .from("worker_roles")
         .select("worker_id, role");
 
-      // Get user_roles as fallback
       const { data: userRoles } = await supabase
         .from("user_roles")
         .select("user_id, role");
 
       const workersWithRoles: Worker[] = (profiles || []).map((profile) => {
-        // First check worker_roles
         const wr = workerRoles?.filter((r) => r.worker_id === profile.id) || [];
         let roles: AppRole[] = wr.map((r) => r.role as AppRole);
         
-        // Fallback to user_roles if no worker_roles
         if (roles.length === 0) {
           const ur = userRoles?.filter((r) => r.user_id === profile.id) || [];
           roles = ur.map((r) => r.role as AppRole);
@@ -164,7 +121,12 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     return "***" + rut.slice(-4);
   };
 
-  const createWorker = async () => {
+  const createWorker = async (newWorker: {
+    rut_code: string;
+    full_name: string;
+    pin: string;
+    roles: AppRole[];
+  }) => {
     const normalizedRut = newWorker.rut_code.replace(/\D/g, "").trim();
     
     if (!/^\d{7,9}$/.test(normalizedRut)) {
@@ -190,9 +152,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setCreating(true);
 
     try {
-      // Use the edge function to create worker with proper venue_id and roles
-      // The edge function handles: auth user creation, profile upsert, role assignment
-      const primaryRole = newWorker.roles[0]; // Edge function takes single role
+      const primaryRole = newWorker.roles[0];
       
       const response = await supabase.functions.invoke("create-worker-user", {
         body: {
@@ -214,7 +174,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
       const userId = response.data.user_id;
 
-      // If multiple roles selected, add additional roles
       if (newWorker.roles.length > 1) {
         for (const role of newWorker.roles.slice(1)) {
           await supabase.from("worker_roles").insert({
@@ -224,7 +183,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         }
       }
 
-      // Log admin action
       await supabase.rpc("log_admin_action", {
         p_action: "create_worker",
         p_target_worker_id: userId,
@@ -233,7 +191,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
       toast.success("Trabajador creado exitosamente");
       setShowCreateDialog(false);
-      setNewWorker({ rut_code: "", full_name: "", pin: "", roles: [] });
       fetchWorkers();
     } catch (error: any) {
       console.error("Error creating worker:", error);
@@ -258,13 +215,11 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setSaving(true);
 
     try {
-      // Update profile
       await supabase
         .from("profiles")
         .update({ full_name: editWorker.full_name })
         .eq("id", selectedWorker.id);
 
-      // Update roles - delete existing and insert new
       await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
       await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
 
@@ -273,7 +228,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         await supabase.from("user_roles").insert({ user_id: selectedWorker.id, role });
       }
 
-      // Log admin action
       await supabase.rpc("log_admin_action", {
         p_action: "update_worker",
         p_target_worker_id: selectedWorker.id,
@@ -295,6 +249,46 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     }
   };
 
+  const deleteWorker = async () => {
+    if (!selectedWorker) return;
+
+    setDeleting(true);
+
+    try {
+      // Delete roles first
+      await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
+      await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
+      
+      // Delete related data
+      await supabase.from("login_history").delete().eq("user_id", selectedWorker.id);
+      await supabase.from("notification_preferences").delete().eq("worker_id", selectedWorker.id);
+      await supabase.from("notification_logs").delete().eq("recipient_worker_id", selectedWorker.id);
+      
+      // Log before delete
+      await supabase.rpc("log_admin_action", {
+        p_action: "delete_worker",
+        p_target_worker_id: null, // Worker will be deleted
+        p_details: { 
+          deleted_worker_name: selectedWorker.full_name,
+          deleted_worker_rut: maskRut(selectedWorker.rut_code)
+        },
+      });
+
+      // Delete profile
+      await supabase.from("profiles").delete().eq("id", selectedWorker.id);
+
+      toast.success("Trabajador eliminado");
+      setShowDeleteDialog(false);
+      setSelectedWorker(null);
+      fetchWorkers();
+    } catch (error) {
+      console.error("Error deleting worker:", error);
+      toast.error("Error al eliminar trabajador");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const resetPin = async () => {
     if (!selectedWorker || !newPin || newPin.length < 4) {
       toast.error("PIN debe tener al menos 4 dígitos");
@@ -304,11 +298,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setSaving(true);
 
     try {
-      // We need to use admin API to update password
-      // For now, we'll update the profile and notify
-      // In production, this would use an edge function with admin privileges
-
-      // Log admin action
       await supabase.rpc("log_admin_action", {
         p_action: "reset_pin",
         p_target_worker_id: selectedWorker.id,
@@ -335,7 +324,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         .update({ is_active: newStatus })
         .eq("id", worker.id);
 
-      // Log admin action
       await supabase.rpc("log_admin_action", {
         p_action: newStatus ? "activate_worker" : "deactivate_worker",
         p_target_worker_id: worker.id,
@@ -356,7 +344,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setShowHistoryDialog(true);
 
     try {
-      // Fetch login history
       const { data: logins } = await supabase
         .from("login_history")
         .select("id, login_at, user_agent")
@@ -366,7 +353,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
       setLoginHistory(logins || []);
 
-      // Fetch audit logs for this worker
       const { data: audits } = await supabase
         .from("admin_audit_logs")
         .select("id, action, target_worker_id, details, created_at, admin_id")
@@ -397,243 +383,173 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setShowResetPinDialog(true);
   };
 
-  const getRoleBadges = (roles: AppRole[]) => {
-    return roles.map((role) => {
-      const roleInfo = AVAILABLE_ROLES.find((r) => r.value === role);
-      if (!roleInfo) return null;
-      const Icon = roleInfo.icon;
-      return (
-        <Badge key={role} variant="outline" className="gap-1">
-          <Icon className={`h-3 w-3 ${roleInfo.color}`} />
-          {roleInfo.label}
-        </Badge>
-      );
-    });
+  const openDeleteDialog = (worker: Worker) => {
+    setSelectedWorker(worker);
+    setShowDeleteDialog(true);
   };
 
-  const formatUserAgent = (ua: string | null) => {
-    if (!ua) return "Desconocido";
-    if (ua.includes("Mobile")) return "📱 Móvil";
-    if (ua.includes("Windows")) return "💻 Windows";
-    if (ua.includes("Mac")) return "🖥️ Mac";
-    if (ua.includes("Linux")) return "🐧 Linux";
-    return "🌐 Navegador";
-  };
+  // Filter workers
+  const filteredWorkers = workers.filter((worker) => {
+    const matchesSearch = 
+      !searchQuery ||
+      worker.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      worker.rut_code?.includes(searchQuery);
+    
+    const matchesRole = 
+      roleFilter.length === 0 ||
+      worker.roles.some((r) => roleFilter.includes(r));
+    
+    return matchesSearch && matchesRole;
+  });
+
+  const activeCount = workers.filter((w) => w.is_active).length;
+  const inactiveCount = workers.filter((w) => !w.is_active).length;
 
   if (loading) {
     return (
-      <Card className="p-6">
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="ml-2">Cargando trabajadores...</span>
+      <Card className="p-8">
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="text-muted-foreground">Cargando equipo...</span>
         </div>
       </Card>
     );
   }
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Users className="w-5 h-5" />
-          <h2 className="text-xl font-semibold">Gestión de Trabajadores</h2>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Users className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Equipo de Trabajo</h2>
+            <p className="text-sm text-muted-foreground">
+              {activeCount} activos • {inactiveCount} inactivos
+            </p>
+          </div>
         </div>
 
-        {!isReadOnly && (
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="w-4 h-4 mr-2" />
-                Nuevo Trabajador
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={fetchWorkers} title="Recargar">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {!isReadOnly && (
+            <CreateWorkerDialog
+              open={showCreateDialog}
+              onOpenChange={setShowCreateDialog}
+              onCreate={createWorker}
+              creating={creating}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nombre o RUT..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Filter className="h-4 w-4" />
+                Roles
+                {roleFilter.length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded">
+                    {roleFilter.length}
+                  </span>
+                )}
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Crear Nuevo Trabajador
-                </DialogTitle>
-                <DialogDescription>
-                  Crea una cuenta con RUT y PIN. No se usa email.
-                </DialogDescription>
-              </DialogHeader>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {AVAILABLE_ROLES.map((role) => {
+                const Icon = role.icon;
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={role.value}
+                    checked={roleFilter.includes(role.value)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setRoleFilter([...roleFilter, role.value]);
+                      } else {
+                        setRoleFilter(roleFilter.filter((r) => r !== role.value));
+                      }
+                    }}
+                  >
+                    <Icon className={`h-4 w-4 mr-2 ${role.color}`} />
+                    {role.label}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-rut">RUT (solo dígitos) *</Label>
-                  <Input
-                    id="new-rut"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="12345678"
-                    value={newWorker.rut_code}
-                    onChange={(e) => setNewWorker({ ...newWorker, rut_code: e.target.value.replace(/\D/g, "") })}
-                    maxLength={9}
-                  />
-                  <p className="text-xs text-muted-foreground">Sin puntos ni guión</p>
-                </div>
+          <div className="flex border rounded-md">
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-r-none"
+              onClick={() => setViewMode("grid")}
+            >
+              <Grid3X3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-l-none"
+              onClick={() => setViewMode("list")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </Card>
 
-                <div className="space-y-2">
-                  <Label htmlFor="new-name">Nombre Completo</Label>
-                  <Input
-                    id="new-name"
-                    type="text"
-                    placeholder="Juan Pérez"
-                    value={newWorker.full_name}
-                    onChange={(e) => setNewWorker({ ...newWorker, full_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="new-pin">PIN (mínimo 4 dígitos) *</Label>
-                  <Input
-                    id="new-pin"
-                    type="password"
-                    inputMode="numeric"
-                    placeholder="••••"
-                    value={newWorker.pin}
-                    onChange={(e) => setNewWorker({ ...newWorker, pin: e.target.value })}
-                    maxLength={6}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Roles *</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {AVAILABLE_ROLES.map((role) => {
-                      const Icon = role.icon;
-                      const isChecked = newWorker.roles.includes(role.value);
-                      return (
-                        <label
-                          key={role.value}
-                          className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
-                            isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setNewWorker({ ...newWorker, roles: [...newWorker.roles, role.value] });
-                              } else {
-                                setNewWorker({ ...newWorker, roles: newWorker.roles.filter((r) => r !== role.value) });
-                              }
-                            }}
-                          />
-                          <Icon className={`h-4 w-4 ${role.color}`} />
-                          <span className="text-sm">{role.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 justify-end pt-4">
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creating}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={createWorker} disabled={creating}>
-                    {creating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creando...
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Crear
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>RUT</TableHead>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {workers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  No hay trabajadores registrados
-                </TableCell>
-              </TableRow>
-            ) : (
-              workers.map((worker) => (
-                <TableRow key={worker.id} className={!worker.is_active ? "opacity-50" : ""}>
-                  <TableCell className="font-mono">{maskRut(worker.rut_code)}</TableCell>
-                  <TableCell>{worker.full_name || "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">{getRoleBadges(worker.roles)}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={worker.is_active ? "default" : "secondary"}>
-                      {worker.is_active ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => fetchHistory(worker)}
-                        title="Ver historial"
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-
-                      {!isReadOnly && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditDialog(worker)}
-                            title="Editar"
-                          >
-                            <Save className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openResetPinDialog(worker)}
-                            title="Resetear PIN"
-                          >
-                            <Key className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => toggleWorkerActive(worker)}
-                            title={worker.is_active ? "Desactivar" : "Activar"}
-                          >
-                            {worker.is_active ? (
-                              <PowerOff className="h-4 w-4 text-destructive" />
-                            ) : (
-                              <Power className="h-4 w-4 text-green-500" />
-                            )}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {/* Workers Grid/List */}
+      {filteredWorkers.length === 0 ? (
+        <Card className="p-12">
+          <div className="text-center">
+            <UserX className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+            <h3 className="font-medium mb-1">No se encontraron trabajadores</h3>
+            <p className="text-sm text-muted-foreground">
+              {searchQuery || roleFilter.length > 0
+                ? "Intenta ajustar los filtros de búsqueda"
+                : "Comienza agregando un nuevo trabajador"}
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className={
+          viewMode === "grid" 
+            ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
+            : "space-y-3"
+        }>
+          {filteredWorkers.map((worker) => (
+            <WorkerCard
+              key={worker.id}
+              worker={worker}
+              isReadOnly={isReadOnly}
+              onEdit={openEditDialog}
+              onResetPin={openResetPinDialog}
+              onToggleActive={toggleWorkerActive}
+              onViewHistory={fetchHistory}
+              onDelete={openDeleteDialog}
+              maskRut={maskRut}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Edit Worker Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
@@ -645,7 +561,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-5 py-4">
             <div className="space-y-2">
               <Label>Nombre Completo</Label>
               <Input
@@ -654,7 +570,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>Roles</Label>
               <div className="grid grid-cols-2 gap-2">
                 {AVAILABLE_ROLES.map((role) => {
@@ -663,8 +579,10 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                   return (
                     <label
                       key={role.value}
-                      className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
-                        isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked 
+                          ? `${role.bgColor} border-transparent ring-2 ring-primary/20` 
+                          : "border-border hover:border-primary/40 hover:bg-muted/50"
                       }`}
                     >
                       <Checkbox
@@ -673,25 +591,28 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                           if (checked) {
                             setEditWorker({ ...editWorker, roles: [...editWorker.roles, role.value] });
                           } else {
-                            setEditWorker({ ...editWorker, roles: editWorker.roles.filter((r) => r !== role.value) });
+                            setEditWorker({ 
+                              ...editWorker, 
+                              roles: editWorker.roles.filter((r) => r !== role.value) 
+                            });
                           }
                         }}
                       />
                       <Icon className={`h-4 w-4 ${role.color}`} />
-                      <span className="text-sm">{role.label}</span>
+                      <span className="text-sm font-medium">{role.label}</span>
                     </label>
                   );
                 })}
               </div>
             </div>
 
-            <div className="flex gap-2 justify-end pt-4">
+            <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
                 Cancelar
               </Button>
               <Button onClick={updateWorker} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Guardar
+                Guardar Cambios
               </Button>
             </div>
           </div>
@@ -702,9 +623,12 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       <AlertDialog open={showResetPinDialog} onOpenChange={setShowResetPinDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Resetear PIN</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-primary" />
+              Resetear PIN
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Ingresa el nuevo PIN para {selectedWorker?.full_name || "este trabajador"}
+              Ingresa el nuevo PIN para <strong>{selectedWorker?.full_name || "este trabajador"}</strong>
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -716,6 +640,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               value={newPin}
               onChange={(e) => setNewPin(e.target.value)}
               maxLength={6}
+              className="text-center text-lg tracking-widest"
             />
           </div>
 
@@ -729,84 +654,44 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete Worker Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <UserX className="h-5 w-5" />
+              Eliminar Trabajador
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar a <strong>{selectedWorker?.full_name || "este trabajador"}</strong>?
+              Esta acción no se puede deshacer y eliminará todos los datos asociados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={deleteWorker} 
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* History Dialog */}
-      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="w-5 h-5" />
-              Historial: {selectedWorker?.full_name || maskRut(selectedWorker?.rut_code || null)}
-            </DialogTitle>
-          </DialogHeader>
-
-          {loadingHistory ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin" />
-            </div>
-          ) : (
-            <Tabs defaultValue="logins" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="logins">Inicios de Sesión</TabsTrigger>
-                <TabsTrigger value="audit">Acciones Admin</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="logins">
-                <ScrollArea className="h-[300px]">
-                  {loginHistory.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No hay registros de inicio de sesión
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {loginHistory.map((record) => (
-                        <div key={record.id} className="flex items-center gap-3 p-2 rounded border">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">
-                              {format(new Date(record.login_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatUserAgent(record.user_agent)}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </TabsContent>
-
-              <TabsContent value="audit">
-                <ScrollArea className="h-[300px]">
-                  {auditLogs.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No hay acciones registradas
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {auditLogs.map((log) => (
-                        <div key={log.id} className="p-2 rounded border">
-                          <div className="flex items-center justify-between">
-                            <Badge variant="outline">{log.action}</Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(log.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                            </span>
-                          </div>
-                          {log.details && Object.keys(log.details).length > 0 && (
-                            <pre className="text-xs text-muted-foreground mt-1 overflow-hidden">
-                              {JSON.stringify(log.details, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
-    </Card>
+      <WorkerHistoryDialog
+        open={showHistoryDialog}
+        onOpenChange={setShowHistoryDialog}
+        worker={selectedWorker}
+        loginHistory={loginHistory}
+        auditLogs={auditLogs}
+        loading={loadingHistory}
+        maskRut={maskRut}
+      />
+    </div>
   );
 }
