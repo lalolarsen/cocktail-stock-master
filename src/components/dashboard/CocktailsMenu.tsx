@@ -68,11 +68,12 @@ interface Cocktail {
 
 interface Ingredient {
   id: string;
-  product_id: string;
+  product_id: string | null;
   quantity: number;
   product_name: string;
   product_category: string;
   product_unit: string;
+  is_mixer_slot: boolean;
 }
 
 interface CocktailWithIngredients extends Cocktail {
@@ -223,6 +224,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             id,
             product_id,
             quantity,
+            is_mixer_slot,
             products (
               name,
               category,
@@ -235,7 +237,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           id: ing.id,
           product_id: ing.product_id,
           quantity: ing.quantity,
-          product_name: ing.products?.name || "",
+          is_mixer_slot: ing.is_mixer_slot || false,
+          product_name: ing.is_mixer_slot ? "Mixer (variable)" : (ing.products?.name || ""),
           product_category: ing.products?.category || "",
           product_unit: ing.products?.unit || "",
         }));
@@ -269,8 +272,9 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       price: cocktail.price,
       category: cocktail.category,
       ingredients: cocktail.ingredients.map(ing => ({
-        product_id: ing.product_id,
+        product_id: ing.product_id || "",
         quantity: ing.quantity,
+        is_mixer_slot: ing.is_mixer_slot || false,
       })),
     });
     setEditDialogOpen(true);
@@ -339,19 +343,33 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         .eq("cocktail_id", selectedCocktail.id);
 
       if (editForm.ingredients.length > 0 && venue?.id) {
-        const { error: ingredientsError } = await supabase
-          .from("cocktail_ingredients")
-          .insert(
-            editForm.ingredients.map(ing => ({
-              cocktail_id: selectedCocktail.id,
-              product_id: ing.product_id,
-              quantity: ing.quantity,
-              venue_id: venue.id,
-              is_mixer_slot: (ing as any).is_mixer_slot || false,
-            }))
-          );
+        // Filter: mixer slots without product_id are still saved, non-mixer slots need product_id
+        const validIngredients = editForm.ingredients.filter(ing => {
+          const isMixer = (ing as any).is_mixer_slot || false;
+          // Mixer slots are always valid (product chosen at redemption)
+          // Non-mixer slots need a valid product_id
+          return isMixer || (ing.product_id && ing.product_id.trim() !== "");
+        });
 
-        if (ingredientsError) throw ingredientsError;
+        if (validIngredients.length > 0) {
+          const { error: ingredientsError } = await supabase
+            .from("cocktail_ingredients")
+            .insert(
+              validIngredients.map(ing => {
+                const isMixer = (ing as any).is_mixer_slot || false;
+                return {
+                  cocktail_id: selectedCocktail.id,
+                  // For mixer slots, product_id is null (selected at redemption)
+                  product_id: isMixer ? null : ing.product_id,
+                  quantity: ing.quantity,
+                  venue_id: venue.id,
+                  is_mixer_slot: isMixer,
+                };
+              })
+            );
+
+          if (ingredientsError) throw ingredientsError;
+        }
       }
 
       toast.success("Producto actualizado correctamente");
@@ -385,19 +403,30 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       if (cocktailError) throw cocktailError;
 
       if (editForm.ingredients.length > 0) {
-        const { error: ingredientsError } = await supabase
-          .from("cocktail_ingredients")
-          .insert(
-            editForm.ingredients.map(ing => ({
-              cocktail_id: cocktailData.id,
-              product_id: ing.product_id,
-              quantity: ing.quantity,
-              venue_id: venue.id,
-              is_mixer_slot: (ing as any).is_mixer_slot || false,
-            }))
-          );
+        // Filter: mixer slots without product_id are still saved, non-mixer slots need product_id
+        const validIngredients = editForm.ingredients.filter(ing => {
+          const isMixer = (ing as any).is_mixer_slot || false;
+          return isMixer || (ing.product_id && ing.product_id.trim() !== "");
+        });
 
-        if (ingredientsError) throw ingredientsError;
+        if (validIngredients.length > 0) {
+          const { error: ingredientsError } = await supabase
+            .from("cocktail_ingredients")
+            .insert(
+              validIngredients.map(ing => {
+                const isMixer = (ing as any).is_mixer_slot || false;
+                return {
+                  cocktail_id: cocktailData.id,
+                  product_id: isMixer ? null : ing.product_id,
+                  quantity: ing.quantity,
+                  venue_id: venue.id,
+                  is_mixer_slot: isMixer,
+                };
+              })
+            );
+
+          if (ingredientsError) throw ingredientsError;
+        }
       }
 
       toast.success("Producto agregado correctamente");
