@@ -23,6 +23,7 @@ import {
   FileSpreadsheet
 } from "lucide-react";
 import { MenuImportDialog } from "./MenuImportDialog";
+import { CategoryRecipeEditor } from "./CategoryRecipeEditor";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -406,26 +407,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     }
   };
 
-  const addIngredient = () => {
-    setEditForm({
-      ...editForm,
-      ingredients: [...editForm.ingredients, { product_id: "", quantity: 0 }],
-    });
-  };
-
-  const removeIngredient = (index: number) => {
-    setEditForm({
-      ...editForm,
-      ingredients: editForm.ingredients.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateIngredient = (index: number, field: "product_id" | "quantity", value: string | number) => {
-    const newIngredients = [...editForm.ingredients];
-    newIngredients[index] = { ...newIngredients[index], [field]: value };
-    setEditForm({ ...editForm, ingredients: newIngredients });
-  };
-
   // Stats
   const stats = useMemo(() => {
     const totalItems = cocktails.length;
@@ -665,59 +646,12 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label>Ingredientes (receta)</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
-                  <Plus className="w-3 h-3 mr-1" />
-                  Agregar
-                </Button>
-              </div>
-              {editForm.ingredients.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
-                  Sin receta definida (producto simple)
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {editForm.ingredients.map((ing, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <Select
-                        value={ing.product_id || "placeholder"}
-                        onValueChange={(value) => updateIngredient(index, "product_id", value === "placeholder" ? "" : value)}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Seleccionar producto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
-                          {products.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        className="w-24"
-                        placeholder="Cantidad"
-                        value={ing.quantity || ""}
-                        onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeIngredient(index)}
-                        className="h-9 w-9 text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CategoryRecipeEditor
+              category={editForm.category}
+              ingredients={editForm.ingredients}
+              products={products}
+              onChange={(ingredients) => setEditForm({ ...editForm, ingredients })}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
@@ -784,59 +718,12 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label>Ingredientes (receta)</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
-                  <Plus className="w-3 h-3 mr-1" />
-                  Agregar
-                </Button>
-              </div>
-              {editForm.ingredients.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
-                  Sin receta definida (producto simple)
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {editForm.ingredients.map((ing, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <Select
-                        value={ing.product_id || "placeholder"}
-                        onValueChange={(value) => updateIngredient(index, "product_id", value === "placeholder" ? "" : value)}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Seleccionar producto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
-                          {products.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        className="w-24"
-                        placeholder="Cantidad"
-                        value={ing.quantity || ""}
-                        onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeIngredient(index)}
-                        className="h-9 w-9 text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CategoryRecipeEditor
+              category={editForm.category}
+              ingredients={editForm.ingredients}
+              products={products}
+              onChange={(ingredients) => setEditForm({ ...editForm, ingredients })}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
