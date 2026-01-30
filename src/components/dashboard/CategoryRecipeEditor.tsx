@@ -54,10 +54,9 @@ const CATEGORY_TEMPLATES: Record<string, {
       },
       {
         label: "Bebida/Mixer",
-        filterCategory: "ml",
-        filterKeywords: ["coca", "sprite", "fanta", "red bull", "agua", "tonica", "ginger", "pepsi"],
-        defaultQuantity: 220,
-        quantityLabel: "ml",
+        filterCategory: "units",
+        defaultQuantity: 1,
+        quantityLabel: "unidad",
         required: true,
         isMixerSlot: true, // Bartender selects at redemption
       },
