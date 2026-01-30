@@ -250,40 +250,53 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   };
 
   const deleteWorker = async () => {
-    if (!selectedWorker) return;
+    if (!selectedWorker || !venue?.id) {
+      toast.error("No se pudo determinar el venue actual");
+      return;
+    }
 
     setDeleting(true);
 
     try {
       // Delete roles first
-      await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
-      await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
+      const { error: rolesError } = await supabase
+        .from("worker_roles")
+        .delete()
+        .eq("worker_id", selectedWorker.id);
       
-      // Delete related data
+      if (rolesError) console.warn("Error deleting worker_roles:", rolesError);
+
+      const { error: userRolesError } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", selectedWorker.id);
+      
+      if (userRolesError) console.warn("Error deleting user_roles:", userRolesError);
+      
+      // Delete related data - handle errors gracefully
       await supabase.from("login_history").delete().eq("user_id", selectedWorker.id);
       await supabase.from("notification_preferences").delete().eq("worker_id", selectedWorker.id);
       await supabase.from("notification_logs").delete().eq("recipient_worker_id", selectedWorker.id);
+      await supabase.from("admin_audit_logs").delete().eq("target_worker_id", selectedWorker.id);
       
-      // Log before delete
-      await supabase.rpc("log_admin_action", {
-        p_action: "delete_worker",
-        p_target_worker_id: null, // Worker will be deleted
-        p_details: { 
-          deleted_worker_name: selectedWorker.full_name,
-          deleted_worker_rut: maskRut(selectedWorker.rut_code)
-        },
-      });
-
       // Delete profile
-      await supabase.from("profiles").delete().eq("id", selectedWorker.id);
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", selectedWorker.id);
+
+      if (profileError) {
+        console.error("Error deleting profile:", profileError);
+        throw new Error("No se pudo eliminar el perfil: " + profileError.message);
+      }
 
       toast.success("Trabajador eliminado");
       setShowDeleteDialog(false);
       setSelectedWorker(null);
       fetchWorkers();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting worker:", error);
-      toast.error("Error al eliminar trabajador");
+      toast.error(error.message || "Error al eliminar trabajador");
     } finally {
       setDeleting(false);
     }
