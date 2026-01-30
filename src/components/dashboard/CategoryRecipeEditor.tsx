@@ -23,6 +23,7 @@ interface Product {
 interface IngredientEntry {
   product_id: string;
   quantity: number;
+  is_mixer_slot?: boolean;
 }
 
 // Category-specific recipe templates
@@ -36,11 +37,12 @@ const CATEGORY_TEMPLATES: Record<string, {
     defaultQuantity: number;
     quantityLabel: string;
     required: boolean;
+    isMixerSlot?: boolean; // When true, bartender can select alternative at redemption
   }[];
 }> = {
   destilados: {
     label: "Destilados",
-    description: "90ml de destilado + bebida 220cc",
+    description: "90ml de destilado + bebida 220cc (mixer seleccionable en barra)",
     slots: [
       {
         label: "Destilado",
@@ -48,14 +50,16 @@ const CATEGORY_TEMPLATES: Record<string, {
         defaultQuantity: 90,
         quantityLabel: "ml",
         required: true,
+        isMixerSlot: false,
       },
       {
         label: "Bebida/Mixer",
         filterCategory: "ml",
-        filterKeywords: ["coca", "sprite", "fanta", "red bull", "agua", "tonica", "ginger"],
+        filterKeywords: ["coca", "sprite", "fanta", "red bull", "agua", "tonica", "ginger", "pepsi"],
         defaultQuantity: 220,
         quantityLabel: "ml",
         required: true,
+        isMixerSlot: true, // Bartender selects at redemption
       },
     ],
   },
@@ -185,10 +189,11 @@ export const CategoryRecipeEditor = ({
   // Initialize ingredients based on template when category changes
   useEffect(() => {
     if (hasTemplate && ingredients.length === 0) {
-      // Pre-fill with template slots
+      // Pre-fill with template slots including mixer slot flag
       const initial = template.slots.map(slot => ({
         product_id: "",
         quantity: slot.defaultQuantity,
+        is_mixer_slot: slot.isMixerSlot || false,
       }));
       onChange(initial);
     }
@@ -200,6 +205,7 @@ export const CategoryRecipeEditor = ({
     const initial = template.slots.map(slot => ({
       product_id: "",
       quantity: slot.defaultQuantity,
+      is_mixer_slot: slot.isMixerSlot || false,
     }));
     onChange(initial);
   };
