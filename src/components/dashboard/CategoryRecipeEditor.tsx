@@ -233,37 +233,32 @@ export const CategoryRecipeEditor = ({
     
     // Handle mixer virtual IDs
     if (field === "product_id") {
+      const currentQuantity = updated[index]?.quantity || 1;
       if (value === MIXER_LATAS_ID) {
         updated[index] = { 
-          ...updated[index], 
           product_id: "", 
+          quantity: currentQuantity,
           is_mixer_slot: true, 
-          mixer_category: "latas",
-          quantity: updated[index].quantity || 1 
+          mixer_category: "latas"
         };
-        onChange(updated);
-        return;
       } else if (value === MIXER_REDBULL_ID) {
         updated[index] = { 
-          ...updated[index], 
           product_id: "", 
+          quantity: currentQuantity,
           is_mixer_slot: true, 
-          mixer_category: "redbull",
-          quantity: updated[index].quantity || 1 
+          mixer_category: "redbull"
         };
-        onChange(updated);
-        return;
       } else {
         // Regular product - clear mixer flags
         updated[index] = { 
-          ...updated[index], 
           product_id: value as string, 
+          quantity: currentQuantity,
           is_mixer_slot: false, 
           mixer_category: undefined 
         };
-        onChange(updated);
-        return;
       }
+      onChange(updated);
+      return;
     }
     
     if (field === "quantity") {
@@ -563,10 +558,9 @@ export const CategoryRecipeEditor = ({
                 <Input
                   type="number"
                   className="w-24"
-                  placeholder={isMixer ? "1" : "Cantidad"}
+                  placeholder="Cantidad"
                   value={ing.quantity || ""}
                   onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                  disabled={isMixer} // Mixers are always 1 unit
                 />
                 <Button
                   type="button"
