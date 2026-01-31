@@ -599,12 +599,13 @@ export function WorkersTab({ selectedVenueId, onSelectVenue }: WorkersTabProps) 
                 />
               </div>
               <div>
-                <Label className="text-sm">PIN *</Label>
+                <Label className="text-sm">PIN * <span className="text-muted-foreground text-xs">(mín. 6 caracteres)</span></Label>
                 <Input
-                  placeholder="1234"
+                  placeholder="123456"
                   value={newWorker.pin}
                   onChange={(e) => setNewWorker(prev => ({ ...prev, pin: e.target.value }))}
                   className="font-mono"
+                  minLength={6}
                 />
               </div>
             </div>
@@ -655,7 +656,7 @@ export function WorkersTab({ selectedVenueId, onSelectVenue }: WorkersTabProps) 
                 createWorkerMutation.isPending || 
                 !newWorker.venue_id || 
                 !newWorker.rut_code.trim() || 
-                !newWorker.pin.trim() || 
+                newWorker.pin.trim().length < 6 || 
                 !newWorker.full_name.trim()
               }
             >

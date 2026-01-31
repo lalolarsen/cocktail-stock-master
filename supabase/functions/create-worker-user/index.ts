@@ -73,6 +73,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate PIN length (Supabase requires 6+ chars for password)
+    if (pin.length < 6) {
+      return new Response(
+        JSON.stringify({ error: "PIN debe tener al menos 6 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Normalize RUT: remove dots and dashes, lowercase
     const normalizedRut = rut_code.replace(/[.\-]/g, "").toLowerCase();
     const internalEmail = `${normalizedRut}@distock.local`;
