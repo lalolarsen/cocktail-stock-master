@@ -42,7 +42,7 @@ import { WorkerHistoryDialog } from "./workers/WorkerHistoryDialog";
 import { AppRole } from "@/hooks/useUserRole";
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
-  const { venue, isLoading: venueLoading } = useActiveVenue();
+  const { venue } = useActiveVenue();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
@@ -62,7 +62,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<AppRole[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [showInactive, setShowInactive] = useState(false);
 
   const [editWorker, setEditWorker] = useState({
     full_name: "",
@@ -72,20 +71,14 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   const [newPin, setNewPin] = useState("");
 
   useEffect(() => {
-    if (!venue?.id) return;
-    void fetchWorkers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [venue?.id]);
+    fetchWorkers();
+  }, []);
 
   const fetchWorkers = async () => {
-    if (!venue?.id) return;
-
-    setLoading(true);
     try {
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, rut_code, is_active, internal_email, created_at")
-        .eq("venue_id", venue.id);
+        .select("id, email, full_name, rut_code, is_active, internal_email, created_at");
 
       if (profilesError) throw profilesError;
 
@@ -185,7 +178,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         for (const role of newWorker.roles.slice(1)) {
           await supabase.from("worker_roles").insert({
             worker_id: userId,
-            venue_id: venue.id,
             role,
           });
         }
@@ -214,10 +206,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
   const updateWorker = async () => {
     if (!selectedWorker) return;
-    if (!venue?.id) {
-      toast.error("No se pudo determinar el venue actual");
-      return;
-    }
 
     if (editWorker.roles.length === 0) {
       toast.error("Selecciona al menos un rol");
@@ -236,7 +224,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
 
       for (const role of editWorker.roles) {
-        await supabase.from("worker_roles").insert({ worker_id: selectedWorker.id, venue_id: venue.id, role });
+        await supabase.from("worker_roles").insert({ worker_id: selectedWorker.id, role });
         await supabase.from("user_roles").insert({ user_id: selectedWorker.id, role });
       }
 
@@ -262,39 +250,40 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   };
 
   const deleteWorker = async () => {
-    if (!selectedWorker || !venue?.id) {
-      toast.error("No se pudo determinar el venue actual");
-      return;
-    }
+    if (!selectedWorker) return;
 
     setDeleting(true);
 
     try {
-      // IMPORTANT: We cannot hard-delete worker profiles because they may be referenced
-      // by financial/audit tables (FK constraints). Instead, we "dar de baja":
-      // - remove roles (revokes access)
-      // - mark profile inactive (login flow should block)
-
+      // Delete roles first
       await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
       await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
+      
+      // Delete related data
+      await supabase.from("login_history").delete().eq("user_id", selectedWorker.id);
       await supabase.from("notification_preferences").delete().eq("worker_id", selectedWorker.id);
+      await supabase.from("notification_logs").delete().eq("recipient_worker_id", selectedWorker.id);
+      
+      // Log before delete
+      await supabase.rpc("log_admin_action", {
+        p_action: "delete_worker",
+        p_target_worker_id: null, // Worker will be deleted
+        p_details: { 
+          deleted_worker_name: selectedWorker.full_name,
+          deleted_worker_rut: maskRut(selectedWorker.rut_code)
+        },
+      });
 
-      const { error: deactivateError } = await supabase
-        .from("profiles")
-        .update({ is_active: false })
-        .eq("id", selectedWorker.id);
+      // Delete profile
+      await supabase.from("profiles").delete().eq("id", selectedWorker.id);
 
-      if (deactivateError) {
-        throw new Error("No se pudo dar de baja: " + deactivateError.message);
-      }
-
-      toast.success("Trabajador dado de baja (oculto)");
+      toast.success("Trabajador eliminado");
       setShowDeleteDialog(false);
       setSelectedWorker(null);
       fetchWorkers();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting worker:", error);
-      toast.error(error.message || "Error al eliminar trabajador");
+      toast.error("Error al eliminar trabajador");
     } finally {
       setDeleting(false);
     }
@@ -350,11 +339,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   };
 
   const fetchHistory = async (worker: Worker) => {
-    if (!venue?.id) {
-      toast.error("No se pudo determinar el venue actual");
-      return;
-    }
-
     setSelectedWorker(worker);
     setLoadingHistory(true);
     setShowHistoryDialog(true);
@@ -364,7 +348,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         .from("login_history")
         .select("id, login_at, user_agent")
         .eq("user_id", worker.id)
-        .eq("venue_id", venue.id)
         .order("login_at", { ascending: false })
         .limit(50);
 
@@ -374,7 +357,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         .from("admin_audit_logs")
         .select("id, action, target_worker_id, details, created_at, admin_id")
         .eq("target_worker_id", worker.id)
-        .eq("venue_id", venue.id)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -408,8 +390,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
   // Filter workers
   const filteredWorkers = workers.filter((worker) => {
-    if (!showInactive && !worker.is_active) return false;
-
     const matchesSearch = 
       !searchQuery ||
       worker.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -425,7 +405,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   const activeCount = workers.filter((w) => w.is_active).length;
   const inactiveCount = workers.filter((w) => !w.is_active).length;
 
-  if (venueLoading || loading) {
+  if (loading) {
     return (
       <Card className="p-8">
         <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -507,11 +487,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                       }
                     }}
                   >
-                    <Icon
-                      className={`h-4 w-4 mr-2 ${
-                        roleFilter.includes(role.value) ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    />
+                    <Icon className={`h-4 w-4 mr-2 ${role.color}`} />
                     {role.label}
                   </DropdownMenuCheckboxItem>
                 );
@@ -537,11 +513,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               <List className="h-4 w-4" />
             </Button>
           </div>
-
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md border bg-background">
-            <Checkbox checked={showInactive} onCheckedChange={(c) => setShowInactive(c === true)} />
-            <span className="text-sm text-muted-foreground">Mostrar inactivos</span>
-          </label>
         </div>
       </Card>
 
@@ -610,7 +581,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                       key={role.value}
                       className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
                         isChecked 
-                          ? "bg-primary/5 border-primary/20 ring-2 ring-primary/20" 
+                          ? `${role.bgColor} border-transparent ring-2 ring-primary/20` 
                           : "border-border hover:border-primary/40 hover:bg-muted/50"
                       }`}
                     >
@@ -627,7 +598,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                           }
                         }}
                       />
-                      <Icon className={`h-4 w-4 ${isChecked ? "text-primary" : "text-muted-foreground"}`} />
+                      <Icon className={`h-4 w-4 ${role.color}`} />
                       <span className="text-sm font-medium">{role.label}</span>
                     </label>
                   );
@@ -689,12 +660,11 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <UserX className="h-5 w-5" />
-              Dar de baja trabajador
+              Eliminar Trabajador
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Se desactivará a <strong>{selectedWorker?.full_name || "este trabajador"}</strong> y se
-              eliminarán sus roles (pierde acceso). Los registros históricos (ventas/auditoría)
-              se conservan.
+              ¿Estás seguro de eliminar a <strong>{selectedWorker?.full_name || "este trabajador"}</strong>?
+              Esta acción no se puede deshacer y eliminará todos los datos asociados.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -706,7 +676,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Dar de baja
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

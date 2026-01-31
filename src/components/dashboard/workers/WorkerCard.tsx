@@ -34,12 +34,12 @@ export function WorkerCard({
       const roleInfo = AVAILABLE_ROLES.find((r) => r.value === role);
       if (!roleInfo) return null;
       const Icon = roleInfo.icon;
-
-      const variant =
-        role === "admin" ? "default" : role === "gerencia" ? "secondary" : "outline";
-
       return (
-        <Badge key={role} variant={variant as any} className="gap-1.5 font-medium">
+        <Badge 
+          key={role} 
+          variant="outline" 
+          className={`gap-1.5 ${roleInfo.bgColor} ${roleInfo.textColor} border-0 font-medium`}
+        >
           <Icon className="h-3 w-3" />
           {roleInfo.label}
         </Badge>
@@ -56,7 +56,7 @@ export function WorkerCard({
       {/* Status indicator */}
       <div className="absolute top-4 right-4">
         {worker.is_active ? (
-          <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-full">
+          <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
             <CheckCircle className="h-3 w-3" />
             Activo
           </div>
@@ -146,9 +146,9 @@ export function WorkerCard({
               title={worker.is_active ? "Desactivar" : "Activar"}
             >
               {worker.is_active ? (
-                <PowerOff className="h-4 w-4 text-destructive" />
+                <PowerOff className="h-4 w-4 text-amber-500" />
               ) : (
-                <Power className="h-4 w-4 text-primary" />
+                <Power className="h-4 w-4 text-emerald-500" />
               )}
             </Button>
             <Button

@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Activity, Clock, DollarSign, TrendingUp, Trophy, Medal, Award } from "lucide-react";
+import { Loader2, Activity, Clock, DollarSign, TrendingUp, Trophy, Medal, Award, User } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
 
@@ -28,26 +27,20 @@ interface EmployeeSales {
 }
 
 export function ActivityPanel() {
-  const { venue, isLoading: venueLoading } = useActiveVenue();
   const [loginActivity, setLoginActivity] = useState<LoginActivity[]>([]);
   const [employeeSales, setEmployeeSales] = useState<EmployeeSales[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!venue?.id) return;
-    void fetchActivityData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [venue?.id]);
+    fetchActivityData();
+  }, []);
 
   const fetchActivityData = async () => {
-    if (!venue?.id) return;
-
     try {
       // Fetch recent login activity with user info
       const { data: logins, error: loginsError } = await supabase
         .from("login_history")
         .select("id, user_id, login_at, user_agent")
-        .eq("venue_id", venue.id)
         .order("login_at", { ascending: false })
         .limit(20);
 
@@ -56,8 +49,7 @@ export function ActivityPanel() {
       // Fetch profiles to get user names
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, email")
-        .eq("venue_id", venue.id);
+        .select("id, full_name, email");
 
       if (profilesError) throw profilesError;
 
@@ -76,8 +68,7 @@ export function ActivityPanel() {
       // Fetch sales data grouped by seller
       const { data: sales, error: salesError } = await supabase
         .from("sales")
-        .select("id, seller_id, total_amount, is_cancelled")
-        .eq("venue_id", venue.id);
+        .select("id, seller_id, total_amount, is_cancelled");
 
       if (salesError) throw salesError;
 
@@ -136,9 +127,9 @@ export function ActivityPanel() {
 
   const getRankIcon = (index: number) => {
     switch (index) {
-      case 0: return <Trophy className="h-5 w-5 text-primary" />;
-      case 1: return <Medal className="h-5 w-5 text-muted-foreground" />;
-      case 2: return <Award className="h-5 w-5 text-muted-foreground" />;
+      case 0: return <Trophy className="h-5 w-5 text-yellow-500" />;
+      case 1: return <Medal className="h-5 w-5 text-gray-400" />;
+      case 2: return <Award className="h-5 w-5 text-amber-600" />;
       default: return <span className="w-5 h-5 flex items-center justify-center text-sm text-muted-foreground font-medium">{index + 1}</span>;
     }
   };
@@ -148,7 +139,7 @@ export function ActivityPanel() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  if (venueLoading || loading) {
+  if (loading) {
     return (
       <Card className="p-8">
         <div className="flex flex-col items-center justify-center py-8 gap-3">
@@ -236,8 +227,8 @@ export function ActivityPanel() {
         <div className="p-5 border-b bg-muted/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-primary" />
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
               </div>
               <div>
                 <h3 className="font-semibold">Ranking de Ventas</h3>
@@ -245,10 +236,8 @@ export function ActivityPanel() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold text-primary">{formatCLP(totalSalesAmount)}</p>
-              <p className="text-xs text-muted-foreground">
-                {totalTransactions} ventas{totalCancelled > 0 ? ` • ${totalCancelled} anuladas` : ""}
-              </p>
+              <p className="text-lg font-bold text-emerald-600">{formatCLP(totalSalesAmount)}</p>
+              <p className="text-xs text-muted-foreground">{totalTransactions} ventas</p>
             </div>
           </div>
         </div>
@@ -271,7 +260,7 @@ export function ActivityPanel() {
                   <div 
                     key={employee.seller_id} 
                     className={`p-4 rounded-lg border transition-colors ${
-                      index === 0 ? "bg-primary/5 border-primary/10" : "hover:bg-muted/50"
+                      index === 0 ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200" : "hover:bg-muted/50"
                     }`}
                   >
                     <div className="flex items-center gap-3 mb-3">
@@ -288,7 +277,7 @@ export function ActivityPanel() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-primary">
+                        <p className="font-bold text-emerald-600">
                           {formatCLP(employee.total_amount)}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -302,7 +291,7 @@ export function ActivityPanel() {
                       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                         <div 
                           className={`h-full rounded-full transition-all ${
-                            index === 0 ? "bg-primary" : "bg-primary/60"
+                            index === 0 ? "bg-yellow-400" : index === 1 ? "bg-gray-400" : index === 2 ? "bg-amber-500" : "bg-primary/60"
                           }`}
                           style={{ width: `${percentage}%` }}
                         />

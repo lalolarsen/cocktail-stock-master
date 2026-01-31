@@ -126,7 +126,7 @@ export function CreateWorkerDialog({
                     key={role.value}
                     className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
                       isChecked 
-                        ? "bg-primary/5 border-primary/20 ring-2 ring-primary/20" 
+                        ? `${role.bgColor} border-transparent ring-2 ring-primary/20` 
                         : "border-border hover:border-primary/40 hover:bg-muted/50"
                     }`}
                   >
@@ -143,7 +143,7 @@ export function CreateWorkerDialog({
                         }
                       }}
                     />
-                    <Icon className={`h-4 w-4 ${isChecked ? "text-primary" : "text-muted-foreground"}`} />
+                    <Icon className={`h-4 w-4 ${role.color}`} />
                     <span className="text-sm font-medium">{role.label}</span>
                   </label>
                 );
