@@ -19,7 +19,8 @@ import {
   Wrench,
   PanelLeft,
   Database,
-  Trash2
+  Trash2,
+  Users
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OverviewTab } from "./OverviewTab";
@@ -29,6 +30,7 @@ import { ToolsTab } from "./ToolsTab";
 import { SidebarConfigTab } from "./SidebarConfigTab";
 import { SchemaAuditTab } from "./SchemaAuditTab";
 import { ResetsTab } from "./ResetsTab";
+import { WorkersTab } from "./WorkersTab";
 
 export default function DeveloperConsole() {
   const navigate = useNavigate();
@@ -147,10 +149,14 @@ export default function DeveloperConsole() {
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto">
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-7 max-w-3xl">
+          <TabsList className="grid w-full grid-cols-8 max-w-4xl">
             <TabsTrigger value="overview" className="gap-1.5">
               <LayoutDashboard className="h-4 w-4" />
               <span className="hidden sm:inline">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="workers" className="gap-1.5">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Workers</span>
             </TabsTrigger>
             <TabsTrigger value="flags" className="gap-1.5">
               <Flag className="h-4 w-4" />
@@ -180,6 +186,13 @@ export default function DeveloperConsole() {
 
           <TabsContent value="overview">
             <OverviewTab 
+              selectedVenueId={selectedVenueId} 
+              onSelectVenue={setSelectedVenueId} 
+            />
+          </TabsContent>
+
+          <TabsContent value="workers">
+            <WorkersTab 
               selectedVenueId={selectedVenueId} 
               onSelectVenue={setSelectedVenueId} 
             />
