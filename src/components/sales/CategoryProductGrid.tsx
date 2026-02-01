@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { Flame } from "lucide-react";
 
 type Cocktail = {
   id: string;
@@ -15,10 +18,12 @@ type Cocktail = {
 interface CategoryProductGridProps {
   cocktails: Cocktail[];
   onAddToCart: (cocktail: Cocktail) => void;
+  jornadaId?: string | null;
 }
 
 // Category display config with colors
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
+  popular: { label: "🔥 Más Vendidos", color: "bg-primary/10 text-primary border-primary/30" },
   destilados: { label: "Destilados", color: "bg-amber-500/10 text-amber-700 border-amber-200" },
   shots: { label: "Shots", color: "bg-red-500/10 text-red-700 border-red-200" },
   cervezas: { label: "Cervezas", color: "bg-yellow-500/10 text-yellow-700 border-yellow-200" },
@@ -30,14 +35,70 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 // Category priority order
-const CATEGORY_ORDER = ["destilados", "shots", "cervezas", "cocktails", "bebidas", "sin_alcohol", "snacks", "otros"];
+const CATEGORY_ORDER = ["popular", "destilados", "shots", "cervezas", "cocktails", "bebidas", "sin_alcohol", "snacks", "otros"];
 
-export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductGridProps) {
+export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: CategoryProductGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Fetch top selling products for current jornada
+  const { data: topSelling = [] } = useQuery({
+    queryKey: ["top-selling-products", jornadaId],
+    queryFn: async () => {
+      if (!jornadaId) return [];
+
+      const { data, error } = await supabase
+        .from("sale_items")
+        .select(`
+          cocktail_id,
+          quantity,
+          sales!inner(jornada_id, is_cancelled)
+        `)
+        .eq("sales.jornada_id", jornadaId)
+        .eq("sales.is_cancelled", false);
+
+      if (error) {
+        console.error("Error fetching top selling:", error);
+        return [];
+      }
+
+      // Aggregate by cocktail_id
+      const aggregated: Record<string, number> = {};
+      data?.forEach((item) => {
+        const id = item.cocktail_id;
+        aggregated[id] = (aggregated[id] || 0) + (item.quantity || 0);
+      });
+
+      // Sort and get top 6
+      return Object.entries(aggregated)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 6)
+        .map(([id, qty]) => ({ cocktailId: id, quantity: qty }));
+    },
+    enabled: !!jornadaId,
+    refetchInterval: 60000, // Refresh every minute
+    staleTime: 30000,
+  });
+
+  // Get popular products mapped to cocktail data
+  const popularProducts = useMemo(() => {
+    if (topSelling.length === 0) return [];
+    
+    return topSelling
+      .map((ts) => {
+        const cocktail = cocktails.find((c) => c.id === ts.cocktailId);
+        return cocktail ? { ...cocktail, soldQty: ts.quantity } : null;
+      })
+      .filter(Boolean) as (Cocktail & { soldQty: number })[];
+  }, [topSelling, cocktails]);
 
   // Group products by category
   const categorizedProducts = useMemo(() => {
     const groups: Record<string, Cocktail[]> = {};
+    
+    // Add popular section if we have data
+    if (popularProducts.length > 0) {
+      groups["popular"] = popularProducts;
+    }
     
     cocktails.forEach((cocktail) => {
       const category = cocktail.category || "otros";
@@ -47,13 +108,15 @@ export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductG
       groups[category].push(cocktail);
     });
 
-    // Sort each category's products alphabetically
+    // Sort each category's products alphabetically (except popular)
     Object.keys(groups).forEach((cat) => {
-      groups[cat].sort((a, b) => a.name.localeCompare(b.name));
+      if (cat !== "popular") {
+        groups[cat].sort((a, b) => a.name.localeCompare(b.name));
+      }
     });
 
     return groups;
-  }, [cocktails]);
+  }, [cocktails, popularProducts]);
 
   // Get sorted categories based on priority order
   const sortedCategories = useMemo(() => {
@@ -113,6 +176,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductG
               )}
               onClick={() => setSelectedCategory(isSelected ? null : category)}
             >
+              {category === "popular" && <Flame className="w-3 h-3 mr-1" />}
               {config.label} ({count})
             </Badge>
           );
@@ -124,6 +188,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductG
         <div className="space-y-4 pr-2">
           {Object.entries(displayProducts).map(([category, products]) => {
             const config = getCategoryConfig(category);
+            const isPopular = category === "popular";
             
             return (
               <div key={category}>
@@ -131,6 +196,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductG
                 {!selectedCategory && (
                   <div className="flex items-center gap-2 mb-2 sticky top-0 bg-card/95 backdrop-blur py-1 z-10">
                     <Badge variant="outline" className={cn("text-xs", config.color)}>
+                      {isPopular && <Flame className="w-3 h-3 mr-1" />}
                       {config.label}
                     </Badge>
                     <div className="h-px flex-1 bg-border/50" />
@@ -139,23 +205,40 @@ export function CategoryProductGrid({ cocktails, onAddToCart }: CategoryProductG
                 )}
 
                 {/* Products in this category */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {products.map((cocktail) => (
-                    <Card
-                      key={cocktail.id}
-                      className="p-3 cursor-pointer transition-all hover:shadow-md hover:border-primary/50 active:scale-[0.98] select-none"
-                      onClick={() => onAddToCart(cocktail)}
-                    >
-                      <div className="text-center space-y-0.5">
-                        <h3 className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">
-                          {cocktail.name}
-                        </h3>
-                        <div className="text-lg font-bold text-primary">
-                          {formatCLP(cocktail.price)}
+                <div className={cn(
+                  "grid gap-2",
+                  isPopular 
+                    ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6" 
+                    : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                )}>
+                  {products.map((cocktail) => {
+                    const soldQty = (cocktail as Cocktail & { soldQty?: number }).soldQty;
+                    
+                    return (
+                      <Card
+                        key={cocktail.id}
+                        className={cn(
+                          "p-3 cursor-pointer transition-all hover:shadow-md hover:border-primary/50 active:scale-[0.98] select-none",
+                          isPopular && "border-primary/20 bg-primary/5"
+                        )}
+                        onClick={() => onAddToCart(cocktail)}
+                      >
+                        <div className="text-center space-y-0.5">
+                          <h3 className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">
+                            {cocktail.name}
+                          </h3>
+                          <div className="text-lg font-bold text-primary">
+                            {formatCLP(cocktail.price)}
+                          </div>
+                          {isPopular && soldQty && (
+                            <div className="text-xs text-muted-foreground">
+                              {soldQty} vendidos
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </Card>
-                  ))}
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             );

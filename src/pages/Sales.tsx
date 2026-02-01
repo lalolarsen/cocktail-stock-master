@@ -708,7 +708,8 @@ export default function Sales() {
               <Card className="h-full p-4">
                 <CategoryProductGrid 
                   cocktails={cocktails} 
-                  onAddToCart={addToCart} 
+                  onAddToCart={addToCart}
+                  jornadaId={activeJornadaId}
                 />
               </Card>
             </div>
