@@ -230,11 +230,6 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
                           <div className="text-lg font-bold text-primary">
                             {formatCLP(cocktail.price)}
                           </div>
-                          {isPopular && soldQty && (
-                            <div className="text-xs text-muted-foreground">
-                              {soldQty} vendidos
-                            </div>
-                          )}
                         </div>
                       </Card>
                     );
