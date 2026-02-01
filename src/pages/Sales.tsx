@@ -3,7 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, QrCode, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode } from "lucide-react";
+import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -705,24 +706,10 @@ export default function Sales() {
             {/* Product Grid - 70% */}
             <div className="lg:col-span-7 overflow-hidden">
               <Card className="h-full p-4">
-                <ScrollArea className="h-full">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pr-2">
-                    {cocktails.map((cocktail) => (
-                      <Card
-                        key={cocktail.id}
-                        className="p-4 cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 active:scale-95"
-                        onClick={() => addToCart(cocktail)}
-                      >
-                        <div className="text-center space-y-1">
-                          <h3 className="font-bold text-lg leading-tight">{cocktail.name}</h3>
-                          <div className="text-2xl font-bold text-primary">
-                            {formatCLP(cocktail.price)}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </ScrollArea>
+                <CategoryProductGrid 
+                  cocktails={cocktails} 
+                  onAddToCart={addToCart} 
+                />
               </Card>
             </div>
 
