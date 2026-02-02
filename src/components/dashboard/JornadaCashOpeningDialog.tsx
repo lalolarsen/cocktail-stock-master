@@ -192,8 +192,8 @@ export function JornadaCashOpeningDialog({
               </div>
             )}
 
-            <ScrollArea className="max-h-[40vh] pr-3">
-              <div className="space-y-3">
+            <ScrollArea className="h-[40vh] min-h-[200px]">
+              <div className="space-y-3 pr-4">
                 {cashAmounts.map((item) => (
                   <div
                     key={item.pos_id}
