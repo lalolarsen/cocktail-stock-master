@@ -86,97 +86,101 @@ export function WorkerHistoryDialog({
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="logins">
-              <ScrollArea className="h-[350px] pr-4">
-                {loginHistory.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <LogIn className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">Sin registros</p>
-                    <p className="text-sm">No hay inicios de sesión registrados</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {loginHistory.map((record, index) => {
-                      const device = formatUserAgent(record.user_agent);
-                      const date = new Date(record.login_at);
-                      const isRecent = Date.now() - date.getTime() < 24 * 60 * 60 * 1000;
-                      
-                      return (
-                        <div 
-                          key={record.id} 
-                          className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${
-                            index === 0 ? "bg-primary/5 border-primary/20" : "hover:bg-muted/50"
-                          }`}
-                        >
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                            index === 0 ? "bg-primary/10" : "bg-muted"
-                          }`}>
-                            {device.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-sm">
-                                {format(date, "dd MMM yyyy", { locale: es })}
-                              </p>
-                              <span className="text-muted-foreground">•</span>
-                              <p className="text-sm text-muted-foreground">
-                                {format(date, "HH:mm:ss")}
+            <TabsContent value="logins" className="mt-0">
+              <ScrollArea className="h-[350px]">
+                <div className="pr-4">
+                  {loginHistory.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <LogIn className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="font-medium">Sin registros</p>
+                      <p className="text-sm">No hay inicios de sesión registrados</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {loginHistory.map((record, index) => {
+                        const device = formatUserAgent(record.user_agent);
+                        const date = new Date(record.login_at);
+                        const isRecent = Date.now() - date.getTime() < 24 * 60 * 60 * 1000;
+                        
+                        return (
+                          <div 
+                            key={record.id} 
+                            className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${
+                              index === 0 ? "bg-primary/5 border-primary/20" : "hover:bg-muted/50"
+                            }`}
+                          >
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                              index === 0 ? "bg-primary/10" : "bg-muted"
+                            }`}>
+                              {device.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-sm">
+                                  {format(date, "dd MMM yyyy", { locale: es })}
+                                </p>
+                                <span className="text-muted-foreground">•</span>
+                                <p className="text-sm text-muted-foreground">
+                                  {format(date, "HH:mm:ss")}
+                                </p>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {device.label}
                               </p>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {device.label}
-                            </p>
+                            {isRecent && index === 0 && (
+                              <Badge variant="secondary" className="text-xs">
+                                {formatDistanceToNow(date, { addSuffix: true, locale: es })}
+                              </Badge>
+                            )}
                           </div>
-                          {isRecent && index === 0 && (
-                            <Badge variant="secondary" className="text-xs">
-                              {formatDistanceToNow(date, { addSuffix: true, locale: es })}
-                            </Badge>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="audit">
-              <ScrollArea className="h-[350px] pr-4">
-                {auditLogs.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">Sin cambios</p>
-                    <p className="text-sm">No hay acciones administrativas registradas</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {auditLogs.map((log) => {
-                      const actionInfo = getActionLabel(log.action);
-                      return (
-                        <div key={log.id} className="p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant={actionInfo.variant}>
-                              {actionInfo.label}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(log.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                            </span>
-                          </div>
-                          {log.details && Object.keys(log.details).length > 0 && (
-                            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded font-mono">
-                              {Object.entries(log.details).map(([key, value]) => (
-                                <div key={key}>
-                                  <span className="text-foreground/70">{key}:</span>{" "}
-                                  {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                                </div>
-                              ))}
+            <TabsContent value="audit" className="mt-0">
+              <ScrollArea className="h-[350px]">
+                <div className="pr-4">
+                  {auditLogs.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="font-medium">Sin cambios</p>
+                      <p className="text-sm">No hay acciones administrativas registradas</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {auditLogs.map((log) => {
+                        const actionInfo = getActionLabel(log.action);
+                        return (
+                          <div key={log.id} className="p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge variant={actionInfo.variant}>
+                                {actionInfo.label}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(log.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                            {log.details && Object.keys(log.details).length > 0 && (
+                              <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded font-mono">
+                                {Object.entries(log.details).map(([key, value]) => (
+                                  <div key={key}>
+                                    <span className="text-foreground/70">{key}:</span>{" "}
+                                    {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </ScrollArea>
             </TabsContent>
           </Tabs>

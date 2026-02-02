@@ -454,17 +454,17 @@ export function JornadaCloseSummaryDialog({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overall" className="flex-1 min-h-0">
-              <ScrollArea className="h-full max-h-[50vh]">
-                <div className="pr-3">
+            <TabsContent value="overall" className="flex-1 min-h-0 mt-0" forceMount>
+              <ScrollArea className="h-[50vh] min-h-[300px]">
+                <div className="pr-4">
                   <SummaryCard summary={overallSummary} title="Resumen General" />
                 </div>
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="per-pos" className="flex-1 min-h-0">
-              <ScrollArea className="h-full max-h-[50vh]">
-                <div className="space-y-4 pr-3">
+            <TabsContent value="per-pos" className="flex-1 min-h-0 mt-0" forceMount>
+              <ScrollArea className="h-[50vh] min-h-[300px]">
+                <div className="space-y-4 pr-4">
                   {posSummaries.length > 0 ? (
                     posSummaries.map((pos) => (
                       <SummaryCard
