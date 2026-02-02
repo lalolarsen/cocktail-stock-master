@@ -422,7 +422,7 @@ export function JornadaCloseSummaryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh]">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
@@ -442,8 +442,8 @@ export function JornadaCloseSummaryDialog({
             No hay resumen disponible para esta jornada
           </div>
         ) : (
-          <Tabs defaultValue="overall" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="overall" className="flex-1 min-h-0 flex flex-col space-y-4">
+            <TabsList className="grid w-full grid-cols-2 shrink-0">
               <TabsTrigger value="overall" className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 General
@@ -454,13 +454,17 @@ export function JornadaCloseSummaryDialog({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overall">
-              <SummaryCard summary={overallSummary} title="Resumen General" />
+            <TabsContent value="overall" className="flex-1 min-h-0">
+              <ScrollArea className="h-full max-h-[50vh]">
+                <div className="pr-3">
+                  <SummaryCard summary={overallSummary} title="Resumen General" />
+                </div>
+              </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="per-pos">
-              <ScrollArea className="max-h-[50vh]">
-                <div className="space-y-4 pr-4">
+            <TabsContent value="per-pos" className="flex-1 min-h-0">
+              <ScrollArea className="h-full max-h-[50vh]">
+                <div className="space-y-4 pr-3">
                   {posSummaries.length > 0 ? (
                     posSummaries.map((pos) => (
                       <SummaryCard

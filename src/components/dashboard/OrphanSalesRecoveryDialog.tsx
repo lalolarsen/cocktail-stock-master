@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -143,7 +144,7 @@ export function OrphanSalesRecoveryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -164,7 +165,7 @@ export function OrphanSalesRecoveryDialog({
             <p className="text-muted-foreground">No hay ventas sin jornada</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 space-y-4">
             {/* Summary */}
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
               <div className="flex items-center justify-between">
@@ -179,28 +180,30 @@ export function OrphanSalesRecoveryDialog({
               </div>
             </div>
 
-            {/* Recent orphan sales preview */}
-            <div className="max-h-40 overflow-y-auto space-y-2">
-              {orphanSales.slice(0, 5).map(sale => (
-                <div 
-                  key={sale.id} 
-                  className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded"
-                >
-                  <div>
-                    <span className="font-mono">{sale.sale_number}</span>
-                    <span className="text-muted-foreground ml-2">
-                      {format(new Date(sale.created_at), "dd/MM HH:mm")}
-                    </span>
+            {/* Recent orphan sales preview with ScrollArea */}
+            <ScrollArea className="max-h-40">
+              <div className="space-y-2 pr-3">
+                {orphanSales.slice(0, 10).map(sale => (
+                  <div 
+                    key={sale.id} 
+                    className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded"
+                  >
+                    <div>
+                      <span className="font-mono">{sale.sale_number}</span>
+                      <span className="text-muted-foreground ml-2">
+                        {format(new Date(sale.created_at), "dd/MM HH:mm")}
+                      </span>
+                    </div>
+                    <span className="font-medium">{formatCLP(sale.total_amount)}</span>
                   </div>
-                  <span className="font-medium">{formatCLP(sale.total_amount)}</span>
-                </div>
-              ))}
-              {orphanSales.length > 5 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  +{orphanSales.length - 5} más...
-                </p>
-              )}
-            </div>
+                ))}
+                {orphanSales.length > 10 && (
+                  <p className="text-xs text-muted-foreground text-center py-1">
+                    +{orphanSales.length - 10} más...
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
 
             {/* Target jornada selector */}
             <div className="space-y-2">
