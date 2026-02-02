@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -161,7 +162,7 @@ export function JornadaCashOpeningDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-primary" />
@@ -181,7 +182,7 @@ export function JornadaCashOpeningDialog({
             No hay cajas configuradas. Configura al menos una caja en Administración.
           </div>
         ) : (
-          <div className="space-y-4 py-4">
+          <div className="flex-1 min-h-0 space-y-4 py-2">
             {cashSettings.cash_opening_mode === "auto" && (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg text-sm">
                 <Settings2 className="w-4 h-4 text-muted-foreground" />
@@ -191,29 +192,31 @@ export function JornadaCashOpeningDialog({
               </div>
             )}
 
-            <div className="space-y-3">
-              {cashAmounts.map((item) => (
-                <div
-                  key={item.pos_id}
-                  className="flex items-center gap-3 p-3 border rounded-lg"
-                >
-                  <Store className="w-5 h-5 text-muted-foreground shrink-0" />
-                  <div className="flex-1">
-                    <Label className="font-medium">{item.pos_name}</Label>
+            <ScrollArea className="max-h-[40vh] pr-3">
+              <div className="space-y-3">
+                {cashAmounts.map((item) => (
+                  <div
+                    key={item.pos_id}
+                    className="flex items-center gap-3 p-3 border rounded-lg"
+                  >
+                    <Store className="w-5 h-5 text-muted-foreground shrink-0" />
+                    <div className="flex-1">
+                      <Label className="font-medium">{item.pos_name}</Label>
+                    </div>
+                    <div className="w-32">
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.amount > 0 ? formatCLP(item.amount).replace("$", "") : ""}
+                        onChange={(e) => updateAmount(item.pos_id, e.target.value)}
+                        placeholder="$0"
+                        className="text-right font-mono"
+                      />
+                    </div>
                   </div>
-                  <div className="w-32">
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={item.amount > 0 ? formatCLP(item.amount).replace("$", "") : ""}
-                      onChange={(e) => updateAmount(item.pos_id, e.target.value)}
-                      placeholder="$0"
-                      className="text-right font-mono"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </ScrollArea>
 
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-lg font-semibold">Total:</span>

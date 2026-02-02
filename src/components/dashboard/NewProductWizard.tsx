@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -180,7 +181,7 @@ export function NewProductWizard({
       if (!o) resetForm();
       onOpenChange(o);
     }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -195,117 +196,121 @@ export function NewProductWizard({
         </DialogHeader>
 
         {step === "review" && (
-          <div className="space-y-4 py-4">
-            {hasSimilarProducts && (
-              <>
-                <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-500/10 p-3 rounded-lg">
-                  <AlertTriangle className="h-4 w-4" />
-                  Se encontraron productos similares. Revise antes de crear uno nuevo.
-                </div>
+          <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
+            <div className="space-y-4 py-4 pr-3">
+              {hasSimilarProducts && (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-500/10 p-3 rounded-lg">
+                    <AlertTriangle className="h-4 w-4" />
+                    Se encontraron productos similares. Revise antes de crear uno nuevo.
+                  </div>
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Productos similares:</Label>
-                  {similarProducts.map((product) => (
-                    <div
-                      key={product.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{product.name}</span>
-                        {getSimilarityBadge(product.similarity)}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleLinkToExisting(product.id)}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Productos similares:</Label>
+                    {similarProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
                       >
-                        Vincular
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{product.name}</span>
+                          {getSimilarityBadge(product.similarity)}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleLinkToExisting(product.id)}
+                        >
+                          Vincular
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
-            {!hasSimilarProducts && (
-              <div className="text-center py-4 text-muted-foreground">
-                <Check className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                <p>No se encontraron productos similares</p>
-              </div>
-            )}
-          </div>
+              {!hasSimilarProducts && (
+                <div className="text-center py-4 text-muted-foreground">
+                  <Check className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                  <p>No se encontraron productos similares</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
         )}
 
         {step === "create" && (
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nombre del producto *</Label>
-              <Input
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="Nombre del producto"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+          <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
+            <div className="space-y-4 py-4 pr-3">
               <div className="space-y-2">
-                <Label>Categoría *</Label>
-                <Select value={productCategory} onValueChange={setProductCategory}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ml">Mililitros (ml)</SelectItem>
-                    <SelectItem value="gramos">Gramos (g)</SelectItem>
-                    <SelectItem value="unidades">Unidades</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Nombre del producto *</Label>
+                <Input
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  placeholder="Nombre del producto"
+                />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Categoría *</Label>
+                  <Select value={productCategory} onValueChange={setProductCategory}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ml">Mililitros (ml)</SelectItem>
+                      <SelectItem value="gramos">Gramos (g)</SelectItem>
+                      <SelectItem value="unidades">Unidades</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Costo unitario *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={productCost}
+                    onChange={(e) => setProductCost(e.target.value)}
+                    placeholder="Requerido"
+                    className={!productCost || parseFloat(productCost) < 0 ? "border-destructive" : ""}
+                  />
+                  {(!productCost || parseFloat(productCost) < 0) && (
+                    <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
+                  )}
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label>Costo unitario *</Label>
+                <Label>Stock mínimo</Label>
                 <Input
                   type="number"
                   min="0"
-                  step="0.01"
-                  value={productCost}
-                  onChange={(e) => setProductCost(e.target.value)}
-                  placeholder="Requerido"
-                  className={!productCost || parseFloat(productCost) < 0 ? "border-destructive" : ""}
+                  value={minStock}
+                  onChange={(e) => setMinStock(e.target.value)}
+                  placeholder="10"
                 />
-                {(!productCost || parseFloat(productCost) < 0) && (
-                  <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
-                )}
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>Stock mínimo</Label>
-              <Input
-                type="number"
-                min="0"
-                value={minStock}
-                onChange={(e) => setMinStock(e.target.value)}
-                placeholder="10"
-              />
-            </div>
-
-            <div className="p-3 bg-blue-500/10 rounded-lg text-sm text-blue-700">
-              ℹ️ El producto se creará como <strong>inactivo para ventas</strong> hasta que un admin lo apruebe en el catálogo.
-            </div>
-
-            {hasSimilarProducts && (
-              <div className="flex items-start space-x-2 p-3 border border-amber-500/30 rounded-lg bg-amber-500/5">
-                <Checkbox
-                  id="confirm"
-                  checked={confirmNotDuplicate}
-                  onCheckedChange={(checked) => setConfirmNotDuplicate(checked as boolean)}
-                />
-                <label htmlFor="confirm" className="text-sm leading-tight">
-                  Confirmo que este producto <strong>no es duplicado</strong> de ninguno existente
-                </label>
+              <div className="p-3 bg-blue-500/10 rounded-lg text-sm text-blue-700">
+                ℹ️ El producto se creará como <strong>inactivo para ventas</strong> hasta que un admin lo apruebe en el catálogo.
               </div>
-            )}
-          </div>
+
+              {hasSimilarProducts && (
+                <div className="flex items-start space-x-2 p-3 border border-amber-500/30 rounded-lg bg-amber-500/5">
+                  <Checkbox
+                    id="confirm"
+                    checked={confirmNotDuplicate}
+                    onCheckedChange={(checked) => setConfirmNotDuplicate(checked as boolean)}
+                  />
+                  <label htmlFor="confirm" className="text-sm leading-tight">
+                    Confirmo que este producto <strong>no es duplicado</strong> de ninguno existente
+                  </label>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
         )}
 
         <DialogFooter>
