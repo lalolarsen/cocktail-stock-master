@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket, PlusCircle } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession, FeatureKey } from "@/contexts/AppSessionContext";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "addons";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -48,7 +48,6 @@ const ICON_MAP: Record<string, typeof Wine> = {
   ArrowRightLeft,
   Bell,
   Ticket,
-  PlusCircle,
 };
 
 // Default role-specific menu configurations (fallback)
@@ -59,7 +58,6 @@ const ADMIN_MENU: MenuItem[] = [
   { title: "Inventario", value: "inventory", icon: Warehouse, featureFlag: "inventario" },
   { title: "Reposición", value: "replenishment", icon: ArrowRightLeft, featureFlag: "reposicion" },
   { title: "Carta", value: "menu", icon: Martini, featureFlag: "ventas_alcohol" },
-  { title: "Add-ons", value: "addons", icon: PlusCircle, featureFlag: "ventas_alcohol" },
   { title: "Trabajadores", value: "workers", icon: Users },
   { title: "Reportes", value: "reports", icon: FileText, featureFlag: "reportes" },
 ];

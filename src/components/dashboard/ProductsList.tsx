@@ -362,25 +362,25 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
             <div className="space-y-2">
               <Label htmlFor="edit-subcategory">Subcategoría (Clasificación)</Label>
-              <Select
-                value={editForm.subcategory || ""}
-                onValueChange={(value) => setEditForm({ ...editForm, subcategory: value || null })}
-              >
+            <Select
+              value={editForm.subcategory || "none"}
+              onValueChange={(value) => setEditForm({ ...editForm, subcategory: value === "none" ? null : value })}
+            >
                 <SelectTrigger id="edit-subcategory">
                   <SelectValue placeholder="Seleccionar subcategoría..." />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Sin subcategoría</SelectItem>
-                  {subcategoryOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <SelectContent>
+                <SelectItem value="none">Sin subcategoría</SelectItem>
+                {subcategoryOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-min">Stock Mínimo (Bodega)</Label>
                 <Input
