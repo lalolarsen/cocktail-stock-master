@@ -14,8 +14,16 @@ import {
   TrendingDown,
   DollarSign,
   Boxes,
-  ArrowRight
+  ArrowRight,
+  Filter
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatCLP } from "@/lib/currency";
 import { WarehouseStockIntake } from "./WarehouseStockIntake";
 
@@ -31,10 +39,24 @@ interface Product {
   name: string;
   code: string;
   category: string;
+  subcategory: string | null;
   minimum_stock: number;
   unit: string;
   cost_per_unit: number | null;
+  is_mixer: boolean;
 }
+
+const subcategoryLabels: Record<string, string> = {
+  botellas_1000: "Botellas 1000ml",
+  botellas_750: "Botellas 750ml",
+  botellas_700: "Botellas 700ml",
+  botellines: "Botellines/Cervezas",
+  mixers_latas: "Mixers Latas",
+  mixers_redbull: "Mixers Red Bull",
+  jugos: "Jugos",
+  aguas: "Aguas",
+  bebidas_1500: "Bebidas 1.5L",
+};
 
 interface StockBalance {
   product_id: string;
@@ -55,6 +77,7 @@ export function WarehouseInventory() {
   const [balances, setBalances] = useState<StockBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all");
 
   useEffect(() => {
     if (venue?.id) {
@@ -109,13 +132,37 @@ export function WarehouseInventory() {
   }, [products, balances, warehouse]);
 
   const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) return warehouseProducts;
-    const term = searchTerm.toLowerCase();
-    return warehouseProducts.filter(p => 
-      p.name.toLowerCase().includes(term) || 
-      p.code.toLowerCase().includes(term)
-    );
-  }, [warehouseProducts, searchTerm]);
+    let filtered = warehouseProducts;
+    
+    // Apply subcategory filter
+    if (subcategoryFilter !== "all") {
+      if (subcategoryFilter === "sin_categoria") {
+        filtered = filtered.filter(p => !p.subcategory);
+      } else {
+        filtered = filtered.filter(p => p.subcategory === subcategoryFilter);
+      }
+    }
+    
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(term) || 
+        p.code.toLowerCase().includes(term)
+      );
+    }
+    
+    return filtered;
+  }, [warehouseProducts, searchTerm, subcategoryFilter]);
+
+  // Get unique subcategories for filter
+  const availableSubcategories = useMemo(() => {
+    const subs = new Set<string>();
+    warehouseProducts.forEach(p => {
+      if (p.subcategory) subs.add(p.subcategory);
+    });
+    return Array.from(subs).sort();
+  }, [warehouseProducts]);
 
   // Stats
   const stats = useMemo(() => {
@@ -250,21 +297,40 @@ export function WarehouseInventory() {
       {/* Products List */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <CardTitle className="text-lg">Stock Actual</CardTitle>
               <CardDescription>
-                {stats.totalProducts} productos en catálogo
+                {filteredProducts.length} de {stats.totalProducts} productos
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar producto..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Subcategoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las categorías</SelectItem>
+                    <SelectItem value="sin_categoria">Sin categoría</SelectItem>
+                    {availableSubcategories.map((sub) => (
+                      <SelectItem key={sub} value={sub}>
+                        {subcategoryLabels[sub] || sub}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar producto..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -295,11 +361,21 @@ export function WarehouseInventory() {
                   >
                     {/* Product info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-medium truncate">{product.name}</h4>
                         <Badge variant="outline" className="text-xs shrink-0">
                           {product.code}
                         </Badge>
+                        {product.subcategory && (
+                          <Badge variant="secondary" className="text-xs shrink-0">
+                            {subcategoryLabels[product.subcategory] || product.subcategory}
+                          </Badge>
+                        )}
+                        {product.is_mixer && (
+                          <Badge variant="outline" className="text-xs shrink-0 border-primary/50 text-primary">
+                            Mixer
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-4 mt-1">
                         <Progress value={stockPercentage} className="h-1.5 w-24" />

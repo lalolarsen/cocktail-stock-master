@@ -1623,6 +1623,7 @@ export type Database = {
           is_mixer: boolean | null
           minimum_stock: number
           name: string
+          subcategory: string | null
           unit: string
           updated_at: string | null
           venue_id: string | null
@@ -1638,6 +1639,7 @@ export type Database = {
           is_mixer?: boolean | null
           minimum_stock?: number
           name: string
+          subcategory?: string | null
           unit?: string
           updated_at?: string | null
           venue_id?: string | null
@@ -1653,6 +1655,7 @@ export type Database = {
           is_mixer?: boolean | null
           minimum_stock?: number
           name?: string
+          subcategory?: string | null
           unit?: string
           updated_at?: string | null
           venue_id?: string | null

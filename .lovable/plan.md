@@ -152,10 +152,22 @@ if (checkMixerResult.data?.requires_mixer_selection) {
 1. Revisar y ajustar `CategoryRecipeEditor` con valores exactos del metodo
 2. Actualizar productos existentes sin receta (los que tienen `product_id: null`)
 
-### Fase 3: Clasificacion de Productos
-1. Identificar todos los productos mixer en inventario
-2. Ejecutar UPDATE para marcarlos como `is_mixer = true`
-3. Agregar UI en gestion de productos para marcar mixers
+### Fase 3: Clasificacion de Productos ✅ COMPLETADO
+1. ✅ Agregar campo `subcategory` a tabla products
+2. ✅ Actualizar UI de ProductsList con selector de subcategoria e is_mixer
+3. ✅ Actualizar WarehouseInventory con filtro por subcategoria
+4. ✅ Agregar badges para subcategoria y mixer en lista de productos
+
+### Subcategorias Disponibles
+- `botellas_1000`: Botellas 1000ml
+- `botellas_750`: Botellas 750ml
+- `botellas_700`: Botellas 700ml
+- `botellines`: Botellines/Cervezas
+- `mixers_latas`: Mixers Latas (Coca, Sprite, etc.)
+- `mixers_redbull`: Mixers Red Bull
+- `jugos`: Jugos
+- `aguas`: Aguas
+- `bebidas_1500`: Bebidas 1.5L
 
 ## Beneficios
 
