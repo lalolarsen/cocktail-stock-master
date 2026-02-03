@@ -141,11 +141,12 @@ if (checkMixerResult.data?.requires_mixer_selection) {
 
 ## Plan de Trabajo
 
-### Fase 1: Mixer Selection en Barra (Prioritario)
-1. Crear migracion para `is_mixer` en products
-2. Modificar `Bar.tsx` para llamar `check_token_mixer_requirements`
-3. Integrar `MixerSelectionDialog` en el flujo de canje
-4. Pasar `mixer_overrides` a `redeem_pickup_token`
+### Fase 1: Mixer Selection en Barra (Prioritario) ✅ COMPLETADO
+1. ✅ Crear migracion para `is_mixer` en products
+2. ✅ Modificar `Bar.tsx` para llamar `check_token_mixer_requirements`
+3. ✅ Integrar `MixerSelectionDialog` en el flujo de canje
+4. ✅ Pasar `mixer_overrides` a `redeem_pickup_token`
+5. ✅ Marcar productos existentes como mixers (coca, sprite, fanta, etc.)
 
 ### Fase 2: Actualizacion de Templates
 1. Revisar y ajustar `CategoryRecipeEditor` con valores exactos del metodo
