@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X } from "lucide-react";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
+import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -44,6 +45,7 @@ type Cocktail = {
 type CartItem = {
   cocktail: Cocktail;
   quantity: number;
+  addons: SelectedAddon[];
 };
 
 type POSTerminal = {
@@ -268,8 +270,16 @@ export default function Sales() {
         )
       );
     } else {
-      setCart([...cart, { cocktail, quantity: 1 }]);
+      setCart([...cart, { cocktail, quantity: 1, addons: [] }]);
     }
+  };
+
+  const updateCartItemAddons = (cocktailId: string, addons: SelectedAddon[]) => {
+    setCart(
+      cart.map((item) =>
+        item.cocktail.id === cocktailId ? { ...item, addons } : item
+      )
+    );
   };
 
   const decreaseQuantity = (cocktailId: string) => {
@@ -301,10 +311,11 @@ export default function Sales() {
   };
 
   const calculateTotal = () => {
-    return cart.reduce(
-      (sum, item) => sum + item.cocktail.price * item.quantity,
-      0
-    );
+    return cart.reduce((sum, item) => {
+      const basePrice = item.cocktail.price * item.quantity;
+      const addonsPrice = item.addons.reduce((a, addon) => a + addon.price, 0) * item.quantity;
+      return sum + basePrice + addonsPrice;
+    }, 0);
   };
 
   const confirmPosSelection = () => {
@@ -345,6 +356,7 @@ export default function Sales() {
       name: item.cocktail.name,
       quantity: item.quantity,
       price: item.cocktail.price,
+      addons: item.addons.map(a => a.name),
     }));
 
     try {
@@ -392,15 +404,48 @@ export default function Sales() {
         cocktail_id: item.cocktail.id,
         quantity: item.quantity,
         unit_price: item.cocktail.price,
-        subtotal: item.cocktail.price * item.quantity,
+        subtotal: (item.cocktail.price + item.addons.reduce((a, addon) => a + addon.price, 0)) * item.quantity,
         venue_id: venue?.id,
       }));
 
-      const { error: itemsError } = await supabase
+      const { data: insertedItems, error: itemsError } = await supabase
         .from("sale_items")
-        .insert(saleItems);
+        .insert(saleItems)
+        .select("id, cocktail_id");
 
       if (itemsError) throw itemsError;
+
+      // Insert add-ons for each sale item
+      const itemAddonsToInsert: Array<{
+        sale_item_id: string;
+        addon_id: string;
+        addon_name: string;
+        price_modifier: number;
+      }> = [];
+
+      for (const insertedItem of (insertedItems || [])) {
+        const cartItem = cart.find(c => c.cocktail.id === insertedItem.cocktail_id);
+        if (cartItem && cartItem.addons.length > 0) {
+          for (const addon of cartItem.addons) {
+            itemAddonsToInsert.push({
+              sale_item_id: insertedItem.id,
+              addon_id: addon.id,
+              addon_name: addon.name,
+              price_modifier: addon.price,
+            });
+          }
+        }
+      }
+
+      if (itemAddonsToInsert.length > 0) {
+        const { error: addonsError } = await supabase
+          .from("sale_item_addons")
+          .insert(itemAddonsToInsert);
+        if (addonsError) {
+          console.warn("Error inserting sale item addons:", addonsError);
+          // Non-blocking - continue with sale
+        }
+      }
 
       // Record gross income entry
       await supabase
@@ -743,38 +788,72 @@ export default function Sales() {
                   <>
                     <ScrollArea className="flex-1 min-h-0" ref={cartScrollRef}>
                       <div className="space-y-2 pr-2">
-                        {cart.map((item) => (
-                          <div
-                            key={item.cocktail.id}
-                            className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{item.cocktail.name}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {formatCLP(item.cocktail.price * item.quantity)}
-                              </p>
+                        {cart.map((item) => {
+                          const itemAddonsTotal = item.addons.reduce((a, addon) => a + addon.price, 0);
+                          const itemTotal = (item.cocktail.price + itemAddonsTotal) * item.quantity;
+                          
+                          return (
+                            <div
+                              key={item.cocktail.id}
+                              className="p-3 bg-muted/50 rounded-lg space-y-2"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium truncate">{item.cocktail.name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {formatCLP(itemTotal)}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8"
+                                    onClick={() => decreaseQuantity(item.cocktail.id)}
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </Button>
+                                  <span className="w-8 text-center font-bold">{item.quantity}</span>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8"
+                                    onClick={() => increaseQuantity(item.cocktail.id)}
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                              
+                              {/* Add-ons section */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {venue?.id && (
+                                  <AddonSelector
+                                    cocktailId={item.cocktail.id}
+                                    venueId={venue.id}
+                                    selectedAddons={item.addons}
+                                    onAddonsChange={(addons) => updateCartItemAddons(item.cocktail.id, addons)}
+                                  />
+                                )}
+                                {/* Show selected addons as removable badges */}
+                                {item.addons.map(addon => (
+                                  <span
+                                    key={addon.id}
+                                    className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full cursor-pointer hover:bg-destructive/20 hover:text-destructive"
+                                    onClick={() => updateCartItemAddons(
+                                      item.cocktail.id,
+                                      item.addons.filter(a => a.id !== addon.id)
+                                    )}
+                                  >
+                                    {addon.name}
+                                    {addon.price > 0 && ` +${formatCLP(addon.price)}`}
+                                    <X className="w-3 h-3" />
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8"
-                                onClick={() => decreaseQuantity(item.cocktail.id)}
-                              >
-                                <Minus className="w-4 h-4" />
-                              </Button>
-                              <span className="w-8 text-center font-bold">{item.quantity}</span>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8"
-                                onClick={() => increaseQuantity(item.cocktail.id)}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </ScrollArea>
 

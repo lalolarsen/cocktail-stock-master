@@ -196,6 +196,36 @@ export type Database = {
           },
         ]
       }
+      cocktail_addons: {
+        Row: {
+          addon_id: string
+          cocktail_id: string
+        }
+        Insert: {
+          addon_id: string
+          cocktail_id: string
+        }
+        Update: {
+          addon_id?: string
+          cocktail_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cocktail_addons_addon_id_fkey"
+            columns: ["addon_id"]
+            isOneToOne: false
+            referencedRelation: "product_addons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cocktail_addons_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cocktail_ingredients: {
         Row: {
           cocktail_id: string
@@ -1563,6 +1593,47 @@ export type Database = {
           },
         ]
       }
+      product_addons: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price_modifier: number
+          updated_at: string | null
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price_modifier?: number
+          updated_at?: string | null
+          venue_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price_modifier?: number
+          updated_at?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_addons_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_name_mappings: {
         Row: {
           created_at: string
@@ -2042,6 +2113,48 @@ export type Database = {
           table_name?: string
         }
         Relationships: []
+      }
+      sale_item_addons: {
+        Row: {
+          addon_id: string | null
+          addon_name: string
+          created_at: string | null
+          id: string
+          price_modifier: number
+          sale_item_id: string
+        }
+        Insert: {
+          addon_id?: string | null
+          addon_name: string
+          created_at?: string | null
+          id?: string
+          price_modifier?: number
+          sale_item_id: string
+        }
+        Update: {
+          addon_id?: string | null
+          addon_name?: string
+          created_at?: string | null
+          id?: string
+          price_modifier?: number
+          sale_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_item_addons_addon_id_fkey"
+            columns: ["addon_id"]
+            isOneToOne: false
+            referencedRelation: "product_addons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_item_addons_sale_item_id_fkey"
+            columns: ["sale_item_id"]
+            isOneToOne: false
+            referencedRelation: "sale_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sale_items: {
         Row: {

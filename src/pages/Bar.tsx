@@ -26,6 +26,7 @@ type MissingItem = {
 type DeliverItem = {
   name: string;
   quantity: number;
+  addons?: string[];
 };
 
 type DeliverInfo = {
@@ -1004,22 +1005,42 @@ export default function Bar() {
   if (scanState === "success" && result?.success) {
     const delivery = getDeliveryDisplay(result.deliver);
     const hasMultipleItems = result.deliver?.type === "menu_items" && result.deliver?.items && result.deliver.items.length > 1;
+    const items = result.deliver?.items || [];
+    
+    // Check if any item has addons
+    const hasAnyAddons = items.some(item => item.addons && item.addons.length > 0);
     
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-green-600 text-white p-6" onClick={resetToReady}>
         <CheckCircle2 className="w-24 h-24 mb-4" />
         <h1 className="text-4xl font-black mb-4 tracking-tight">ENTREGAR</h1>
-        <p className="text-5xl font-black mb-3 text-center leading-tight">{delivery.name}</p>
-        <div className="bg-white/20 rounded-full px-6 py-2 mb-4">
-          <span className="text-3xl font-bold">x{delivery.quantity}</span>
-        </div>
         
-        {hasMultipleItems && result.deliver?.items && (
-          <div className="bg-white/10 rounded-xl p-4 mb-4 w-full max-w-sm">
-            {result.deliver.items.map((item, idx) => (
-              <div key={idx} className="flex justify-between text-lg">
-                <span>{item.name}</span>
-                <span className="font-bold">x{item.quantity}</span>
+        {!hasMultipleItems && !hasAnyAddons ? (
+          // Simple display for single item without addons
+          <>
+            <p className="text-5xl font-black mb-3 text-center leading-tight">{delivery.name}</p>
+            <div className="bg-white/20 rounded-full px-6 py-2 mb-4">
+              <span className="text-3xl font-bold">x{delivery.quantity}</span>
+            </div>
+          </>
+        ) : (
+          // Detailed display for multiple items or items with addons
+          <div className="bg-white/10 rounded-xl p-4 mb-4 w-full max-w-sm space-y-3">
+            {items.map((item, idx) => (
+              <div key={idx} className="space-y-1">
+                <div className="flex justify-between text-lg">
+                  <span className="font-semibold">{item.name}</span>
+                  <span className="font-bold">x{item.quantity}</span>
+                </div>
+                {item.addons && item.addons.length > 0 && (
+                  <div className="flex flex-wrap gap-1 ml-2">
+                    {item.addons.map((addon, addonIdx) => (
+                      <span key={addonIdx} className="text-sm bg-white/20 px-2 py-0.5 rounded-full">
+                        + {addon}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

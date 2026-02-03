@@ -15,6 +15,7 @@ import { WarehouseInventory } from "@/components/dashboard/WarehouseInventory";
 import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
+import { AddonsManagement } from "@/components/dashboard/AddonsManagement";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -23,7 +24,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { VenueGuard } from "@/components/VenueGuard";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "addons";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -83,6 +84,7 @@ export default function Admin() {
       case "replenishment": return "Reposición de Stock";
       case "notifications": return "Notificaciones";
       case "tickets": return "Tipos de Entrada";
+      case "addons": return "Add-ons";
       default: return "Panel de Administración";
     }
   };
@@ -184,6 +186,12 @@ export default function Admin() {
             {activeView === "tickets" && !isReadOnly && (
               <div className="space-y-6">
                 <TicketTypesManagement />
+              </div>
+            )}
+
+            {activeView === "addons" && !isReadOnly && (
+              <div className="space-y-6">
+                <AddonsManagement isReadOnly={isReadOnly} />
               </div>
             )}
           </div>

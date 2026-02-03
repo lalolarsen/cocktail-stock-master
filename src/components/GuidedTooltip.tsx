@@ -37,4 +37,9 @@ export const TOOLTIPS = {
   replenishment: "La reposición mueve productos desde la bodega a las barras antes de cada jornada.",
   pickupQR: "El código QR permite al barman verificar y entregar el pedido al cliente.",
   paymentMethod: "El método de pago se registra para el corte de caja. El efectivo se cuenta físicamente.",
+  // Add-ons (from DiStock Manual)
+  addon: "Un add-on es un modificador que agrega un cargo extra al producto, como 'Michelada' o 'Sal Extra'. Los insumos se contabilizan como gastos operacionales.",
+  diferimiento: "La Venta NO es igual a la Entrega. El stock se descuenta solo cuando el QR es validado en barra.",
+  multiStock: "Un solo producto puede impactar múltiples inventarios. Ejemplo: Ron Cola descuenta Ron (barra) y Lata (bodega frío).",
+  validacionDinamica: "El mixer se elige en el 'último kilómetro' (la barra), reflejando exactamente lo entregado.",
 };
