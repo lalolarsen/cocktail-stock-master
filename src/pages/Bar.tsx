@@ -10,12 +10,12 @@ import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { Html5Qrcode } from "html5-qrcode";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-// Removed: RedemptionHistory - replaced with local in-memory history
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logAuditEvent } from "@/lib/monitoring";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
+import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 
 type MissingItem = {
   product_name: string;
@@ -70,8 +70,7 @@ type ScanHistoryEntry = {
 // Reader modes
 type ReaderMode = "USB_SCANNER" | "CAMERA";
 
-// Explicit scan lifecycle states
-type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume";
+type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection";
 
 // Max history entries to keep
 const MAX_HISTORY_ENTRIES = 20;
@@ -197,6 +196,11 @@ export default function Bar() {
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [userName, setUserName] = useState<string>("");
+  
+  // Mixer selection state
+  const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
+  const [pendingToken, setPendingToken] = useState<string>("");
+  const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
   
   // Bar selection
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
@@ -417,54 +421,8 @@ export default function Bar() {
   // Legacy reset alias for manual "Limpiar" button
   const resetToReady = resumeScanning;
 
-  // Process token via backend
-  const processToken = useCallback(async (token: string) => {
-    const now = Date.now();
-    
-    // Guard 1: Processing lock (prevents concurrent requests)
-    if (isProcessingRef.current) {
-      console.log("[Bar] Processing lock active, ignoring scan");
-      return;
-    }
-    
-    // Guard 2: HARD DEDUPE - same QR within 5 second window = ignore completely
-    if (token === lastDecodedValueRef.current && 
-        now - lastDecodedTimeRef.current < DEDUPE_WINDOW_MS) {
-      console.log("[Bar] Duplicate token within 5s dedupe window, ignoring completely");
-      return;
-    }
-
-    // Guard 3: Backend call already in flight
-    if (redeemInFlightRef.current) {
-      console.log("[Bar] Backend call in flight, ignoring");
-      return;
-    }
-    
-    // Guard 4: Scanner frozen (waiting for manual resume)
-    if (scannerFrozen) {
-      console.log("[Bar] Scanner frozen, ignoring decode");
-      return;
-    }
-
-    // Set processing lock IMMEDIATELY
-    isProcessingRef.current = true;
-    
-    // Update dedupe tracking
-    lastDecodedValueRef.current = token;
-    lastDecodedTimeRef.current = now;
-    setLastParsedToken(token);
-    
-    setScanState("processing");
-    setResult(null);
-    
-    // HARD STOP: Freeze scanner immediately
-    setScannerFrozen(true);
-    if (cameraRef.current) {
-      cameraRef.current.stop().catch(() => {});
-      cameraRef.current = null;
-      setScannerReady(false);
-    }
-
+  // Redeem token (called after mixer selection or directly if no mixer needed)
+  const redeemToken = useCallback(async (token: string, mixerOverrides: { slot_index: number; product_id: string }[] | null) => {
     abortControllerRef.current = new AbortController();
 
     // Processing timeout
@@ -489,6 +447,7 @@ export default function Bar() {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
+        p_mixer_overrides: mixerOverrides ? JSON.stringify(mixerOverrides) : null,
       });
 
       if (abortControllerRef.current?.signal.aborted) {
@@ -527,6 +486,7 @@ export default function Bar() {
           token: token.substring(0, 8) + "...",
           error_code: resultData.error_code,
           bar_id: selectedBarId,
+          mixer_overrides: mixerOverrides ? mixerOverrides.length : 0,
         },
       });
       
@@ -577,7 +537,139 @@ export default function Bar() {
       // HARD STOP: Transition to waiting_resume
       transitionToWaitingResume(readerMode);
     }
-  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode]);
+  }, [transitionToWaitingResume, selectedBarId, readerMode]);
+
+  // Process token via backend - checks for mixer requirements first
+  const processToken = useCallback(async (token: string) => {
+    const now = Date.now();
+    
+    // Guard 1: Processing lock (prevents concurrent requests)
+    if (isProcessingRef.current) {
+      console.log("[Bar] Processing lock active, ignoring scan");
+      return;
+    }
+    
+    // Guard 2: HARD DEDUPE - same QR within 5 second window = ignore completely
+    if (token === lastDecodedValueRef.current && 
+        now - lastDecodedTimeRef.current < DEDUPE_WINDOW_MS) {
+      console.log("[Bar] Duplicate token within 5s dedupe window, ignoring completely");
+      return;
+    }
+
+    // Guard 3: Backend call already in flight
+    if (redeemInFlightRef.current) {
+      console.log("[Bar] Backend call in flight, ignoring");
+      return;
+    }
+    
+    // Guard 4: Scanner frozen (waiting for manual resume)
+    if (scannerFrozen) {
+      console.log("[Bar] Scanner frozen, ignoring decode");
+      return;
+    }
+
+    // Set processing lock IMMEDIATELY
+    isProcessingRef.current = true;
+    
+    // Update dedupe tracking
+    lastDecodedValueRef.current = token;
+    lastDecodedTimeRef.current = now;
+    setLastParsedToken(token);
+    
+    setScanState("processing");
+    setResult(null);
+    
+    // HARD STOP: Freeze scanner immediately
+    setScannerFrozen(true);
+    if (cameraRef.current) {
+      cameraRef.current.stop().catch(() => {});
+      cameraRef.current = null;
+      setScannerReady(false);
+    }
+
+    try {
+      // Step 1: Check if this token requires mixer selection
+      const { data: mixerCheck, error: mixerError } = await supabase.rpc("check_token_mixer_requirements", {
+        p_token: token,
+      });
+
+      if (mixerError) throw mixerError;
+
+      const mixerResult = mixerCheck as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
+      
+      if (!mixerResult.success) {
+        // Token not found or already processed
+        setResult({
+          success: false,
+          error_code: mixerResult.error || "TOKEN_NOT_FOUND",
+          message: "Token no encontrado o ya procesado",
+        });
+        setScanState("error");
+        transitionToWaitingResume(readerMode);
+        return;
+      }
+
+      // Step 2: If mixer selection required, show dialog
+      if (mixerResult.requires_mixer_selection && mixerResult.mixer_slots && mixerResult.mixer_slots.length > 0) {
+        console.log("[Bar] Mixer selection required:", mixerResult.mixer_slots);
+        setMixerSlots(mixerResult.mixer_slots);
+        setPendingToken(token);
+        setScanState("mixer_selection");
+        return;
+      }
+
+      // Step 3: No mixer selection needed, redeem directly
+      await redeemToken(token, null);
+    } catch (error: any) {
+      console.error("Check mixer error:", error);
+      const errorResult: RedemptionResult = {
+        success: false,
+        error_code: "SYSTEM_ERROR",
+        message: error.message || "Error al procesar el código",
+      };
+      setResult(errorResult);
+      setScanState("error");
+      transitionToWaitingResume(readerMode);
+    }
+  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken]);
+
+  // Handle mixer selection confirmation
+  const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
+    setIsRedeemingWithMixer(true);
+    try {
+      await redeemToken(pendingToken, selections);
+    } finally {
+      setIsRedeemingWithMixer(false);
+      setMixerSlots([]);
+      setPendingToken("");
+    }
+  }, [pendingToken, redeemToken]);
+
+  // Handle mixer selection cancellation
+  const handleMixerCancel = useCallback(() => {
+    setMixerSlots([]);
+    setPendingToken("");
+    isProcessingRef.current = false;
+    setScannerFrozen(false);
+    setScanState("idle");
+    
+    // Add cancellation to history
+    const historyEntry: ScanHistoryEntry = {
+      id: crypto.randomUUID(),
+      time: new Date(),
+      status: "CANCELLED",
+      label: "SELECCIÓN CANCELADA",
+      tokenShort: pendingToken.slice(-6),
+    };
+    setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+    
+    // Resume scanning
+    if (readerMode === "CAMERA") {
+      setScannerSessionId(prev => prev + 1);
+    } else {
+      focusScannerInput();
+    }
+  }, [pendingToken, readerMode, focusScannerInput]);
 
   // Handle USB scanner input (hidden input keydown)
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1057,6 +1149,18 @@ export default function Bar() {
           </p>
         )}
       </div>
+    );
+  }
+
+  // Full-screen MIXER SELECTION overlay
+  if (scanState === "mixer_selection" && mixerSlots.length > 0) {
+    return (
+      <MixerSelectionDialog
+        mixerSlots={mixerSlots}
+        onConfirm={handleMixerConfirm}
+        onCancel={handleMixerCancel}
+        isLoading={isRedeemingWithMixer}
+      />
     );
   }
 

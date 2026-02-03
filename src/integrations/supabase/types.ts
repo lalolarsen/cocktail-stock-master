@@ -1620,6 +1620,7 @@ export type Database = {
           current_stock: number
           id: string
           is_active_in_sales: boolean | null
+          is_mixer: boolean | null
           minimum_stock: number
           name: string
           unit: string
@@ -1634,6 +1635,7 @@ export type Database = {
           current_stock?: number
           id?: string
           is_active_in_sales?: boolean | null
+          is_mixer?: boolean | null
           minimum_stock?: number
           name: string
           unit?: string
@@ -1648,6 +1650,7 @@ export type Database = {
           current_stock?: number
           id?: string
           is_active_in_sales?: boolean | null
+          is_mixer?: boolean | null
           minimum_stock?: number
           name?: string
           unit?: string
