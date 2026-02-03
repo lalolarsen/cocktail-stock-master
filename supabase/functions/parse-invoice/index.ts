@@ -267,11 +267,8 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
 }
 
 async function parseWithAI(base64Content: string, fileType: string): Promise<ExtractedData> {
-  const aiGatewayUrl = Deno.env.get("AI_GATEWAY_URL");
-  
-  if (!aiGatewayUrl) {
-    throw new Error("AI Gateway not configured");
-  }
+  // Use Lovable AI Gateway - automatically available in Lovable Cloud
+  const aiGatewayUrl = Deno.env.get("AI_GATEWAY_URL") || "https://ai-gateway.lovable.dev/v1/chat/completions";
 
   const prompt = `Analyze this invoice/purchase document and extract the following information in JSON format:
 {
