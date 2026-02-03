@@ -1135,7 +1135,7 @@ export type Database = {
           numero_jornada: number
           semana_inicio: string
           updated_at: string
-          venue_id: string | null
+          venue_id: string
         }
         Insert: {
           created_at?: string
@@ -1147,7 +1147,7 @@ export type Database = {
           numero_jornada: number
           semana_inicio: string
           updated_at?: string
-          venue_id?: string | null
+          venue_id: string
         }
         Update: {
           created_at?: string
@@ -1159,7 +1159,7 @@ export type Database = {
           numero_jornada?: number
           semana_inicio?: string
           updated_at?: string
-          venue_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -1697,7 +1697,7 @@ export type Database = {
           subcategory: string | null
           unit: string
           updated_at: string | null
-          venue_id: string | null
+          venue_id: string
         }
         Insert: {
           category: Database["public"]["Enums"]["product_category"]
@@ -1713,7 +1713,7 @@ export type Database = {
           subcategory?: string | null
           unit?: string
           updated_at?: string | null
-          venue_id?: string | null
+          venue_id: string
         }
         Update: {
           category?: Database["public"]["Enums"]["product_category"]
@@ -1729,7 +1729,7 @@ export type Database = {
           subcategory?: string | null
           unit?: string
           updated_at?: string | null
-          venue_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -2227,7 +2227,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount: number
-          venue_id: string | null
+          venue_id: string
         }
         Insert: {
           bar_location_id?: string | null
@@ -2244,7 +2244,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount?: number
-          venue_id?: string | null
+          venue_id: string
         }
         Update: {
           bar_location_id?: string | null
@@ -2261,7 +2261,7 @@ export type Database = {
           sale_number?: string
           seller_id?: string
           total_amount?: number
-          venue_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -3098,6 +3098,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_venue_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: string
+          user_id: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_venue_roles_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       venue_feature_flags: {
         Row: {

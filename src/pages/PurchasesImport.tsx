@@ -347,6 +347,24 @@ export default function PurchasesImport() {
       return;
     }
 
+    // Get venue_id from session
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast.error("Sesión no válida");
+      return;
+    }
+    
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("venue_id")
+      .eq("id", session.user.id)
+      .single();
+    
+    if (!profile?.venue_id) {
+      toast.error("Venue no disponible");
+      return;
+    }
+
     setCreatingProduct(true);
     try {
       const { data: codeData } = await supabase.rpc("generate_product_code");
@@ -361,6 +379,8 @@ export default function PurchasesImport() {
           unit: newProductCategory === "ml" ? "ml" : newProductCategory === "gramos" ? "g" : "un",
           current_stock: 0,
           minimum_stock: 0,
+          cost_per_unit: 0,
+          venue_id: profile.venue_id,
         })
         .select()
         .single();

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,6 +71,7 @@ export function NewProductWizard({
   onProductCreated,
   onLinkToExisting,
 }: NewProductWizardProps) {
+  const { venue } = useActiveVenue();
   const [step, setStep] = useState<"review" | "create">("review");
   const [creating, setCreating] = useState(false);
   
@@ -124,6 +126,11 @@ export function NewProductWizard({
       return;
     }
 
+    if (!venue?.id) {
+      toast.error("Venue no disponible");
+      return;
+    }
+
     setCreating(true);
     try {
       // Generate code
@@ -140,6 +147,7 @@ export function NewProductWizard({
           minimum_stock: minStock ? parseFloat(minStock) : 10,
           current_stock: 0,
           is_active_in_sales: false, // NOT active until approved
+          venue_id: venue.id,
         })
         .select()
         .single();
