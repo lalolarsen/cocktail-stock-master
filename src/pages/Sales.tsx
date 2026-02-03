@@ -393,6 +393,7 @@ export default function Sales() {
           jornada_id: activeJornadaId, // Required: NOT NULL
           receipt_source: receiptSource,
           sale_category: "alcohol", // Alcohol sales module
+          venue_id: venue?.id!,
         })
         .select()
         .single();

@@ -5,6 +5,7 @@ import { Upload, FileSpreadsheet, Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
 import {
   StockImportPreviewDialog,
   StockImportRow,
@@ -29,6 +30,7 @@ const isHeaderRow = (producto: string): boolean => {
 };
 
 export const ExcelUpload = () => {
+  const { venue } = useActiveVenue();
   const [uploading, setUploading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState<StockImportRow[]>([]);
@@ -165,6 +167,11 @@ export const ExcelUpload = () => {
   };
 
   const handleConfirmImport = async (rows: StockImportRow[]) => {
+    if (!venue?.id) {
+      toast.error("Venue no disponible");
+      return;
+    }
+
     setIsProcessing(true);
     try {
       let created = 0;
@@ -182,6 +189,7 @@ export const ExcelUpload = () => {
         const { data: existingProduct } = await supabase
           .from("products")
           .select("*")
+          .eq("venue_id", venue.id)
           .ilike("name", row.producto)
           .maybeSingle();
 
@@ -214,6 +222,7 @@ export const ExcelUpload = () => {
             subcategory: row.subcategoria,
             is_mixer: isMixer,
             is_active_in_sales: false, // Requires approval
+            venue_id: venue.id,
           });
           created++;
         }
