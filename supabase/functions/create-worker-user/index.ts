@@ -5,12 +5,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type WorkerRole = "admin" | "vendedor" | "bar" | "ticket_seller" | "gerencia";
+
 interface CreateWorkerRequest {
   venue_id: string;
   rut_code: string;
   pin: string;
   full_name: string;
-  role: "admin" | "vendedor" | "bar" | "ticket_seller" | "gerencia";
+  role?: WorkerRole; // Single role (legacy)
+  roles?: WorkerRole[]; // Multiple roles (new)
 }
 
 Deno.serve(async (req) => {
@@ -46,29 +49,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if caller has developer role
-    const { data: roleData, error: roleError } = await userClient
+    // Check if caller has developer role OR admin role in worker_roles
+    const { data: devRoleData } = await userClient
       .from("user_roles")
       .select("role")
       .eq("user_id", caller.id)
       .eq("role", "developer")
       .maybeSingle();
 
-    if (roleError || !roleData) {
-      console.error("Role check failed:", roleError);
+    const { data: adminRoleData } = await userClient
+      .from("worker_roles")
+      .select("role")
+      .eq("worker_id", caller.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!devRoleData && !adminRoleData) {
+      console.error("Role check failed: user is not developer or admin");
       return new Response(
-        JSON.stringify({ error: "Only developers can create worker users" }),
+        JSON.stringify({ error: "Only developers or admins can create worker users" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Parse request body
     const body: CreateWorkerRequest = await req.json();
-    const { venue_id, rut_code, pin, full_name, role } = body;
+    const { venue_id, rut_code, pin, full_name, role, roles: rolesArray } = body;
 
-    if (!venue_id || !rut_code || !pin || !full_name || !role) {
+    // Support both single role (legacy) and multiple roles
+    const roles: WorkerRole[] = rolesArray ?? (role ? [role] : []);
+
+    if (!venue_id || !rut_code || !pin || !full_name || roles.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: venue_id, rut_code, pin, full_name, role" }),
+        JSON.stringify({ error: "Missing required fields: venue_id, rut_code, pin, full_name, role/roles" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -85,7 +98,7 @@ Deno.serve(async (req) => {
     const normalizedRut = rut_code.replace(/[.\-]/g, "").toLowerCase();
     const internalEmail = `${normalizedRut}@distock.local`;
 
-    console.log(`Creating worker: ${full_name}, RUT: ${normalizedRut}, Role: ${role}, Venue: ${venue_id}`);
+    console.log(`Creating worker: ${full_name}, RUT: ${normalizedRut}, Roles: ${roles.join(', ')}, Venue: ${venue_id}`);
 
     // Use service role client for admin operations
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
@@ -159,28 +172,30 @@ Deno.serve(async (req) => {
 
     console.log(`Upserted profile for user: ${authUserId}`);
 
-    // Insert role in worker_roles (delete existing first to avoid duplicates)
+    // Insert roles in worker_roles (delete existing first to avoid duplicates)
     await adminClient
       .from("worker_roles")
       .delete()
       .eq("worker_id", authUserId);
 
+    const roleInserts = roles.map((r) => ({
+      worker_id: authUserId,
+      role: r,
+    }));
+
     const { error: roleInsertError } = await adminClient
       .from("worker_roles")
-      .insert({
-        worker_id: authUserId,
-        role: role,
-      });
+      .insert(roleInserts);
 
     if (roleInsertError) {
-      console.error("Failed to insert role:", roleInsertError);
+      console.error("Failed to insert roles:", roleInsertError);
       return new Response(
-        JSON.stringify({ error: `Failed to assign role: ${roleInsertError.message}` }),
+        JSON.stringify({ error: `Failed to assign roles: ${roleInsertError.message}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Assigned role ${role} to user ${authUserId}`);
+    console.log(`Assigned roles [${roles.join(', ')}] to user ${authUserId}`);
 
     return new Response(
       JSON.stringify({
@@ -189,7 +204,7 @@ Deno.serve(async (req) => {
         email: internalEmail,
         rut_code: normalizedRut,
         full_name: full_name,
-        role: role,
+        roles: roles,
         venue_id: venue_id,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
