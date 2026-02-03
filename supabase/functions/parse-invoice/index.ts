@@ -12,6 +12,7 @@ interface LineItem {
   quantity: number | null;
   unit_price: number | null;
   total: number | null;
+  uom: string | null; // Unidad de medida: Unidad, Caja, Pack, etc.
 }
 
 interface ExtractedData {
@@ -19,8 +20,13 @@ interface ExtractedData {
   provider_rut: string | null;
   document_number: string | null;
   document_date: string | null;
+  net_amount: number | null; // Monto neto
+  iva_amount: number | null; // IVA
+  total_amount: number | null; // Total bruto
   line_items: LineItem[];
   raw_text: string;
+  tax_coherence_valid: boolean; // Validación: Neto + IVA ≈ Total
+  line_total_coherence_valid: boolean; // Validación: Suma líneas ≈ Neto
 }
 
 serve(async (req) => {
@@ -152,22 +158,35 @@ serve(async (req) => {
       };
     });
 
-    // Save purchase items
+    // Get venue_id from document
+    const { data: docData } = await supabase
+      .from("purchase_documents")
+      .select("venue_id")
+      .eq("id", purchase_document_id)
+      .single();
+
+    const venueId = docData?.venue_id;
+
+    // Save purchase items with expanded fields
     const itemsToInsert = matchedItems.map((item) => ({
       purchase_document_id,
+      venue_id: venueId,
       raw_product_name: item.raw_product_name,
       extracted_quantity: item.quantity,
       extracted_unit_price: item.unit_price,
       extracted_total: item.total,
+      extracted_uom: item.uom || "Unidad",
       matched_product_id: item.matched_product_id,
       match_confidence: item.match_confidence,
+      classification: "inventory",
+      item_status: item.matched_product_id ? "matched" : "pending_match",
     }));
 
     if (itemsToInsert.length > 0) {
       await supabase.from("purchase_items").insert(itemsToInsert);
     }
 
-    // Update document with extracted data
+    // Update document with extracted data including tax fields
     await supabase
       .from("purchase_documents")
       .update({
@@ -176,8 +195,20 @@ serve(async (req) => {
         provider_rut: extractedData.provider_rut,
         document_number: extractedData.document_number,
         document_date: extractedData.document_date,
+        net_amount: extractedData.net_amount,
+        iva_amount: extractedData.iva_amount,
+        total_amount_gross: extractedData.total_amount,
         raw_text: extractedData.raw_text,
         extracted_data: extractedData,
+        audit_trail: [{
+          action: "document_parsed",
+          timestamp: new Date().toISOString(),
+          data: {
+            tax_coherence_valid: extractedData.tax_coherence_valid,
+            line_total_coherence_valid: extractedData.line_total_coherence_valid,
+            items_count: matchedItems.length,
+          }
+        }]
       })
       .eq("id", purchase_document_id);
 
@@ -247,22 +278,45 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
       const m = d.match(/<MontoItem>([^<]*)<\/MontoItem>/i);
       return m ? parseFloat(m[1]) : null;
     };
+    const getUom = (d: string) => {
+      const m = d.match(/<UnmdItem>([^<]*)<\/UnmdItem>/i);
+      return m ? m[1].trim() : "Unidad";
+    };
 
     lineItems.push({
       raw_product_name: getName(detail),
       quantity: getQty(detail),
       unit_price: getPrice(detail),
       total: getTotal(detail),
+      uom: getUom(detail),
     });
   }
+
+  // Extract tax amounts from XML
+  const netAmount = parseFloat(getTagValue("MntNeto") || "0") || null;
+  const ivaAmount = parseFloat(getTagValue("IVA") || "0") || null;
+  const totalAmount = parseFloat(getTagValue("MntTotal") || "0") || null;
+
+  // Validate tax coherence
+  const calculatedTotal = (netAmount || 0) + (ivaAmount || 0);
+  const taxCoherenceValid = !totalAmount || Math.abs(calculatedTotal - totalAmount) < 1.0;
+
+  // Validate line items total vs net
+  const lineItemsTotal = lineItems.reduce((sum, item) => sum + (item.total || 0), 0);
+  const lineTotalCoherenceValid = !netAmount || Math.abs(lineItemsTotal - netAmount) < 1.0;
 
   return {
     provider_name: getTagValue("RznSoc") || getTagValue("RznSocEmisor"),
     provider_rut: getTagValue("RUTEmisor"),
     document_number: getTagValue("Folio"),
     document_date: getTagValue("FchEmis"),
+    net_amount: netAmount,
+    iva_amount: ivaAmount,
+    total_amount: totalAmount,
     line_items: lineItems,
     raw_text: xml,
+    tax_coherence_valid: taxCoherenceValid,
+    line_total_coherence_valid: lineTotalCoherenceValid,
   };
 }
 
@@ -278,19 +332,27 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
   "provider_rut": "RUT or tax ID if present (Chilean format XX.XXX.XXX-X)",
   "document_number": "invoice or document number",
   "document_date": "date in YYYY-MM-DD format",
+  "net_amount": number or null (monto neto, without IVA),
+  "iva_amount": number or null (IVA amount, usually 19%),
+  "total_amount": number or null (total bruto including IVA),
   "line_items": [
     {
       "raw_product_name": "product name as written",
       "quantity": number or null,
+      "uom": "unit of measure as written (Unidad, Caja, Pack, Kg, Lt, etc.) or null",
       "unit_price": number or null (without currency symbol),
       "total": number or null (without currency symbol)
     }
   ]
 }
 
-Be thorough in extracting ALL line items. If a value is unclear, use null.
-Focus on products/items, ignore subtotals, taxes, and grand totals as line items.
-Return ONLY the JSON, no other text.`;
+IMPORTANT EXTRACTION RULES:
+1. Be thorough in extracting ALL line items from the document
+2. For each line item, try to identify the unit of measure (uom) - common values are: Unidad, Caja, Pack, Botella, Kg, Lt, ml
+3. Extract the tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
+4. If a value is unclear, use null
+5. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
+6. Return ONLY the JSON, no other text`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   
@@ -380,13 +442,40 @@ Return ONLY the JSON, no other text.`;
 
   const parsed = JSON.parse(jsonMatch[0]);
 
+  // Validate tax coherence: Net + IVA should approximately equal Total
+  const netAmount = parsed.net_amount || 0;
+  const ivaAmount = parsed.iva_amount || 0;
+  const totalAmount = parsed.total_amount || 0;
+  const calculatedTotal = netAmount + ivaAmount;
+  const taxCoherenceValid = totalAmount === 0 || Math.abs(calculatedTotal - totalAmount) < 1.0;
+
+  // Validate line items total vs net amount
+  const lineItemsTotal = (parsed.line_items || []).reduce((sum: number, item: LineItem) => {
+    return sum + (item.total || 0);
+  }, 0);
+  const lineTotalCoherenceValid = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
+
+  // Add uom to line items if missing
+  const lineItemsWithUom = (parsed.line_items || []).map((item: { raw_product_name?: string; quantity?: number; uom?: string; unit_price?: number; total?: number }) => ({
+    raw_product_name: item.raw_product_name || "",
+    quantity: item.quantity ?? null,
+    uom: item.uom || "Unidad",
+    unit_price: item.unit_price ?? null,
+    total: item.total ?? null,
+  }));
+
   return {
     provider_name: parsed.provider_name || null,
     provider_rut: parsed.provider_rut || null,
     document_number: parsed.document_number || null,
     document_date: parsed.document_date || null,
-    line_items: parsed.line_items || [],
+    net_amount: netAmount || null,
+    iva_amount: ivaAmount || null,
+    total_amount: totalAmount || null,
+    line_items: lineItemsWithUom,
     raw_text: content,
+    tax_coherence_valid: taxCoherenceValid,
+    line_total_coherence_valid: lineTotalCoherenceValid,
   };
 }
 

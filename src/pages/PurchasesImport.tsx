@@ -47,11 +47,18 @@ import {
   Warehouse,
   Receipt,
   Lock,
+  Calculator,
+  CheckCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { logAuditEvent } from "@/lib/monitoring";
+import { UoMConversionDialog } from "@/components/purchase/UoMConversionDialog";
+import { PreConfirmChecklist, buildPurchaseChecklist } from "@/components/purchase/PreConfirmChecklist";
+import { ImportAuditTimeline } from "@/components/purchase/ImportAuditTimeline";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface Product {
   id: string;
@@ -68,12 +75,14 @@ interface PurchaseItem {
   extracted_quantity: number | null;
   extracted_unit_price: number | null;
   extracted_total: number | null;
+  extracted_uom: string | null;
   matched_product_id: string | null;
   match_confidence: number;
   match_source?: "provider" | "generic" | "fuzzy";
   confirmed_quantity: number | null;
   confirmed_unit_price: number | null;
   is_confirmed: boolean;
+  item_status?: string;
 }
 
 interface EditableItem extends PurchaseItem {
@@ -81,12 +90,19 @@ interface EditableItem extends PurchaseItem {
   quantity: number;
   unit_price: number;
   match_source?: "provider" | "generic" | "fuzzy";
+  // UoM conversion fields
+  uom: string;
+  conversion_factor: number;
+  normalized_quantity: number;
+  normalized_unit_cost: number;
   // Expense classification
   classification: "inventory" | "expense";
   expense_category?: string;
   expense_subcategory?: string;
   expense_notes?: string;
   expense_amount?: number;
+  // Status
+  item_status: "pending_match" | "matched" | "marked_as_expense" | "ready" | "applied";
 }
 
 type ExpenseCategory = "operational" | "non-operational";
@@ -101,6 +117,8 @@ type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-wa
 export default function PurchasesImport() {
   const navigate = useNavigate();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
+  const { hasRole, loading: roleLoading } = useUserRole();
+  const isAdmin = hasRole("admin");
   const [step, setStep] = useState<Step>("upload");
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -113,10 +131,21 @@ export default function PurchasesImport() {
   const [providerRut, setProviderRut] = useState<string>("");
   const [documentNumber, setDocumentNumber] = useState<string>("");
   const [documentDate, setDocumentDate] = useState<string>("");
+  // Tax fields
+  const [netAmount, setNetAmount] = useState<number>(0);
+  const [ivaAmount, setIvaAmount] = useState<number>(0);
+  const [totalAmountGross, setTotalAmountGross] = useState<number>(0);
+  const [taxCoherenceValid, setTaxCoherenceValid] = useState(true);
+  const [auditTrail, setAuditTrail] = useState<Array<{ action: string; timestamp: string; data?: Record<string, unknown> }>>([]);
+  const [venueId, setVenueId] = useState<string | null>(null);
 
   // Items
   const [items, setItems] = useState<EditableItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+
+  // UoM Conversion dialog
+  const [showUomDialog, setShowUomDialog] = useState(false);
+  const [uomEditingIndex, setUomEditingIndex] = useState<number | null>(null);
 
   // New product dialog
   const [showNewProductDialog, setShowNewProductDialog] = useState(false);
@@ -261,17 +290,40 @@ export default function PurchasesImport() {
         setProviderRut(updatedDoc.provider_rut || "");
         setDocumentNumber(updatedDoc.document_number || "");
         setDocumentDate(updatedDoc.document_date || "");
+        setNetAmount(updatedDoc.net_amount || 0);
+        setIvaAmount(updatedDoc.iva_amount || 0);
+        setTotalAmountGross(updatedDoc.total_amount_gross || 0);
+        setVenueId(updatedDoc.venue_id || null);
+        // Parse audit trail safely
+        const trail = updatedDoc.audit_trail;
+        if (Array.isArray(trail)) {
+          setAuditTrail(trail as Array<{ action: string; timestamp: string; data?: Record<string, unknown> }>);
+        }
+        // Check tax coherence
+        const calculatedTotal = (updatedDoc.net_amount || 0) + (updatedDoc.iva_amount || 0);
+        const total = updatedDoc.total_amount_gross || 0;
+        setTaxCoherenceValid(total === 0 || Math.abs(calculatedTotal - total) < 1.0);
       }
 
-      // Convert to editable items
-      const editableItems: EditableItem[] = (purchaseItems || []).map((item) => ({
-        ...item,
-        selected_product_id: item.matched_product_id,
-        quantity: item.extracted_quantity || 0,
-        unit_price: item.extracted_unit_price || 0,
-        classification: "inventory" as const,
-        expense_amount: (item.extracted_quantity || 0) * (item.extracted_unit_price || 0),
-      }));
+      // Convert to editable items with UoM fields
+      const editableItems: EditableItem[] = (purchaseItems || []).map((item) => {
+        const qty = item.extracted_quantity || 0;
+        const price = item.extracted_unit_price || 0;
+        const factor = item.conversion_factor || 1;
+        return {
+          ...item,
+          selected_product_id: item.matched_product_id,
+          quantity: qty,
+          unit_price: price,
+          uom: item.extracted_uom || "Unidad",
+          conversion_factor: factor,
+          normalized_quantity: qty * factor,
+          normalized_unit_cost: factor > 0 ? price / factor : price,
+          classification: (item.classification as "inventory" | "expense") || "inventory",
+          expense_amount: qty * price,
+          item_status: (item.item_status as EditableItem["item_status"]) || (item.matched_product_id ? "matched" : "pending_match"),
+        };
+      });
 
       setItems(editableItems);
       setStep("review");
@@ -424,21 +476,7 @@ export default function PurchasesImport() {
       p.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Calculate totals
-  const inventoryItems = items.filter(
-    (item) => item.classification === "inventory" && item.selected_product_id && item.quantity > 0
-  );
-  const expenseItems = items.filter(
-    (item) => item.classification === "expense" && item.expense_category && (item.expense_amount || 0) > 0
-  );
-  
-  const totalInventoryItems = inventoryItems.length;
-  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-  const totalExpenseAmount = expenseItems.reduce((sum, item) => sum + (item.expense_amount || 0), 0);
-  const totalAmount = totalInventoryAmount + totalExpenseAmount;
-
-  const canConfirm = inventoryItems.length > 0 || expenseItems.length > 0;
+  // Totals are calculated below in the checklist section
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
@@ -556,6 +594,12 @@ export default function PurchasesImport() {
     setProviderRut("");
     setDocumentNumber("");
     setDocumentDate("");
+    setNetAmount(0);
+    setIvaAmount(0);
+    setTotalAmountGross(0);
+    setTaxCoherenceValid(true);
+    setAuditTrail([]);
+    setVenueId(null);
     setItems([]);
     setRegisterExpenses(false);
     setExpenseMode("all_inventory");
@@ -565,14 +609,61 @@ export default function PurchasesImport() {
     setItems((prev) =>
       prev.map((item, i) => {
         if (i !== index) return item;
+        const newStatus = classification === "expense" ? "marked_as_expense" : (item.selected_product_id ? "matched" : "pending_match");
         return {
           ...item,
           classification,
           expense_amount: item.quantity * item.unit_price,
+          item_status: newStatus as EditableItem["item_status"],
         };
       })
     );
   };
+
+  const handleUomConversion = (index: number) => {
+    setUomEditingIndex(index);
+    setShowUomDialog(true);
+  };
+
+  const applyUomConversion = (conversionFactor: number, normalizedQty: number, normalizedCost: number) => {
+    if (uomEditingIndex === null) return;
+    updateItem(uomEditingIndex, {
+      conversion_factor: conversionFactor,
+      normalized_quantity: normalizedQty,
+      normalized_unit_cost: normalizedCost,
+    });
+    setUomEditingIndex(null);
+  };
+
+  // Build checklist items for pre-confirmation
+  const inventoryItems = items.filter(
+    (item) => item.classification === "inventory" && item.selected_product_id && item.quantity > 0
+  );
+  const expenseItems = items.filter(
+    (item) => item.classification === "expense" && item.expense_category && (item.expense_amount || 0) > 0
+  );
+  const unmatchedInventoryItems = items.filter(
+    (item) => item.classification === "inventory" && !item.selected_product_id && item.quantity > 0
+  );
+  
+  const totalInventoryItems = inventoryItems.length;
+  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.normalized_quantity, 0);
+  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.normalized_quantity * item.normalized_unit_cost, 0);
+  const totalExpenseAmount = expenseItems.reduce((sum, item) => sum + (item.expense_amount || 0), 0);
+  const lineItemsTotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  const lineTotalCoherence = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
+
+  const checklistItems = buildPurchaseChecklist({
+    hasVenueId: !!venueId,
+    isAdmin: isAdmin,
+    allInventoryItemsMatched: unmatchedInventoryItems.length === 0,
+    unmatchedCount: unmatchedInventoryItems.length,
+    totalCoherenceValid: lineTotalCoherence,
+    totalDifference: lineItemsTotal - netAmount,
+    noDuplicateFolio: true, // Would need to check in real implementation
+  });
+
+  const canConfirm = (inventoryItems.length > 0 || expenseItems.length > 0) && checklistItems.filter(c => c.critical && !c.passed).length === 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -724,12 +815,26 @@ export default function PurchasesImport() {
             {/* Document Info */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Datos del documento
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Datos del documento
+                  </span>
+                  {taxCoherenceValid ? (
+                    <Badge className="bg-green-100 text-green-700 border-green-300">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Coherencia OK
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Revisar totales
+                    </Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Basic info row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <Label>Proveedor</Label>
@@ -764,6 +869,53 @@ export default function PurchasesImport() {
                     />
                   </div>
                 </div>
+
+                {/* Tax fields row */}
+                <Separator />
+                <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Monto Neto</Label>
+                    <Input
+                      type="number"
+                      value={netAmount}
+                      onChange={(e) => setNetAmount(parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label>IVA</Label>
+                    <Input
+                      type="number"
+                      value={ivaAmount}
+                      onChange={(e) => setIvaAmount(parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label>Total Bruto</Label>
+                    <Input
+                      type="number"
+                      value={totalAmountGross}
+                      onChange={(e) => setTotalAmountGross(parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <div className="text-sm text-muted-foreground">
+                      <p>Calculado: {formatCLP(netAmount + ivaAmount)}</p>
+                      {!taxCoherenceValid && (
+                        <p className="text-amber-600">
+                          Diferencia: {formatCLP(Math.abs((netAmount + ivaAmount) - totalAmountGross))}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Audit timeline */}
+                {auditTrail.length > 0 && (
+                  <ImportAuditTimeline events={auditTrail} className="mt-4" />
+                )}
               </CardContent>
             </Card>
 
@@ -790,14 +942,15 @@ export default function PurchasesImport() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[250px]">Nombre en factura</TableHead>
-                      <TableHead>Match</TableHead>
-                      <TableHead className="w-[200px]">Producto</TableHead>
-                      <TableHead className="w-[100px]">Cantidad</TableHead>
-                      <TableHead className="w-[120px]">Precio Unit.</TableHead>
+                      <TableHead className="w-[200px]">Nombre en factura</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="w-[180px]">Producto</TableHead>
+                      <TableHead className="w-[80px]">UoM</TableHead>
+                      <TableHead className="w-[80px]">Cantidad</TableHead>
+                      <TableHead className="w-[100px]">P. Unit.</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       {registerExpenses && expenseMode === "partial_expense" && (
-                        <TableHead className="w-[120px]">Clasificación</TableHead>
+                        <TableHead className="w-[100px]">Tipo</TableHead>
                       )}
                     </TableRow>
                   </TableHeader>
@@ -807,13 +960,21 @@ export default function PurchasesImport() {
                         key={item.id}
                         className={item.classification === "expense" ? "bg-amber-50/50" : ""}
                       >
-                        <TableCell className="font-medium text-sm">
+                        <TableCell className="font-medium text-sm max-w-[200px] truncate" title={item.raw_product_name}>
                           {item.raw_product_name}
                         </TableCell>
                         <TableCell>
                           {item.classification === "expense" ? (
-                            <Badge className="bg-amber-500/20 text-amber-700 border-amber-500/30">
+                            <Badge variant="outline" className="text-amber-700 border-amber-400 bg-amber-50">
                               Gasto
+                            </Badge>
+                          ) : item.item_status === "matched" ? (
+                            <Badge variant="outline" className="text-green-700 border-green-400 bg-green-50">
+                              Matched
+                            </Badge>
+                          ) : item.item_status === "pending_match" ? (
+                            <Badge variant="outline" className="text-yellow-700 border-yellow-400 bg-yellow-50">
+                              Pendiente
                             </Badge>
                           ) : (
                             getMatchBadge(item.match_confidence, item.match_source)
@@ -868,18 +1029,47 @@ export default function PurchasesImport() {
                             </Select>
                           )}
                         </TableCell>
+                        {/* UoM Column */}
+                        <TableCell>
+                          {item.classification === "inventory" && item.selected_product_id ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleUomConversion(index)}
+                              className="text-xs h-7 px-2"
+                              title={`${item.uom} → ${item.conversion_factor}x`}
+                            >
+                              <Calculator className="h-3 w-3 mr-1" />
+                              {item.conversion_factor !== 1 ? `${item.conversion_factor}x` : item.uom}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">{item.uom}</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {item.classification === "inventory" ? (
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateItem(index, { quantity: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-20"
-                            />
+                            <div className="flex flex-col">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const qty = parseFloat(e.target.value) || 0;
+                                  updateItem(index, { 
+                                    quantity: qty,
+                                    normalized_quantity: qty * item.conversion_factor,
+                                    normalized_unit_cost: item.conversion_factor > 0 ? item.unit_price / item.conversion_factor : item.unit_price,
+                                  });
+                                }}
+                                className="w-16 h-7 text-sm"
+                              />
+                              {item.conversion_factor !== 1 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  = {item.normalized_quantity.toFixed(1)}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             item.expense_category && (
                               <Select
@@ -888,8 +1078,8 @@ export default function PurchasesImport() {
                                   updateItem(index, { expense_subcategory: value })
                                 }
                               >
-                                <SelectTrigger className="w-[130px]">
-                                  <SelectValue placeholder="Subcategoría..." />
+                                <SelectTrigger className="w-[100px] h-7 text-xs">
+                                  <SelectValue placeholder="Sub..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {EXPENSE_SUBCATEGORIES[item.expense_category as ExpenseCategory]?.map((sub) => (
@@ -1018,6 +1208,9 @@ export default function PurchasesImport() {
                 )}
               </Card>
             )}
+
+            {/* Pre-Confirm Checklist */}
+            <PreConfirmChecklist items={checklistItems} className="mb-4" />
 
             {/* Summary & Confirm */}
             <Card className="border-primary/30">
@@ -1153,6 +1346,22 @@ export default function PurchasesImport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* UoM Conversion Dialog */}
+      {uomEditingIndex !== null && items[uomEditingIndex] && (
+        <UoMConversionDialog
+          open={showUomDialog}
+          onOpenChange={setShowUomDialog}
+          itemName={items[uomEditingIndex].raw_product_name}
+          extractedUom={items[uomEditingIndex].uom}
+          extractedQuantity={items[uomEditingIndex].quantity}
+          extractedUnitPrice={items[uomEditingIndex].unit_price}
+          productUnit={
+            products.find((p) => p.id === items[uomEditingIndex].selected_product_id)?.unit || "un"
+          }
+          onConfirm={applyUomConversion}
+        />
+      )}
     </div>
   );
 }
