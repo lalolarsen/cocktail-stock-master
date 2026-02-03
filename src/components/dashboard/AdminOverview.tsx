@@ -21,6 +21,7 @@ import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 import { LiveSalesChart } from "./overview/LiveSalesChart";
 import { TopProductsChart } from "./overview/TopProductsChart";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
+import { COGSBreakdownPanel } from "./overview/COGSBreakdownPanel";
 
 interface Jornada {
   id: string;
@@ -339,9 +340,10 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       </div>
 
       {/* C) Live Charts & Alerts */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
         <LiveSalesChart />
         <TopProductsChart />
+        <COGSBreakdownPanel compact />
         <StockAlertsPanel onNavigate={onNavigate} />
       </div>
 

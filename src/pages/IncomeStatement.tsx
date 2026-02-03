@@ -41,6 +41,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
+import { useCOGSData } from "@/hooks/useCOGSData";
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -555,41 +556,16 @@ export default function IncomeStatement() {
                 </Card>
               </Collapsible>
 
-              {/* Costo de Ventas Section */}
-              <Collapsible open={costOpen} onOpenChange={setCostOpen}>
-                <Card className="card-minimal">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="cursor-pointer hover:bg-muted/50 transition-fast">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {costOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          <CardTitle className="text-base font-medium">Costo de Ventas</CardTitle>
-                        </div>
-                        <span className="text-lg font-semibold text-destructive">-{formatCLP(displayCosto)}</span>
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="pt-0">
-                      <Separator className="mb-4" />
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <span className="text-sm">Total productos consumidos</span>
-                          <Badge variant="outline">{costOfSales.products_count} productos</Badge>
-                        </div>
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <span className="text-sm">Total unidades consumidas</span>
-                          <Badge variant="outline">{costOfSales.items_count} items</Badge>
-                        </div>
-                        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
-                          <span className="text-sm font-medium">Costo total de insumos</span>
-                          <span className="font-semibold text-destructive">{formatCLP(displayCosto)}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+              {/* Costo de Ventas Section - Enhanced with COGS breakdown */}
+              <COGSDetailSection 
+                dateRange={dateRange}
+                jornadaId={selectedJornadaId}
+                displayCosto={displayCosto}
+                costOfSales={costOfSales}
+                costOpen={costOpen}
+                setCostOpen={setCostOpen}
+                frozenSummary={frozenSummary}
+              />
 
               {/* Gastos Section */}
               <Collapsible open={expensesOpen} onOpenChange={setExpensesOpen}>
@@ -676,5 +652,167 @@ export default function IncomeStatement() {
         )}
       </main>
     </div>
+  );
+}
+
+// COGS Detail Section Component
+const CATEGORY_LABELS: Record<string, string> = {
+  licores: "Licores",
+  vinos: "Vinos",
+  cervezas: "Cervezas",
+  bebidas: "Bebidas",
+  mezcladores: "Mezcladores",
+  otros: "Otros",
+  insumos: "Insumos",
+};
+
+interface COGSDetailSectionProps {
+  dateRange?: DateRange;
+  jornadaId?: string;
+  displayCosto: number;
+  costOfSales: CostOfSales;
+  costOpen: boolean;
+  setCostOpen: (open: boolean) => void;
+  frozenSummary: FrozenSummary | null;
+}
+
+function COGSDetailSection({
+  dateRange,
+  jornadaId,
+  displayCosto,
+  costOfSales,
+  costOpen,
+  setCostOpen,
+  frozenSummary,
+}: COGSDetailSectionProps) {
+  const { summary, byProduct, byCategory, loading } = useCOGSData(dateRange, jornadaId);
+
+  return (
+    <Collapsible open={costOpen} onOpenChange={setCostOpen}>
+      <Card className="card-minimal">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-fast">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {costOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <CardTitle className="text-base font-medium">Costo de Ventas (COGS)</CardTitle>
+              </div>
+              <span className="text-lg font-semibold text-destructive">-{formatCLP(displayCosto)}</span>
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            <Separator className="mb-4" />
+            {frozenSummary ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Desglose COGS no disponible para jornadas cerradas (snapshot)
+              </p>
+            ) : loading ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Summary Stats */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-lg bg-muted/30 text-center">
+                    <p className="text-xs text-muted-foreground">Productos</p>
+                    <p className="text-lg font-bold">{summary.products_count}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/30 text-center">
+                    <p className="text-xs text-muted-foreground">Redenciones</p>
+                    <p className="text-lg font-bold">{summary.redemptions_count}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/30 text-center">
+                    <p className="text-xs text-muted-foreground">Costo/Redención</p>
+                    <p className="text-lg font-bold">{formatCLP(summary.avg_cost_per_redemption)}</p>
+                  </div>
+                </div>
+
+                {/* By Category Breakdown */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Desglose por Categoría
+                  </p>
+                  {byCategory.map((cat) => {
+                    const percentage = summary.total_cogs > 0 
+                      ? (cat.total_cost / summary.total_cogs) * 100 
+                      : 0;
+                    return (
+                      <div key={cat.category} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-muted/30">
+                        <div className="flex-1">
+                          <div className="flex justify-between mb-1">
+                            <span className="text-sm font-medium">
+                              {CATEGORY_LABELS[cat.category] || cat.category}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {cat.product_count} productos
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-destructive/70 rounded-full"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-sm font-mono w-24 text-right text-destructive">
+                          {formatCLP(cat.total_cost)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {byCategory.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Sin movimientos de stock en este período
+                    </p>
+                  )}
+                </div>
+
+                {/* Top 5 Products */}
+                {byProduct.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Top 5 Productos por Costo
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Producto</TableHead>
+                          <TableHead className="text-xs text-right">Consumo</TableHead>
+                          <TableHead className="text-xs text-right">Costo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {byProduct.slice(0, 5).map((p) => (
+                          <TableRow key={p.product_id}>
+                            <TableCell className="text-sm py-2">{p.product_name}</TableCell>
+                            <TableCell className="text-sm py-2 text-right font-mono">
+                              {p.total_quantity.toFixed(1)} {p.unit}
+                            </TableCell>
+                            <TableCell className="text-sm py-2 text-right font-mono text-destructive">
+                              {formatCLP(p.total_cost)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {/* Total */}
+                <div className="flex items-center justify-between py-3 px-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <span className="font-medium">Costo Total de Ventas</span>
+                  <span className="text-lg font-bold text-destructive">
+                    {formatCLP(summary.total_cogs)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
