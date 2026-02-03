@@ -2,18 +2,14 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Calendar } from "@/components/ui/calendar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Download, Loader2, Calendar, ChevronDown, ChevronRight,
+  TrendingUp, ShoppingCart, Ticket, Clock, Users, DollarSign,
+  XCircle, CreditCard, Banknote, RefreshCw
+} from "lucide-react";
+import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
-import { cn } from "@/lib/utils";
 import { formatCLP } from "@/lib/currency";
 import {
   Table,
@@ -23,171 +19,254 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 
-type SaleCategory = "all" | "alcohol" | "ticket";
+interface JornadaSummary {
+  id: string;
+  fecha: string;
+  numero_jornada: number;
+  semana_inicio: string;
+  hora_apertura: string | null;
+  hora_cierre: string | null;
+  estado: string;
+}
 
-type Sale = {
+interface JornadaReport {
+  jornada: JornadaSummary;
+  totalSales: number;
+  totalCancelled: number;
+  salesCount: number;
+  cancelledCount: number;
+  alcoholSales: number;
+  ticketSales: number;
+  cashSales: number;
+  cardSales: number;
+  otherPayments: number;
+  topSellers: { name: string; total: number; count: number }[];
+  sales?: SaleDetail[];
+}
+
+interface SaleDetail {
   id: string;
   sale_number: string;
   created_at: string;
   total_amount: number;
   point_of_sale: string;
   is_cancelled: boolean;
-  seller_id: string;
   sale_category: string;
-};
+  payment_method: string;
+  seller_name: string;
+}
 
-type SaleWithSeller = Sale & {
-  seller: {
-    full_name: string | null;
-    email: string;
-  };
-};
-
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
 
 export function ReportsPanel() {
-  const [sales, setSales] = useState<SaleWithSeller[]>([]);
-  const [startDate, setStartDate] = useState<Date>();
-  const [endDate, setEndDate] = useState<Date>();
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [categoryFilter, setCategoryFilter] = useState<SaleCategory>("all");
-  
-  // Aggregated totals (fetched separately to avoid loading all rows)
-  const [totals, setTotals] = useState({ totalSales: 0, totalCancelled: 0, activeCount: 0, cancelledCount: 0 });
+  const [jornadas, setJornadas] = useState<JornadaReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
+  const [loadingSales, setLoadingSales] = useState<string | null>(null);
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
-  const fetchSales = async () => {
-    if (!startDate || !endDate) return;
+  // Generate last 12 months for filter
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    return {
+      value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      label: format(date, "MMMM yyyy", { locale: es }),
+    };
+  });
 
+  const fetchJornadasWithSales = async () => {
     setLoading(true);
     try {
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const [year, month] = monthFilter.split("-").map(Number);
+      const startDate = startOfMonth(new Date(year, month - 1));
+      const endDate = endOfMonth(new Date(year, month - 1));
 
-      // Fetch paginated sales with sale_category included
-      let query = supabase
-        .from("sales")
-        .select(`
-          id,
-          sale_number,
-          created_at,
-          total_amount,
-          point_of_sale,
-          is_cancelled,
-          seller_id,
-          sale_category
-        `, { count: "exact" })
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString());
-      
-      // Apply category filter
-      if (categoryFilter !== "all") {
-        query = query.eq("sale_category", categoryFilter);
+      // Fetch jornadas for the month
+      const { data: jornadasData, error: jornadasError } = await supabase
+        .from("jornadas")
+        .select("id, fecha, numero_jornada, semana_inicio, hora_apertura, hora_cierre, estado")
+        .gte("fecha", format(startDate, "yyyy-MM-dd"))
+        .lte("fecha", format(endDate, "yyyy-MM-dd"))
+        .order("fecha", { ascending: false });
+
+      if (jornadasError) throw jornadasError;
+
+      if (!jornadasData || jornadasData.length === 0) {
+        setJornadas([]);
+        return;
       }
+
+      // Fetch all sales for these jornadas
+      const jornadaIds = jornadasData.map(j => j.id);
       
-      const { data, error, count } = await query
-        .order("created_at", { ascending: false })
-        .range(from, to);
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id")
+        .in("jornada_id", jornadaIds);
 
-      if (error) throw error;
+      if (salesError) throw salesError;
 
-      setTotalCount(count || 0);
-
-      // Fetch seller profiles separately
-      const sellerIds = [...new Set(data?.map((s) => s.seller_id))];
-      const { data: profiles } = await supabase
+      // Fetch seller profiles
+      const sellerIds = [...new Set(salesData?.map(s => s.seller_id) || [])];
+      const { data: profilesData } = await supabase
         .from("profiles")
         .select("id, full_name, email")
         .in("id", sellerIds);
 
-      const profilesMap = new Map(
-        profiles?.map((p) => [p.id, p]) || []
-      );
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
 
-      const salesWithSellers = data?.map((sale) => ({
-        ...sale,
-        seller: profilesMap.get(sale.seller_id) || {
-          full_name: null,
-          email: "Usuario desconocido",
-        },
-      })) || [];
+      // Build reports for each jornada
+      const reports: JornadaReport[] = jornadasData.map(jornada => {
+        const jornadaSales = salesData?.filter(s => s.jornada_id === jornada.id) || [];
+        const activeSales = jornadaSales.filter(s => !s.is_cancelled);
+        const cancelledSales = jornadaSales.filter(s => s.is_cancelled);
 
-      setSales(salesWithSellers);
+        const totalSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const totalCancelled = cancelledSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        
+        const alcoholSales = activeSales
+          .filter(s => s.sale_category === "alcohol")
+          .reduce((sum, s) => sum + Number(s.total_amount), 0);
+        
+        const ticketSales = activeSales
+          .filter(s => s.sale_category === "ticket")
+          .reduce((sum, s) => sum + Number(s.total_amount), 0);
+
+        const cashSales = activeSales
+          .filter(s => s.payment_method === "cash")
+          .reduce((sum, s) => sum + Number(s.total_amount), 0);
+        
+        const cardSales = activeSales
+          .filter(s => s.payment_method === "card")
+          .reduce((sum, s) => sum + Number(s.total_amount), 0);
+
+        const otherPayments = totalSales - cashSales - cardSales;
+
+        // Top sellers calculation
+        const sellerTotals = new Map<string, { total: number; count: number }>();
+        activeSales.forEach(sale => {
+          const existing = sellerTotals.get(sale.seller_id) || { total: 0, count: 0 };
+          sellerTotals.set(sale.seller_id, {
+            total: existing.total + Number(sale.total_amount),
+            count: existing.count + 1,
+          });
+        });
+
+        const topSellers = Array.from(sellerTotals.entries())
+          .map(([sellerId, data]) => {
+            const profile = profilesMap.get(sellerId);
+            return {
+              name: profile?.full_name || profile?.email || "Desconocido",
+              total: data.total,
+              count: data.count,
+            };
+          })
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 3);
+
+        return {
+          jornada,
+          totalSales,
+          totalCancelled,
+          salesCount: activeSales.length,
+          cancelledCount: cancelledSales.length,
+          alcoholSales,
+          ticketSales,
+          cashSales,
+          cardSales,
+          otherPayments,
+          topSellers,
+        };
+      });
+
+      setJornadas(reports);
     } catch (error) {
-      console.error("Error fetching sales:", error);
+      console.error("Error fetching jornadas:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch aggregated totals separately (only when dates change)
-  const fetchTotals = async () => {
-    if (!startDate || !endDate) return;
-
+  const fetchJornadaSales = async (jornadaId: string) => {
+    setLoadingSales(jornadaId);
     try {
-      // Base query builder
-      const buildQuery = (isCancelled: boolean) => {
-        let query = supabase
-          .from("sales")
-          .select("total_amount")
-          .gte("created_at", startDate.toISOString())
-          .lte("created_at", endDate.toISOString())
-          .eq("is_cancelled", isCancelled);
-        
-        if (categoryFilter !== "all") {
-          query = query.eq("sale_category", categoryFilter);
-        }
-        return query;
-      };
-      
-      // Fetch active sales total
-      const { data: activeData } = await buildQuery(false);
+      const { data: salesData, error } = await supabase
+        .from("sales")
+        .select("id, sale_number, created_at, total_amount, point_of_sale, is_cancelled, sale_category, payment_method, seller_id")
+        .eq("jornada_id", jornadaId)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
 
-      // Fetch cancelled sales total
-      const { data: cancelledData } = await buildQuery(true);
+      if (error) throw error;
 
-      const totalSales = (activeData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
-      const totalCancelled = (cancelledData || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+      // Fetch seller profiles
+      const sellerIds = [...new Set(salesData?.map(s => s.seller_id) || [])];
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", sellerIds);
 
-      setTotals({
-        totalSales,
-        totalCancelled,
-        activeCount: activeData?.length || 0,
-        cancelledCount: cancelledData?.length || 0,
-      });
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+      const salesWithNames: SaleDetail[] = (salesData || []).map(sale => ({
+        ...sale,
+        seller_name: profilesMap.get(sale.seller_id)?.full_name || 
+                     profilesMap.get(sale.seller_id)?.email || 
+                     "Desconocido",
+      }));
+
+      // Update the jornada with sales
+      setJornadas(prev => prev.map(j => 
+        j.jornada.id === jornadaId ? { ...j, sales: salesWithNames } : j
+      ));
     } catch (error) {
-      console.error("Error fetching totals:", error);
+      console.error("Error fetching sales:", error);
+    } finally {
+      setLoadingSales(null);
     }
   };
 
-  useEffect(() => {
-    if (startDate && endDate) {
-      fetchSales();
+  const handleExpand = (jornadaId: string) => {
+    if (expandedJornada === jornadaId) {
+      setExpandedJornada(null);
+    } else {
+      setExpandedJornada(jornadaId);
+      const jornada = jornadas.find(j => j.jornada.id === jornadaId);
+      if (!jornada?.sales) {
+        fetchJornadaSales(jornadaId);
+      }
     }
-  }, [startDate, endDate, page, categoryFilter]);
+  };
 
-  useEffect(() => {
-    if (startDate && endDate) {
-      setPage(0); // Reset page when dates or category change
-      fetchTotals();
-    }
-  }, [startDate, endDate, categoryFilter]);
+  const handleExportJornada = (report: JornadaReport) => {
+    if (!report.sales || report.sales.length === 0) return;
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-
-  const handleExport = () => {
-    if (sales.length === 0) return;
-    
-    const headers = ["Número", "Fecha", "Vendedor", "Punto de Venta", "Categoría", "Total", "Estado"];
-    const rows = sales.map(sale => [
+    const headers = ["Número", "Fecha", "Vendedor", "POS", "Categoría", "Método Pago", "Total", "Estado"];
+    const rows = report.sales.map(sale => [
       sale.sale_number,
       format(new Date(sale.created_at), "dd/MM/yyyy HH:mm"),
-      sale.seller.full_name || sale.seller.email,
+      sale.seller_name,
       sale.point_of_sale,
       sale.sale_category === "ticket" ? "Ticket" : "Alcohol",
+      sale.payment_method === "cash" ? "Efectivo" : sale.payment_method === "card" ? "Tarjeta" : sale.payment_method,
       sale.total_amount.toString(),
       sale.is_cancelled ? "Cancelada" : "Activa"
     ]);
@@ -200,251 +279,332 @@ export function ReportsPanel() {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `ventas_${format(startDate!, "yyyy-MM-dd")}_${format(endDate!, "yyyy-MM-dd")}.csv`;
+    link.download = `jornada_${report.jornada.numero_jornada}_${report.jornada.fecha}.csv`;
     link.click();
   };
 
+  useEffect(() => {
+    fetchJornadasWithSales();
+  }, [monthFilter]);
+
+  // Calculate month totals
+  const monthTotals = jornadas.reduce((acc, j) => ({
+    totalSales: acc.totalSales + j.totalSales,
+    totalCancelled: acc.totalCancelled + j.totalCancelled,
+    salesCount: acc.salesCount + j.salesCount,
+    cancelledCount: acc.cancelledCount + j.cancelledCount,
+    alcoholSales: acc.alcoholSales + j.alcoholSales,
+    ticketSales: acc.ticketSales + j.ticketSales,
+  }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, alcoholSales: 0, ticketSales: 0 });
+
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold gradient-text">Reportes de Ventas</h2>
-
-      {/* Filters */}
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>Fecha Inicial</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !startDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {startDate ? (
-                    format(startDate, "PPP", { locale: es })
-                  ) : (
-                    <span>Seleccionar fecha</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={startDate}
-                  onSelect={setStartDate}
-                  initialFocus
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Fecha Final</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !endDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {endDate ? (
-                    format(endDate, "PPP", { locale: es })
-                  ) : (
-                    <span>Seleccionar fecha</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={endDate}
-                  onSelect={setEndDate}
-                  initialFocus
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex items-end">
-            <Button
-              onClick={() => { setPage(0); fetchSales(); fetchTotals(); }}
-              disabled={!startDate || !endDate || loading}
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Cargando...
-                </>
-              ) : (
-                "Generar Reporte"
-              )}
-            </Button>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Reportes por Jornada</h2>
+          <p className="text-muted-foreground text-sm">
+            Ventas completas organizadas por cada jornada operativa
+          </p>
         </div>
-      </Card>
-
-      {/* Category Filter Tabs */}
-      {(startDate && endDate) && (
-        <Tabs value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as SaleCategory)} className="w-full">
-          <TabsList>
-            <TabsTrigger value="all">Todas</TabsTrigger>
-            <TabsTrigger value="alcohol">Alcohol</TabsTrigger>
-            <TabsTrigger value="ticket">Tickets</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
-
-      {/* Summary Cards */}
-      {(startDate && endDate) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-6">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Total Ventas</p>
-              <p className="text-3xl font-bold text-primary">
-                {formatCLP(totals.totalSales)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {totals.activeCount} ventas activas
-              </p>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Ventas Canceladas
-              </p>
-              <p className="text-3xl font-bold text-destructive">
-                {formatCLP(totals.totalCancelled)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {totals.cancelledCount} canceladas
-              </p>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Total General</p>
-              <p className="text-3xl font-bold">
-                {formatCLP(totals.totalSales + totals.totalCancelled)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {totalCount} transacciones
-              </p>
-            </div>
-          </Card>
+        <div className="flex items-center gap-2">
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger className="w-[180px]">
+              <Calendar className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="icon" onClick={fetchJornadasWithSales} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
-      )}
+      </div>
 
-      {/* Sales Table */}
-      {sales.length > 0 && (
-        <Card className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-semibold">Detalle de Ventas</h3>
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Exportar
-            </Button>
-          </div>
-
-          <div className="border rounded-lg overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Número</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Vendedor</TableHead>
-                  <TableHead>POS</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sales.map((sale) => (
-                  <TableRow key={sale.id}>
-                    <TableCell className="font-medium">
-                      {sale.sale_number}
-                    </TableCell>
-                    <TableCell>
-                      {format(
-                        new Date(sale.created_at),
-                        "dd/MM/yyyy HH:mm",
-                        { locale: es }
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {sale.seller.full_name || sale.seller.email}
-                    </TableCell>
-                    <TableCell>{sale.point_of_sale}</TableCell>
-                    <TableCell>
-                      <Badge variant={sale.sale_category === "ticket" ? "secondary" : "outline"}>
-                        {sale.sale_category === "ticket" ? "Ticket" : "Alcohol"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      {formatCLP(sale.total_amount)}
-                    </TableCell>
-                    <TableCell>
-                      {sale.is_cancelled ? (
-                        <Badge variant="destructive">Cancelada</Badge>
-                      ) : (
-                        <Badge variant="default">Activa</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          {totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-muted-foreground">
-                Mostrando {page * PAGE_SIZE + 1} - {Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0 || loading}
-                  onClick={() => setPage(p => p - 1)}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages - 1 || loading}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Siguiente
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
+      {/* Month Summary */}
+      {!loading && jornadas.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <DollarSign className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Ventas Totales</p>
+                <p className="text-xl font-bold">{formatCLP(monthTotals.totalSales)}</p>
               </div>
             </div>
-          )}
-        </Card>
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <ShoppingCart className="h-5 w-5 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Alcohol</p>
+                <p className="text-xl font-bold">{formatCLP(monthTotals.alcoholSales)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <Ticket className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Entradas</p>
+                <p className="text-xl font-bold">{formatCLP(monthTotals.ticketSales)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <XCircle className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Canceladas</p>
+                <p className="text-xl font-bold">{formatCLP(monthTotals.totalCancelled)}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
 
-      {!loading && sales.length === 0 && startDate && endDate && (
+      {/* Jornadas List */}
+      {loading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="p-6">
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-12 w-12 rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+                <Skeleton className="h-8 w-32" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : jornadas.length === 0 ? (
         <Card className="p-12 text-center">
-          <p className="text-muted-foreground">
-            No se encontraron ventas en el período seleccionado
+          <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+          <h3 className="font-medium mb-1">Sin jornadas registradas</h3>
+          <p className="text-sm text-muted-foreground">
+            No hay jornadas en el período seleccionado
           </p>
         </Card>
+      ) : (
+        <div className="space-y-3">
+          {jornadas.map(report => (
+            <Collapsible 
+              key={report.jornada.id} 
+              open={expandedJornada === report.jornada.id}
+              onOpenChange={() => handleExpand(report.jornada.id)}
+            >
+              <Card className="overflow-hidden">
+                <CollapsibleTrigger asChild>
+                  <button className="w-full p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left">
+                    {/* Jornada Info */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex flex-col items-center justify-center shrink-0">
+                        <span className="text-xs text-muted-foreground">J</span>
+                        <span className="text-lg font-bold text-primary leading-none">
+                          {report.jornada.numero_jornada}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">
+                            {format(parseISO(report.jornada.fecha), "EEEE d", { locale: es })}
+                          </span>
+                          <Badge 
+                            variant={report.jornada.estado === "abierta" ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {report.jornada.estado === "abierta" ? "Abierta" : "Cerrada"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {report.jornada.hora_apertura?.slice(0, 5) || "--:--"} - {report.jornada.hora_cierre?.slice(0, 5) || "--:--"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            {report.salesCount} ventas
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="hidden md:flex items-center gap-6 ml-auto">
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Alcohol</p>
+                        <p className="font-medium text-emerald-600">{formatCLP(report.alcoholSales)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Tickets</p>
+                        <p className="font-medium text-amber-600">{formatCLP(report.ticketSales)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="font-bold text-lg">{formatCLP(report.totalSales)}</p>
+                      </div>
+                    </div>
+
+                    {/* Mobile Total */}
+                    <div className="md:hidden ml-auto text-right">
+                      <p className="font-bold text-lg">{formatCLP(report.totalSales)}</p>
+                      <p className="text-xs text-muted-foreground">{report.salesCount} ventas</p>
+                    </div>
+
+                    {/* Expand Icon */}
+                    <div className="shrink-0">
+                      {expandedJornada === report.jornada.id ? (
+                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+                  </button>
+                </CollapsibleTrigger>
+
+                <CollapsibleContent>
+                  <div className="border-t p-4 space-y-4 bg-muted/30">
+                    {/* Detailed Stats */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="p-3 rounded-lg bg-background">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <Banknote className="h-4 w-4" />
+                          <span className="text-xs">Efectivo</span>
+                        </div>
+                        <p className="font-semibold">{formatCLP(report.cashSales)}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <CreditCard className="h-4 w-4" />
+                          <span className="text-xs">Tarjeta</span>
+                        </div>
+                        <p className="font-semibold">{formatCLP(report.cardSales)}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <DollarSign className="h-4 w-4" />
+                          <span className="text-xs">Otros</span>
+                        </div>
+                        <p className="font-semibold">{formatCLP(report.otherPayments)}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background">
+                        <div className="flex items-center gap-2 text-destructive/70 mb-1">
+                          <XCircle className="h-4 w-4" />
+                          <span className="text-xs">Canceladas</span>
+                        </div>
+                        <p className="font-semibold text-destructive">
+                          {formatCLP(report.totalCancelled)} ({report.cancelledCount})
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <Users className="h-4 w-4" />
+                          <span className="text-xs">Top Vendedor</span>
+                        </div>
+                        <p className="font-semibold text-sm truncate">
+                          {report.topSellers[0]?.name || "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Sales Table */}
+                    {loadingSales === report.jornada.id ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : report.sales && report.sales.length > 0 ? (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <h4 className="font-medium">Detalle de Ventas</h4>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleExportJornada(report)}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Exportar CSV
+                          </Button>
+                        </div>
+                        <div className="border rounded-lg overflow-x-auto bg-background">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Nº</TableHead>
+                                <TableHead>Hora</TableHead>
+                                <TableHead>Vendedor</TableHead>
+                                <TableHead>POS</TableHead>
+                                <TableHead>Tipo</TableHead>
+                                <TableHead>Pago</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                                <TableHead>Estado</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {report.sales.map(sale => (
+                                <TableRow key={sale.id} className={sale.is_cancelled ? "opacity-50" : ""}>
+                                  <TableCell className="font-mono text-sm">{sale.sale_number}</TableCell>
+                                  <TableCell className="text-sm">
+                                    {format(new Date(sale.created_at), "HH:mm")}
+                                  </TableCell>
+                                  <TableCell className="text-sm">{sale.seller_name}</TableCell>
+                                  <TableCell className="text-sm">{sale.point_of_sale}</TableCell>
+                                  <TableCell>
+                                    <Badge variant={sale.sale_category === "ticket" ? "secondary" : "outline"} className="text-xs">
+                                      {sale.sale_category === "ticket" ? "Ticket" : "Alcohol"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-sm">
+                                    {sale.payment_method === "cash" ? "Efectivo" : 
+                                     sale.payment_method === "card" ? "Tarjeta" : sale.payment_method}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {formatCLP(sale.total_amount)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {sale.is_cancelled ? (
+                                      <Badge variant="destructive" className="text-xs">Cancelada</Badge>
+                                    ) : (
+                                      <Badge variant="default" className="text-xs">OK</Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        {report.sales.length >= PAGE_SIZE && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            Mostrando las primeras {PAGE_SIZE} ventas
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-4">
+                        No hay ventas registradas en esta jornada
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          ))}
+        </div>
       )}
     </div>
   );
