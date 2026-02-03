@@ -18,10 +18,12 @@ export interface ProductWithStock {
   id: string;
   name: string;
   category: string;
+  subcategory: string | null;
   unit: string;
   minimum_stock: number;
   cost_per_unit: number;
   code: string;
+  is_mixer: boolean;
   // Stock data from balances
   warehouseStock: number;
   barStock: number;
@@ -166,10 +168,12 @@ export const useStockData = () => {
           id: product.id,
           name: product.name,
           category: product.category,
+          subcategory: product.subcategory || null,
           unit: product.unit,
           minimum_stock: product.minimum_stock,
           cost_per_unit: product.cost_per_unit || 0,
           code: product.code,
+          is_mixer: product.is_mixer || false,
           warehouseStock: breakdown?.warehouseStock || 0,
           barStock: breakdown?.barStock || 0,
           totalStock: breakdown?.totalStock || 0,

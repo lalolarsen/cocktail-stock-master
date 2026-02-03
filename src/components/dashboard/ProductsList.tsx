@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Wine, Droplet, Leaf, Pencil, Trash2, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
@@ -48,6 +49,18 @@ const categoryLabels = {
   unidades: "Unidades",
 };
 
+const subcategoryOptions = [
+  { value: "botellas_1000", label: "Botellas 1000ml" },
+  { value: "botellas_750", label: "Botellas 750ml" },
+  { value: "botellas_700", label: "Botellas 700ml" },
+  { value: "botellines", label: "Botellines/Cervezas" },
+  { value: "mixers_latas", label: "Mixers Latas" },
+  { value: "mixers_redbull", label: "Mixers Red Bull" },
+  { value: "jugos", label: "Jugos" },
+  { value: "aguas", label: "Aguas" },
+  { value: "bebidas_1500", label: "Bebidas 1.5L" },
+];
+
 // Helper function to get the correct unit display
 const getUnitDisplay = (category: string, unit: string) => {
   if (category === "unidades") return "unidades";
@@ -67,9 +80,11 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const [editForm, setEditForm] = useState({
     name: "",
     category: "",
+    subcategory: "" as string | null,
     minimum_stock: 0,
     unit: "",
     cost_per_unit: 0,
+    is_mixer: false,
   });
 
   const getStockStatus = (warehouseStock: number, minimumStock: number) => {
@@ -84,9 +99,11 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setEditForm({
       name: product.name,
       category: product.category,
+      subcategory: product.subcategory,
       minimum_stock: product.minimum_stock,
       unit: product.unit,
       cost_per_unit: product.cost_per_unit || 0,
+      is_mixer: product.is_mixer || false,
     });
     setEditDialogOpen(true);
   };
@@ -134,9 +151,11 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         .update({
           name: editForm.name,
           category: editForm.category as any,
+          subcategory: editForm.subcategory || null,
           minimum_stock: editForm.minimum_stock,
           unit: editForm.unit,
           cost_per_unit: editForm.cost_per_unit,
+          is_mixer: editForm.is_mixer,
         })
         .eq("id", selectedProduct.id);
 
@@ -341,6 +360,26 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="edit-subcategory">Subcategoría (Clasificación)</Label>
+              <Select
+                value={editForm.subcategory || ""}
+                onValueChange={(value) => setEditForm({ ...editForm, subcategory: value || null })}
+              >
+                <SelectTrigger id="edit-subcategory">
+                  <SelectValue placeholder="Seleccionar subcategoría..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Sin subcategoría</SelectItem>
+                  {subcategoryOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-min">Stock Mínimo (Bodega)</Label>
@@ -367,6 +406,20 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                   <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
                 )}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="edit-mixer">Es Mixer</Label>
+                <p className="text-xs text-muted-foreground">
+                  Disponible para selección en barra (Coca-Cola, Red Bull, etc.)
+                </p>
+              </div>
+              <Switch
+                id="edit-mixer"
+                checked={editForm.is_mixer}
+                onCheckedChange={(checked) => setEditForm({ ...editForm, is_mixer: checked })}
+              />
             </div>
 
             <p className="text-xs text-muted-foreground">
