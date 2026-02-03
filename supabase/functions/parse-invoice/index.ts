@@ -267,8 +267,12 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
 }
 
 async function parseWithAI(base64Content: string, fileType: string): Promise<ExtractedData> {
-  // Use Lovable AI Gateway - automatically available in Lovable Cloud
-  const aiGatewayUrl = Deno.env.get("AI_GATEWAY_URL") || "https://ai-gateway.lovable.dev/v1/chat/completions";
+  // Use Google Gemini API via Google AI Studio
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY not configured. Please add your Google AI API key.");
+  }
 
   const prompt = `Analyze this invoice/purchase document and extract the following information in JSON format:
 {
@@ -292,26 +296,33 @@ Return ONLY the JSON, no other text.`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
 
-  const response = await fetch(aiGatewayUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${base64Content}` },
-            },
-          ],
+  // Use Gemini API with vision capabilities
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: base64Content,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: 4096,
+          temperature: 0.1,
         },
-      ],
-      max_tokens: 4096,
-    }),
-  });
+      }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -319,7 +330,8 @@ Return ONLY the JSON, no other text.`;
   }
 
   const result = await response.json();
-  const content = result.choices?.[0]?.message?.content || "";
+  // Gemini API response format
+  const content = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
   // Parse JSON from response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
