@@ -31,19 +31,95 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Subcategorías del Manual DiStock
-const SUBCATEGORY_CONFIG: Record<string, { label: string; icon: typeof Wine; order: number }> = {
-  botellas_1500: { label: "Botellas 1.5L", icon: Wine, order: 1 },
-  botellas_1000: { label: "Botellas 1000ml", icon: Wine, order: 2 },
-  botellas_750: { label: "Botellas 750ml", icon: Wine, order: 3 },
-  botellas_700: { label: "Botellas 700ml", icon: Wine, order: 4 },
-  botellines: { label: "Botellines/Cervezas", icon: Wine, order: 5 },
-  mixers_latas: { label: "Mixers Latas", icon: Droplet, order: 6 },
-  mixers_redbull: { label: "Mixers Red Bull", icon: Droplet, order: 7 },
-  jugos: { label: "Jugos", icon: Droplet, order: 8 },
-  aguas: { label: "Aguas", icon: Droplet, order: 9 },
-  bebidas_1500: { label: "Bebidas 1.5L", icon: Droplet, order: 10 },
-  sin_categoria: { label: "Sin Categoría", icon: Package, order: 99 },
+// Taxonomía de Control de Stock - Manual DiStock
+// Clasificación según función operativa y capacidad
+const SUBCATEGORY_CONFIG: Record<string, { 
+  label: string; 
+  icon: typeof Wine; 
+  order: number;
+  description: string;
+  stockType: 'volumetrico' | 'unitario';
+}> = {
+  // === STOCK VOLUMÉTRICO (Control por ml) ===
+  botellas_1500: { 
+    label: "Botellas 1.5L (Back-Office)", 
+    icon: Wine, 
+    order: 1,
+    description: "Insumo de producción. Bloqueado para venta unitaria.",
+    stockType: 'volumetrico'
+  },
+  botellas_1000: { 
+    label: "Botellas 1000ml (Speed Rack)", 
+    icon: Wine, 
+    order: 2,
+    description: "Destilados base, coctelería, shots. Bloqueado para venta unitaria.",
+    stockType: 'volumetrico'
+  },
+  botellas_750: { 
+    label: "Botellas 750ml (Retail/Híbrido)", 
+    icon: Wine, 
+    order: 3,
+    description: "Venta por botella completa o copeo premium.",
+    stockType: 'volumetrico'
+  },
+  botellas_700: { 
+    label: "Botellas 700ml (Retail/Híbrido)", 
+    icon: Wine, 
+    order: 4,
+    description: "Venta por botella completa o copeo premium.",
+    stockType: 'volumetrico'
+  },
+  
+  // === STOCK UNITARIO (Control por unidad) ===
+  botellines: { 
+    label: "Botellines / Cervezas", 
+    icon: Wine, 
+    order: 5,
+    description: "Stock unitario discreto.",
+    stockType: 'unitario'
+  },
+  mixers_latas: { 
+    label: "Mixers (Latas)", 
+    icon: Droplet, 
+    order: 6,
+    description: "Ingrediente dinámico. Seleccionable en redención.",
+    stockType: 'unitario'
+  },
+  mixers_redbull: { 
+    label: "Mixers (Red Bull)", 
+    icon: Droplet, 
+    order: 7,
+    description: "Ingrediente dinámico. Seleccionable en redención.",
+    stockType: 'unitario'
+  },
+  jugos: { 
+    label: "Jugos", 
+    icon: Droplet, 
+    order: 8,
+    description: "Ingredientes de coctelería.",
+    stockType: 'volumetrico'
+  },
+  aguas: { 
+    label: "Aguas", 
+    icon: Droplet, 
+    order: 9,
+    description: "Stock unitario discreto.",
+    stockType: 'unitario'
+  },
+  bebidas_1500: { 
+    label: "Bebidas 1.5L", 
+    icon: Droplet, 
+    order: 10,
+    description: "Bebidas de alto volumen.",
+    stockType: 'volumetrico'
+  },
+  sin_categoria: { 
+    label: "Sin Categoría", 
+    icon: Package, 
+    order: 99,
+    description: "Productos pendientes de clasificación.",
+    stockType: 'unitario'
+  },
 };
 
 // Formatos de medida
@@ -205,19 +281,15 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         </div>
       </div>
 
-      {/* Leyenda de formatos */}
+      {/* Leyenda de tipos de stock según Manual DiStock */}
       <div className="flex flex-wrap gap-2">
-        <Badge variant="outline" className="gap-1">
-          <Droplet className="h-3 w-3" />
-          ml = Mililitros (licores, jugos)
+        <Badge variant="outline" className="gap-1 bg-amber-500/10 border-amber-500/30">
+          <Wine className="h-3 w-3 text-amber-600" />
+          Volumétrico = Control por ml
         </Badge>
-        <Badge variant="outline" className="gap-1">
-          <Wine className="h-3 w-3" />
-          uds = Unidades (botellas, latas)
-        </Badge>
-        <Badge variant="outline" className="gap-1">
-          <Package className="h-3 w-3" />
-          g = Gramos (snacks, insumos)
+        <Badge variant="outline" className="gap-1 bg-blue-500/10 border-blue-500/30">
+          <Package className="h-3 w-3 text-blue-600" />
+          Unitario = Control por unidad
         </Badge>
       </div>
 
@@ -230,20 +302,22 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
           return (
             <Collapsible key={subcategory} open={isExpanded} onOpenChange={() => toggleCategory(subcategory)}>
-              <Card>
+              <Card className={config.stockType === 'volumetrico' ? 'border-l-4 border-l-amber-500' : 'border-l-4 border-l-blue-500'}>
                 <CollapsibleTrigger asChild>
                   <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <Icon className="h-5 w-5 text-primary" />
+                      <div className={`p-2 rounded-lg ${config.stockType === 'volumetrico' ? 'bg-amber-500/10' : 'bg-blue-500/10'}`}>
+                        <Icon className={`h-5 w-5 ${config.stockType === 'volumetrico' ? 'text-amber-600' : 'text-blue-600'}`} />
                       </div>
                       <div>
                         <h3 className="font-semibold">{config.label}</h3>
-                        <p className="text-xs text-muted-foreground">{items.length} productos</p>
+                        <p className="text-xs text-muted-foreground">{config.description}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">{items.length}</Badge>
+                      <Badge variant={config.stockType === 'volumetrico' ? 'default' : 'secondary'} className="text-xs">
+                        {items.length} {config.stockType === 'volumetrico' ? 'vol' : 'uds'}
+                      </Badge>
                       {isExpanded ? (
                         <ChevronDown className="h-5 w-5 text-muted-foreground" />
                       ) : (
