@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { AdminOverview } from "@/components/dashboard/AdminOverview";
 import { ProductsList } from "@/components/dashboard/ProductsList";
-import { CocktailsMenu } from "@/components/dashboard/CocktailsMenu";
+import { MenuWrapper } from "@/components/dashboard/MenuWrapper";
 import { WorkersManagementNew } from "@/components/dashboard/WorkersManagementNew";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
@@ -15,7 +15,6 @@ import { WarehouseInventory } from "@/components/dashboard/WarehouseInventory";
 import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
-import { AddonsManagement } from "@/components/dashboard/AddonsManagement";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -24,7 +23,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { VenueGuard } from "@/components/VenueGuard";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "addons";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -73,7 +72,7 @@ export default function Admin() {
     switch (activeView) {
       case "overview": return "Panel General";
       case "products": return "Productos";
-      case "menu": return "Menú";
+      case "menu": return "Carta";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
       case "expenses": return "Declaración de Gastos";
@@ -84,7 +83,6 @@ export default function Admin() {
       case "replenishment": return "Reposición de Stock";
       case "notifications": return "Notificaciones";
       case "tickets": return "Tipos de Entrada";
-      case "addons": return "Add-ons";
       default: return "Panel de Administración";
     }
   };
@@ -124,7 +122,7 @@ export default function Admin() {
 
             {activeView === "menu" && (
               <div className="space-y-6">
-                <CocktailsMenu isReadOnly={isReadOnly} />
+                <MenuWrapper isReadOnly={isReadOnly} />
               </div>
             )}
 
@@ -186,12 +184,6 @@ export default function Admin() {
             {activeView === "tickets" && !isReadOnly && (
               <div className="space-y-6">
                 <TicketTypesManagement />
-              </div>
-            )}
-
-            {activeView === "addons" && !isReadOnly && (
-              <div className="space-y-6">
-                <AddonsManagement isReadOnly={isReadOnly} />
               </div>
             )}
           </div>
