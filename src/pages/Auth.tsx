@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles } from "lucide-react";
+import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 
 const LAST_MODE_KEY = "coctelstock_last_mode";
@@ -73,12 +73,17 @@ export default function Auth() {
   };
 
   const routeByRoles = (roles: AppRole[]) => {
+    // Vendedor always shows mode selection (can choose between sales and tickets)
+    if (roles.includes("vendedor")) {
+      setWorkerRoles(roles);
+      setShowModeSelection(true);
+      return;
+    }
+
     if (roles.length === 1) {
       const role = roles[0];
       if (role === "admin" || role === "gerencia") {
         navigate("/admin");
-      } else if (role === "vendedor") {
-        navigate("/sales");
       } else if (role === "bar") {
         navigate("/bar");
       } else if (role === "ticket_seller") {
@@ -99,15 +104,15 @@ export default function Auth() {
     setShowModeSelection(true);
   };
 
-  const routeByRole = (role: AppRole) => {
+  const routeByRole = (role: AppRole | "sales" | "tickets") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
-    } else if (role === "vendedor") {
+    } else if (role === "vendedor" || role === "sales") {
       navigate("/sales");
     } else if (role === "bar") {
       navigate("/bar");
-    } else if (role === "ticket_seller") {
+    } else if (role === "ticket_seller" || role === "tickets") {
       navigate("/tickets");
     }
   };
@@ -252,7 +257,7 @@ export default function Auth() {
     }
   };
 
-  const handleModeSelect = (role: AppRole) => {
+  const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
     routeByRole(role);
   };
 
@@ -270,20 +275,33 @@ export default function Auth() {
 
           <div className="space-y-3">
             {workerRoles.includes("vendedor") && (
-              <Button
-                variant="outline"
-                className="w-full h-16 justify-start gap-4 text-left"
-                onClick={() => handleModeSelect("vendedor")}
-              >
-                <ShoppingCart className="h-6 w-6 text-green-500" />
-                <div>
-                  <div className="font-medium">Caja</div>
-                  <div className="text-xs text-muted-foreground">Punto de venta</div>
-                </div>
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full h-16 justify-start gap-4 text-left"
+                  onClick={() => handleModeSelect("sales")}
+                >
+                  <ShoppingCart className="h-6 w-6 text-green-500" />
+                  <div>
+                    <div className="font-medium">Caja Alcohol</div>
+                    <div className="text-xs text-muted-foreground">Punto de venta bebidas</div>
+                  </div>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full h-16 justify-start gap-4 text-left"
+                  onClick={() => handleModeSelect("tickets")}
+                >
+                  <Ticket className="h-6 w-6 text-amber-500" />
+                  <div>
+                    <div className="font-medium">Caja Entradas</div>
+                    <div className="text-xs text-muted-foreground">Venta de tickets</div>
+                  </div>
+                </Button>
+              </>
             )}
 
-            {workerRoles.includes("ticket_seller") && (
+            {workerRoles.includes("ticket_seller") && !workerRoles.includes("vendedor") && (
               <Button
                 variant="outline"
                 className="w-full h-16 justify-start gap-4 text-left"

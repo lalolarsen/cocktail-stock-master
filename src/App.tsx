@@ -176,7 +176,7 @@ function AppRoutes() {
       <Route
         path="/tickets"
         element={
-          <ProtectedRoute allowedRoles={["ticket_seller", "admin"]}>
+          <ProtectedRoute allowedRoles={["ticket_seller", "vendedor", "admin"]}>
             <FeatureGate feature="tickets_module" featureName="Módulo de Entradas">
               <Tickets />
             </FeatureGate>
