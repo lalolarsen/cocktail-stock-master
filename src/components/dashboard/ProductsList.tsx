@@ -40,79 +40,68 @@ const SUBCATEGORY_CONFIG: Record<string, {
   description: string;
   stockType: 'volumetrico' | 'unitario';
 }> = {
-  // === STOCK VOLUMÉTRICO (Control por ml) ===
+  // === BOTELLAS 1500ml ===
   botellas_1500: { 
-    label: "Botellas 1.5L (Back-Office)", 
+    label: "Botellas 1500ml", 
     icon: Wine, 
     order: 1,
-    description: "Insumo de producción. Bloqueado para venta unitaria.",
-    stockType: 'volumetrico'
-  },
-  botellas_1000: { 
-    label: "Botellas 1000ml (Speed Rack)", 
-    icon: Wine, 
-    order: 2,
-    description: "Destilados base, coctelería, shots. Bloqueado para venta unitaria.",
-    stockType: 'volumetrico'
-  },
-  botellas_750: { 
-    label: "Botellas 750ml (Retail/Híbrido)", 
-    icon: Wine, 
-    order: 3,
-    description: "Venta por botella completa o copeo premium.",
-    stockType: 'volumetrico'
-  },
-  botellas_700: { 
-    label: "Botellas 700ml (Retail/Híbrido)", 
-    icon: Wine, 
-    order: 4,
-    description: "Venta por botella completa o copeo premium.",
+    description: "Uso exclusivo como ingrediente. No se venden unitarias. Siempre descuentan ml según receta.",
     stockType: 'volumetrico'
   },
   
-  // === STOCK UNITARIO (Control por unidad) ===
+  // === BOTELLAS 1000ml ===
+  botellas_1000: { 
+    label: "Botellas 1000ml", 
+    icon: Wine, 
+    order: 2,
+    description: "Destilados, Coctelería, Shots. No se venden unitarias. Destilado: 90ml, Shot: 45ml, Cóctel: según receta.",
+    stockType: 'volumetrico'
+  },
+  
+  // === BOTELLAS 750/700ml ===
+  botellas_750: { 
+    label: "Botellas 750ml", 
+    icon: Wine, 
+    order: 3,
+    description: "Venta unitaria o coctelería. Botella completa: 750ml. Coctelería: ml definidos.",
+    stockType: 'volumetrico'
+  },
+  botellas_700: { 
+    label: "Botellas 700ml", 
+    icon: Wine, 
+    order: 4,
+    description: "Venta unitaria o coctelería. Botella completa: 700ml. Coctelería: ml definidos.",
+    stockType: 'volumetrico'
+  },
+  
+  // === BOTELLINES VENTA UNITARIA ===
   botellines: { 
-    label: "Botellines / Cervezas", 
+    label: "Botellines (Venta Unitaria)", 
     icon: Wine, 
     order: 5,
-    description: "Stock unitario discreto.",
+    description: "Venta unitaria. Cervezas, Mistral Ice y otros formatos.",
     stockType: 'unitario'
   },
-  mixers_latas: { 
-    label: "Mixers (Latas)", 
+  
+  // === MIXERS: BEBIDAS TRADICIONALES ===
+  mixers_tradicionales: { 
+    label: "Mixers Tradicionales (220/350ml)", 
     icon: Droplet, 
     order: 6,
-    description: "Ingrediente dinámico. Seleccionable en redención.",
+    description: "CocaCola, Ginger Ale, Sprite y similares.",
     stockType: 'unitario'
   },
+  
+  // === MIXERS: REDBULL ===
   mixers_redbull: { 
-    label: "Mixers (Red Bull)", 
+    label: "Red Bull (250ml)", 
     icon: Droplet, 
     order: 7,
-    description: "Ingrediente dinámico. Seleccionable en redención.",
+    description: "Red Bull variedades 250ml.",
     stockType: 'unitario'
   },
-  jugos: { 
-    label: "Jugos", 
-    icon: Droplet, 
-    order: 8,
-    description: "Ingredientes de coctelería.",
-    stockType: 'volumetrico'
-  },
-  aguas: { 
-    label: "Aguas", 
-    icon: Droplet, 
-    order: 9,
-    description: "Stock unitario discreto.",
-    stockType: 'unitario'
-  },
-  bebidas_1500: { 
-    label: "Bebidas 1.5L", 
-    icon: Droplet, 
-    order: 10,
-    description: "Bebidas de alto volumen.",
-    stockType: 'volumetrico'
-  },
+  
+  // === SIN CATEGORÍA ===
   sin_categoria: { 
     label: "Sin Categoría", 
     icon: Package, 
@@ -122,12 +111,18 @@ const SUBCATEGORY_CONFIG: Record<string, {
   },
 };
 
-// Formatos de medida
-const FORMAT_OPTIONS = [
+// Opciones de formato/medición
+const MEASUREMENT_OPTIONS = [
   { value: "ml", label: "Mililitros (ml)" },
   { value: "unidades", label: "Unidades" },
   { value: "gramos", label: "Gramos (g)" },
 ];
+
+// Opciones de subcategoría
+const SUBCATEGORY_OPTIONS = Object.entries(SUBCATEGORY_CONFIG).map(([value, config]) => ({
+  value,
+  label: config.label,
+}));
 
 const getSubcategoryConfig = (subcategory: string | null) => {
   if (!subcategory) return SUBCATEGORY_CONFIG.sin_categoria;
@@ -144,12 +139,18 @@ interface ProductsListProps {
   isReadOnly?: boolean;
 }
 
+interface EditingState {
+  name: string;
+  category: string; // measurement type (ml, unidades, gramos)
+  subcategory: string;
+}
+
 export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const { products, loading, refetch } = useStockData();
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
-  const [editingFormat, setEditingFormat] = useState<string>("");
+  const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "" });
 
   // Agrupar productos por subcategoría
   const groupedProducts = useMemo(() => {
@@ -199,39 +200,50 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setExpandedCategories(newExpanded);
   };
 
-  const handleEditFormat = (product: ProductWithStock) => {
+  const handleEditProduct = (product: ProductWithStock) => {
     setEditingProduct(product.id);
-    setEditingFormat(product.category);
+    setEditingState({
+      name: product.name,
+      category: product.category,
+      subcategory: product.subcategory || "sin_categoria",
+    });
   };
 
-  const handleSaveFormat = async (productId: string) => {
+  const handleSaveProduct = async (productId: string) => {
     try {
+      if (!editingState.name.trim()) {
+        toast.error("El nombre no puede estar vacío");
+        return;
+      }
+
       let newUnit = "ml";
-      if (editingFormat === "gramos") newUnit = "g";
-      if (editingFormat === "unidades") newUnit = "unidad";
+      if (editingState.category === "gramos") newUnit = "g";
+      if (editingState.category === "unidades") newUnit = "unidad";
 
       const { error } = await supabase
         .from("products")
         .update({ 
-          category: editingFormat as any,
+          name: editingState.name.trim(),
+          category: editingState.category as any,
+          subcategory: editingState.subcategory === "sin_categoria" ? null : editingState.subcategory,
           unit: newUnit
         })
         .eq("id", productId);
 
       if (error) throw error;
 
-      toast.success("Formato actualizado");
+      toast.success("Producto actualizado");
       setEditingProduct(null);
       refetch();
     } catch (error) {
-      console.error("Error updating format:", error);
-      toast.error("Error al actualizar formato");
+      console.error("Error updating product:", error);
+      toast.error("Error al actualizar producto");
     }
   };
 
   const handleCancelEdit = () => {
     setEditingProduct(null);
-    setEditingFormat("");
+    setEditingState({ name: "", category: "", subcategory: "" });
   };
 
   // Stats
@@ -335,59 +347,97 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                       return (
                         <div 
                           key={product.id} 
-                          className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
+                          className={`p-4 hover:bg-muted/30 transition-colors ${isEditing ? 'bg-muted/20' : ''}`}
                         >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium truncate">{product.name}</span>
-                              {product.code && (
-                                <Badge variant="secondary" className="text-xs shrink-0">
-                                  {product.code}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Stock: {product.totalStock} {unitDisplay}
-                            </p>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 shrink-0">
-                            {isEditing ? (
-                              <>
-                                <Select
-                                  value={editingFormat}
-                                  onValueChange={setEditingFormat}
-                                >
-                                  <SelectTrigger className="w-32 h-8">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {FORMAT_OPTIONS.map((opt) => (
-                                      <SelectItem key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                          {isEditing ? (
+                            <div className="space-y-3">
+                              {/* Row 1: Name */}
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Nombre</label>
+                                <Input
+                                  value={editingState.name}
+                                  onChange={(e) => setEditingState(prev => ({ ...prev, name: e.target.value }))}
+                                  className="h-9"
+                                  placeholder="Nombre del producto"
+                                />
+                              </div>
+                              
+                              {/* Row 2: Measurement & Category */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-xs text-muted-foreground mb-1 block">Tipo de Medición</label>
+                                  <Select
+                                    value={editingState.category}
+                                    onValueChange={(val) => setEditingState(prev => ({ ...prev, category: val }))}
+                                  >
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {MEASUREMENT_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
+                                  <Select
+                                    value={editingState.subcategory}
+                                    onValueChange={(val) => setEditingState(prev => ({ ...prev, subcategory: val }))}
+                                  >
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {SUBCATEGORY_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              
+                              {/* Row 3: Actions */}
+                              <div className="flex justify-end gap-2 pt-1">
                                 <Button
-                                  size="icon"
+                                  size="sm"
                                   variant="ghost"
-                                  className="h-8 w-8 text-primary"
-                                  onClick={() => handleSaveFormat(product.id)}
-                                >
-                                  <Check className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8"
                                   onClick={handleCancelEdit}
                                 >
-                                  <X className="h-4 w-4" />
+                                  <X className="h-4 w-4 mr-1" />
+                                  Cancelar
                                 </Button>
-                              </>
-                            ) : (
-                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveProduct(product.id)}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Guardar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium truncate">{product.name}</span>
+                                  {product.code && (
+                                    <Badge variant="secondary" className="text-xs shrink-0">
+                                      {product.code}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Stock: {product.totalStock} {unitDisplay}
+                                </p>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 shrink-0">
                                 <Badge 
                                   variant={product.category === "ml" ? "default" : "secondary"}
                                   className="min-w-[60px] justify-center"
@@ -399,15 +449,15 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                                     size="icon"
                                     variant="ghost"
                                     className="h-8 w-8"
-                                    onClick={() => handleEditFormat(product)}
-                                    title="Cambiar formato"
+                                    onClick={() => handleEditProduct(product)}
+                                    title="Editar producto"
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
                                 )}
-                              </>
-                            )}
-                          </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
