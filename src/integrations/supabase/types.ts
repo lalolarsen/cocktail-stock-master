@@ -1841,6 +1841,7 @@ export type Database = {
       }
       purchase_documents: {
         Row: {
+          audit_trail: Json | null
           confirmed_at: string | null
           confirmed_by: string | null
           created_at: string
@@ -1850,15 +1851,19 @@ export type Database = {
           file_path: string
           file_type: string
           id: string
+          iva_amount: number | null
+          net_amount: number | null
           provider_name: string | null
           provider_rut: string | null
           raw_text: string | null
           status: string
           total_amount: number | null
+          total_amount_gross: number | null
           updated_at: string
           venue_id: string | null
         }
         Insert: {
+          audit_trail?: Json | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
@@ -1868,15 +1873,19 @@ export type Database = {
           file_path: string
           file_type: string
           id?: string
+          iva_amount?: number | null
+          net_amount?: number | null
           provider_name?: string | null
           provider_rut?: string | null
           raw_text?: string | null
           status?: string
           total_amount?: number | null
+          total_amount_gross?: number | null
           updated_at?: string
           venue_id?: string | null
         }
         Update: {
+          audit_trail?: Json | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
@@ -1886,11 +1895,14 @@ export type Database = {
           file_path?: string
           file_type?: string
           id?: string
+          iva_amount?: number | null
+          net_amount?: number | null
           provider_name?: string | null
           provider_rut?: string | null
           raw_text?: string | null
           status?: string
           total_amount?: number | null
+          total_amount_gross?: number | null
           updated_at?: string
           venue_id?: string | null
         }
@@ -1911,48 +1923,110 @@ export type Database = {
           },
         ]
       }
+      purchase_import_audit: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          new_state: Json | null
+          previous_state: Json | null
+          purchase_document_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          new_state?: Json | null
+          previous_state?: Json | null
+          purchase_document_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          new_state?: Json | null
+          previous_state?: Json | null
+          purchase_document_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_import_audit_purchase_document_id_fkey"
+            columns: ["purchase_document_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_items: {
         Row: {
+          classification: string | null
           confirmed_quantity: number | null
           confirmed_unit_price: number | null
+          conversion_factor: number | null
           created_at: string
+          expense_category: string | null
           extracted_quantity: number | null
           extracted_total: number | null
           extracted_unit_price: number | null
+          extracted_uom: string | null
           id: string
           is_confirmed: boolean | null
+          item_status: string | null
           match_confidence: number | null
           matched_product_id: string | null
+          normalized_quantity: number | null
+          normalized_unit_cost: number | null
           purchase_document_id: string
           raw_product_name: string
+          venue_id: string | null
         }
         Insert: {
+          classification?: string | null
           confirmed_quantity?: number | null
           confirmed_unit_price?: number | null
+          conversion_factor?: number | null
           created_at?: string
+          expense_category?: string | null
           extracted_quantity?: number | null
           extracted_total?: number | null
           extracted_unit_price?: number | null
+          extracted_uom?: string | null
           id?: string
           is_confirmed?: boolean | null
+          item_status?: string | null
           match_confidence?: number | null
           matched_product_id?: string | null
+          normalized_quantity?: number | null
+          normalized_unit_cost?: number | null
           purchase_document_id: string
           raw_product_name: string
+          venue_id?: string | null
         }
         Update: {
+          classification?: string | null
           confirmed_quantity?: number | null
           confirmed_unit_price?: number | null
+          conversion_factor?: number | null
           created_at?: string
+          expense_category?: string | null
           extracted_quantity?: number | null
           extracted_total?: number | null
           extracted_unit_price?: number | null
+          extracted_uom?: string | null
           id?: string
           is_confirmed?: boolean | null
+          item_status?: string | null
           match_confidence?: number | null
           matched_product_id?: string | null
+          normalized_quantity?: number | null
+          normalized_unit_cost?: number | null
           purchase_document_id?: string
           raw_product_name?: string
+          venue_id?: string | null
         }
         Relationships: [
           {
@@ -1967,6 +2041,13 @@ export type Database = {
             columns: ["purchase_document_id"]
             isOneToOne: false
             referencedRelation: "purchase_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
@@ -3490,6 +3571,15 @@ export type Database = {
         }
         Returns: string
       }
+      log_purchase_audit: {
+        Args: {
+          p_action: string
+          p_document_id: string
+          p_new_state?: Json
+          p_previous_state?: Json
+        }
+        Returns: string
+      }
       migrate_stock_to_lots: { Args: never; Returns: Json }
       open_jornada_manual: { Args: { p_cash_amounts?: Json }; Returns: Json }
       record_login_attempt: {
@@ -3551,6 +3641,15 @@ export type Database = {
           p_transferred_by: string
         }
         Returns: Json
+      }
+      update_purchase_item_status: {
+        Args: {
+          p_classification?: string
+          p_item_id: string
+          p_product_id?: string
+          p_status: string
+        }
+        Returns: undefined
       }
       validate_cocktail_cost: {
         Args: { p_cocktail_id: string }
