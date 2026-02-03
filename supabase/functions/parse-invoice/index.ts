@@ -267,13 +267,11 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
 }
 
 async function parseWithAI(base64Content: string, fileType: string): Promise<ExtractedData> {
-  // Use Google Gemini API via Google AI Studio
+  // Use Lovable AI Gateway - automatically available in Lovable Cloud
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  // Fallback to GEMINI_API_KEY for direct Google API if configured
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   
-  if (!GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY not configured. Please add your Google AI API key.");
-  }
-
   const prompt = `Analyze this invoice/purchase document and extract the following information in JSON format:
 {
   "provider_name": "name of the supplier/vendor",
@@ -295,43 +293,84 @@ Focus on products/items, ignore subtotals, taxes, and grand totals as line items
 Return ONLY the JSON, no other text.`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
+  
+  let content: string;
 
-  // Use Gemini API with vision capabilities
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
+  if (LOVABLE_API_KEY) {
+    // Use Lovable AI Gateway (preferred)
+    console.log("Using Lovable AI Gateway");
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        contents: [
+        model: "google/gemini-2.5-flash",
+        messages: [
           {
-            parts: [
-              { text: prompt },
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
               {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64Content,
-                },
+                type: "image_url",
+                image_url: { url: `data:${mimeType};base64,${base64Content}` },
               },
             ],
           },
         ],
-        generationConfig: {
-          maxOutputTokens: 4096,
-          temperature: 0.1,
-        },
+        max_tokens: 4096,
       }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Lovable AI Gateway error:", response.status, errorText);
+      throw new Error(`AI API error: ${errorText}`);
     }
-  );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`AI API error: ${errorText}`);
+    const result = await response.json();
+    content = result.choices?.[0]?.message?.content || "";
+  } else if (GEMINI_API_KEY) {
+    // Fallback to direct Google Gemini API
+    console.log("Using Google Gemini API directly");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Content,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 4096,
+            temperature: 0.1,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AI API error: ${errorText}`);
+    }
+
+    const result = await response.json();
+    content = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  } else {
+    throw new Error("No AI API key configured. LOVABLE_API_KEY or GEMINI_API_KEY is required.");
   }
-
-  const result = await response.json();
-  // Gemini API response format
-  const content = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
   // Parse JSON from response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
