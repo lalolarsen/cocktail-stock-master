@@ -1,185 +1,292 @@
 
-# Plan: Implementacion del Metodo de Inventario DiStock
 
-## Resumen Ejecutivo
+# Plan: Sistema de Add-ons Simplificado (Sin Costo de Ingredientes)
 
-Este plan detalla la implementacion completa del metodo de inventario DiStock segun el documento proporcionado. El sistema ya tiene una base solida, pero hay brechas importantes que cerrar para cumplir con todas las reglas operativas descritas.
+## Resumen
 
-## Analisis del Estado Actual vs Requerido
+Implementar el sistema de Add-ons del Manual DiStock de forma simplificada. Los add-ons son modificadores que agregan un cargo adicional al producto base pero **no rastrean costos de ingredientes** ya que estos se contabilizan como gastos operacionales.
 
-### Lo que YA funciona correctamente
-
-| Caracteristica | Estado | Notas |
-|----------------|--------|-------|
-| Stock en ml para liquidos | OK | Productos con `category: ml` |
-| Stock unitario (cervezas, etc.) | OK | Productos con `category: unidades` |
-| QR genera venta, no descuenta stock | OK | `redeem_pickup_token` es el unico punto de descuento |
-| Recetas con ingredientes multiples | OK | Tabla `cocktail_ingredients` funcionando |
-| Mixer slot dinamico | PARCIAL | Existe `is_mixer_slot` pero no se usa en barra |
-| Consumo FEFO | OK | `consume_stock_fefo` implementado |
-
-### Lo que FALTA implementar
-
-| Caracteristica | Prioridad | Descripcion |
-|----------------|-----------|-------------|
-| Seleccion de mixer en barra | ALTA | El bartender debe poder elegir el mixer al redimir el QR |
-| Destilados: 90ml + mixer obligatorio | ALTA | Template destilados ya existe pero falta enlazar en barra |
-| Shots: 45ml fijo | OK | Ya configurado en `CategoryRecipeEditor` |
-| Botellas 750ml vendidas completas | OK | Ya configurado |
-| Mixers tradicionales (220/350ml) | MEDIA | Clasificar productos como mixers |
-| Red Bull como categoria mixer | MEDIA | Categoria separada de mixers |
-| Add-ons (ej: Michelada) | BAJA | Sistema de agregados a productos base |
-
-## Flujo de Operacion Objetivo
+## Flujo Operativo
 
 ```text
-VENTA EN CAJA                          CANJE EN BARRA
-┌──────────────────┐                   ┌──────────────────┐
-│ 1. Seleccionar   │                   │ 1. Escanear QR   │
-│    producto      │───> QR ───────────│                  │
-│    (ej: Ron Cola)│                   │ 2. Si tiene mixer│
-│                  │                   │    slot: MOSTRAR │
-│ 2. Cobrar        │                   │    seleccion     │
-│                  │                   │                  │
-│ 3. Imprimir QR   │                   │ 3. Confirmar y   │
-│                  │                   │    descontar     │
-└──────────────────┘                   │    stock         │
-                                       └──────────────────┘
+VENTA EN CAJA                           CANJE EN BARRA
++------------------------+              +------------------------+
+| 1. Seleccionar         |              | 1. Escanear QR         |
+|    Cerveza ($5.000)    |              |                        |
+|                        |              | 2. Mostrar:            |
+| 2. Agregar Add-on:     |---> QR ----->|    - Cerveza x1        |
+|    "Michelada"         |              |    - Add-on: Michelada |
+|    (+ $2.000)          |              |                        |
+|                        |              | 3. Preparar y entregar |
+| 3. Cobrar $7.000       |              |    (NO descuenta stock |
++------------------------+              |     de add-on)         |
+                                        +------------------------+
+```
+
+## Diferencia Clave: Sin Tracking de Ingredientes
+
+| Caracteristica | Con Costo (Plan Original) | Sin Costo (Este Plan) |
+|----------------|---------------------------|------------------------|
+| Tabla addon_ingredients | Requerida | No necesaria |
+| Impacto COGS | Si | No |
+| Descuento de stock | Si (limon, sal, etc.) | No |
+| Complejidad SQL | Alta | Baja |
+| Trazabilidad insumos | Por ingrediente | Agregado en gastos operacionales |
+
+## Modelo de Datos Simplificado
+
+```text
++------------------+       +---------------------+       +-------------------+
+|   cocktails      |<----->| cocktail_addons     |<----->|   product_addons  |
+|   (productos)    |       | (relacion M:N)      |       |   (michelada,     |
++------------------+       +---------------------+       |    sal extra, etc)|
+                                                         +-------------------+
+                                                                  |
+                                                                  v
+                                                         +-------------------+
+                                                         | sale_item_addons  |
+                                                         | (registro de uso) |
+                                                         +-------------------+
 ```
 
 ## Cambios a Implementar
 
-### 1. Clasificacion de Productos de Inventario (Mixers)
+### 1. Base de Datos
 
-Agregar campo `is_mixer` a la tabla `products` para identificar productos que pueden ser seleccionados dinamicamente en barra.
+**Nuevas tablas:**
 
-**Productos a marcar como mixer:**
-- Coca Cola (220ml, 350ml)
-- Sprite (220ml, 350ml)
-- Fanta (220ml, 350ml)
-- Ginger Ale (220ml, 350ml)
-- Red Bull (250ml) y variantes
-- Agua Mineral
+| Tabla | Proposito |
+|-------|-----------|
+| product_addons | Catalogo de add-ons disponibles (Michelada, Sal Extra, etc.) |
+| cocktail_addons | Relacion de que add-ons aplican a que productos |
+| sale_item_addons | Registro de add-ons aplicados en cada venta |
 
-### 2. Actualizar Logica de Barra (Bar.tsx)
+**Campos principales de product_addons:**
+- name: Nombre del add-on
+- price_modifier: Monto adicional (ej: $2.000)
+- is_active: Si esta disponible
+- venue_id: Pertenencia al venue
 
-Integrar el flujo de seleccion de mixer cuando el QR contiene productos con `is_mixer_slot = true`:
+### 2. Interfaz de Administracion
 
-1. Escanear QR
-2. Llamar a `check_token_mixer_requirements` (ya existe)
-3. Si hay mixer slots, mostrar `MixerSelectionDialog`
-4. Al confirmar, llamar `redeem_pickup_token` con `p_mixer_overrides`
+**Nuevo componente: AddonsManagement.tsx**
+- CRUD de add-ons
+- Asignacion de add-ons a productos del menu
+- Configuracion de precio adicional
 
-### 3. Definir Templates de Recetas por Categoria
+**Ubicacion:** Seccion Admin, junto a "Carta de Productos"
 
-Actualizar `CategoryRecipeEditor` para que las plantillas reflejen exactamente el metodo DiStock:
+### 3. Interfaz de Ventas (POS)
 
-| Categoria | Ingredientes | Descuento |
-|-----------|--------------|-----------|
-| Destilados | 90ml destilado + 1 mixer lata | 90ml + 1 unidad |
-| Shots | 45ml destilado | 45ml |
-| Cocteleria | Receta variable (ml definidos) | Segun receta |
-| Botellas 750ml | 750ml del producto | 750ml |
-| Botellas 1L | (solo ingrediente, no venta directa) | N/A |
-| Cervezas | 1 unidad | 1 unidad |
-| Sin Alcohol | 1 unidad o segun receta | Variable |
+**Modificacion a Sales.tsx:**
+- Al agregar producto al carrito, mostrar opciones de add-ons disponibles
+- Mostrar precio base + precio add-on separados
+- Incluir add-ons en el QR generado
 
-### 4. Actualizar UI de Seleccion de Mixer en Barra
+### 4. Interfaz de Barra
 
-Mejorar `MixerSelectionDialog` para:
-- Mostrar opciones de mixer agrupadas (Latas tradicionales vs Red Bull)
-- Recordar ultima seleccion del cliente por tipo de producto
-- Interfaz tactil optimizada para velocidad
+**Modificacion a Bar.tsx:**
+- Mostrar add-ons aplicados junto al producto
+- Indicador visual para el bartender (ej: icono de Michelada)
+
+### 5. Reportes
+
+**No hay cambio en COGS** - Los insumos de add-ons se registran como gastos operacionales por fuera del sistema.
 
 ## Seccion Tecnica
+
+### Migracion SQL
+
+```sql
+-- Catalogo de add-ons
+CREATE TABLE product_addons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  price_modifier numeric(10,2) NOT NULL DEFAULT 0,
+  is_active boolean DEFAULT true,
+  venue_id uuid NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Que productos pueden tener que add-ons
+CREATE TABLE cocktail_addons (
+  cocktail_id uuid REFERENCES cocktails(id) ON DELETE CASCADE,
+  addon_id uuid REFERENCES product_addons(id) ON DELETE CASCADE,
+  PRIMARY KEY (cocktail_id, addon_id)
+);
+
+-- Registro de add-ons usados en cada item de venta
+CREATE TABLE sale_item_addons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_item_id uuid NOT NULL REFERENCES sale_items(id) ON DELETE CASCADE,
+  addon_id uuid REFERENCES product_addons(id) ON DELETE SET NULL,
+  addon_name text NOT NULL, -- Snapshot del nombre
+  price_modifier numeric(10,2) NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Indices para rendimiento
+CREATE INDEX idx_cocktail_addons_cocktail ON cocktail_addons(cocktail_id);
+CREATE INDEX idx_sale_item_addons_item ON sale_item_addons(sale_item_id);
+
+-- RLS
+ALTER TABLE product_addons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cocktail_addons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_item_addons ENABLE ROW LEVEL SECURITY;
+
+-- Politicas RLS (admin puede todo, vendedores pueden insertar)
+CREATE POLICY "Admin full access on product_addons" ON product_addons
+  FOR ALL USING (has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Workers can view addons" ON product_addons
+  FOR SELECT USING (has_role(auth.uid(), 'worker'));
+
+CREATE POLICY "Admin full access on cocktail_addons" ON cocktail_addons
+  FOR ALL USING (has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Workers can view cocktail_addons" ON cocktail_addons
+  FOR SELECT USING (has_role(auth.uid(), 'worker'));
+
+CREATE POLICY "Admin full access on sale_item_addons" ON sale_item_addons
+  FOR ALL USING (has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Workers can insert sale_item_addons" ON sale_item_addons
+  FOR INSERT WITH CHECK (has_role(auth.uid(), 'worker'));
+```
+
+### Archivos a Crear
+
+| Archivo | Descripcion |
+|---------|-------------|
+| src/components/dashboard/AddonsManagement.tsx | CRUD de add-ons y asignacion a productos |
+| src/components/sales/AddonSelector.tsx | Selector de add-ons en carrito de ventas |
 
 ### Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Bar.tsx` | Integrar flujo de mixer selection antes de redimir |
-| `src/components/bar/MixerSelectionDialog.tsx` | Mejorar UI y agrupacion de opciones |
-| `src/components/dashboard/CategoryRecipeEditor.tsx` | Ajustar templates segun metodo DiStock |
-| Nueva migracion SQL | Agregar `is_mixer` a tabla products |
+| src/pages/Sales.tsx | Integrar AddonSelector en el carrito |
+| src/pages/Bar.tsx | Mostrar add-ons aplicados al canjear QR |
+| src/pages/Admin.tsx | Agregar acceso a AddonsManagement |
+| src/components/AppSidebar.tsx | Agregar enlace a gestion de add-ons |
+| src/components/GuidedTooltip.tsx | Agregar tooltip para add-ons |
 
-### Migracion de Base de Datos
-
-```sql
--- Agregar columna para identificar mixers
-ALTER TABLE products ADD COLUMN IF NOT EXISTS is_mixer boolean DEFAULT false;
-
--- Marcar productos existentes como mixers
-UPDATE products SET is_mixer = true 
-WHERE name ILIKE '%coca%' 
-   OR name ILIKE '%sprite%' 
-   OR name ILIKE '%fanta%'
-   OR name ILIKE '%ginger%'
-   OR name ILIKE '%red bull%'
-   OR name ILIKE '%redbull%';
-
--- Crear indice para busqueda rapida
-CREATE INDEX IF NOT EXISTS idx_products_is_mixer ON products(is_mixer) WHERE is_mixer = true;
-```
-
-### Logica de Integracion en Bar.tsx
+### Logica de Ventas (Sales.tsx)
 
 ```typescript
-// Despues de escanear QR exitosamente
-const checkMixerResult = await supabase.rpc("check_token_mixer_requirements", {
-  p_token: token
-});
+// Nuevo estado para add-ons por item
+type CartItem = {
+  cocktail: Cocktail;
+  quantity: number;
+  addons: { id: string; name: string; price: number }[];
+};
 
-if (checkMixerResult.data?.requires_mixer_selection) {
-  // Mostrar dialogo de seleccion de mixer
-  setMixerSlots(checkMixerResult.data.mixer_slots);
-  setShowMixerDialog(true);
-} else {
-  // Redimir directamente
-  await redeemToken(token, null);
+// Calculo de total actualizado
+const calculateTotal = () => {
+  return cart.reduce((sum, item) => {
+    const basePrice = item.cocktail.price * item.quantity;
+    const addonsPrice = item.addons.reduce((a, addon) => a + addon.price, 0) * item.quantity;
+    return sum + basePrice + addonsPrice;
+  }, 0);
+};
+```
+
+### Flujo al Procesar Venta
+
+```typescript
+// Despues de insertar sale_items
+for (const item of cart) {
+  const { data: saleItem } = await supabase
+    .from("sale_items")
+    .insert({...})
+    .select()
+    .single();
+
+  // Insertar add-ons aplicados
+  if (item.addons.length > 0) {
+    await supabase.from("sale_item_addons").insert(
+      item.addons.map(addon => ({
+        sale_item_id: saleItem.id,
+        addon_id: addon.id,
+        addon_name: addon.name,
+        price_modifier: addon.price,
+      }))
+    );
+  }
 }
+```
+
+### Mostrar Add-ons en Barra
+
+El QR ya incluye metadata. Modificar `pickup_tokens.metadata` o la query de `redeem_pickup_token` para incluir los add-ons:
+
+```sql
+-- Agregar a la respuesta de deliver
+v_items_array := (
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'name', c.name,
+      'quantity', si.quantity,
+      'addons', COALESCE((
+        SELECT jsonb_agg(sia.addon_name)
+        FROM sale_item_addons sia
+        WHERE sia.sale_item_id = si.id
+      ), '[]'::jsonb)
+    )
+  )
+  FROM sale_items si
+  JOIN cocktails c ON c.id = si.cocktail_id
+  WHERE si.sale_id = v_token_record.sale_id
+);
 ```
 
 ## Plan de Trabajo
 
-### Fase 1: Mixer Selection en Barra (Prioritario) ✅ COMPLETADO
-1. ✅ Crear migracion para `is_mixer` en products
-2. ✅ Modificar `Bar.tsx` para llamar `check_token_mixer_requirements`
-3. ✅ Integrar `MixerSelectionDialog` en el flujo de canje
-4. ✅ Pasar `mixer_overrides` a `redeem_pickup_token`
-5. ✅ Marcar productos existentes como mixers (coca, sprite, fanta, etc.)
+### Fase 1: Estructura de Datos
+1. Crear migracion SQL para las 3 tablas
+2. Agregar indices y politicas RLS
 
-### Fase 2: Actualizacion de Templates
-1. Revisar y ajustar `CategoryRecipeEditor` con valores exactos del metodo
-2. Actualizar productos existentes sin receta (los que tienen `product_id: null`)
+### Fase 2: Administracion de Add-ons
+1. Crear componente AddonsManagement.tsx
+2. Integrar en Admin.tsx
+3. Agregar enlace en AppSidebar.tsx
 
-### Fase 3: Clasificacion de Productos ✅ COMPLETADO
-1. ✅ Agregar campo `subcategory` a tabla products
-2. ✅ Actualizar UI de ProductsList con selector de subcategoria e is_mixer
-3. ✅ Actualizar WarehouseInventory con filtro por subcategoria
-4. ✅ Agregar badges para subcategoria y mixer en lista de productos
+### Fase 3: Integracion en Ventas
+1. Crear componente AddonSelector.tsx
+2. Modificar Sales.tsx para soportar add-ons en carrito
+3. Actualizar logica de insercion de venta
 
-### Subcategorias Disponibles
-- `botellas_1000`: Botellas 1000ml
-- `botellas_750`: Botellas 750ml
-- `botellas_700`: Botellas 700ml
-- `botellines`: Botellines/Cervezas
-- `mixers_latas`: Mixers Latas (Coca, Sprite, etc.)
-- `mixers_redbull`: Mixers Red Bull
-- `jugos`: Jugos
-- `aguas`: Aguas
-- `bebidas_1500`: Bebidas 1.5L
+### Fase 4: Visualizacion en Barra
+1. Modificar redeem_pickup_token para incluir add-ons
+2. Actualizar Bar.tsx para mostrar add-ons aplicados
+
+### Fase 5: Mejoras Adicionales (Opcional)
+1. Actualizar tooltips educativos
+2. Agregar reportes de add-ons mas vendidos
+
+## Ejemplos de Add-ons Iniciales
+
+| Add-on | Precio | Productos Aplicables |
+|--------|--------|----------------------|
+| Michelada | $2.000 | Cervezas |
+| Sal Extra | $500 | Shots |
+| Limones Extra | $1.000 | Destilados |
+| Preparado Especial | $2.500 | Botellas |
 
 ## Beneficios
 
-- **Cumplimiento**: Implementacion exacta del metodo de inventario DiStock
-- **Flexibilidad**: Cliente elige mixer al momento del canje
-- **Trazabilidad**: Se registra exactamente que mixer se uso
-- **Eficiencia**: El bartender solo ve opciones validas
+- **Simplicidad**: Sin tracking de ingredientes, menos complejidad
+- **Flexibilidad**: Add-ons con precio configurable
+- **Trazabilidad**: Se registra que add-ons se usaron en cada venta
+- **Contabilidad Clara**: Insumos de add-ons van a gastos operacionales, ventas de add-ons generan ingreso
 
 ## Riesgos y Mitigaciones
 
 | Riesgo | Mitigacion |
 |--------|------------|
-| Productos sin clasificar como mixer | Agregar validacion que alerte cuando no hay mixers disponibles |
-| Recetas existentes sin mixer slot | Crear script de migracion para actualizar recetas de destilados |
-| Bartenders no familiarizados con nuevo flujo | La UI es intuitiva, se puede agregar tutorial |
+| Add-ons sin asignar a productos | Validacion: no mostrar selector si no hay add-ons disponibles |
+| Precio de add-on en $0 | Permitido (add-ons cortesia como "Sin hielo") |
+| Add-on eliminado despues de venta | Snapshot del nombre en sale_item_addons |
+
