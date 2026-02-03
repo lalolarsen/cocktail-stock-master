@@ -140,15 +140,8 @@ const CATEGORY_TEMPLATES: Record<string, {
   },
   sin_alcohol: {
     label: "Sin Alcohol",
-    description: "Bebida sin alcohol",
-    slots: [
-      {
-        label: "Bebida",
-        defaultQuantity: 1,
-        quantityLabel: "unidad",
-        required: true,
-      },
-    ],
+    description: "Bebida sin alcohol (selecciona producto o mixer variable)",
+    slots: [], // Free-form to allow mixer selection
   },
 };
 
