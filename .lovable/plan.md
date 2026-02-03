@@ -1,167 +1,172 @@
 
-
-# Plan: Importar Carta de Productos y Enlazar con Inventario
+# Plan: Implementacion del Metodo de Inventario DiStock
 
 ## Resumen Ejecutivo
 
-Crear un sistema de importacion masiva desde Excel para la carta de productos (`cocktails`) con la capacidad de enlazar automaticamente cada producto con su equivalente en inventario (`products`), permitiendo el descuento automatico de stock cuando se canjea un QR.
+Este plan detalla la implementacion completa del metodo de inventario DiStock segun el documento proporcionado. El sistema ya tiene una base solida, pero hay brechas importantes que cerrar para cumplir con todas las reglas operativas descritas.
 
-## Estructura del Excel Recibido
+## Analisis del Estado Actual vs Requerido
 
-```text
-| Producto                | Formato |
-|-------------------------|---------|
-| Alto del Carmen 35° L   | 1000    |
-| Mistral 35°             | 750     |
-| Heineken                | 330     |
-| Coca Cola               | 220/350 |
-```
+### Lo que YA funciona correctamente
 
-**Observaciones:**
-- "Formato" representa el contenido en ml de cada presentacion
-- Algunos productos tienen formatos multiples (220/350)
-- No incluye precios ni categorias (habria que agregarlos o asignar defaults)
+| Caracteristica | Estado | Notas |
+|----------------|--------|-------|
+| Stock en ml para liquidos | OK | Productos con `category: ml` |
+| Stock unitario (cervezas, etc.) | OK | Productos con `category: unidades` |
+| QR genera venta, no descuenta stock | OK | `redeem_pickup_token` es el unico punto de descuento |
+| Recetas con ingredientes multiples | OK | Tabla `cocktail_ingredients` funcionando |
+| Mixer slot dinamico | PARCIAL | Existe `is_mixer_slot` pero no se usa en barra |
+| Consumo FEFO | OK | `consume_stock_fefo` implementado |
 
-## Flujo de Importacion Propuesto
+### Lo que FALTA implementar
 
-```text
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  1. Subir Excel  │───>│ 2. Mapear a      │───>│ 3. Enlazar con   │───>│ 4. Confirmar     │
-│  de la Carta     │    │ Inventario       │    │ Ingredientes     │    │ e Importar       │
-└──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘
-```
+| Caracteristica | Prioridad | Descripcion |
+|----------------|-----------|-------------|
+| Seleccion de mixer en barra | ALTA | El bartender debe poder elegir el mixer al redimir el QR |
+| Destilados: 90ml + mixer obligatorio | ALTA | Template destilados ya existe pero falta enlazar en barra |
+| Shots: 45ml fijo | OK | Ya configurado en `CategoryRecipeEditor` |
+| Botellas 750ml vendidas completas | OK | Ya configurado |
+| Mixers tradicionales (220/350ml) | MEDIA | Clasificar productos como mixers |
+| Red Bull como categoria mixer | MEDIA | Categoria separada de mixers |
+| Add-ons (ej: Michelada) | BAJA | Sistema de agregados a productos base |
 
-### Paso 1: Subir Excel
-- Arrastrar archivo o seleccionar
-- Parser detecta columnas de nombre y formato
-
-### Paso 2: Mapear a Inventario
-Para cada producto de la carta, el sistema busca un producto similar en `products`:
-
-| Carta (Excel)           | Inventario (Match)      | Accion          |
-|-------------------------|-------------------------|-----------------|
-| Alto del Carmen 35° L   | (no existe)             | Crear producto  |
-| Havana Blanco 3 años    | Ron Havana 3 Años       | Enlazar         |
-| Vodka Absolut           | Vodka Absolut           | Enlazar         |
-| Heineken                | (no existe)             | Crear producto  |
-
-### Paso 3: Definir Receta Automatica
-Para productos tipo "botella", la receta es simple:
-- 1 botella = X ml del producto de inventario
+## Flujo de Operacion Objetivo
 
 ```text
-Ejemplo: "Alto del Carmen 35° 750cc"
-Receta: [1 x 750ml de "Alto del Carmen 35°" del inventario]
+VENTA EN CAJA                          CANJE EN BARRA
+┌──────────────────┐                   ┌──────────────────┐
+│ 1. Seleccionar   │                   │ 1. Escanear QR   │
+│    producto      │───> QR ───────────│                  │
+│    (ej: Ron Cola)│                   │ 2. Si tiene mixer│
+│                  │                   │    slot: MOSTRAR │
+│ 2. Cobrar        │                   │    seleccion     │
+│                  │                   │                  │
+│ 3. Imprimir QR   │                   │ 3. Confirmar y   │
+│                  │                   │    descontar     │
+└──────────────────┘                   │    stock         │
+                                       └──────────────────┘
 ```
 
-### Paso 4: Vista Previa y Confirmacion
-Mostrar resumen antes de importar:
-- Productos nuevos a crear en carta
-- Productos nuevos a crear en inventario
-- Enlaces automaticos detectados
+## Cambios a Implementar
 
-## Componentes a Crear
+### 1. Clasificacion de Productos de Inventario (Mixers)
 
-### 1. MenuImportDialog.tsx (Nuevo)
-Dialogo modal para importar la carta desde Excel con:
-- Zona de drag-and-drop para archivo
-- Vista de mapeo producto-inventario
-- Selector de categoria por defecto
-- Campo para precio por defecto
-- Boton de confirmacion
+Agregar campo `is_mixer` a la tabla `products` para identificar productos que pueden ser seleccionados dinamicamente en barra.
 
-### 2. Mejoras al CocktailsMenu.tsx
-- Agregar boton "Importar desde Excel" en el header
-- Integrar el nuevo dialogo de importacion
+**Productos a marcar como mixer:**
+- Coca Cola (220ml, 350ml)
+- Sprite (220ml, 350ml)
+- Fanta (220ml, 350ml)
+- Ginger Ale (220ml, 350ml)
+- Red Bull (250ml) y variantes
+- Agua Mineral
 
-## Logica de Negocio
+### 2. Actualizar Logica de Barra (Bar.tsx)
 
-### Tipos de Productos
+Integrar el flujo de seleccion de mixer cuando el QR contiene productos con `is_mixer_slot = true`:
 
-| Tipo          | Ejemplo                    | Receta                        | Descuento Stock          |
-|---------------|----------------------------|-------------------------------|--------------------------|
-| Botella       | ALTO 35 750CC              | 1x producto inventario (750ml)| Descuenta 750ml al canjear |
-| Botella Litro | MISTRAL 35° L              | 1x producto inventario (1000ml)| Descuenta 1000ml         |
-| Lata/Botella  | Heineken 330               | 1x unidad                     | Descuenta 1 unidad       |
-| Coctel        | Mojito                     | 60ml ron + 20ml jarabe + ...  | Descuenta cada ingrediente|
+1. Escanear QR
+2. Llamar a `check_token_mixer_requirements` (ya existe)
+3. Si hay mixer slots, mostrar `MixerSelectionDialog`
+4. Al confirmar, llamar `redeem_pickup_token` con `p_mixer_overrides`
 
-### Creacion Automatica de Recetas
+### 3. Definir Templates de Recetas por Categoria
 
-Para productos simples (botellas, latas), el sistema crea automaticamente:
+Actualizar `CategoryRecipeEditor` para que las plantillas reflejen exactamente el metodo DiStock:
 
-```sql
--- Al importar "ALTO 35 750CC" con precio $50,000
--- 1. Crear en cocktails
-INSERT INTO cocktails (name, price, category, venue_id)
-VALUES ('ALTO 35 750CC', 50000, 'botellas', venue_id);
+| Categoria | Ingredientes | Descuento |
+|-----------|--------------|-----------|
+| Destilados | 90ml destilado + 1 mixer lata | 90ml + 1 unidad |
+| Shots | 45ml destilado | 45ml |
+| Cocteleria | Receta variable (ml definidos) | Segun receta |
+| Botellas 750ml | 750ml del producto | 750ml |
+| Botellas 1L | (solo ingrediente, no venta directa) | N/A |
+| Cervezas | 1 unidad | 1 unidad |
+| Sin Alcohol | 1 unidad o segun receta | Variable |
 
--- 2. Buscar/crear producto de inventario
--- Si no existe "Alto del Carmen 35° 750" en products, crearlo
-INSERT INTO products (name, category, unit, current_stock, venue_id)
-VALUES ('Alto del Carmen 35° 750', 'ml', 'ml', 0, venue_id);
+### 4. Actualizar UI de Seleccion de Mixer en Barra
 
--- 3. Crear enlace en cocktail_ingredients
-INSERT INTO cocktail_ingredients (cocktail_id, product_id, quantity, venue_id)
-VALUES (cocktail.id, product.id, 750, venue_id);
-```
-
-## Plantilla Excel Sugerida
-
-Para facilitar la importacion, crear una plantilla con columnas adicionales:
-
-| Producto              | Formato | Categoria | Precio  |
-|-----------------------|---------|-----------|---------|
-| Alto del Carmen 35° L | 1000    | botellas  | 50000   |
-| Mistral 35°           | 750     | botellas  | 45000   |
-| Heineken              | 330     | botellines| 3500    |
-| Mojito                | (vacio) | cocteleria| 8000    |
+Mejorar `MixerSelectionDialog` para:
+- Mostrar opciones de mixer agrupadas (Latas tradicionales vs Red Bull)
+- Recordar ultima seleccion del cliente por tipo de producto
+- Interfaz tactil optimizada para velocidad
 
 ## Seccion Tecnica
 
-### Archivos a Crear/Modificar
+### Archivos a Modificar
 
-| Archivo | Accion | Descripcion |
-|---------|--------|-------------|
-| `src/components/dashboard/MenuImportDialog.tsx` | Crear | Componente de importacion Excel |
-| `src/components/dashboard/CocktailsMenu.tsx` | Modificar | Agregar boton de importacion |
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/Bar.tsx` | Integrar flujo de mixer selection antes de redimir |
+| `src/components/bar/MixerSelectionDialog.tsx` | Mejorar UI y agrupacion de opciones |
+| `src/components/dashboard/CategoryRecipeEditor.tsx` | Ajustar templates segun metodo DiStock |
+| Nueva migracion SQL | Agregar `is_mixer` a tabla products |
 
-### Logica del Parser
+### Migracion de Base de Datos
+
+```sql
+-- Agregar columna para identificar mixers
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_mixer boolean DEFAULT false;
+
+-- Marcar productos existentes como mixers
+UPDATE products SET is_mixer = true 
+WHERE name ILIKE '%coca%' 
+   OR name ILIKE '%sprite%' 
+   OR name ILIKE '%fanta%'
+   OR name ILIKE '%ginger%'
+   OR name ILIKE '%red bull%'
+   OR name ILIKE '%redbull%';
+
+-- Crear indice para busqueda rapida
+CREATE INDEX IF NOT EXISTS idx_products_is_mixer ON products(is_mixer) WHERE is_mixer = true;
+```
+
+### Logica de Integracion en Bar.tsx
 
 ```typescript
-interface ImportedProduct {
-  name: string;           // Nombre del producto
-  format: number | null;  // ml/g/unidades
-  category?: string;      // Categoria (opcional)
-  price?: number;         // Precio (opcional)
-  matchedInventoryId?: string; // ID del producto de inventario si hay match
-  matchScore?: number;    // Score de similitud del nombre
+// Despues de escanear QR exitosamente
+const checkMixerResult = await supabase.rpc("check_token_mixer_requirements", {
+  p_token: token
+});
+
+if (checkMixerResult.data?.requires_mixer_selection) {
+  // Mostrar dialogo de seleccion de mixer
+  setMixerSlots(checkMixerResult.data.mixer_slots);
+  setShowMixerDialog(true);
+} else {
+  // Redimir directamente
+  await redeemToken(token, null);
 }
 ```
 
-### Algoritmo de Matching
+## Plan de Trabajo
 
-1. Normalizar nombres (lowercase, sin acentos, sin espacios extra)
-2. Buscar coincidencia exacta
-3. Si no hay exacta, usar similitud de strings (Levenshtein o similar)
-4. Mostrar sugerencias con score > 70%
-5. Permitir seleccion manual si no hay match
+### Fase 1: Mixer Selection en Barra (Prioritario)
+1. Crear migracion para `is_mixer` en products
+2. Modificar `Bar.tsx` para llamar `check_token_mixer_requirements`
+3. Integrar `MixerSelectionDialog` en el flujo de canje
+4. Pasar `mixer_overrides` a `redeem_pickup_token`
 
-### Flujo de Descuento de Stock
+### Fase 2: Actualizacion de Templates
+1. Revisar y ajustar `CategoryRecipeEditor` con valores exactos del metodo
+2. Actualizar productos existentes sin receta (los que tienen `product_id: null`)
 
-Una vez importados los productos con sus recetas:
-
-```text
-1. Cliente compra "ALTO 35 750CC" → pickup_token creado
-2. Barman escanea QR → redeem_pickup_token()
-3. Sistema lee cocktail_ingredients del cocktail
-4. Por cada ingrediente, crea stock_movement (salida)
-5. Actualiza stock_balances de la barra
-```
+### Fase 3: Clasificacion de Productos
+1. Identificar todos los productos mixer en inventario
+2. Ejecutar UPDATE para marcarlos como `is_mixer = true`
+3. Agregar UI en gestion de productos para marcar mixers
 
 ## Beneficios
 
-- **Carga rapida**: Importar toda la carta desde un Excel existente
-- **Enlace automatico**: Cada producto de venta conectado a su inventario
-- **Trazabilidad**: Cada QR canjeado descuenta los ingredientes correctos
-- **Cuadre de inventario**: Comparar consumo teorico vs fisico por barra
+- **Cumplimiento**: Implementacion exacta del metodo de inventario DiStock
+- **Flexibilidad**: Cliente elige mixer al momento del canje
+- **Trazabilidad**: Se registra exactamente que mixer se uso
+- **Eficiencia**: El bartender solo ve opciones validas
 
+## Riesgos y Mitigaciones
+
+| Riesgo | Mitigacion |
+|--------|------------|
+| Productos sin clasificar como mixer | Agregar validacion que alerte cuando no hay mixers disponibles |
+| Recetas existentes sin mixer slot | Crear script de migracion para actualizar recetas de destilados |
+| Bartenders no familiarizados con nuevo flujo | La UI es intuitiva, se puede agregar tutorial |
