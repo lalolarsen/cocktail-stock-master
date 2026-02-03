@@ -14,8 +14,20 @@ import {
   ChevronRight,
   Pencil,
   Check,
-  X
+  X,
+  Trash2
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useStockData, ProductWithStock } from "@/hooks/useStockData";
 import {
@@ -246,6 +258,23 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setEditingState({ name: "", category: "", subcategory: "" });
   };
 
+  const handleDeleteProduct = async (productId: string) => {
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (error) throw error;
+
+      toast.success("Producto eliminado");
+      refetch();
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      toast.error("Error al eliminar producto");
+    }
+  };
+
   // Stats
   const stats = useMemo(() => {
     const total = products.length;
@@ -445,15 +474,47 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                                   {unitDisplay}
                                 </Badge>
                                 {!isReadOnly && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8"
-                                    onClick={() => handleEditProduct(product)}
-                                    title="Editar producto"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      onClick={() => handleEditProduct(product)}
+                                      title="Editar producto"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                          title="Eliminar producto"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Esta acción eliminará permanentemente "{product.name}". 
+                                            No se puede deshacer.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteProduct(product.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Eliminar
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </>
                                 )}
                               </div>
                             </div>
