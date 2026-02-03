@@ -9,8 +9,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   Loader2, Users, Key, RefreshCw, Search, 
-  UserX, Filter, Grid3X3, List
+  UserX, Filter, Grid3X3, List, ChevronDown, ChevronRight
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -388,6 +393,9 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setShowDeleteDialog(true);
   };
 
+  // State for inactive section
+  const [showInactive, setShowInactive] = useState(false);
+
   // Filter workers
   const filteredWorkers = workers.filter((worker) => {
     const matchesSearch = 
@@ -401,6 +409,10 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     
     return matchesSearch && matchesRole;
   });
+
+  // Separate active and inactive workers
+  const activeWorkers = filteredWorkers.filter((w) => w.is_active);
+  const inactiveWorkers = filteredWorkers.filter((w) => !w.is_active);
 
   const activeCount = workers.filter((w) => w.is_active).length;
   const inactiveCount = workers.filter((w) => !w.is_active).length;
@@ -516,8 +528,8 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         </div>
       </Card>
 
-      {/* Workers Grid/List */}
-      {filteredWorkers.length === 0 ? (
+      {/* Active Workers Grid/List */}
+      {activeWorkers.length === 0 && inactiveWorkers.length === 0 ? (
         <Card className="p-12">
           <div className="text-center">
             <UserX className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -530,25 +542,79 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
           </div>
         </Card>
       ) : (
-        <div className={
-          viewMode === "grid" 
-            ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
-            : "space-y-3"
-        }>
-          {filteredWorkers.map((worker) => (
-            <WorkerCard
-              key={worker.id}
-              worker={worker}
-              isReadOnly={isReadOnly}
-              onEdit={openEditDialog}
-              onResetPin={openResetPinDialog}
-              onToggleActive={toggleWorkerActive}
-              onViewHistory={fetchHistory}
-              onDelete={openDeleteDialog}
-              maskRut={maskRut}
-            />
-          ))}
-        </div>
+        <>
+          {activeWorkers.length === 0 ? (
+            <Card className="p-8">
+              <div className="text-center text-muted-foreground">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p>No hay trabajadores activos que coincidan con los filtros</p>
+              </div>
+            </Card>
+          ) : (
+            <div className={
+              viewMode === "grid" 
+                ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
+                : "space-y-3"
+            }>
+              {activeWorkers.map((worker) => (
+                <WorkerCard
+                  key={worker.id}
+                  worker={worker}
+                  isReadOnly={isReadOnly}
+                  onEdit={openEditDialog}
+                  onResetPin={openResetPinDialog}
+                  onToggleActive={toggleWorkerActive}
+                  onViewHistory={fetchHistory}
+                  onDelete={openDeleteDialog}
+                  maskRut={maskRut}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Inactive Workers Section */}
+          {inactiveWorkers.length > 0 && (
+            <Collapsible open={showInactive} onOpenChange={setShowInactive}>
+              <CollapsibleTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-between py-3 px-4 h-auto text-muted-foreground hover:text-foreground"
+                >
+                  <div className="flex items-center gap-2">
+                    <UserX className="h-4 w-4" />
+                    <span>Trabajadores inactivos ({inactiveWorkers.length})</span>
+                  </div>
+                  {showInactive ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-4">
+                <div className={
+                  viewMode === "grid" 
+                    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
+                    : "space-y-3"
+                }>
+                  {inactiveWorkers.map((worker) => (
+                    <WorkerCard
+                      key={worker.id}
+                      worker={worker}
+                      isReadOnly={isReadOnly}
+                      onEdit={openEditDialog}
+                      onResetPin={openResetPinDialog}
+                      onToggleActive={toggleWorkerActive}
+                      onViewHistory={fetchHistory}
+                      onDelete={openDeleteDialog}
+                      maskRut={maskRut}
+                    />
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </>
       )}
 
       {/* Edit Worker Dialog */}
