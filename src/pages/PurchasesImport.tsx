@@ -58,7 +58,7 @@ import { es } from "date-fns/locale";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { logAuditEvent } from "@/lib/monitoring";
 import { UoMConversionDialog } from "@/components/purchase/UoMConversionDialog";
-import { PreConfirmChecklist, buildPurchaseChecklist } from "@/components/purchase/PreConfirmChecklist";
+import { PreConfirmChecklist, buildPurchaseChecklist, isFreightItem, requiresManualReview } from "@/components/purchase/PreConfirmChecklist";
 import { ImportAuditTimeline } from "@/components/purchase/ImportAuditTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -113,17 +113,23 @@ interface EditableItem extends PurchaseItem {
   conversion_factor: number;
   normalized_quantity: number;
   normalized_unit_cost: number;
+  // REGLA: unidades_reales = multiplicador × cantidad_facturada
+  real_units: number;
   // Discount fields (editable)
   discount_percent: number;
   discount_amount: number;
   subtotal_before_discount: number;
-  // Chilean beverage taxes (Ley 20.780)
+  // Chilean beverage taxes (Ley 20.780) - ESTOS NO FORMAN PARTE DEL COSTO
   tax_iaba_10: number;
   tax_iaba_18: number;
   tax_ila_vin: number;
   tax_ila_cer: number;
   tax_ila_lic: number;
   tax_category: string | null;
+  // Total de impuestos (para mostrar, NO para costo)
+  total_tax_amount: number;
+  // COSTO NETO REAL (sin IVA, sin ILA, sin IABA, sin flete) - ESTE ES EL QUE SE USA PARA CPP
+  net_unit_cost: number;
   // Expense classification
   classification: "inventory" | "expense";
   expense_category?: string;
@@ -131,7 +137,12 @@ interface EditableItem extends PurchaseItem {
   expense_notes?: string;
   expense_amount?: number;
   // Status
-  item_status: "pending_match" | "matched" | "marked_as_expense" | "ready" | "applied";
+  item_status: "pending_match" | "matched" | "marked_as_expense" | "ready" | "applied" | "review_required";
+  // Flag para revisión manual requerida
+  review_required: boolean;
+  review_reason?: string;
+  // Flag para flete/despacho detectado
+  is_freight: boolean;
 }
 
 type ExpenseCategory = "operational" | "non-operational";
@@ -334,7 +345,7 @@ export default function PurchasesImport() {
         setTaxCoherenceValid(total === 0 || Math.abs(calculatedTotal - total) < 1.0);
       }
 
-      // Convert to editable items with UoM fields
+      // Convert to editable items with UoM fields and STRICT validation
       const editableItems: EditableItem[] = (purchaseItems || []).map((item) => {
         const qty = item.extracted_quantity || 0;
         const price = item.extracted_unit_price || 0;
@@ -344,13 +355,52 @@ export default function PurchasesImport() {
         const subtotalBefore = (item as unknown as { subtotal_before_discount?: number }).subtotal_before_discount || qty * price;
         const unitsPerPack = (item as unknown as { units_per_pack?: number }).units_per_pack || null;
         const uomRaw = (item as unknown as { uom_raw?: string }).uom_raw || item.extracted_uom || "";
-        // Beverage taxes
+        
+        // Beverage taxes (NO forman parte del costo)
         const taxIaba10 = (item as unknown as { tax_iaba_10?: number }).tax_iaba_10 || 0;
         const taxIaba18 = (item as unknown as { tax_iaba_18?: number }).tax_iaba_18 || 0;
         const taxIlaVin = (item as unknown as { tax_ila_vin?: number }).tax_ila_vin || 0;
         const taxIlaCer = (item as unknown as { tax_ila_cer?: number }).tax_ila_cer || 0;
         const taxIlaLic = (item as unknown as { tax_ila_lic?: number }).tax_ila_lic || 0;
         const taxCategory = (item as unknown as { tax_category?: string }).tax_category || null;
+        const totalTaxAmount = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic;
+        
+        // REGLA CRÍTICA: unidades_reales = multiplicador × cantidad_facturada
+        const realUnits = unitsPerPack ? qty * unitsPerPack : qty * factor;
+        
+        // REGLA CRÍTICA: precio_unitario_real = subtotal_neto / unidades_reales
+        // subtotal_neto = (cantidad × precio) - descuento - impuestos
+        const subtotalWithDiscount = (qty * price) - discountAmt;
+        const subtotalNet = subtotalWithDiscount - totalTaxAmount;
+        const netUnitCost = realUnits > 0 ? Math.round(subtotalNet / realUnits) : 0;
+        
+        // Detectar si es flete/despacho
+        const rawName = item.raw_product_name || "";
+        const isFrete = isFreightItem(rawName);
+        
+        // Verificar si requiere revisión manual
+        const reviewCheck = requiresManualReview({
+          quantity: qty,
+          unit_price: price,
+          units_per_pack: unitsPerPack,
+          uom: item.extracted_uom || "Unidad",
+          raw_product_name: rawName,
+        });
+        
+        // Determinar clasificación inicial
+        let classification: "inventory" | "expense" = "inventory";
+        let itemStatus: EditableItem["item_status"] = item.matched_product_id ? "matched" : "pending_match";
+        
+        // REGLA: Flete SIEMPRE es gasto operacional
+        if (isFrete) {
+          classification = "expense";
+          itemStatus = "marked_as_expense";
+        }
+        
+        if (reviewCheck.required) {
+          itemStatus = "review_required";
+        }
+        
         return {
           ...item,
           selected_product_id: item.matched_product_id,
@@ -360,8 +410,9 @@ export default function PurchasesImport() {
           uom_raw: uomRaw,
           units_per_pack: unitsPerPack,
           conversion_factor: factor,
-          normalized_quantity: qty * factor,
-          normalized_unit_cost: factor > 0 ? price / factor : price,
+          normalized_quantity: realUnits,
+          normalized_unit_cost: netUnitCost,
+          real_units: realUnits,
           discount_percent: discountPct,
           discount_amount: discountAmt,
           subtotal_before_discount: subtotalBefore,
@@ -371,9 +422,16 @@ export default function PurchasesImport() {
           tax_ila_cer: taxIlaCer,
           tax_ila_lic: taxIlaLic,
           tax_category: taxCategory,
-          classification: (item.classification as "inventory" | "expense") || "inventory",
+          total_tax_amount: totalTaxAmount,
+          net_unit_cost: netUnitCost,
+          classification: classification as "inventory" | "expense",
+          expense_category: isFrete ? "operational" : undefined,
+          expense_subcategory: isFrete ? "Transporte" : undefined,
           expense_amount: qty * price,
-          item_status: (item.item_status as EditableItem["item_status"]) || (item.matched_product_id ? "matched" : "pending_match"),
+          item_status: itemStatus,
+          review_required: reviewCheck.required,
+          review_reason: reviewCheck.reason,
+          is_freight: isFrete,
         };
       });
 
@@ -557,14 +615,17 @@ export default function PurchasesImport() {
 
     setConfirming(true);
     try {
-      // Handle inventory items
+      // Handle inventory items - USANDO COSTO NETO (sin impuestos)
       if (inventoryItems.length > 0) {
         const itemsPayload = inventoryItems.map((item) => ({
           item_id: item.id,
           product_id: item.selected_product_id,
-          quantity: item.quantity,
-          unit_cost: item.unit_price,
+          // REGLA: quantity = unidades_reales (ya normalizadas)
+          quantity: item.real_units,
+          // REGLA: unit_cost = costo_unitario_neto (SIN IVA, SIN ILA, SIN IABA)
+          unit_cost: item.net_unit_cost,
           raw_name: item.raw_product_name,
+          conversion_factor: item.units_per_pack || item.conversion_factor,
         }));
 
         const { data, error } = await supabase.rpc("confirm_purchase_intake", {
@@ -709,7 +770,7 @@ export default function PurchasesImport() {
     setUomEditingIndex(null);
   };
 
-  // Build checklist items for pre-confirmation
+  // Build checklist items for pre-confirmation with STRICT validation
   const inventoryItems = items.filter(
     (item) => item.classification === "inventory" && item.selected_product_id && item.quantity > 0
   );
@@ -720,9 +781,23 @@ export default function PurchasesImport() {
     (item) => item.classification === "inventory" && !item.selected_product_id && item.quantity > 0
   );
   
+  // STRICT VALIDATIONS
+  const itemsWithoutUnits = items.filter(
+    (item) => item.classification === "inventory" && (!item.real_units || item.real_units <= 0)
+  );
+  const itemsWithoutPrice = items.filter(
+    (item) => item.classification === "inventory" && (!item.net_unit_cost || item.net_unit_cost <= 0)
+  );
+  const fleteItemsNotMarked = items.filter(
+    (item) => item.is_freight && item.classification !== "expense"
+  );
+  const reviewRequiredItems = items.filter(
+    (item) => item.review_required && item.classification === "inventory"
+  );
+  
   const totalInventoryItems = inventoryItems.length;
-  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.normalized_quantity, 0);
-  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.normalized_quantity * item.normalized_unit_cost, 0);
+  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.real_units, 0);
+  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.real_units * item.net_unit_cost, 0);
   const totalExpenseAmount = expenseItems.reduce((sum, item) => sum + (item.expense_amount || 0), 0);
   const lineItemsTotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
   const lineTotalCoherence = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
@@ -734,7 +809,16 @@ export default function PurchasesImport() {
     unmatchedCount: unmatchedInventoryItems.length,
     totalCoherenceValid: lineTotalCoherence,
     totalDifference: lineItemsTotal - netAmount,
-    noDuplicateFolio: true, // Would need to check in real implementation
+    noDuplicateFolio: true,
+    // NEW STRICT VALIDATIONS
+    allItemsHaveUnitsReales: itemsWithoutUnits.length === 0,
+    itemsWithoutUnitsCount: itemsWithoutUnits.length,
+    allItemsHavePriceCalculated: itemsWithoutPrice.length === 0,
+    itemsWithoutPriceCount: itemsWithoutPrice.length,
+    fleteItemsMarkedAsExpense: fleteItemsNotMarked.length === 0,
+    fleteItemsNotMarkedCount: fleteItemsNotMarked.length,
+    noReviewRequiredItems: reviewRequiredItems.length === 0,
+    reviewRequiredCount: reviewRequiredItems.length,
   });
 
   const canConfirm = (inventoryItems.length > 0 || expenseItems.length > 0) && checklistItems.filter(c => c.critical && !c.passed).length === 0;
@@ -1016,45 +1100,61 @@ export default function PurchasesImport() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[250px]">Nombre en factura</TableHead>
-                      <TableHead className="w-[90px]">Estado</TableHead>
-                      <TableHead className="w-[200px]">Producto</TableHead>
-                      <TableHead className="w-[70px]">UoM</TableHead>
-                      <TableHead className="w-[70px]">UoM</TableHead>
-                      <TableHead className="w-[70px]">Cant.</TableHead>
-                      <TableHead className="w-[100px]">P. Unit.</TableHead>
+                      <TableHead className="min-w-[220px]">Nombre en factura</TableHead>
+                      <TableHead className="w-[100px]">Estado</TableHead>
+                      <TableHead className="w-[180px]">Producto</TableHead>
+                      <TableHead className="w-[80px]">Cant. Fact.</TableHead>
+                      <TableHead className="w-[90px]">Un. Reales</TableHead>
+                      <TableHead className="w-[100px]">Costo Neto</TableHead>
                       <TableHead className="w-[70px] text-center">% Dcto</TableHead>
-                      <TableHead className="w-[90px] text-right">Dcto $</TableHead>
-                      <TableHead className="w-[100px] text-right">Imp. Beb.</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      {registerExpenses && expenseMode === "partial_expense" && (
-                        <TableHead className="w-[100px]">Tipo</TableHead>
-                      )}
+                      <TableHead className="w-[90px] text-right">Impuestos</TableHead>
+                      <TableHead className="text-right">Total Línea</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {items.map((item, index) => (
                       <TableRow 
                         key={item.id}
-                        className={item.classification === "expense" ? "bg-amber-50/50" : ""}
+                        className={
+                          item.classification === "expense" ? "bg-amber-50/50" : 
+                          item.review_required ? "bg-red-50/50" :
+                          (item.is_freight && item.classification === "inventory") ? "bg-red-100/50" : ""
+                        }
                       >
-                        <TableCell className="font-medium text-sm min-w-[250px]">
+                        <TableCell className="font-medium text-sm min-w-[220px]">
                           <div className="whitespace-normal break-words leading-tight" title={item.raw_product_name}>
                             {item.raw_product_name}
                           </div>
+                          {item.units_per_pack && (
+                            <span className="text-[10px] text-blue-600 font-medium">
+                              Empaque: ×{item.units_per_pack}
+                            </span>
+                          )}
+                          {item.is_freight && (
+                            <Badge variant="outline" className="text-amber-700 border-amber-400 bg-amber-50 text-[10px] mt-1">
+                              Flete detectado
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>
-                          {item.classification === "expense" ? (
+                          {item.review_required ? (
+                            <div className="flex flex-col gap-0.5">
+                              <Badge variant="outline" className="text-red-700 border-red-400 bg-red-50">
+                                REVISAR
+                              </Badge>
+                              <span className="text-[9px] text-red-600">{item.review_reason}</span>
+                            </div>
+                          ) : item.classification === "expense" ? (
                             <Badge variant="outline" className="text-amber-700 border-amber-400 bg-amber-50">
                               Gasto
                             </Badge>
                           ) : item.item_status === "matched" ? (
-                            <Badge variant="outline" className="text-green-700 border-green-400 bg-green-50">
-                              Matched
-                            </Badge>
+                            <div className="flex flex-col gap-0.5">
+                              {getMatchBadge(item.match_confidence, item.match_source)}
+                            </div>
                           ) : item.item_status === "pending_match" ? (
                             <Badge variant="outline" className="text-yellow-700 border-yellow-400 bg-yellow-50">
-                              Pendiente
+                              Sin match
                             </Badge>
                           ) : (
                             getMatchBadge(item.match_confidence, item.match_source)
@@ -1133,93 +1233,65 @@ export default function PurchasesImport() {
                             </div>
                           )}
                         </TableCell>
-                        {/* UoM Column */}
-                        <TableCell>
-                          <div className="flex flex-col gap-0.5">
-                            {item.classification === "inventory" && item.selected_product_id ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleUomConversion(index)}
-                                className="text-xs h-7 px-2"
-                                title={`${item.uom_raw || item.uom} → ${item.conversion_factor}x`}
-                              >
-                                <Calculator className="h-3 w-3 mr-1" />
-                                {item.conversion_factor !== 1 ? `${item.conversion_factor}x` : item.uom}
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">{item.uom}</span>
-                            )}
-                            {item.units_per_pack && (
-                              <span className="text-[10px] text-blue-600 font-medium">
-                                ={item.units_per_pack} un
-                              </span>
-                            )}
-                            {item.uom_raw && item.uom_raw !== item.uom && (
-                              <span className="text-[10px] text-muted-foreground">
-                                ({item.uom_raw})
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
+                        {/* Cantidad Facturada */}
                         <TableCell>
                           {item.classification === "inventory" ? (
-                            <div className="flex flex-col">
+                            <div className="flex flex-col items-center">
                               <Input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="1"
                                 value={item.quantity}
                                 onChange={(e) => {
                                   const qty = parseFloat(e.target.value) || 0;
+                                  const pack = item.units_per_pack || item.conversion_factor;
+                                  const realUnits = qty * pack;
+                                  const subtotalWithDiscount = (qty * item.unit_price) - item.discount_amount;
+                                  const subtotalNet = subtotalWithDiscount - item.total_tax_amount;
+                                  const netCost = realUnits > 0 ? Math.round(subtotalNet / realUnits) : 0;
                                   updateItem(index, { 
                                     quantity: qty,
-                                    normalized_quantity: qty * item.conversion_factor,
-                                    normalized_unit_cost: item.conversion_factor > 0 ? item.unit_price / item.conversion_factor : item.unit_price,
+                                    real_units: realUnits,
+                                    normalized_quantity: realUnits,
+                                    net_unit_cost: netCost,
+                                    normalized_unit_cost: netCost,
                                   });
                                 }}
-                                className="w-16 h-7 text-sm"
+                                className="w-16 h-7 text-sm text-center"
                               />
-                              {item.conversion_factor !== 1 && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  = {item.normalized_quantity.toFixed(1)}
+                              <span className="text-[10px] text-muted-foreground">
+                                {item.uom}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        {/* Unidades Reales (CRÍTICO) */}
+                        <TableCell>
+                          {item.classification === "inventory" ? (
+                            <div className="flex flex-col items-center">
+                              <span className="font-bold text-primary">{item.real_units.toFixed(0)}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {item.units_per_pack ? `(${item.quantity}×${item.units_per_pack})` : "un"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        {/* Costo Neto Unitario (SIN impuestos - ESTE SE USA PARA CPP) */}
+                        <TableCell>
+                          {item.classification === "inventory" ? (
+                            <div className="flex flex-col items-end">
+                              <span className="font-medium text-green-700">{formatCLP(item.net_unit_cost)}</span>
+                              <span className="text-[10px] text-muted-foreground">por un.</span>
+                              {item.total_tax_amount > 0 && (
+                                <span className="text-[9px] text-purple-600">
+                                  -{formatCLP(item.total_tax_amount)} imp.
                                 </span>
                               )}
                             </div>
-                          ) : (
-                            item.expense_category && (
-                              <Select
-                                value={item.expense_subcategory || ""}
-                                onValueChange={(value) =>
-                                  updateItem(index, { expense_subcategory: value })
-                                }
-                              >
-                                <SelectTrigger className="w-[100px] h-7 text-xs">
-                                  <SelectValue placeholder="Sub..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {EXPENSE_SUBCATEGORIES[item.expense_category as ExpenseCategory]?.map((sub) => (
-                                    <SelectItem key={sub} value={sub}>
-                                      {sub}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {item.classification === "inventory" ? (
-                            <Input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={item.unit_price}
-                              onChange={(e) =>
-                                updateItem(index, { unit_price: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-24"
-                            />
                           ) : (
                             <Input
                               type="number"
@@ -1229,40 +1301,15 @@ export default function PurchasesImport() {
                               onChange={(e) =>
                                 updateItem(index, { expense_amount: parseFloat(e.target.value) || 0 })
                               }
-                              className="w-24"
+                              className="w-20 h-7 text-sm"
                             />
                           )}
                         </TableCell>
-                        {/* Discount Percent */}
+                        {/* % Descuento */}
                         <TableCell className="text-center">
                           {item.classification === "inventory" ? (
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              value={item.discount_percent || 0}
-                              onChange={(e) => {
-                                const pct = parseFloat(e.target.value) || 0;
-                                const subtotal = item.quantity * item.unit_price;
-                                const discountAmt = Math.round(subtotal * pct / 100);
-                                updateItem(index, { 
-                                  discount_percent: pct,
-                                  discount_amount: discountAmt,
-                                  subtotal_before_discount: subtotal,
-                                });
-                              }}
-                              className="w-16 h-7 text-sm text-center"
-                            />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        {/* Discount Amount */}
-                        <TableCell className="text-right">
-                          {item.classification === "inventory" ? (
-                            item.discount_amount > 0 ? (
-                              <span className="text-sm text-red-600">-{formatCLP(item.discount_amount)}</span>
+                            item.discount_percent > 0 ? (
+                              <span className="text-sm text-red-600">-{item.discount_percent.toFixed(1)}%</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">-</span>
                             )
@@ -1270,22 +1317,21 @@ export default function PurchasesImport() {
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        {/* Beverage Tax (Ley 20.780) */}
+                        {/* Impuestos (IVA + ILA + IABA) - Solo informativos */}
                         <TableCell className="text-right">
                           {item.classification === "inventory" ? (
                             (() => {
-                              const totalTax = (item.tax_iaba_10 || 0) + (item.tax_iaba_18 || 0) + 
-                                              (item.tax_ila_vin || 0) + (item.tax_ila_cer || 0) + (item.tax_ila_lic || 0);
+                              const totalTax = item.total_tax_amount;
                               if (totalTax > 0) {
                                 const taxLabel = item.tax_category === "licor_31.5" ? "31.5%" :
-                                                item.tax_category === "vino_20.5" ? "VIN 20.5%" :
-                                                item.tax_category === "cerveza_20.5" ? "CER 20.5%" :
+                                                item.tax_category === "vino_20.5" ? "VIN" :
+                                                item.tax_category === "cerveza_20.5" ? "CER" :
                                                 item.tax_category === "alto_azucar_18" ? "18%" :
                                                 item.tax_category === "analcoholica_10" ? "10%" : "";
                                 return (
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs text-purple-600 font-medium">{formatCLP(totalTax)}</span>
-                                    <span className="text-[10px] text-muted-foreground">{taxLabel}</span>
+                                    {taxLabel && <span className="text-[9px] text-muted-foreground">{taxLabel}</span>}
                                   </div>
                                 );
                               }
@@ -1295,7 +1341,7 @@ export default function PurchasesImport() {
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        {/* Total */}
+                        {/* Total Línea (solo referencia) */}
                         <TableCell className="text-right">
                           {item.classification === "inventory" ? (
                             <div className="flex flex-col items-end">
@@ -1307,29 +1353,15 @@ export default function PurchasesImport() {
                               <span className="font-medium">
                                 {formatCLP(item.quantity * item.unit_price - item.discount_amount)}
                               </span>
+                              {/* Mostrar costo neto total */}
+                              <span className="text-[10px] text-green-700">
+                                Neto: {formatCLP(item.real_units * item.net_unit_cost)}
+                              </span>
                             </div>
                           ) : (
                             formatCLP(item.expense_amount || 0)
                           )}
                         </TableCell>
-                        {registerExpenses && expenseMode === "partial_expense" && (
-                          <TableCell>
-                            <Select
-                              value={item.classification}
-                              onValueChange={(value) =>
-                                updateItemClassification(index, value as "inventory" | "expense")
-                              }
-                            >
-                              <SelectTrigger className="w-[110px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="inventory">Inventario</SelectItem>
-                                <SelectItem value="expense">Gasto</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1405,23 +1437,29 @@ export default function PurchasesImport() {
             <Card className="border-primary/30">
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-6 text-center">
                     <div>
                       <p className="text-2xl font-bold text-primary">{totalInventoryItems}</p>
                       <p className="text-sm text-muted-foreground">Productos</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{totalQuantity.toFixed(2)}</p>
-                      <p className="text-sm text-muted-foreground">Unidades</p>
+                      <p className="text-2xl font-bold">{totalQuantity.toFixed(0)}</p>
+                      <p className="text-sm text-muted-foreground">Unidades Reales</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{formatCLP(totalInventoryAmount)}</p>
-                      <p className="text-sm text-muted-foreground">Inventario</p>
+                      <p className="text-2xl font-bold text-green-700">{formatCLP(totalInventoryAmount)}</p>
+                      <p className="text-sm text-muted-foreground">Costo Neto (CPP)</p>
                     </div>
-                    {registerExpenses && expenseItems.length > 0 && (
+                    {expenseItems.length > 0 && (
                       <div>
                         <p className="text-2xl font-bold text-amber-600">{formatCLP(totalExpenseAmount)}</p>
                         <p className="text-sm text-muted-foreground">Gastos ({expenseItems.length})</p>
+                      </div>
+                    )}
+                    {reviewRequiredItems.length > 0 && (
+                      <div>
+                        <p className="text-2xl font-bold text-red-600">{reviewRequiredItems.length}</p>
+                        <p className="text-sm text-muted-foreground">Requieren Revisión</p>
                       </div>
                     )}
                   </div>

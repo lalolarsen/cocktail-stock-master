@@ -1,7 +1,13 @@
-import { Check, X, AlertTriangle } from "lucide-react";
+import { Check, X, AlertTriangle, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ChecklistItem {
   id: string;
@@ -81,7 +87,7 @@ export function PreConfirmChecklist({ items, className }: PreConfirmChecklistPro
   );
 }
 
-// Helper to build checklist items
+// Helper to build checklist items with STRICT validation rules
 export function buildPurchaseChecklist(params: {
   hasVenueId: boolean;
   isAdmin: boolean;
@@ -91,6 +97,15 @@ export function buildPurchaseChecklist(params: {
   totalDifference: number;
   noDuplicateFolio: boolean;
   duplicateProvider?: string;
+  // New strict validation params
+  allItemsHaveUnitsReales: boolean;
+  itemsWithoutUnitsCount: number;
+  allItemsHavePriceCalculated: boolean;
+  itemsWithoutPriceCount: number;
+  fleteItemsMarkedAsExpense: boolean;
+  fleteItemsNotMarkedCount: number;
+  noReviewRequiredItems: boolean;
+  reviewRequiredCount: number;
 }): ChecklistItem[] {
   return [
     {
@@ -115,8 +130,44 @@ export function buildPurchaseChecklist(params: {
         : undefined,
     },
     {
+      id: "units_reales",
+      label: "Todas las líneas tienen unidades reales definidas",
+      passed: params.allItemsHaveUnitsReales,
+      critical: true,
+      details: params.itemsWithoutUnitsCount > 0
+        ? `${params.itemsWithoutUnitsCount} ítem(s) sin unidades definidas`
+        : undefined,
+    },
+    {
+      id: "price_calculated",
+      label: "Todas las líneas tienen precio unitario calculado",
+      passed: params.allItemsHavePriceCalculated,
+      critical: true,
+      details: params.itemsWithoutPriceCount > 0
+        ? `${params.itemsWithoutPriceCount} ítem(s) sin precio`
+        : undefined,
+    },
+    {
+      id: "flete_expense",
+      label: "Ítems de flete/despacho marcados como gasto",
+      passed: params.fleteItemsMarkedAsExpense,
+      critical: true,
+      details: params.fleteItemsNotMarkedCount > 0
+        ? `${params.fleteItemsNotMarkedCount} ítem(s) de flete deben ser gasto`
+        : undefined,
+    },
+    {
+      id: "no_review_required",
+      label: "No existen líneas marcadas como REVISIÓN REQUERIDA",
+      passed: params.noReviewRequiredItems,
+      critical: true,
+      details: params.reviewRequiredCount > 0
+        ? `${params.reviewRequiredCount} ítem(s) requieren revisión manual`
+        : undefined,
+    },
+    {
       id: "coherence",
-      label: "Sumatoria de líneas coincide con total (tolerancia < $1)",
+      label: "Sumatoria de líneas coincide con total neto (tolerancia < $1)",
       passed: params.totalCoherenceValid,
       critical: false,
       details: !params.totalCoherenceValid 
@@ -133,4 +184,50 @@ export function buildPurchaseChecklist(params: {
         : undefined,
     },
   ];
+}
+
+// Helper function to detect if a product name indicates freight/shipping
+export function isFreightItem(productName: string): boolean {
+  const fletePatterns = [
+    /flete/i,
+    /despacho/i,
+    /transporte/i,
+    /envío/i,
+    /envio/i,
+    /shipping/i,
+    /delivery/i,
+    /carga/i,
+    /reparto/i,
+    /servicio\s+de\s+entrega/i,
+  ];
+  
+  return fletePatterns.some(pattern => pattern.test(productName));
+}
+
+// Helper function to detect if item requires manual review
+export function requiresManualReview(item: {
+  quantity: number;
+  unit_price: number;
+  units_per_pack: number | null;
+  uom: string;
+  raw_product_name: string;
+}): { required: boolean; reason?: string } {
+  // Check if pack notation was detected but units_per_pack couldn't be parsed with certainty
+  const hasPackNotation = /\d+\s*(?:pc|px|x)\s*\d+/i.test(item.raw_product_name);
+  
+  if (hasPackNotation && !item.units_per_pack) {
+    return { required: true, reason: "Notación de empaque detectada pero no se pudo calcular" };
+  }
+  
+  // Check if quantity is 0 or negative
+  if (!item.quantity || item.quantity <= 0) {
+    return { required: true, reason: "Cantidad no válida" };
+  }
+  
+  // Check if unit price is 0 or negative
+  if (!item.unit_price || item.unit_price <= 0) {
+    return { required: true, reason: "Precio unitario no válido" };
+  }
+  
+  return { required: false };
 }
