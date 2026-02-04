@@ -92,6 +92,13 @@ interface PurchaseItem {
   // Pack notation
   units_per_pack?: number;
   uom_raw?: string;
+  // Chilean beverage taxes (Ley 20.780)
+  tax_iaba_10?: number;
+  tax_iaba_18?: number;
+  tax_ila_vin?: number;
+  tax_ila_cer?: number;
+  tax_ila_lic?: number;
+  tax_category?: string;
 }
 
 interface EditableItem extends PurchaseItem {
@@ -110,6 +117,13 @@ interface EditableItem extends PurchaseItem {
   discount_percent: number;
   discount_amount: number;
   subtotal_before_discount: number;
+  // Chilean beverage taxes (Ley 20.780)
+  tax_iaba_10: number;
+  tax_iaba_18: number;
+  tax_ila_vin: number;
+  tax_ila_cer: number;
+  tax_ila_lic: number;
+  tax_category: string | null;
   // Expense classification
   classification: "inventory" | "expense";
   expense_category?: string;
@@ -330,6 +344,13 @@ export default function PurchasesImport() {
         const subtotalBefore = (item as unknown as { subtotal_before_discount?: number }).subtotal_before_discount || qty * price;
         const unitsPerPack = (item as unknown as { units_per_pack?: number }).units_per_pack || null;
         const uomRaw = (item as unknown as { uom_raw?: string }).uom_raw || item.extracted_uom || "";
+        // Beverage taxes
+        const taxIaba10 = (item as unknown as { tax_iaba_10?: number }).tax_iaba_10 || 0;
+        const taxIaba18 = (item as unknown as { tax_iaba_18?: number }).tax_iaba_18 || 0;
+        const taxIlaVin = (item as unknown as { tax_ila_vin?: number }).tax_ila_vin || 0;
+        const taxIlaCer = (item as unknown as { tax_ila_cer?: number }).tax_ila_cer || 0;
+        const taxIlaLic = (item as unknown as { tax_ila_lic?: number }).tax_ila_lic || 0;
+        const taxCategory = (item as unknown as { tax_category?: string }).tax_category || null;
         return {
           ...item,
           selected_product_id: item.matched_product_id,
@@ -344,6 +365,12 @@ export default function PurchasesImport() {
           discount_percent: discountPct,
           discount_amount: discountAmt,
           subtotal_before_discount: subtotalBefore,
+          tax_iaba_10: taxIaba10,
+          tax_iaba_18: taxIaba18,
+          tax_ila_vin: taxIlaVin,
+          tax_ila_cer: taxIlaCer,
+          tax_ila_lic: taxIlaLic,
+          tax_category: taxCategory,
           classification: (item.classification as "inventory" | "expense") || "inventory",
           expense_amount: qty * price,
           item_status: (item.item_status as EditableItem["item_status"]) || (item.matched_product_id ? "matched" : "pending_match"),
@@ -993,10 +1020,12 @@ export default function PurchasesImport() {
                       <TableHead className="w-[90px]">Estado</TableHead>
                       <TableHead className="w-[200px]">Producto</TableHead>
                       <TableHead className="w-[70px]">UoM</TableHead>
+                      <TableHead className="w-[70px]">UoM</TableHead>
                       <TableHead className="w-[70px]">Cant.</TableHead>
                       <TableHead className="w-[100px]">P. Unit.</TableHead>
                       <TableHead className="w-[70px] text-center">% Dcto</TableHead>
                       <TableHead className="w-[90px] text-right">Dcto $</TableHead>
+                      <TableHead className="w-[100px] text-right">Imp. Beb.</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       {registerExpenses && expenseMode === "partial_expense" && (
                         <TableHead className="w-[100px]">Tipo</TableHead>
@@ -1237,6 +1266,31 @@ export default function PurchasesImport() {
                             ) : (
                               <span className="text-xs text-muted-foreground">-</span>
                             )
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        {/* Beverage Tax (Ley 20.780) */}
+                        <TableCell className="text-right">
+                          {item.classification === "inventory" ? (
+                            (() => {
+                              const totalTax = (item.tax_iaba_10 || 0) + (item.tax_iaba_18 || 0) + 
+                                              (item.tax_ila_vin || 0) + (item.tax_ila_cer || 0) + (item.tax_ila_lic || 0);
+                              if (totalTax > 0) {
+                                const taxLabel = item.tax_category === "licor_31.5" ? "31.5%" :
+                                                item.tax_category === "vino_20.5" ? "VIN 20.5%" :
+                                                item.tax_category === "cerveza_20.5" ? "CER 20.5%" :
+                                                item.tax_category === "alto_azucar_18" ? "18%" :
+                                                item.tax_category === "analcoholica_10" ? "10%" : "";
+                                return (
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs text-purple-600 font-medium">{formatCLP(totalTax)}</span>
+                                    <span className="text-[10px] text-muted-foreground">{taxLabel}</span>
+                                  </div>
+                                );
+                              }
+                              return <span className="text-xs text-muted-foreground">-</span>;
+                            })()
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
                           )}

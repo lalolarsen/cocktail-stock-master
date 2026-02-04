@@ -18,6 +18,13 @@ interface LineItem {
   discount_percent: number | null;
   discount_amount: number | null;
   subtotal_before_discount: number | null;
+  // Chilean beverage taxes (Ley 20.780)
+  tax_iaba_10: number | null; // Bebidas analcohólicas 10%
+  tax_iaba_18: number | null; // Bebidas alto azúcar 18%
+  tax_ila_vin: number | null; // Vinos 20.5%
+  tax_ila_cer: number | null; // Cervezas 20.5%
+  tax_ila_lic: number | null; // Licores/destilados 31.5%
+  tax_category: string | null; // Categoría tributaria detectada
 }
 
 interface ExtractedData {
@@ -184,6 +191,12 @@ serve(async (req) => {
       discount_percent: item.discount_percent || 0,
       discount_amount: item.discount_amount || 0,
       subtotal_before_discount: item.subtotal_before_discount,
+      tax_iaba_10: item.tax_iaba_10 || 0,
+      tax_iaba_18: item.tax_iaba_18 || 0,
+      tax_ila_vin: item.tax_ila_vin || 0,
+      tax_ila_cer: item.tax_ila_cer || 0,
+      tax_ila_lic: item.tax_ila_lic || 0,
+      tax_category: item.tax_category || null,
       matched_product_id: item.matched_product_id,
       match_confidence: item.match_confidence,
       classification: "inventory",
@@ -324,6 +337,12 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
       discount_percent: discPct,
       discount_amount: discAmt,
       subtotal_before_discount: subtotalBefore,
+      tax_iaba_10: null,
+      tax_iaba_18: null,
+      tax_ila_vin: null,
+      tax_ila_cer: null,
+      tax_ila_lic: null,
+      tax_category: null,
     });
   }
 
@@ -361,7 +380,7 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
   // Fallback to GEMINI_API_KEY for direct Google API if configured
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   
-  const prompt = `Analyze this invoice/purchase document and extract the following information in JSON format:
+  const prompt = `Analyze this Chilean invoice/purchase document and extract the following information in JSON format:
 {
   "provider_name": "name of the supplier/vendor",
   "provider_rut": "RUT or tax ID if present (Chilean format XX.XXX.XXX-X)",
@@ -369,7 +388,7 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
   "document_date": "date in YYYY-MM-DD format",
   "net_amount": number or null (monto neto, without IVA),
   "iva_amount": number or null (IVA amount, usually 19%),
-  "total_amount": number or null (total bruto including IVA),
+  "total_amount": number or null (total bruto including IVA and all taxes),
   "line_items": [
     {
       "raw_product_name": "full product name as written on the invoice",
@@ -381,7 +400,13 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
       "discount_percent": number or null (percentage discount for this line, e.g., 20 for 20%),
       "discount_amount": number or null (absolute discount amount in currency),
       "subtotal_before_discount": number or null (subtotal BEFORE applying discount = quantity × unit_price),
-      "total": number or null (FINAL TOTAL for this line AFTER discount)
+      "total": number or null (FINAL TOTAL for this line AFTER discount, before taxes),
+      "tax_iaba_10": number or null (IABA 10% tax amount for non-alcoholic beverages),
+      "tax_iaba_18": number or null (IABA 18% tax amount for high-sugar beverages),
+      "tax_ila_vin": number or null (ILA VIN 20.5% tax for wines),
+      "tax_ila_cer": number or null (ILA CER 20.5% tax for beers),
+      "tax_ila_lic": number or null (ILA 31.5% tax for liquors/spirits),
+      "tax_category": "analcoholica_10" | "alto_azucar_18" | "vino_20.5" | "cerveza_20.5" | "licor_31.5" | null
     }
   ]
 }
@@ -390,7 +415,7 @@ CRITICAL EXTRACTION RULES:
 1. Be thorough in extracting ALL line items from the document
 2. For "raw_product_name": Extract the COMPLETE product name as it appears, including brand, size, pack notation, and all descriptors
 3. For "quantity": The number of units/items purchased (from "Cantidad" column)
-4. For "units_per_pack": If product name contains pack notation like "6pcx4", "4PX6", "6PCX4", calculate: 6×4=24. Extract this calculated total. Common patterns:
+4. For "units_per_pack": If product name contains pack notation like "6pcx4", "4PX6", "6PCX4", calculate: 6×4=24. Common patterns:
    - "6pcx4" means 6 packs × 4 units = 24 units
    - "4PX6" means 4 packs × 6 units = 24 units
    - If no pack notation, set to null
@@ -405,15 +430,33 @@ CRITICAL EXTRACTION RULES:
    - DZ, Dz → "Docena"
    - Store original in "uom_raw", normalized in "uom"
 6. For "unit_price": This is the PRICE FOR ONE SINGLE UNIT. If only total is shown, calculate: unit_price = total / quantity
-7. For "discount_percent": Look for columns labeled "%", "Dcto%", "% Descuento" - extract the percentage number (e.g., 20 for 20%)
+7. For "discount_percent": Look for columns labeled "%", "Dcto%", "% Descuento" - extract the percentage number
 8. For "discount_amount": Look for columns labeled "Descuento", "Dcto", "Monto Dcto" - extract the absolute discount value
 9. For "subtotal_before_discount": This is quantity × unit_price BEFORE any discount is applied
-10. For "total": This is the FINAL AMOUNT for this line AFTER discount (often labeled "Valor", "Neto", "Total Línea")
-11. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
-12. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
-13. If a value is unclear, use null
-14. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
-15. Return ONLY the JSON, no other text`;
+10. For "total": This is the FINAL AMOUNT for this line AFTER discount (often labeled "Valor", "Neto", "Subtotal")
+
+CHILEAN BEVERAGE TAX EXTRACTION (Ley 20.780 - CRITICAL):
+11. Look for columns labeled "IABA 10%", "IABA 18%", "ILA VIN 20.5%", "ILA CER 20.5%", "ILA 31.5%" 
+12. These are ADDITIONAL taxes calculated on the line subtotal (like IVA):
+    - "tax_iaba_10": IABA 10% - Non-alcoholic beverages (bebidas analcohólicas, energéticas, aguas saborizadas)
+    - "tax_iaba_18": IABA 18% - High-sugar beverages (>15g/240ml) 
+    - "tax_ila_vin": ILA VIN 20.5% - Wines (vinos, espumantes, sidras)
+    - "tax_ila_cer": ILA CER 20.5% - Beers (cervezas)
+    - "tax_ila_lic": ILA 31.5% - Spirits (licores, piscos, whisky, destilados)
+13. Extract the TAX AMOUNT in currency, not the percentage
+14. For "tax_category": Determine based on which tax applies:
+    - "analcoholica_10" if IABA 10% applies
+    - "alto_azucar_18" if IABA 18% applies
+    - "vino_20.5" if ILA VIN 20.5% applies
+    - "cerveza_20.5" if ILA CER 20.5% applies
+    - "licor_31.5" if ILA 31.5% applies
+    - null if no beverage tax applies
+
+15. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
+16. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
+17. If a value is unclear, use null
+18. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
+19. Return ONLY the JSON, no other text`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   
@@ -562,7 +605,13 @@ CRITICAL EXTRACTION RULES:
     discount_percent?: number;
     discount_amount?: number;
     subtotal_before_discount?: number;
-    total?: number 
+    total?: number;
+    tax_iaba_10?: number;
+    tax_iaba_18?: number;
+    tax_ila_vin?: number;
+    tax_ila_cer?: number;
+    tax_ila_lic?: number;
+    tax_category?: string;
   }) => {
     const qty = item.quantity ?? null;
     const total = item.total ?? null;
@@ -595,6 +644,23 @@ CRITICAL EXTRACTION RULES:
     if (subtotalBeforeDiscount === null && unitPrice && qty) {
       subtotalBeforeDiscount = unitPrice * qty;
     }
+
+    // Extract beverage taxes (Ley 20.780)
+    const taxIaba10 = item.tax_iaba_10 ?? null;
+    const taxIaba18 = item.tax_iaba_18 ?? null;
+    const taxIlaVin = item.tax_ila_vin ?? null;
+    const taxIlaCer = item.tax_ila_cer ?? null;
+    const taxIlaLic = item.tax_ila_lic ?? null;
+    
+    // Determine tax category if not provided
+    let taxCategory = item.tax_category ?? null;
+    if (!taxCategory) {
+      if (taxIlaLic && taxIlaLic > 0) taxCategory = "licor_31.5";
+      else if (taxIlaVin && taxIlaVin > 0) taxCategory = "vino_20.5";
+      else if (taxIlaCer && taxIlaCer > 0) taxCategory = "cerveza_20.5";
+      else if (taxIaba18 && taxIaba18 > 0) taxCategory = "alto_azucar_18";
+      else if (taxIaba10 && taxIaba10 > 0) taxCategory = "analcoholica_10";
+    }
     
     return {
       raw_product_name: productName,
@@ -607,6 +673,12 @@ CRITICAL EXTRACTION RULES:
       discount_amount: discountAmount,
       subtotal_before_discount: subtotalBeforeDiscount,
       total: total,
+      tax_iaba_10: taxIaba10,
+      tax_iaba_18: taxIaba18,
+      tax_ila_vin: taxIlaVin,
+      tax_ila_cer: taxIlaCer,
+      tax_ila_lic: taxIlaLic,
+      tax_category: taxCategory,
     };
   });
 

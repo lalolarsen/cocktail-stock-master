@@ -1985,6 +1985,12 @@ export type Database = {
           purchase_document_id: string
           raw_product_name: string
           subtotal_before_discount: number | null
+          tax_category: string | null
+          tax_iaba_10: number | null
+          tax_iaba_18: number | null
+          tax_ila_cer: number | null
+          tax_ila_lic: number | null
+          tax_ila_vin: number | null
           venue_id: string | null
         }
         Insert: {
@@ -2010,6 +2016,12 @@ export type Database = {
           purchase_document_id: string
           raw_product_name: string
           subtotal_before_discount?: number | null
+          tax_category?: string | null
+          tax_iaba_10?: number | null
+          tax_iaba_18?: number | null
+          tax_ila_cer?: number | null
+          tax_ila_lic?: number | null
+          tax_ila_vin?: number | null
           venue_id?: string | null
         }
         Update: {
@@ -2035,6 +2047,12 @@ export type Database = {
           purchase_document_id?: string
           raw_product_name?: string
           subtotal_before_discount?: number | null
+          tax_category?: string | null
+          tax_iaba_10?: number | null
+          tax_iaba_18?: number | null
+          tax_ila_cer?: number | null
+          tax_ila_lic?: number | null
+          tax_ila_vin?: number | null
           venue_id?: string | null
         }
         Relationships: [
