@@ -15,6 +15,15 @@ export type LineStatus = "OK" | "REVIEW_REQUIRED" | "EXPENSE" | "IGNORED";
 
 export type DiscountMode = "INCLUDED_IN_PRICE" | "APPLY_TO_GROSS" | "GLOBAL_PRORATE";
 
+export type TaxCategory = 
+  | "NONE" 
+  | "IVA" 
+  | "IABA10" 
+  | "IABA18" 
+  | "ILA_VINO_20_5" 
+  | "ILA_CERVEZA_20_5" 
+  | "ILA_DESTILADOS_31_5";
+
 export interface RawLineExtraction {
   raw_product_name: string;
   qty_text: string | null;
@@ -33,6 +42,16 @@ export interface ComputedLine {
   // Datos de entrada (parseados del texto)
   qty_invoice: number;
   pack_multiplier: number; // default 1, editable
+  pack_reason: string; // Patrón detectado (ej: "6PCX4")
+  
+  // Precio de factura
+  invoice_unit_price_raw: number; // Precio leído de la factura
+  pack_priced: boolean; // Si el precio viene por pack
+  unit_price_real: number; // Precio por unidad base (calculado)
+  
+  // Descuento editable
+  discount_pct: number; // 0..100, editable
+  unit_price_after_discount: number; // unit_price_real * (1 - discount_pct/100)
   
   // Cálculos automáticos
   real_units: number; // qty_invoice × pack_multiplier
@@ -40,11 +59,12 @@ export interface ComputedLine {
   // Totales brutos
   gross_line: number; // preferir line_total_text si existe; si no, unit_price × qty_invoice
   
-  // Descuentos
+  // Descuentos (legacy - para compatibilidad)
   discount_mode: DiscountMode;
   discount_amount: number;
   
-  // Impuestos (excluidos del costo)
+  // Impuestos informativos (NO afectan costo)
+  tax_category: TaxCategory;
   taxes_excluded_for_cost: number; // IVA/ILA/IABA
   tax_details: {
     iva?: number;
@@ -56,8 +76,8 @@ export interface ComputedLine {
   };
   
   // Cálculos finales (SINGLE SOURCE OF TRUTH)
-  net_line_for_cost: number; // gross_line - discount_amount - taxes_excluded_for_cost
-  net_unit_cost: number; // net_line_for_cost / real_units
+  net_line_for_cost: number; // unit_price_after_discount * real_units
+  net_unit_cost: number; // unit_price_after_discount
   
   // Estado y validación
   status: LineStatus;
@@ -90,6 +110,9 @@ export interface ComputeLineInput {
   discount_text: string | number | null;
   discount_mode: DiscountMode;
   pack_multiplier_override?: number;
+  pack_priced_override?: boolean;
+  discount_pct_override?: number;
+  tax_category_override?: TaxCategory;
   uom_text?: string | null;
   // Impuestos por línea (si vienen en la factura)
   tax_iaba_10?: number;
@@ -120,6 +143,17 @@ const UOM_MAPPING: Record<string, string> = {
   'gr': 'Gramo', 'g': 'Gramo', 'gramo': 'Gramo',
 };
 
+// Keywords para clasificación de impuestos por producto
+const TAX_CATEGORY_KEYWORDS: Record<TaxCategory, string[]> = {
+  NONE: [],
+  IVA: [],
+  IABA10: ['bebida', 'gaseosa', 'jugo', 'agua mineral', 'limonada'],
+  IABA18: ['energy', 'red bull', 'monster', 'energética', 'hipertónica'],
+  ILA_VINO_20_5: ['vino', 'sauvignon', 'cabernet', 'merlot', 'chardonnay', 'carmenere', 'malbec', 'pinot'],
+  ILA_CERVEZA_20_5: ['cerveza', 'beer', 'heineken', 'corona', 'kunstmann', 'austral', 'cristal', 'escudo', 'becker'],
+  ILA_DESTILADOS_31_5: ['vodka', 'gin', 'ron', 'whisky', 'pisco', 'tequila', 'aguardiente', 'brandy', 'cognac', 'licor'],
+};
+
 // ============================================================================
 // FUNCIONES AUXILIARES PURAS
 // ============================================================================
@@ -144,51 +178,61 @@ export function parseNumber(value: string | number | null | undefined): number |
 
 /**
  * Detecta multiplicador de empaque desde el nombre del producto
- * Formatos: 6PCX4, 4PC X 6, LAT250X24, 24PF, X06, 6PF-220CC
+ * Formatos: 6PCX4, 4PC X 6, LAT250X24, 24PF, X06, 6PF-220CC, 24UN, 12X1
+ * Retorna el patrón detectado como razón
  */
-export function detectPackMultiplier(productName: string): { multiplier: number | null; confidence: 'high' | 'medium' | 'low' } {
+export function detectPackMultiplier(productName: string): { 
+  multiplier: number | null; 
+  confidence: 'high' | 'medium' | 'low';
+  pattern: string;
+} {
   const name = productName.toUpperCase();
   
   // Patrón 1: NpcxM o NpxM (6pcx4, 4px6)
   const packMatch = name.match(/(\d+)\s*(?:PC|PX)\s*X?\s*(\d+)/i);
   if (packMatch) {
     const result = parseInt(packMatch[1]) * parseInt(packMatch[2]);
-    return { multiplier: result, confidence: 'high' };
+    return { multiplier: result, confidence: 'high', pattern: packMatch[0] };
   }
   
   // Patrón 2: LATXXXXY o similar (LAT250X24)
   const latMatch = name.match(/LAT\d+\s*X\s*(\d+)/i);
   if (latMatch) {
-    return { multiplier: parseInt(latMatch[1]), confidence: 'high' };
+    return { multiplier: parseInt(latMatch[1]), confidence: 'high', pattern: latMatch[0] };
   }
   
   // Patrón 3: XXPF (24PF = 24 unidades)
   const pfMatch = name.match(/(\d+)\s*PF/i);
   if (pfMatch) {
-    return { multiplier: parseInt(pfMatch[1]), confidence: 'medium' };
+    return { multiplier: parseInt(pfMatch[1]), confidence: 'medium', pattern: pfMatch[0] };
   }
   
-  // Patrón 4: X seguido de número (X06 = 6)
-  const xMatch = name.match(/\bX\s*(\d+)\b/i);
+  // Patrón 4: XXUN o XXu (24UN = 24 unidades)
+  const unMatch = name.match(/(\d+)\s*(?:UN|U)\b/i);
+  if (unMatch) {
+    return { multiplier: parseInt(unMatch[1]), confidence: 'medium', pattern: unMatch[0] };
+  }
+  
+  // Patrón 5: X seguido de número (X06 = 6)
+  const xMatch = name.match(/\bX\s*0?(\d+)\b/i);
   if (xMatch && !name.match(/\d+\s*X\s*\d+/)) {
     // Solo si no es parte de un patrón NxM
-    return { multiplier: parseInt(xMatch[1]), confidence: 'low' };
+    return { multiplier: parseInt(xMatch[1]), confidence: 'low', pattern: xMatch[0] };
   }
   
-  // Patrón 5: NxM genérico (12x6)
+  // Patrón 6: NxM genérico (12x1, 6x4)
   const genericMatch = name.match(/(\d+)\s*X\s*(\d+)/i);
   if (genericMatch) {
-    // Verificar que no sea volumen (250x24 podría ser 250ml x 24)
     const first = parseInt(genericMatch[1]);
     const second = parseInt(genericMatch[2]);
     // Si el primer número parece volumen (> 100), asumimos que es pack
     if (first > 100) {
-      return { multiplier: second, confidence: 'medium' };
+      return { multiplier: second, confidence: 'medium', pattern: genericMatch[0] };
     }
-    return { multiplier: first * second, confidence: 'medium' };
+    return { multiplier: first * second, confidence: 'medium', pattern: genericMatch[0] };
   }
   
-  return { multiplier: null, confidence: 'low' };
+  return { multiplier: null, confidence: 'low', pattern: '' };
 }
 
 /**
@@ -197,6 +241,32 @@ export function detectPackMultiplier(productName: string): { multiplier: number 
 export function isFreightLine(productName: string): boolean {
   const lower = productName.toLowerCase();
   return FREIGHT_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+/**
+ * Detecta categoría de impuesto según nombre del producto
+ */
+export function detectTaxCategory(productName: string): TaxCategory {
+  const lower = productName.toLowerCase();
+  
+  // Orden de prioridad: destilados > vino > cerveza > iaba18 > iaba10
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_DESTILADOS_31_5) {
+    if (lower.includes(kw)) return 'ILA_DESTILADOS_31_5';
+  }
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_VINO_20_5) {
+    if (lower.includes(kw)) return 'ILA_VINO_20_5';
+  }
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_CERVEZA_20_5) {
+    if (lower.includes(kw)) return 'ILA_CERVEZA_20_5';
+  }
+  for (const kw of TAX_CATEGORY_KEYWORDS.IABA18) {
+    if (lower.includes(kw)) return 'IABA18';
+  }
+  for (const kw of TAX_CATEGORY_KEYWORDS.IABA10) {
+    if (lower.includes(kw)) return 'IABA10';
+  }
+  
+  return 'NONE';
 }
 
 /**
@@ -242,6 +312,22 @@ export function parseDiscount(text: string | number | null, grossLine: number): 
   return { percent: 0, amount: 0 };
 }
 
+/**
+ * Obtiene etiqueta legible para categoría de impuesto
+ */
+export function getTaxCategoryLabel(category: TaxCategory): string {
+  const labels: Record<TaxCategory, string> = {
+    NONE: 'Sin impuesto',
+    IVA: 'IVA 19%',
+    IABA10: 'IABA 10%',
+    IABA18: 'IABA 18%',
+    ILA_VINO_20_5: 'ILA Vino 20,5%',
+    ILA_CERVEZA_20_5: 'ILA Cerveza 20,5%',
+    ILA_DESTILADOS_31_5: 'ILA Destilados 31,5%',
+  };
+  return labels[category];
+}
+
 // ============================================================================
 // FUNCIÓN PRINCIPAL: computePurchaseLine
 // ============================================================================
@@ -256,42 +342,69 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   let status: LineStatus = "OK";
   
   // 1. Parsear valores de entrada
-  const qtyInvoice = parseNumber(input.qty_text);
-  const unitPrice = parseNumber(input.unit_price_text);
+  const qtyInvoice = parseNumber(input.qty_text) ?? 0;
+  const invoiceUnitPriceRaw = parseNumber(input.unit_price_text) ?? 0;
   const lineTotal = parseNumber(input.line_total_text);
   
   // 2. Detectar multiplicador de empaque
   let packMultiplier = input.pack_multiplier_override ?? 1;
+  let packReason = '';
   if (!input.pack_multiplier_override) {
     const detected = detectPackMultiplier(input.raw_product_name);
     if (detected.multiplier !== null) {
       packMultiplier = detected.multiplier;
+      packReason = detected.pattern;
       if (detected.confidence === 'low') {
         reasons.push(`Multiplicador detectado (${packMultiplier}) con baja confianza`);
       }
     }
   }
   
-  // 3. Calcular unidades reales
-  const realUnits = (qtyInvoice ?? 0) * packMultiplier;
+  // 3. Determinar si precio viene por pack (default: false = precio por unidad)
+  const packPriced = input.pack_priced_override ?? false;
   
-  // 4. Determinar gross_line (preferir total de línea si existe)
-  let grossLine = 0;
-  if (lineTotal !== null && lineTotal > 0) {
-    grossLine = lineTotal;
-  } else if (qtyInvoice !== null && unitPrice !== null) {
-    grossLine = qtyInvoice * unitPrice;
-    reasons.push('Bruto calculado desde cantidad × precio');
-  } else {
-    reasons.push('No se pudo determinar el total bruto de línea');
+  // 4. Calcular precio unitario real
+  let unitPriceReal = invoiceUnitPriceRaw;
+  if (packPriced && packMultiplier > 1) {
+    unitPriceReal = Math.round(invoiceUnitPriceRaw / packMultiplier);
+    reasons.push(`Precio dividido por multiplicador (${packMultiplier})`);
+  } else if (packPriced && packMultiplier === 1) {
+    reasons.push('⚠️ Precio por PACK pero multiplicador=1, revisar');
     status = "REVIEW_REQUIRED";
   }
   
-  // 5. Parsear descuento según modo
-  const discountParsed = parseDiscount(input.discount_text, grossLine);
-  let discountAmount = discountParsed.amount;
+  // 5. Calcular unidades reales
+  const realUnits = qtyInvoice * packMultiplier;
   
-  // 6. Sumar impuestos (NUNCA forman parte del costo)
+  // 6. Parsear descuento (preferir override, luego OCR)
+  const discountParsed = parseDiscount(input.discount_text, invoiceUnitPriceRaw * qtyInvoice);
+  const discountPct = input.discount_pct_override ?? discountParsed.percent;
+  
+  // Validar rango de descuento
+  const validDiscountPct = Math.max(0, Math.min(100, discountPct));
+  if (discountPct !== validDiscountPct) {
+    reasons.push(`Descuento ajustado de ${discountPct}% a ${validDiscountPct}%`);
+  }
+  
+  // 7. Calcular precio después de descuento
+  const unitPriceAfterDiscount = Math.round(unitPriceReal * (1 - validDiscountPct / 100));
+  
+  // 8. Determinar gross_line (preferir total de línea si existe)
+  let grossLine = 0;
+  if (lineTotal !== null && lineTotal > 0) {
+    grossLine = lineTotal;
+  } else if (qtyInvoice > 0 && invoiceUnitPriceRaw > 0) {
+    grossLine = qtyInvoice * invoiceUnitPriceRaw;
+    reasons.push('Bruto calculado desde cantidad × precio');
+  } else {
+    reasons.push('No se pudo determinar el total bruto de línea');
+    if (status === "OK") status = "REVIEW_REQUIRED";
+  }
+  
+  // 9. Detectar categoría de impuesto
+  const taxCategory = input.tax_category_override ?? detectTaxCategory(input.raw_product_name);
+  
+  // 10. Sumar impuestos (NUNCA forman parte del costo - SOLO INFORMATIVOS)
   const taxIaba10 = input.tax_iaba_10 ?? 0;
   const taxIaba18 = input.tax_iaba_18 ?? 0;
   const taxIlaVin = input.tax_ila_vin ?? 0;
@@ -299,32 +412,29 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   const taxIlaLic = input.tax_ila_lic ?? 0;
   const taxesExcluded = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic;
   
-  // 7. Calcular neto para costo
-  const netLineForCost = grossLine - discountAmount - taxesExcluded;
+  // 11. Calcular neto para costo (basado en precio después de descuento)
+  const netLineForCost = unitPriceAfterDiscount * realUnits;
   
-  // 8. Calcular costo unitario neto
-  let netUnitCost = 0;
-  if (realUnits > 0) {
-    netUnitCost = Math.round(netLineForCost / realUnits);
-  }
+  // 12. Calcular costo unitario neto (= precio después de descuento)
+  const netUnitCost = unitPriceAfterDiscount;
   
-  // 9. Detectar primero si es flete/gasto
+  // 13. Detectar primero si es flete/gasto
   const isFreight = isFreightLine(input.raw_product_name);
   if (isFreight) {
     status = "EXPENSE";
     reasons.push('Detectado como flete/despacho');
   }
   
-  // 10. Validaciones estrictas (solo si no es gasto)
+  // 14. Validaciones estrictas (solo si no es gasto)
   if (status !== "EXPENSE") {
     if (realUnits <= 0) {
       status = "REVIEW_REQUIRED";
       reasons.push('Unidades reales <= 0');
     }
     
-    if (grossLine <= 0) {
+    if (unitPriceReal <= 0) {
       status = "REVIEW_REQUIRED";
-      reasons.push('Total bruto <= 0');
+      reasons.push('Precio unitario real <= 0');
     }
     
     if (netUnitCost <= 0 && realUnits > 0) {
@@ -333,18 +443,25 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     }
   }
   
-  // 11. Normalizar UoM
+  // 15. Normalizar UoM
   const uomNormalized = normalizeUom(input.uom_text);
   
   return {
     id: input.id,
     raw_product_name: input.raw_product_name,
-    qty_invoice: qtyInvoice ?? 0,
+    qty_invoice: qtyInvoice,
     pack_multiplier: packMultiplier,
+    pack_reason: packReason,
+    invoice_unit_price_raw: invoiceUnitPriceRaw,
+    pack_priced: packPriced,
+    unit_price_real: unitPriceReal,
+    discount_pct: validDiscountPct,
+    unit_price_after_discount: unitPriceAfterDiscount,
     real_units: realUnits,
     gross_line: grossLine,
     discount_mode: input.discount_mode,
-    discount_amount: discountAmount,
+    discount_amount: Math.round(unitPriceReal * realUnits * validDiscountPct / 100),
+    tax_category: taxCategory,
     taxes_excluded_for_cost: taxesExcluded,
     tax_details: {
       iaba_10: taxIaba10 || undefined,
@@ -373,16 +490,28 @@ export function recalculateLine(
   updates: Partial<{
     qty_invoice: number;
     pack_multiplier: number;
-    discount_amount: number;
+    pack_priced: boolean;
+    discount_pct: number;
+    tax_category: TaxCategory;
   }>
 ): ComputedLine {
   const newQty = updates.qty_invoice ?? line.qty_invoice;
   const newMultiplier = updates.pack_multiplier ?? line.pack_multiplier;
-  const newDiscount = updates.discount_amount ?? line.discount_amount;
+  const newPackPriced = updates.pack_priced ?? line.pack_priced;
+  const newDiscountPct = Math.max(0, Math.min(100, updates.discount_pct ?? line.discount_pct));
+  const newTaxCategory = updates.tax_category ?? line.tax_category;
   
+  // Recalcular precio unitario real
+  let newUnitPriceReal = line.invoice_unit_price_raw;
+  if (newPackPriced && newMultiplier > 1) {
+    newUnitPriceReal = Math.round(line.invoice_unit_price_raw / newMultiplier);
+  }
+  
+  // Recalcular resto de valores
   const newRealUnits = newQty * newMultiplier;
-  const newNetLine = line.gross_line - newDiscount - line.taxes_excluded_for_cost;
-  const newNetUnitCost = newRealUnits > 0 ? Math.round(newNetLine / newRealUnits) : 0;
+  const newUnitPriceAfterDiscount = Math.round(newUnitPriceReal * (1 - newDiscountPct / 100));
+  const newNetLine = newUnitPriceAfterDiscount * newRealUnits;
+  const newDiscountAmount = Math.round(newUnitPriceReal * newRealUnits * newDiscountPct / 100);
   
   // Re-evaluar status
   const reasons: string[] = [];
@@ -399,9 +528,17 @@ export function recalculateLine(
       status = "REVIEW_REQUIRED";
       reasons.push('Unidades reales <= 0');
     }
-    if (newNetUnitCost <= 0 && newRealUnits > 0) {
+    if (newUnitPriceReal <= 0) {
+      status = "REVIEW_REQUIRED";
+      reasons.push('Precio unitario real <= 0');
+    }
+    if (newUnitPriceAfterDiscount <= 0 && newRealUnits > 0) {
       status = "REVIEW_REQUIRED";
       reasons.push('Costo unitario neto <= 0');
+    }
+    if (newPackPriced && newMultiplier === 1) {
+      status = "REVIEW_REQUIRED";
+      reasons.push('⚠️ Precio por PACK pero multiplicador=1');
     }
   }
   
@@ -409,10 +546,15 @@ export function recalculateLine(
     ...line,
     qty_invoice: newQty,
     pack_multiplier: newMultiplier,
+    pack_priced: newPackPriced,
+    unit_price_real: newUnitPriceReal,
+    discount_pct: newDiscountPct,
+    unit_price_after_discount: newUnitPriceAfterDiscount,
     real_units: newRealUnits,
-    discount_amount: newDiscount,
+    discount_amount: newDiscountAmount,
     net_line_for_cost: newNetLine,
-    net_unit_cost: newNetUnitCost,
+    net_unit_cost: newUnitPriceAfterDiscount,
+    tax_category: newTaxCategory,
     status,
     reasons: status === "EXPENSE" ? line.reasons : reasons,
   };
@@ -440,12 +582,19 @@ export function validateForConfirmation(lines: ComputedLine[]): {
     errors.push(`${unmatchedInventory.length} línea(s) de inventario sin producto asignado`);
   }
   
-  const expenseLines = lines.filter(l => l.status === "EXPENSE");
-  // Expenses are OK without product
-  
   const zeroUnits = inventoryLines.filter(l => l.real_units <= 0);
   if (zeroUnits.length > 0) {
     errors.push(`${zeroUnits.length} línea(s) con unidades reales = 0`);
+  }
+  
+  const zeroPrice = inventoryLines.filter(l => l.unit_price_real <= 0);
+  if (zeroPrice.length > 0) {
+    errors.push(`${zeroPrice.length} línea(s) con precio unitario = 0`);
+  }
+  
+  const invalidDiscount = inventoryLines.filter(l => l.discount_pct < 0 || l.discount_pct > 100);
+  if (invalidDiscount.length > 0) {
+    errors.push(`${invalidDiscount.length} línea(s) con descuento inválido`);
   }
   
   return {
