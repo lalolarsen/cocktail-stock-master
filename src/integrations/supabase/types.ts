@@ -1968,6 +1968,8 @@ export type Database = {
           confirmed_unit_price: number | null
           conversion_factor: number | null
           created_at: string
+          discount_amount: number | null
+          discount_percent: number | null
           expense_category: string | null
           extracted_quantity: number | null
           extracted_total: number | null
@@ -1982,6 +1984,7 @@ export type Database = {
           normalized_unit_cost: number | null
           purchase_document_id: string
           raw_product_name: string
+          subtotal_before_discount: number | null
           venue_id: string | null
         }
         Insert: {
@@ -1990,6 +1993,8 @@ export type Database = {
           confirmed_unit_price?: number | null
           conversion_factor?: number | null
           created_at?: string
+          discount_amount?: number | null
+          discount_percent?: number | null
           expense_category?: string | null
           extracted_quantity?: number | null
           extracted_total?: number | null
@@ -2004,6 +2009,7 @@ export type Database = {
           normalized_unit_cost?: number | null
           purchase_document_id: string
           raw_product_name: string
+          subtotal_before_discount?: number | null
           venue_id?: string | null
         }
         Update: {
@@ -2012,6 +2018,8 @@ export type Database = {
           confirmed_unit_price?: number | null
           conversion_factor?: number | null
           created_at?: string
+          discount_amount?: number | null
+          discount_percent?: number | null
           expense_category?: string | null
           extracted_quantity?: number | null
           extracted_total?: number | null
@@ -2026,6 +2034,7 @@ export type Database = {
           normalized_unit_cost?: number | null
           purchase_document_id?: string
           raw_product_name?: string
+          subtotal_before_discount?: number | null
           venue_id?: string | null
         }
         Relationships: [

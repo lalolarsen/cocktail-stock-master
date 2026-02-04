@@ -13,6 +13,9 @@ interface LineItem {
   unit_price: number | null;
   total: number | null;
   uom: string | null; // Unidad de medida: Unidad, Caja, Pack, etc.
+  discount_percent: number | null; // Porcentaje de descuento
+  discount_amount: number | null; // Monto de descuento
+  subtotal_before_discount: number | null; // Subtotal antes de descuento
 }
 
 interface ExtractedData {
@@ -176,6 +179,9 @@ serve(async (req) => {
       extracted_unit_price: item.unit_price,
       extracted_total: item.total,
       extracted_uom: item.uom || "Unidad",
+      discount_percent: item.discount_percent || 0,
+      discount_amount: item.discount_amount || 0,
+      subtotal_before_discount: item.subtotal_before_discount,
       matched_product_id: item.matched_product_id,
       match_confidence: item.match_confidence,
       classification: "inventory",
@@ -283,12 +289,31 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
       return m ? m[1].trim() : "Unidad";
     };
 
+    const discountPercent = (d: string) => {
+      const m = d.match(/<DscItem>([^<]*)<\/DscItem>/i) || d.match(/<PctDscto>([^<]*)<\/PctDscto>/i);
+      return m ? parseFloat(m[1]) : 0;
+    };
+    const discountAmount = (d: string) => {
+      const m = d.match(/<DescuentoItem>([^<]*)<\/DescuentoItem>/i) || d.match(/<MntDscto>([^<]*)<\/MntDscto>/i);
+      return m ? parseFloat(m[1]) : 0;
+    };
+
+    const qty = getQty(detail);
+    const unitPriceVal = getPrice(detail);
+    const totalVal = getTotal(detail);
+    const discPct = discountPercent(detail);
+    const discAmt = discountAmount(detail);
+    const subtotalBefore = qty && unitPriceVal ? qty * unitPriceVal : null;
+
     lineItems.push({
       raw_product_name: getName(detail),
-      quantity: getQty(detail),
-      unit_price: getPrice(detail),
-      total: getTotal(detail),
+      quantity: qty,
+      unit_price: unitPriceVal,
+      total: totalVal,
       uom: getUom(detail),
+      discount_percent: discPct,
+      discount_amount: discAmt,
+      subtotal_before_discount: subtotalBefore,
     });
   }
 
@@ -341,7 +366,10 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
       "quantity": number or null,
       "uom": "unit of measure as written (Unidad, Caja, Pack, Kg, Lt, etc.) or null",
       "unit_price": number or null (PRICE PER SINGLE UNIT, without currency symbol),
-      "total": number or null (TOTAL for this line = quantity × unit_price, without currency symbol)
+      "discount_percent": number or null (percentage discount for this line, e.g., 20 for 20%),
+      "discount_amount": number or null (absolute discount amount in currency),
+      "subtotal_before_discount": number or null (subtotal BEFORE applying discount = quantity × unit_price),
+      "total": number or null (FINAL TOTAL for this line AFTER discount)
     }
   ]
 }
@@ -352,12 +380,15 @@ CRITICAL EXTRACTION RULES:
 3. For "quantity": The number of units/items purchased
 4. For "uom": Unit of measure - common values are: Unidad, Caja, Pack, Botella, Kg, Lt, ml
 5. For "unit_price": This is the PRICE FOR ONE SINGLE UNIT. If only total is shown, calculate: unit_price = total / quantity
-6. For "total": This is the TOTAL AMOUNT for this line (quantity × unit_price)
-7. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
-8. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
-9. If a value is unclear, use null
-10. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
-11. Return ONLY the JSON, no other text`;
+6. For "discount_percent": Look for columns labeled "%", "Dcto%", "% Descuento" - extract the percentage number (e.g., 20 for 20%)
+7. For "discount_amount": Look for columns labeled "Descuento", "Dcto", "Monto Dcto" - extract the absolute discount value
+8. For "subtotal_before_discount": This is quantity × unit_price BEFORE any discount is applied
+9. For "total": This is the FINAL AMOUNT for this line AFTER discount (often labeled "Valor", "Neto", "Total Línea")
+10. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
+11. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
+12. If a value is unclear, use null
+13. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
+14. Return ONLY the JSON, no other text`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   
@@ -460,20 +491,49 @@ CRITICAL EXTRACTION RULES:
   }, 0);
   const lineTotalCoherenceValid = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
 
-  // Add uom to line items and calculate missing unit_price from total/quantity
-  const lineItemsWithUom = (parsed.line_items || []).map((item: { raw_product_name?: string; quantity?: number; uom?: string; unit_price?: number; total?: number }) => {
+  // Add uom to line items and calculate missing values
+  const lineItemsWithUom = (parsed.line_items || []).map((item: { 
+    raw_product_name?: string; 
+    quantity?: number; 
+    uom?: string; 
+    unit_price?: number; 
+    discount_percent?: number;
+    discount_amount?: number;
+    subtotal_before_discount?: number;
+    total?: number 
+  }) => {
     const qty = item.quantity ?? null;
     const total = item.total ?? null;
+    const discountPercent = item.discount_percent ?? 0;
+    const discountAmount = item.discount_amount ?? 0;
+    let subtotalBeforeDiscount = item.subtotal_before_discount ?? null;
+    
     // If unit_price is missing but we have total and quantity, calculate it
     let unitPrice = item.unit_price ?? null;
     if ((unitPrice === null || unitPrice === 0) && total && qty && qty > 0) {
-      unitPrice = Math.round(total / qty);
+      // If there's a discount, we need to work backwards
+      if (discountAmount > 0) {
+        unitPrice = Math.round((total + discountAmount) / qty);
+      } else if (discountPercent > 0) {
+        unitPrice = Math.round((total / (1 - discountPercent / 100)) / qty);
+      } else {
+        unitPrice = Math.round(total / qty);
+      }
     }
+    
+    // Calculate subtotal before discount if not provided
+    if (subtotalBeforeDiscount === null && unitPrice && qty) {
+      subtotalBeforeDiscount = unitPrice * qty;
+    }
+    
     return {
       raw_product_name: item.raw_product_name || "",
       quantity: qty,
       uom: item.uom || "Unidad",
       unit_price: unitPrice,
+      discount_percent: discountPercent,
+      discount_amount: discountAmount,
+      subtotal_before_discount: subtotalBeforeDiscount,
       total: total,
     };
   });

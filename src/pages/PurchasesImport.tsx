@@ -85,6 +85,10 @@ interface PurchaseItem {
   confirmed_unit_price: number | null;
   is_confirmed: boolean;
   item_status?: string;
+  // Discount fields
+  discount_percent?: number;
+  discount_amount?: number;
+  subtotal_before_discount?: number;
 }
 
 interface EditableItem extends PurchaseItem {
@@ -97,6 +101,10 @@ interface EditableItem extends PurchaseItem {
   conversion_factor: number;
   normalized_quantity: number;
   normalized_unit_cost: number;
+  // Discount fields (editable)
+  discount_percent: number;
+  discount_amount: number;
+  subtotal_before_discount: number;
   // Expense classification
   classification: "inventory" | "expense";
   expense_category?: string;
@@ -312,6 +320,9 @@ export default function PurchasesImport() {
         const qty = item.extracted_quantity || 0;
         const price = item.extracted_unit_price || 0;
         const factor = item.conversion_factor || 1;
+        const discountPct = (item as unknown as { discount_percent?: number }).discount_percent || 0;
+        const discountAmt = (item as unknown as { discount_amount?: number }).discount_amount || 0;
+        const subtotalBefore = (item as unknown as { subtotal_before_discount?: number }).subtotal_before_discount || qty * price;
         return {
           ...item,
           selected_product_id: item.matched_product_id,
@@ -321,6 +332,9 @@ export default function PurchasesImport() {
           conversion_factor: factor,
           normalized_quantity: qty * factor,
           normalized_unit_cost: factor > 0 ? price / factor : price,
+          discount_percent: discountPct,
+          discount_amount: discountAmt,
+          subtotal_before_discount: subtotalBefore,
           classification: (item.classification as "inventory" | "expense") || "inventory",
           expense_amount: qty * price,
           item_status: (item.item_status as EditableItem["item_status"]) || (item.matched_product_id ? "matched" : "pending_match"),
@@ -972,6 +986,8 @@ export default function PurchasesImport() {
                       <TableHead className="w-[70px]">UoM</TableHead>
                       <TableHead className="w-[70px]">Cant.</TableHead>
                       <TableHead className="w-[100px]">P. Unit.</TableHead>
+                      <TableHead className="w-[70px] text-center">% Dcto</TableHead>
+                      <TableHead className="w-[90px] text-right">Dcto $</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       {registerExpenses && expenseMode === "partial_expense" && (
                         <TableHead className="w-[100px]">Tipo</TableHead>
@@ -1167,11 +1183,59 @@ export default function PurchasesImport() {
                             />
                           )}
                         </TableCell>
+                        {/* Discount Percent */}
+                        <TableCell className="text-center">
+                          {item.classification === "inventory" ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={item.discount_percent || 0}
+                              onChange={(e) => {
+                                const pct = parseFloat(e.target.value) || 0;
+                                const subtotal = item.quantity * item.unit_price;
+                                const discountAmt = Math.round(subtotal * pct / 100);
+                                updateItem(index, { 
+                                  discount_percent: pct,
+                                  discount_amount: discountAmt,
+                                  subtotal_before_discount: subtotal,
+                                });
+                              }}
+                              className="w-16 h-7 text-sm text-center"
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        {/* Discount Amount */}
                         <TableCell className="text-right">
-                          {item.classification === "inventory" 
-                            ? formatCLP(item.quantity * item.unit_price)
-                            : formatCLP(item.expense_amount || 0)
-                          }
+                          {item.classification === "inventory" ? (
+                            item.discount_amount > 0 ? (
+                              <span className="text-sm text-red-600">-{formatCLP(item.discount_amount)}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        {/* Total */}
+                        <TableCell className="text-right">
+                          {item.classification === "inventory" ? (
+                            <div className="flex flex-col items-end">
+                              {item.discount_amount > 0 && (
+                                <span className="text-xs text-muted-foreground line-through">
+                                  {formatCLP(item.quantity * item.unit_price)}
+                                </span>
+                              )}
+                              <span className="font-medium">
+                                {formatCLP(item.quantity * item.unit_price - item.discount_amount)}
+                              </span>
+                            </div>
+                          ) : (
+                            formatCLP(item.expense_amount || 0)
+                          )}
                         </TableCell>
                         {registerExpenses && expenseMode === "partial_expense" && (
                           <TableCell>
