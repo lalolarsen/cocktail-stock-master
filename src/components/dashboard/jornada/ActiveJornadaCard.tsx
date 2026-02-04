@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertTriangle, Square, Play } from "lucide-react";
+import { Calendar, AlertTriangle, Square, Play, Loader2 } from "lucide-react";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Jornada {
   id: string;
@@ -22,6 +25,8 @@ interface ActiveJornadaCardProps {
   onCloseJornada: (id: string) => void;
   onForceClose: (jornada: Jornada) => void;
   staleThresholdHours?: number;
+  currentShiftId?: string | null;
+  onShiftClosed?: () => void;
 }
 
 const STALE_JORNADA_THRESHOLD_HOURS = 24;
@@ -31,8 +36,16 @@ export function ActiveJornadaCard({
   onOpenJornada, 
   onCloseJornada,
   onForceClose,
-  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS
+  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS,
+  currentShiftId: externalShiftId,
+  onShiftClosed
 }: ActiveJornadaCardProps) {
+  const [closingShift, setClosingShift] = useState(false);
+  const [internalShiftId, setInternalShiftId] = useState<string | null>(null);
+  
+  // Use external shift ID if provided, otherwise use internal state
+  const currentShiftId = externalShiftId ?? internalShiftId;
+
   const isStaleJornada = (j: Jornada): boolean => {
     if (j.estado !== "activa") return false;
     const openedAt = new Date(`${j.fecha}T${j.hora_apertura || "00:00:00"}`);
@@ -61,6 +74,38 @@ export function ActiveJornadaCard({
         return <Badge variant="secondary">Cerrada</Badge>;
       default:
         return <Badge variant="outline">{estado}</Badge>;
+    }
+  };
+
+  const handleCloseShift = async () => {
+    // If we have a shift ID, use it; otherwise fall back to jornada.id
+    const shiftIdToClose = currentShiftId || jornada?.id;
+    
+    if (!shiftIdToClose) {
+      toast.error("No hay jornada activa para cerrar");
+      return;
+    }
+
+    setClosingShift(true);
+    try {
+      const { data, error } = await supabase.rpc("close_shift" as any, {
+        p_shift_id: shiftIdToClose,
+        p_note: "Cierre desde UI"
+      });
+
+      if (error) {
+        toast.error(error.message || "Error al cerrar jornada");
+        return;
+      }
+
+      // Clear internal shift ID state
+      setInternalShiftId(null);
+      onShiftClosed?.();
+      toast.success("Jornada cerrada");
+    } catch (err: any) {
+      toast.error(err.message || "Error al cerrar jornada");
+    } finally {
+      setClosingShift(false);
     }
   };
 
@@ -133,10 +178,15 @@ export function ActiveJornadaCard({
           )}
           <Button
             variant="destructive"
-            onClick={() => onCloseJornada(jornada.id)}
+            onClick={handleCloseShift}
+            disabled={closingShift}
           >
-            <Square className="w-4 h-4 mr-2" />
-            Cerrar Jornada
+            {closingShift ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Square className="w-4 h-4 mr-2" />
+            )}
+            {closingShift ? "Cerrando..." : "Cerrar Jornada"}
           </Button>
         </div>
       </div>
