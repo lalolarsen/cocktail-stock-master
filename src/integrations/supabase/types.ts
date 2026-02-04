@@ -478,6 +478,7 @@ export type Database = {
           created_at: string
           created_by: string
           description: string
+          expense_category: string | null
           expense_type: string
           id: string
           jornada_id: string
@@ -486,6 +487,7 @@ export type Database = {
           pos_id: string | null
           source_id: string | null
           source_type: string | null
+          tax_type: string | null
           venue_id: string | null
         }
         Insert: {
@@ -494,6 +496,7 @@ export type Database = {
           created_at?: string
           created_by: string
           description: string
+          expense_category?: string | null
           expense_type: string
           id?: string
           jornada_id: string
@@ -502,6 +505,7 @@ export type Database = {
           pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
+          tax_type?: string | null
           venue_id?: string | null
         }
         Update: {
@@ -510,6 +514,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string
+          expense_category?: string | null
           expense_type?: string
           id?: string
           jornada_id?: string
@@ -518,6 +523,7 @@ export type Database = {
           pos_id?: string | null
           source_id?: string | null
           source_type?: string | null
+          tax_type?: string | null
           venue_id?: string | null
         }
         Relationships: [
@@ -1957,6 +1963,81 @@ export type Database = {
             columns: ["purchase_document_id"]
             isOneToOne: false
             referencedRelation: "purchase_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_import_drafts: {
+        Row: {
+          computed_lines: Json
+          created_at: string
+          discount_mode: string | null
+          document_date: string | null
+          document_number: string | null
+          id: string
+          iva_amount: number | null
+          net_amount: number | null
+          provider_name: string | null
+          provider_rut: string | null
+          purchase_document_id: string | null
+          raw_extraction: Json | null
+          status: string | null
+          total_amount_gross: number | null
+          updated_at: string
+          user_id: string
+          venue_id: string
+        }
+        Insert: {
+          computed_lines?: Json
+          created_at?: string
+          discount_mode?: string | null
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          iva_amount?: number | null
+          net_amount?: number | null
+          provider_name?: string | null
+          provider_rut?: string | null
+          purchase_document_id?: string | null
+          raw_extraction?: Json | null
+          status?: string | null
+          total_amount_gross?: number | null
+          updated_at?: string
+          user_id: string
+          venue_id: string
+        }
+        Update: {
+          computed_lines?: Json
+          created_at?: string
+          discount_mode?: string | null
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          iva_amount?: number | null
+          net_amount?: number | null
+          provider_name?: string | null
+          provider_rut?: string | null
+          purchase_document_id?: string | null
+          raw_extraction?: Json | null
+          status?: string | null
+          total_amount_gross?: number | null
+          updated_at?: string
+          user_id?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_import_drafts_purchase_document_id_fkey"
+            columns: ["purchase_document_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_import_drafts_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]

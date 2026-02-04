@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,6 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -37,6 +47,8 @@ import {
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { logAuditEvent } from "@/lib/monitoring";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAppSession } from "@/contexts/AppSessionContext";
+import { usePurchaseDraft } from "@/hooks/usePurchaseDraft";
 
 // Motor de cálculo único
 import {
@@ -45,6 +57,7 @@ import {
   validateForConfirmation,
   type ComputedLine,
   type DiscountMode,
+  type TaxCategory,
 } from "@/lib/purchase-calculator";
 
 // Componentes específicos
@@ -52,6 +65,7 @@ import { MinimalReviewTable } from "@/components/purchase/MinimalReviewTable";
 import { LineDetailDrawer } from "@/components/purchase/LineDetailDrawer";
 import { DiagnosticPanel } from "@/components/purchase/DiagnosticPanel";
 import { StabilizedChecklist } from "@/components/purchase/StabilizedChecklist";
+import { ImportSummaryPanel } from "@/components/purchase/ImportSummaryPanel";
 
 interface Product {
   id: string;
@@ -66,9 +80,23 @@ type Step = "upload" | "processing" | "review" | "complete" | "no-warehouse" | "
 
 export default function PurchasesImport() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const { hasRole, loading: roleLoading } = useUserRole();
+  const { venue } = useAppSession();
   const isAdmin = hasRole("admin");
+  
+  // Draft persistence hook
+  const {
+    draftId,
+    initDraft,
+    loadDraft,
+    saveDraft,
+    markConfirmed,
+    isSaving,
+    lastSaved,
+    currentDraft,
+  } = usePurchaseDraft();
   
   // Estados principales
   const [step, setStep] = useState<Step>("upload");
@@ -76,6 +104,10 @@ export default function PurchasesImport() {
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [checkingWarehouse, setCheckingWarehouse] = useState(true);
+  
+  // Navigation confirmation
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const pendingNavigationRef = useRef<string | null>(null);
 
   // Datos del documento
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -118,6 +150,55 @@ export default function PurchasesImport() {
   // EFECTOS Y CARGA INICIAL
   // ============================================================================
 
+  // Check for draft ID in URL params on mount
+  useEffect(() => {
+    const draftParam = searchParams.get("draft");
+    if (draftParam && step === "upload") {
+      // Hydrate from draft
+      loadDraft(draftParam).then((draft) => {
+        if (draft && draft.computed_lines.length > 0) {
+          setDocumentId(draft.purchase_document_id);
+          setProviderName(draft.provider_name);
+          setProviderRut(draft.provider_rut);
+          setDocumentNumber(draft.document_number);
+          setDocumentDate(draft.document_date);
+          setNetAmount(draft.net_amount);
+          setIvaAmount(draft.iva_amount);
+          setTotalAmountGross(draft.total_amount_gross);
+          setRawExtraction(draft.raw_extraction);
+          setComputedLines(draft.computed_lines);
+          setDiscountMode(draft.discount_mode);
+          setVenueId(venue?.id || null);
+          setStep("review");
+          toast.success("Borrador recuperado");
+        }
+      });
+    }
+  }, [searchParams, loadDraft, venue?.id, step]);
+
+  // Auto-save effect - save whenever document data changes
+  useEffect(() => {
+    if (draftId && step === "review" && computedLines.length > 0) {
+      saveDraft({
+        provider_name: providerName,
+        provider_rut: providerRut,
+        document_number: documentNumber,
+        document_date: documentDate,
+        net_amount: netAmount,
+        iva_amount: ivaAmount,
+        total_amount_gross: totalAmountGross,
+        raw_extraction: rawExtraction,
+        computed_lines: computedLines,
+        discount_mode: discountMode,
+      });
+    }
+  }, [
+    draftId, step, providerName, providerRut, documentNumber, documentDate,
+    netAmount, ivaAmount, totalAmountGross, computedLines, discountMode,
+    saveDraft, rawExtraction,
+  ]);
+
+  // Feature flags and warehouse check
   useEffect(() => {
     if (!flagsLoading) {
       if (!isEnabled("invoice_reader")) {
@@ -272,6 +353,16 @@ export default function PurchasesImport() {
       });
 
       setComputedLines(lines);
+      setVenueId(venue?.id || null);
+      
+      // Initialize draft for persistence
+      try {
+        const newDraftId = await initDraft(doc.id);
+        setSearchParams({ draft: newDraftId });
+      } catch (draftError) {
+        console.warn("Could not initialize draft:", draftError);
+      }
+      
       setStep("review");
       toast.success("Documento procesado correctamente");
     } catch (error: unknown) {
@@ -437,11 +528,41 @@ export default function PurchasesImport() {
     computedLines.filter(l => l.status === "EXPENSE"), 
     [computedLines]
   );
+  
+  // Tax rates for calculating specific tax amounts
+  const TAX_RATES: Record<TaxCategory, number> = {
+    NONE: 0,
+    IVA: 0.19,
+    IABA10: 0.10,
+    IABA18: 0.18,
+    ILA_VINO_20_5: 0.205,
+    ILA_CERVEZA_20_5: 0.205,
+    ILA_DESTILADOS_31_5: 0.315,
+  };
+  
+  // Calculate specific tax total (for expense registration)
+  const specificTaxTotal = useMemo(() => 
+    inventoryLines.reduce((sum, line) => {
+      const rate = TAX_RATES[line.tax_category] || 0;
+      return sum + Math.round(line.net_line_for_cost * rate);
+    }, 0),
+    [inventoryLines]
+  );
 
-  const canConfirm = validation.canConfirm && (inventoryLines.length > 0 || (expenseLines.length > 0 && registerExpenses));
+  // Venue validation for confirmation
+  const hasVenueId = !!(venueId || venue?.id);
+  
+  const canConfirm = validation.canConfirm && hasVenueId && (inventoryLines.length > 0 || (expenseLines.length > 0 && registerExpenses));
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
+    
+    // Venue validation - hard fail
+    const activeVenueId = venueId || venue?.id;
+    if (!activeVenueId) {
+      toast.error("Venue no asignado. No se puede confirmar.");
+      return;
+    }
 
     setConfirming(true);
     try {
@@ -469,28 +590,23 @@ export default function PurchasesImport() {
         }
       }
 
-      // Handle expense items
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      
+      const { data: jornadaId } = await supabase.rpc("get_active_jornada");
+
+      // Handle operational expense items (flete, etc.)
       if (expenseLines.length > 0 && registerExpenses) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Usuario no autenticado");
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("venue_id")
-          .eq("id", user.id)
-          .single();
-
-        const { data: jornadaId } = await supabase.rpc("get_active_jornada");
-
         const expenseRecords = expenseLines.map((line) => ({
           description: line.raw_product_name,
           amount: line.gross_line,
           expense_type: "operational",
           category: "Transporte",
+          expense_category: "operational",
           notes: `Importado desde factura: ${providerName} - ${documentNumber}`,
           created_by: user.id,
           jornada_id: jornadaId || null,
-          venue_id: profile?.venue_id || null,
+          venue_id: activeVenueId,
           source_type: "purchase_invoice",
           source_id: documentId,
         }));
@@ -501,6 +617,53 @@ export default function PurchasesImport() {
 
         if (expenseError) throw expenseError;
       }
+      
+      // Register specific taxes as TAX_EXPENSE (ILA/IABA)
+      // These are NOT part of inventory cost but must be tracked as expenses
+      if (specificTaxTotal > 0) {
+        // Group by tax type for clearer expense tracking
+        const taxExpensesByType: Record<string, number> = {};
+        
+        inventoryLines.forEach(line => {
+          if (line.tax_category !== 'NONE' && line.tax_category !== 'IVA') {
+            const rate = TAX_RATES[line.tax_category] || 0;
+            const taxAmount = Math.round(line.net_line_for_cost * rate);
+            if (taxAmount > 0) {
+              taxExpensesByType[line.tax_category] = (taxExpensesByType[line.tax_category] || 0) + taxAmount;
+            }
+          }
+        });
+        
+        // Create tax expense records
+        const taxExpenseRecords = Object.entries(taxExpensesByType).map(([taxType, amount]) => ({
+          description: `Impuesto específico: ${taxType.replace('_', ' ')}`,
+          amount,
+          expense_type: "tax",
+          category: "Impuestos",
+          expense_category: "tax_expense",
+          tax_type: taxType,
+          notes: `Impuesto calculado de factura: ${providerName} - ${documentNumber}`,
+          created_by: user.id,
+          jornada_id: jornadaId || null,
+          venue_id: activeVenueId,
+          source_type: "purchase_invoice",
+          source_id: documentId,
+        }));
+        
+        if (taxExpenseRecords.length > 0) {
+          const { error: taxExpenseError } = await supabase
+            .from("expenses")
+            .insert(taxExpenseRecords);
+            
+          if (taxExpenseError) {
+            console.error("Error registering tax expenses:", taxExpenseError);
+            // Don't throw - tax expense registration failure shouldn't block inventory intake
+          }
+        }
+      }
+
+      // Mark draft as confirmed
+      await markConfirmed();
 
       await logAuditEvent({
         action: "invoice_import_confirm",
@@ -510,11 +673,16 @@ export default function PurchasesImport() {
           provider: providerName,
           inventory_items: inventoryLines.length,
           expense_items: expenseLines.length,
+          tax_expense_total: specificTaxTotal,
+          venue_id: activeVenueId,
         },
       });
 
       toast.success(`Ingreso confirmado: ${inventoryLines.length} productos, ${registerExpenses ? expenseLines.length : 0} gastos`);
       setStep("complete");
+      
+      // Clear URL params
+      setSearchParams({});
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Error al confirmar";
       toast.error(errorMessage);
@@ -574,7 +742,14 @@ export default function PurchasesImport() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate("/admin")}
+          onClick={() => {
+            if (step === "review" && computedLines.length > 0) {
+              pendingNavigationRef.current = "/admin";
+              setShowExitConfirm(true);
+            } else {
+              navigate("/admin");
+            }
+          }}
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -826,63 +1001,21 @@ export default function PurchasesImport() {
             <div className="grid md:grid-cols-2 gap-4">
               <StabilizedChecklist
                 lines={computedLines}
-                hasVenueId={!!venueId}
+                hasVenueId={hasVenueId}
                 isAdmin={isAdmin}
               />
 
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm">Resumen</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <span className="text-muted-foreground">Productos a inventario:</span>
-                    <span className="text-right font-medium">{inventoryLines.length}</span>
-                    <span className="text-muted-foreground">Unidades totales:</span>
-                    <span className="text-right font-medium">
-                      {inventoryLines.reduce((s, l) => s + l.real_units, 0)}
-                    </span>
-                    <span className="text-muted-foreground">Monto inventario:</span>
-                    <span className="text-right font-medium">
-                      {formatCLP(inventoryLines.reduce((s, l) => s + l.net_line_for_cost, 0))}
-                    </span>
-                  </div>
-
-                  {expenseLines.length > 0 && (
-                    <>
-                      <Separator />
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="register-expenses" className="text-sm">
-                          Registrar gastos ({expenseLines.length})
-                        </Label>
-                        <Switch
-                          id="register-expenses"
-                          checked={registerExpenses}
-                          onCheckedChange={setRegisterExpenses}
-                        />
-                      </div>
-                      {registerExpenses && (
-                        <div className="text-sm text-amber-700">
-                          Monto: {formatCLP(expenseLines.reduce((s, l) => s + l.gross_line, 0))}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <Button
-                    className="w-full"
-                    onClick={handleConfirm}
-                    disabled={!canConfirm || confirming}
-                  >
-                    {confirming ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Check className="h-4 w-4 mr-2" />
-                    )}
-                    Confirmar Ingreso
-                  </Button>
-                </CardContent>
-              </Card>
+              <ImportSummaryPanel
+                lines={computedLines}
+                ivaAmount={ivaAmount}
+                registerExpenses={registerExpenses}
+                onRegisterExpensesChange={setRegisterExpenses}
+                canConfirm={canConfirm}
+                confirming={confirming}
+                onConfirm={handleConfirm}
+                lastSaved={lastSaved}
+                isSaving={isSaving}
+              />
             </div>
           </div>
         )}
@@ -965,6 +1098,35 @@ export default function PurchasesImport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Exit Confirmation Dialog */}
+      <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Salir sin guardar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes cambios sin confirmar. Si sales ahora, el borrador se guardará
+              automáticamente y podrás continuar más tarde.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowExitConfirm(false);
+              pendingNavigationRef.current = null;
+            }}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setShowExitConfirm(false);
+              if (pendingNavigationRef.current) {
+                navigate(pendingNavigationRef.current);
+              }
+            }}>
+              Salir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
