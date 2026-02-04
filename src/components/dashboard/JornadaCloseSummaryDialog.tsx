@@ -442,8 +442,8 @@ export function JornadaCloseSummaryDialog({
             No hay resumen disponible para esta jornada
           </div>
         ) : (
-          <Tabs defaultValue="overall" className="flex-1 min-h-0 flex flex-col space-y-4">
-            <TabsList className="grid w-full grid-cols-2 shrink-0">
+          <Tabs defaultValue="overall" className="flex-1 min-h-0 flex flex-col">
+            <TabsList className="grid w-full grid-cols-2 shrink-0 mb-4">
               <TabsTrigger value="overall" className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 General
@@ -454,7 +454,7 @@ export function JornadaCloseSummaryDialog({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overall" className="flex-1 min-h-0 mt-0" forceMount>
+            <TabsContent value="overall" className="flex-1 min-h-0 data-[state=inactive]:hidden">
               <ScrollArea className="h-[50vh] min-h-[300px]">
                 <div className="pr-4">
                   <SummaryCard summary={overallSummary} title="Resumen General" />
@@ -462,7 +462,7 @@ export function JornadaCloseSummaryDialog({
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="per-pos" className="flex-1 min-h-0 mt-0" forceMount>
+            <TabsContent value="per-pos" className="flex-1 min-h-0 data-[state=inactive]:hidden">
               <ScrollArea className="h-[50vh] min-h-[300px]">
                 <div className="space-y-4 pr-4">
                   {posSummaries.length > 0 ? (
