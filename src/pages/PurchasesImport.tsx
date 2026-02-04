@@ -89,6 +89,9 @@ interface PurchaseItem {
   discount_percent?: number;
   discount_amount?: number;
   subtotal_before_discount?: number;
+  // Pack notation
+  units_per_pack?: number;
+  uom_raw?: string;
 }
 
 interface EditableItem extends PurchaseItem {
@@ -98,6 +101,8 @@ interface EditableItem extends PurchaseItem {
   match_source?: "provider" | "generic" | "fuzzy";
   // UoM conversion fields
   uom: string;
+  uom_raw: string;
+  units_per_pack: number | null;
   conversion_factor: number;
   normalized_quantity: number;
   normalized_unit_cost: number;
@@ -323,12 +328,16 @@ export default function PurchasesImport() {
         const discountPct = (item as unknown as { discount_percent?: number }).discount_percent || 0;
         const discountAmt = (item as unknown as { discount_amount?: number }).discount_amount || 0;
         const subtotalBefore = (item as unknown as { subtotal_before_discount?: number }).subtotal_before_discount || qty * price;
+        const unitsPerPack = (item as unknown as { units_per_pack?: number }).units_per_pack || null;
+        const uomRaw = (item as unknown as { uom_raw?: string }).uom_raw || item.extracted_uom || "";
         return {
           ...item,
           selected_product_id: item.matched_product_id,
           quantity: qty,
           unit_price: price,
           uom: item.extracted_uom || "Unidad",
+          uom_raw: uomRaw,
+          units_per_pack: unitsPerPack,
           conversion_factor: factor,
           normalized_quantity: qty * factor,
           normalized_unit_cost: factor > 0 ? price / factor : price,
@@ -1097,20 +1106,32 @@ export default function PurchasesImport() {
                         </TableCell>
                         {/* UoM Column */}
                         <TableCell>
-                          {item.classification === "inventory" && item.selected_product_id ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleUomConversion(index)}
-                              className="text-xs h-7 px-2"
-                              title={`${item.uom} → ${item.conversion_factor}x`}
-                            >
-                              <Calculator className="h-3 w-3 mr-1" />
-                              {item.conversion_factor !== 1 ? `${item.conversion_factor}x` : item.uom}
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">{item.uom}</span>
-                          )}
+                          <div className="flex flex-col gap-0.5">
+                            {item.classification === "inventory" && item.selected_product_id ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleUomConversion(index)}
+                                className="text-xs h-7 px-2"
+                                title={`${item.uom_raw || item.uom} → ${item.conversion_factor}x`}
+                              >
+                                <Calculator className="h-3 w-3 mr-1" />
+                                {item.conversion_factor !== 1 ? `${item.conversion_factor}x` : item.uom}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{item.uom}</span>
+                            )}
+                            {item.units_per_pack && (
+                              <span className="text-[10px] text-blue-600 font-medium">
+                                ={item.units_per_pack} un
+                              </span>
+                            )}
+                            {item.uom_raw && item.uom_raw !== item.uom && (
+                              <span className="text-[10px] text-muted-foreground">
+                                ({item.uom_raw})
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {item.classification === "inventory" ? (
