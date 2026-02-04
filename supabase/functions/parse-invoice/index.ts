@@ -337,22 +337,27 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
   "total_amount": number or null (total bruto including IVA),
   "line_items": [
     {
-      "raw_product_name": "product name as written",
+      "raw_product_name": "full product name as written on the invoice",
       "quantity": number or null,
       "uom": "unit of measure as written (Unidad, Caja, Pack, Kg, Lt, etc.) or null",
-      "unit_price": number or null (without currency symbol),
-      "total": number or null (without currency symbol)
+      "unit_price": number or null (PRICE PER SINGLE UNIT, without currency symbol),
+      "total": number or null (TOTAL for this line = quantity × unit_price, without currency symbol)
     }
   ]
 }
 
-IMPORTANT EXTRACTION RULES:
+CRITICAL EXTRACTION RULES:
 1. Be thorough in extracting ALL line items from the document
-2. For each line item, try to identify the unit of measure (uom) - common values are: Unidad, Caja, Pack, Botella, Kg, Lt, ml
-3. Extract the tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
-4. If a value is unclear, use null
-5. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
-6. Return ONLY the JSON, no other text`;
+2. For "raw_product_name": Extract the COMPLETE product name as it appears, including brand, size, and all descriptors
+3. For "quantity": The number of units/items purchased
+4. For "uom": Unit of measure - common values are: Unidad, Caja, Pack, Botella, Kg, Lt, ml
+5. For "unit_price": This is the PRICE FOR ONE SINGLE UNIT. If only total is shown, calculate: unit_price = total / quantity
+6. For "total": This is the TOTAL AMOUNT for this line (quantity × unit_price)
+7. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
+8. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
+9. If a value is unclear, use null
+10. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
+11. Return ONLY the JSON, no other text`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   
@@ -455,14 +460,23 @@ IMPORTANT EXTRACTION RULES:
   }, 0);
   const lineTotalCoherenceValid = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
 
-  // Add uom to line items if missing
-  const lineItemsWithUom = (parsed.line_items || []).map((item: { raw_product_name?: string; quantity?: number; uom?: string; unit_price?: number; total?: number }) => ({
-    raw_product_name: item.raw_product_name || "",
-    quantity: item.quantity ?? null,
-    uom: item.uom || "Unidad",
-    unit_price: item.unit_price ?? null,
-    total: item.total ?? null,
-  }));
+  // Add uom to line items and calculate missing unit_price from total/quantity
+  const lineItemsWithUom = (parsed.line_items || []).map((item: { raw_product_name?: string; quantity?: number; uom?: string; unit_price?: number; total?: number }) => {
+    const qty = item.quantity ?? null;
+    const total = item.total ?? null;
+    // If unit_price is missing but we have total and quantity, calculate it
+    let unitPrice = item.unit_price ?? null;
+    if ((unitPrice === null || unitPrice === 0) && total && qty && qty > 0) {
+      unitPrice = Math.round(total / qty);
+    }
+    return {
+      raw_product_name: item.raw_product_name || "",
+      quantity: qty,
+      uom: item.uom || "Unidad",
+      unit_price: unitPrice,
+      total: total,
+    };
+  });
 
   return {
     provider_name: parsed.provider_name || null,
