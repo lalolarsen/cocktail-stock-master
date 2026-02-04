@@ -1,26 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -28,9 +12,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import {
@@ -39,28 +29,29 @@ import {
   FileText,
   Loader2,
   Check,
-  X,
-  AlertCircle,
   Package,
-  Plus,
   Search,
   Warehouse,
-  Receipt,
   Lock,
-  Calculator,
-  CheckCircle,
-  AlertTriangle,
-  Banknote,
-  Undo2,
 } from "lucide-react";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { logAuditEvent } from "@/lib/monitoring";
-import { UoMConversionDialog } from "@/components/purchase/UoMConversionDialog";
-import { PreConfirmChecklist, buildPurchaseChecklist, isFreightItem, requiresManualReview } from "@/components/purchase/PreConfirmChecklist";
-import { ImportAuditTimeline } from "@/components/purchase/ImportAuditTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
+
+// Motor de cálculo único
+import {
+  computePurchaseLine,
+  recalculateLine,
+  validateForConfirmation,
+  type ComputedLine,
+  type DiscountMode,
+} from "@/lib/purchase-calculator";
+
+// Componentes específicos
+import { MinimalReviewTable } from "@/components/purchase/MinimalReviewTable";
+import { LineDetailDrawer } from "@/components/purchase/LineDetailDrawer";
+import { DiagnosticPanel } from "@/components/purchase/DiagnosticPanel";
+import { StabilizedChecklist } from "@/components/purchase/StabilizedChecklist";
 
 interface Product {
   id: string;
@@ -71,136 +62,61 @@ interface Product {
   current_stock: number;
 }
 
-interface PurchaseItem {
-  id: string;
-  raw_product_name: string;
-  extracted_quantity: number | null;
-  extracted_unit_price: number | null;
-  extracted_total: number | null;
-  extracted_uom: string | null;
-  matched_product_id: string | null;
-  match_confidence: number;
-  match_source?: "provider" | "generic" | "fuzzy";
-  confirmed_quantity: number | null;
-  confirmed_unit_price: number | null;
-  is_confirmed: boolean;
-  item_status?: string;
-  // Discount fields
-  discount_percent?: number;
-  discount_amount?: number;
-  subtotal_before_discount?: number;
-  // Pack notation
-  units_per_pack?: number;
-  uom_raw?: string;
-  // Chilean beverage taxes (Ley 20.780)
-  tax_iaba_10?: number;
-  tax_iaba_18?: number;
-  tax_ila_vin?: number;
-  tax_ila_cer?: number;
-  tax_ila_lic?: number;
-  tax_category?: string;
-}
-
-interface EditableItem extends PurchaseItem {
-  selected_product_id: string | null;
-  quantity: number;
-  unit_price: number;
-  match_source?: "provider" | "generic" | "fuzzy";
-  // UoM conversion fields
-  uom: string;
-  uom_raw: string;
-  units_per_pack: number | null;
-  conversion_factor: number;
-  normalized_quantity: number;
-  normalized_unit_cost: number;
-  // REGLA: unidades_reales = multiplicador × cantidad_facturada
-  real_units: number;
-  // Discount fields (editable)
-  discount_percent: number;
-  discount_amount: number;
-  subtotal_before_discount: number;
-  // Chilean beverage taxes (Ley 20.780) - ESTOS NO FORMAN PARTE DEL COSTO
-  tax_iaba_10: number;
-  tax_iaba_18: number;
-  tax_ila_vin: number;
-  tax_ila_cer: number;
-  tax_ila_lic: number;
-  tax_category: string | null;
-  // Total de impuestos (para mostrar, NO para costo)
-  total_tax_amount: number;
-  // COSTO NETO REAL (sin IVA, sin ILA, sin IABA, sin flete) - ESTE ES EL QUE SE USA PARA CPP
-  net_unit_cost: number;
-  // Expense classification
-  classification: "inventory" | "expense";
-  expense_category?: string;
-  expense_subcategory?: string;
-  expense_notes?: string;
-  expense_amount?: number;
-  // Status
-  item_status: "pending_match" | "matched" | "marked_as_expense" | "ready" | "applied" | "review_required";
-  // Flag para revisión manual requerida
-  review_required: boolean;
-  review_reason?: string;
-  // Flag para flete/despacho detectado
-  is_freight: boolean;
-}
-
-type ExpenseCategory = "operational" | "non-operational";
-
-const EXPENSE_SUBCATEGORIES: Record<ExpenseCategory, string[]> = {
-  operational: ["Insumos", "Limpieza", "Descartables", "Servicios", "Mantenimiento", "Otros operacional"],
-  "non-operational": ["Administrativo", "Marketing", "Transporte", "Otros no-operacional"],
-};
-
-type Step = "upload" | "processing" | "review" | "confirm" | "complete" | "no-warehouse" | "no-access";
+type Step = "upload" | "processing" | "review" | "complete" | "no-warehouse" | "no-access";
 
 export default function PurchasesImport() {
   const navigate = useNavigate();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const { hasRole, loading: roleLoading } = useUserRole();
   const isAdmin = hasRole("admin");
+  
+  // Estados principales
   const [step, setStep] = useState<Step>("upload");
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [checkingWarehouse, setCheckingWarehouse] = useState(true);
 
-  // Document data
+  // Datos del documento
   const [documentId, setDocumentId] = useState<string | null>(null);
-  const [providerName, setProviderName] = useState<string>("");
-  const [providerRut, setProviderRut] = useState<string>("");
-  const [documentNumber, setDocumentNumber] = useState<string>("");
-  const [documentDate, setDocumentDate] = useState<string>("");
-  // Tax fields
-  const [netAmount, setNetAmount] = useState<number>(0);
-  const [ivaAmount, setIvaAmount] = useState<number>(0);
-  const [totalAmountGross, setTotalAmountGross] = useState<number>(0);
-  const [taxCoherenceValid, setTaxCoherenceValid] = useState(true);
-  const [auditTrail, setAuditTrail] = useState<Array<{ action: string; timestamp: string; data?: Record<string, unknown> }>>([]);
+  const [providerName, setProviderName] = useState("");
+  const [providerRut, setProviderRut] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [documentDate, setDocumentDate] = useState("");
+  const [netAmount, setNetAmount] = useState(0);
+  const [ivaAmount, setIvaAmount] = useState(0);
+  const [totalAmountGross, setTotalAmountGross] = useState(0);
   const [venueId, setVenueId] = useState<string | null>(null);
+  
+  // Raw extraction para diagnóstico
+  const [rawExtraction, setRawExtraction] = useState<Record<string, unknown> | null>(null);
 
-  // Items
-  const [items, setItems] = useState<EditableItem[]>([]);
+  // Líneas computadas (single source of truth)
+  const [computedLines, setComputedLines] = useState<ComputedLine[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
-  // UoM Conversion dialog
-  const [showUomDialog, setShowUomDialog] = useState(false);
-  const [uomEditingIndex, setUomEditingIndex] = useState<number | null>(null);
+  // Modo de descuento del documento
+  const [discountMode, setDiscountMode] = useState<DiscountMode>("APPLY_TO_GROSS");
 
+  // UI states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedLineForDetail, setSelectedLineForDetail] = useState<ComputedLine | null>(null);
+  const [showDetailDrawer, setShowDetailDrawer] = useState(false);
+  
   // New product dialog
   const [showNewProductDialog, setShowNewProductDialog] = useState(false);
-  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [newProductName, setNewProductName] = useState("");
   const [newProductCode, setNewProductCode] = useState("");
-  const [newProductCategory, setNewProductCategory] = useState<string>("unidades");
+  const [newProductCategory, setNewProductCategory] = useState("unidades");
   const [creatingProduct, setCreatingProduct] = useState(false);
 
-  // Product search
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Expense registration
+  // Registrar gastos
   const [registerExpenses, setRegisterExpenses] = useState(false);
-  const [expenseMode, setExpenseMode] = useState<"all_inventory" | "partial_expense">("all_inventory");
+
+  // ============================================================================
+  // EFECTOS Y CARGA INICIAL
+  // ============================================================================
 
   useEffect(() => {
     if (!flagsLoading) {
@@ -215,7 +131,6 @@ export default function PurchasesImport() {
 
   const checkWarehouseAndFetchProducts = async () => {
     try {
-      // Check if warehouse exists
       const { data: warehouse } = await supabase
         .from("stock_locations")
         .select("id")
@@ -230,27 +145,21 @@ export default function PurchasesImport() {
         return;
       }
 
-      // Fetch products
       const { data: productsData } = await supabase
         .from("products")
         .select("id, name, code, category, unit, current_stock")
         .order("name");
       setProducts((productsData as Product[]) || []);
       setCheckingWarehouse(false);
-    } catch (error) {
-      // No warehouse found
+    } catch {
       setStep("no-warehouse");
       setCheckingWarehouse(false);
     }
   };
 
-  const fetchProducts = async () => {
-    const { data } = await supabase
-      .from("products")
-      .select("id, name, code, category, unit, current_stock")
-      .order("name");
-    setProducts((data as Product[]) || []);
-  };
+  // ============================================================================
+  // UPLOAD Y PROCESAMIENTO
+  // ============================================================================
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -271,11 +180,9 @@ export default function PurchasesImport() {
     setStep("processing");
 
     try {
-      // Convert file to base64
       const base64 = await fileToBase64(file);
       const fileType = getFileType(file.type);
 
-      // Upload file to storage
       const filePath = `invoices/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from("purchase-documents")
@@ -283,7 +190,6 @@ export default function PurchasesImport() {
 
       if (uploadError) throw uploadError;
 
-      // Create purchase document record
       const { data: doc, error: docError } = await supabase
         .from("purchase_documents")
         .insert({
@@ -297,7 +203,6 @@ export default function PurchasesImport() {
       if (docError) throw docError;
       setDocumentId(doc.id);
 
-      // Call parsing function
       setProcessing(true);
       const { data: parseResult, error: parseError } = await supabase.functions.invoke(
         "parse-invoice",
@@ -313,7 +218,10 @@ export default function PurchasesImport() {
 
       if (parseError) throw parseError;
 
-      // Fetch the updated document and items
+      // Guardar raw extraction para diagnóstico
+      setRawExtraction(parseResult?.raw_extraction || null);
+
+      // Fetch updated document and items
       const { data: updatedDoc } = await supabase
         .from("purchase_documents")
         .select("*")
@@ -334,108 +242,36 @@ export default function PurchasesImport() {
         setIvaAmount(updatedDoc.iva_amount || 0);
         setTotalAmountGross(updatedDoc.total_amount_gross || 0);
         setVenueId(updatedDoc.venue_id || null);
-        // Parse audit trail safely
-        const trail = updatedDoc.audit_trail;
-        if (Array.isArray(trail)) {
-          setAuditTrail(trail as Array<{ action: string; timestamp: string; data?: Record<string, unknown> }>);
-        }
-        // Check tax coherence
-        const calculatedTotal = (updatedDoc.net_amount || 0) + (updatedDoc.iva_amount || 0);
-        const total = updatedDoc.total_amount_gross || 0;
-        setTaxCoherenceValid(total === 0 || Math.abs(calculatedTotal - total) < 1.0);
       }
 
-      // Convert to editable items with UoM fields and STRICT validation
-      const editableItems: EditableItem[] = (purchaseItems || []).map((item) => {
-        const qty = item.extracted_quantity || 0;
-        const price = item.extracted_unit_price || 0;
-        const factor = item.conversion_factor || 1;
-        const discountPct = (item as unknown as { discount_percent?: number }).discount_percent || 0;
-        const discountAmt = (item as unknown as { discount_amount?: number }).discount_amount || 0;
-        const subtotalBefore = (item as unknown as { subtotal_before_discount?: number }).subtotal_before_discount || qty * price;
-        const unitsPerPack = (item as unknown as { units_per_pack?: number }).units_per_pack || null;
-        const uomRaw = (item as unknown as { uom_raw?: string }).uom_raw || item.extracted_uom || "";
-        
-        // Beverage taxes (NO forman parte del costo)
-        const taxIaba10 = (item as unknown as { tax_iaba_10?: number }).tax_iaba_10 || 0;
-        const taxIaba18 = (item as unknown as { tax_iaba_18?: number }).tax_iaba_18 || 0;
-        const taxIlaVin = (item as unknown as { tax_ila_vin?: number }).tax_ila_vin || 0;
-        const taxIlaCer = (item as unknown as { tax_ila_cer?: number }).tax_ila_cer || 0;
-        const taxIlaLic = (item as unknown as { tax_ila_lic?: number }).tax_ila_lic || 0;
-        const taxCategory = (item as unknown as { tax_category?: string }).tax_category || null;
-        const totalTaxAmount = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic;
-        
-        // REGLA CRÍTICA: unidades_reales = multiplicador × cantidad_facturada
-        const realUnits = unitsPerPack ? qty * unitsPerPack : qty * factor;
-        
-        // REGLA CRÍTICA: precio_unitario_real = subtotal_neto / unidades_reales
-        // subtotal_neto = (cantidad × precio) - descuento - impuestos
-        const subtotalWithDiscount = (qty * price) - discountAmt;
-        const subtotalNet = subtotalWithDiscount - totalTaxAmount;
-        const netUnitCost = realUnits > 0 ? Math.round(subtotalNet / realUnits) : 0;
-        
-        // Detectar si es flete/despacho
-        const rawName = item.raw_product_name || "";
-        const isFrete = isFreightItem(rawName);
-        
-        // Verificar si requiere revisión manual
-        const reviewCheck = requiresManualReview({
-          quantity: qty,
-          unit_price: price,
-          units_per_pack: unitsPerPack,
-          uom: item.extracted_uom || "Unidad",
-          raw_product_name: rawName,
+      // Procesar ítems con el MOTOR DE CÁLCULO ÚNICO
+      const lines = (purchaseItems || []).map((item) => {
+        const computed = computePurchaseLine({
+          id: item.id,
+          raw_product_name: item.raw_product_name || "",
+          qty_text: item.extracted_quantity,
+          unit_price_text: item.extracted_unit_price,
+          line_total_text: item.extracted_total,
+          discount_text: item.discount_amount || item.discount_percent,
+          discount_mode: discountMode,
+          uom_text: item.extracted_uom,
+          tax_iaba_10: item.tax_iaba_10,
+          tax_iaba_18: item.tax_iaba_18,
+          tax_ila_vin: item.tax_ila_vin,
+          tax_ila_cer: item.tax_ila_cer,
+          tax_ila_lic: item.tax_ila_lic,
         });
-        
-        // Determinar clasificación inicial
-        let classification: "inventory" | "expense" = "inventory";
-        let itemStatus: EditableItem["item_status"] = item.matched_product_id ? "matched" : "pending_match";
-        
-        // REGLA: Flete SIEMPRE es gasto operacional
-        if (isFrete) {
-          classification = "expense";
-          itemStatus = "marked_as_expense";
-        }
-        
-        if (reviewCheck.required) {
-          itemStatus = "review_required";
-        }
-        
+
+        // Asignar match del backend
         return {
-          ...item,
-          selected_product_id: item.matched_product_id,
-          quantity: qty,
-          unit_price: price,
-          uom: item.extracted_uom || "Unidad",
-          uom_raw: uomRaw,
-          units_per_pack: unitsPerPack,
-          conversion_factor: factor,
-          normalized_quantity: realUnits,
-          normalized_unit_cost: netUnitCost,
-          real_units: realUnits,
-          discount_percent: discountPct,
-          discount_amount: discountAmt,
-          subtotal_before_discount: subtotalBefore,
-          tax_iaba_10: taxIaba10,
-          tax_iaba_18: taxIaba18,
-          tax_ila_vin: taxIlaVin,
-          tax_ila_cer: taxIlaCer,
-          tax_ila_lic: taxIlaLic,
-          tax_category: taxCategory,
-          total_tax_amount: totalTaxAmount,
-          net_unit_cost: netUnitCost,
-          classification: classification as "inventory" | "expense",
-          expense_category: isFrete ? "operational" : undefined,
-          expense_subcategory: isFrete ? "Transporte" : undefined,
-          expense_amount: qty * price,
-          item_status: itemStatus,
-          review_required: reviewCheck.required,
-          review_reason: reviewCheck.reason,
-          is_freight: isFrete,
+          ...computed,
+          matched_product_id: item.matched_product_id,
+          matched_product_name: products.find(p => p.id === item.matched_product_id)?.name || null,
+          match_confidence: item.match_confidence || 0,
         };
       });
 
-      setItems(editableItems);
+      setComputedLines(lines);
       setStep("review");
       toast.success("Documento procesado correctamente");
     } catch (error: unknown) {
@@ -449,89 +285,72 @@ export default function PurchasesImport() {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(",")[1];
-        resolve(base64);
+  // ============================================================================
+  // HANDLERS DE LÍNEAS
+  // ============================================================================
+
+  const handleUpdateLine = useCallback((id: string, updates: Partial<ComputedLine>) => {
+    setComputedLines(prev => prev.map(line => {
+      if (line.id !== id) return line;
+      
+      // Si cambian valores que afectan cálculos, recalcular
+      if ('qty_invoice' in updates || 'pack_multiplier' in updates || 'discount_amount' in updates) {
+        return recalculateLine(line, updates);
+      }
+      
+      // Si solo cambia el match, actualizar directo
+      return { ...line, ...updates };
+    }));
+  }, []);
+
+  const handleMarkAsExpense = useCallback((id: string) => {
+    setComputedLines(prev => prev.map(line => {
+      if (line.id !== id) return line;
+      return {
+        ...line,
+        status: "EXPENSE" as const,
+        matched_product_id: null,
+        matched_product_name: null,
+        reasons: [...line.reasons, "Marcado como gasto por el usuario"],
       };
-      reader.onerror = reject;
-    });
-  };
+    }));
+  }, []);
 
-  const getFileType = (mimeType: string): string => {
-    if (mimeType.includes("pdf")) return "pdf";
-    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpeg";
-    if (mimeType.includes("png")) return "png";
-    if (mimeType.includes("xml")) return "xml";
-    return "unknown";
-  };
+  const handleMarkAsInventory = useCallback((id: string) => {
+    setComputedLines(prev => prev.map(line => {
+      if (line.id !== id) return line;
+      // Recalcular con el motor para re-validar
+      const recalculated = recalculateLine(line, {});
+      // Forzar que no sea expense
+      return {
+        ...recalculated,
+        status: recalculated.real_units > 0 && recalculated.net_unit_cost > 0 ? "OK" : "REVIEW_REQUIRED",
+        reasons: recalculated.reasons.filter(r => !r.includes("gasto") && !r.includes("flete")),
+      };
+    }));
+  }, []);
 
-  const updateItem = (index: number, updates: Partial<EditableItem>) => {
-    setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, ...updates } : item))
-    );
-  };
+  const handleOpenDetail = useCallback((line: ComputedLine) => {
+    setSelectedLineForDetail(line);
+    setShowDetailDrawer(true);
+  }, []);
 
-  const markAsExpense = (index: number) => {
-    const item = items[index];
-    updateItem(index, {
-      classification: "expense",
-      item_status: "marked_as_expense",
-      expense_category: "operational",
-      expense_subcategory: "Transporte",
-      expense_amount: item.quantity * item.unit_price,
-      selected_product_id: null,
-    });
-  };
+  const handleCreateProduct = useCallback((lineId: string, rawName: string) => {
+    setEditingLineId(lineId);
+    setNewProductName(rawName);
+    setShowNewProductDialog(true);
+  }, []);
 
-  const markAsInventory = (index: number) => {
-    updateItem(index, {
-      classification: "inventory",
-      item_status: "pending_match",
-      expense_category: undefined,
-      expense_subcategory: undefined,
-      expense_amount: undefined,
-    });
-  };
+  // ============================================================================
+  // CREAR PRODUCTO
+  // ============================================================================
 
-  const getMatchBadge = (confidence: number, matchSource?: string) => {
-    if (confidence >= 0.9) {
-      return (
-        <div className="flex flex-col gap-0.5">
-          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Alta</Badge>
-          {matchSource === "provider" && (
-            <span className="text-[10px] text-muted-foreground">Aprendido</span>
-          )}
-        </div>
-      );
-    } else if (confidence >= 0.7) {
-      return (
-        <div className="flex flex-col gap-0.5">
-          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Alta</Badge>
-          {matchSource === "generic" && (
-            <span className="text-[10px] text-muted-foreground">Aprendido</span>
-          )}
-        </div>
-      );
-    } else if (confidence >= 0.5) {
-      return <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-500/30">Media</Badge>;
-    } else if (confidence > 0) {
-      return <Badge className="bg-orange-500/20 text-orange-700 border-orange-500/30">Baja</Badge>;
-    }
-    return <Badge variant="outline">Sin match</Badge>;
-  };
-
-  const handleCreateProduct = async () => {
+  const handleCreateNewProduct = async () => {
     if (!newProductName.trim()) {
       toast.error("Ingrese un nombre para el producto");
       return;
     }
 
-    // Get venue_id from session
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       toast.error("Sesión no válida");
@@ -571,13 +390,15 @@ export default function PurchasesImport() {
 
       if (error) throw error;
 
-      // Add to products list
       if (newProduct) {
-        setProducts((prev) => [...prev, newProduct as Product]);
+        setProducts(prev => [...prev, newProduct as Product]);
 
-        // Update the item being edited
-        if (editingItemIndex !== null) {
-          updateItem(editingItemIndex, { selected_product_id: newProduct.id });
+        if (editingLineId) {
+          handleUpdateLine(editingLineId, { 
+            matched_product_id: newProduct.id,
+            matched_product_name: newProduct.name,
+            match_confidence: 1.0,
+          });
         }
       }
 
@@ -586,9 +407,8 @@ export default function PurchasesImport() {
       setNewProductName("");
       setNewProductCode("");
       setNewProductCategory("unidades");
-      setEditingItemIndex(null);
+      setEditingLineId(null);
     } catch (error: unknown) {
-      console.error("Error creating product:", error);
       const errorMessage = error instanceof Error ? error.message : "Error al crear el producto";
       toast.error(errorMessage);
     } finally {
@@ -596,36 +416,38 @@ export default function PurchasesImport() {
     }
   };
 
-  const openNewProductDialog = (index: number) => {
-    setEditingItemIndex(index);
-    setNewProductName(items[index].raw_product_name);
-    setShowNewProductDialog(true);
-  };
+  // ============================================================================
+  // CONFIRMACIÓN
+  // ============================================================================
 
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchQuery.toLowerCase())
+  const validation = useMemo(() => validateForConfirmation(computedLines), [computedLines]);
+
+  const inventoryLines = useMemo(() => 
+    computedLines.filter(l => l.status === "OK" && l.matched_product_id), 
+    [computedLines]
+  );
+  
+  const expenseLines = useMemo(() => 
+    computedLines.filter(l => l.status === "EXPENSE"), 
+    [computedLines]
   );
 
-  // Totals are calculated below in the checklist section
+  const canConfirm = validation.canConfirm && (inventoryLines.length > 0 || (expenseLines.length > 0 && registerExpenses));
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
 
     setConfirming(true);
     try {
-      // Handle inventory items - USANDO COSTO NETO (sin impuestos)
-      if (inventoryItems.length > 0) {
-        const itemsPayload = inventoryItems.map((item) => ({
-          item_id: item.id,
-          product_id: item.selected_product_id,
-          // REGLA: quantity = unidades_reales (ya normalizadas)
-          quantity: item.real_units,
-          // REGLA: unit_cost = costo_unitario_neto (SIN IVA, SIN ILA, SIN IABA)
-          unit_cost: item.net_unit_cost,
-          raw_name: item.raw_product_name,
-          conversion_factor: item.units_per_pack || item.conversion_factor,
+      // Handle inventory items
+      if (inventoryLines.length > 0) {
+        const itemsPayload = inventoryLines.map((line) => ({
+          item_id: line.id,
+          product_id: line.matched_product_id,
+          quantity: line.real_units,
+          unit_cost: line.net_unit_cost,
+          raw_name: line.raw_product_name,
+          conversion_factor: line.pack_multiplier,
         }));
 
         const { data, error } = await supabase.rpc("confirm_purchase_intake", {
@@ -635,15 +457,14 @@ export default function PurchasesImport() {
 
         if (error) throw error;
 
-        const result = data as { success: boolean; error?: string; total_items?: number; total_quantity?: number; total_amount?: number };
+        const result = data as { success: boolean; error?: string };
         if (!result.success) {
           throw new Error(result.error || "Error desconocido");
         }
       }
 
       // Handle expense items
-      if (expenseItems.length > 0 && registerExpenses) {
-        // Get current user and venue
+      if (expenseLines.length > 0 && registerExpenses) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Usuario no autenticado");
 
@@ -653,16 +474,14 @@ export default function PurchasesImport() {
           .eq("id", user.id)
           .single();
 
-        // Get active jornada if exists
         const { data: jornadaId } = await supabase.rpc("get_active_jornada");
 
-        // Create expense records
-        const expenseRecords = expenseItems.map((item) => ({
-          description: item.raw_product_name,
-          amount: item.expense_amount || 0,
-          expense_type: item.expense_category === "operational" ? "operational" : "non-operational",
-          category: item.expense_subcategory || "Otros",
-          notes: item.expense_notes || `Importado desde factura: ${providerName} - ${documentNumber}`,
+        const expenseRecords = expenseLines.map((line) => ({
+          description: line.raw_product_name,
+          amount: line.gross_line,
+          expense_type: "operational",
+          category: "Transporte",
+          notes: `Importado desde factura: ${providerName} - ${documentNumber}`,
           created_by: user.id,
           jornada_id: jornadaId || null,
           venue_id: profile?.venue_id || null,
@@ -677,45 +496,21 @@ export default function PurchasesImport() {
         if (expenseError) throw expenseError;
       }
 
-      const inventoryMsg = inventoryItems.length > 0 
-        ? `${inventoryItems.length} productos a inventario` 
-        : "";
-      const expenseMsg = expenseItems.length > 0 && registerExpenses
-        ? `${expenseItems.length} gastos registrados` 
-        : "";
-      const messages = [inventoryMsg, expenseMsg].filter(Boolean).join(", ");
-      
-      // Log audit event
       await logAuditEvent({
         action: "invoice_import_confirm",
         status: "success",
         metadata: {
           document_id: documentId,
           provider: providerName,
-          document_number: documentNumber,
-          inventory_items: inventoryItems.length,
-          expense_items: expenseItems.length,
-          total_inventory_amount: totalInventoryAmount,
-          total_expense_amount: totalExpenseAmount,
+          inventory_items: inventoryLines.length,
+          expense_items: expenseLines.length,
         },
       });
 
-      toast.success(`Ingreso confirmado: ${messages}`);
+      toast.success(`Ingreso confirmado: ${inventoryLines.length} productos, ${registerExpenses ? expenseLines.length : 0} gastos`);
       setStep("complete");
     } catch (error: unknown) {
-      console.error("Error confirming intake:", error);
-      const errorMessage = error instanceof Error ? error.message : "Error al confirmar el ingreso";
-      
-      // Log audit event for failure
-      await logAuditEvent({
-        action: "invoice_import_confirm",
-        status: "fail",
-        metadata: {
-          document_id: documentId,
-          error: errorMessage,
-        },
-      });
-      
+      const errorMessage = error instanceof Error ? error.message : "Error al confirmar";
       toast.error(errorMessage);
     } finally {
       setConfirming(false);
@@ -732,96 +527,39 @@ export default function PurchasesImport() {
     setNetAmount(0);
     setIvaAmount(0);
     setTotalAmountGross(0);
-    setTaxCoherenceValid(true);
-    setAuditTrail([]);
     setVenueId(null);
-    setItems([]);
+    setComputedLines([]);
+    setRawExtraction(null);
     setRegisterExpenses(false);
-    setExpenseMode("all_inventory");
   };
 
-  const updateItemClassification = (index: number, classification: "inventory" | "expense") => {
-    setItems((prev) =>
-      prev.map((item, i) => {
-        if (i !== index) return item;
-        const newStatus = classification === "expense" ? "marked_as_expense" : (item.selected_product_id ? "matched" : "pending_match");
-        return {
-          ...item,
-          classification,
-          expense_amount: item.quantity * item.unit_price,
-          item_status: newStatus as EditableItem["item_status"],
-        };
-      })
-    );
-  };
+  // ============================================================================
+  // HELPERS
+  // ============================================================================
 
-  const handleUomConversion = (index: number) => {
-    setUomEditingIndex(index);
-    setShowUomDialog(true);
-  };
-
-  const applyUomConversion = (conversionFactor: number, normalizedQty: number, normalizedCost: number) => {
-    if (uomEditingIndex === null) return;
-    updateItem(uomEditingIndex, {
-      conversion_factor: conversionFactor,
-      normalized_quantity: normalizedQty,
-      normalized_unit_cost: normalizedCost,
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = reject;
     });
-    setUomEditingIndex(null);
   };
 
-  // Build checklist items for pre-confirmation with STRICT validation
-  const inventoryItems = items.filter(
-    (item) => item.classification === "inventory" && item.selected_product_id && item.quantity > 0
-  );
-  const expenseItems = items.filter(
-    (item) => item.classification === "expense" && item.expense_category && (item.expense_amount || 0) > 0
-  );
-  const unmatchedInventoryItems = items.filter(
-    (item) => item.classification === "inventory" && !item.selected_product_id && item.quantity > 0
-  );
-  
-  // STRICT VALIDATIONS
-  const itemsWithoutUnits = items.filter(
-    (item) => item.classification === "inventory" && (!item.real_units || item.real_units <= 0)
-  );
-  const itemsWithoutPrice = items.filter(
-    (item) => item.classification === "inventory" && (!item.net_unit_cost || item.net_unit_cost <= 0)
-  );
-  const fleteItemsNotMarked = items.filter(
-    (item) => item.is_freight && item.classification !== "expense"
-  );
-  const reviewRequiredItems = items.filter(
-    (item) => item.review_required && item.classification === "inventory"
-  );
-  
-  const totalInventoryItems = inventoryItems.length;
-  const totalQuantity = inventoryItems.reduce((sum, item) => sum + item.real_units, 0);
-  const totalInventoryAmount = inventoryItems.reduce((sum, item) => sum + item.real_units * item.net_unit_cost, 0);
-  const totalExpenseAmount = expenseItems.reduce((sum, item) => sum + (item.expense_amount || 0), 0);
-  const lineItemsTotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-  const lineTotalCoherence = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
+  const getFileType = (mimeType: string): string => {
+    if (mimeType.includes("pdf")) return "pdf";
+    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpeg";
+    if (mimeType.includes("png")) return "png";
+    if (mimeType.includes("xml")) return "xml";
+    return "unknown";
+  };
 
-  const checklistItems = buildPurchaseChecklist({
-    hasVenueId: !!venueId,
-    isAdmin: isAdmin,
-    allInventoryItemsMatched: unmatchedInventoryItems.length === 0,
-    unmatchedCount: unmatchedInventoryItems.length,
-    totalCoherenceValid: lineTotalCoherence,
-    totalDifference: lineItemsTotal - netAmount,
-    noDuplicateFolio: true,
-    // NEW STRICT VALIDATIONS
-    allItemsHaveUnitsReales: itemsWithoutUnits.length === 0,
-    itemsWithoutUnitsCount: itemsWithoutUnits.length,
-    allItemsHavePriceCalculated: itemsWithoutPrice.length === 0,
-    itemsWithoutPriceCount: itemsWithoutPrice.length,
-    fleteItemsMarkedAsExpense: fleteItemsNotMarked.length === 0,
-    fleteItemsNotMarkedCount: fleteItemsNotMarked.length,
-    noReviewRequiredItems: reviewRequiredItems.length === 0,
-    reviewRequiredCount: reviewRequiredItems.length,
-  });
-
-  const canConfirm = (inventoryItems.length > 0 || expenseItems.length > 0) && checklistItems.filter(c => c.critical && !c.passed).length === 0;
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   return (
     <div className="min-h-screen bg-background">
@@ -838,80 +576,70 @@ export default function PurchasesImport() {
         </Button>
         <div className="flex-1">
           <h1 className="text-lg font-semibold">Importar Factura de Compra</h1>
+          <span className="text-xs text-muted-foreground">Modo Estabilizado</span>
         </div>
       </header>
 
       <main className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* No Access - Feature disabled */}
+        {/* No Access */}
         {step === "no-access" && (
           <Card className="border-muted">
             <CardContent className="py-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                <Lock className="h-8 w-8 text-muted-foreground" />
-              </div>
+              <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h2 className="text-2xl font-bold mb-2">Función desactivada</h2>
               <p className="text-muted-foreground mb-6">
-                El Lector de Facturas no está habilitado para este local. Contacta al administrador para habilitarlo.
+                El Lector de Facturas no está habilitado para este local.
               </p>
-              <div className="flex justify-center gap-4">
-                <Button variant="outline" onClick={() => navigate("/admin")}>
-                  Volver al panel
-                </Button>
-              </div>
+              <Button variant="outline" onClick={() => navigate("/admin")}>
+                Volver al panel
+              </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* No Warehouse Warning */}
+        {/* No Warehouse */}
         {step === "no-warehouse" && (
           <Card className="border-amber-500/30">
             <CardContent className="py-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-                <Warehouse className="h-8 w-8 text-amber-600" />
-              </div>
+              <Warehouse className="h-12 w-12 mx-auto text-amber-600 mb-4" />
               <h2 className="text-2xl font-bold mb-2">Bodega no configurada</h2>
               <p className="text-muted-foreground mb-6">
-                Debes tener una bodega configurada antes de importar stock desde facturas.
+                Debe tener una bodega configurada antes de importar stock.
               </p>
-              <div className="flex justify-center gap-4">
-                <Button variant="outline" onClick={() => navigate("/admin")}>
-                  Volver al panel
-                </Button>
-              </div>
+              <Button variant="outline" onClick={() => navigate("/admin")}>
+                Volver al panel
+              </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Loading check */}
+        {/* Loading */}
         {checkingWarehouse && step !== "no-warehouse" && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         )}
 
-        {/* Step indicator - only show when not blocked */}
+        {/* Step Indicator */}
         {!checkingWarehouse && step !== "no-warehouse" && step !== "no-access" && (
           <div className="flex items-center justify-center gap-2">
             {[
               { key: "upload", label: "Subir" },
               { key: "review", label: "Revisar" },
-              { key: "confirm", label: "Confirmar" },
+              { key: "complete", label: "Listo" },
             ].map((s, i) => (
               <div key={s.key} className="flex items-center gap-2">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     step === s.key || (step === "processing" && s.key === "upload")
                       ? "bg-primary text-primary-foreground"
-                      : step === "complete" || 
-                        (step === "review" && s.key === "upload") ||
-                        (step === "confirm" && (s.key === "upload" || s.key === "review"))
+                      : step === "complete" || (step === "review" && s.key === "upload")
                       ? "bg-primary/20 text-primary"
                       : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {step === "complete" || 
-                   (step === "review" && s.key === "upload") ||
-                   (step === "confirm" && (s.key === "upload" || s.key === "review")) ? (
+                  {(step === "complete" && s.key !== "complete") || 
+                   (step === "review" && s.key === "upload") ? (
                     <Check className="h-4 w-4" />
                   ) : (
                     i + 1
@@ -938,29 +666,30 @@ export default function PurchasesImport() {
                 <div className="flex flex-col items-center justify-center py-12 gap-4">
                   <Loader2 className="h-12 w-12 animate-spin text-primary" />
                   <p className="text-muted-foreground">
-                    {uploading ? "Subiendo archivo..." : "Procesando documento con IA..."}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Esto puede tomar unos segundos
+                    {uploading ? "Subiendo archivo..." : "Procesando documento..."}
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground mb-2">
-                      Arrastra un archivo o haz clic para seleccionar
-                    </p>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      PDF, JPG, PNG o XML (máximo 20MB)
-                    </p>
-                    <Input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.xml"
-                      onChange={handleFileUpload}
-                      className="max-w-xs mx-auto"
-                    />
-                  </div>
+                <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-2">
+                    Arrastra un archivo o haz clic para seleccionar
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    PDF, JPG, PNG o XML (máximo 20MB)
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.xml"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="invoice-upload"
+                  />
+                  <label htmlFor="invoice-upload">
+                    <Button asChild>
+                      <span>Seleccionar archivo</span>
+                    </Button>
+                  </label>
                 </div>
               )}
             </CardContent>
@@ -969,529 +698,187 @@ export default function PurchasesImport() {
 
         {/* Review Step */}
         {step === "review" && (
-          <>
-            {/* Document Info */}
+          <div className="space-y-4">
+            {/* Document Header */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Datos del documento
-                  </span>
-                  {taxCoherenceValid ? (
-                    <Badge className="bg-green-100 text-green-700 border-green-300">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Coherencia OK
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-amber-100 text-amber-700 border-amber-300">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Revisar totales
-                    </Badge>
-                  )}
-                </CardTitle>
+              <CardHeader className="py-4">
+                <CardTitle className="text-base">Datos del Documento</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Basic info row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <Label>Proveedor</Label>
+                    <Label className="text-xs">Proveedor</Label>
                     <Input
                       value={providerName}
                       onChange={(e) => setProviderName(e.target.value)}
-                      placeholder="Nombre del proveedor"
+                      className="h-8 text-sm"
                     />
                   </div>
                   <div>
-                    <Label>RUT</Label>
+                    <Label className="text-xs">RUT</Label>
                     <Input
                       value={providerRut}
                       onChange={(e) => setProviderRut(e.target.value)}
-                      placeholder="XX.XXX.XXX-X"
+                      className="h-8 text-sm"
                     />
                   </div>
                   <div>
-                    <Label>N° Documento</Label>
+                    <Label className="text-xs">N° Documento</Label>
                     <Input
                       value={documentNumber}
                       onChange={(e) => setDocumentNumber(e.target.value)}
-                      placeholder="Número"
+                      className="h-8 text-sm"
                     />
                   </div>
                   <div>
-                    <Label>Fecha</Label>
+                    <Label className="text-xs">Fecha</Label>
                     <Input
                       type="date"
                       value={documentDate}
                       onChange={(e) => setDocumentDate(e.target.value)}
+                      className="h-8 text-sm"
                     />
                   </div>
                 </div>
-
-                {/* Tax fields row */}
+                
                 <Separator />
-                <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
+                
+                <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <Label>Monto Neto</Label>
+                    <Label className="text-xs">Neto</Label>
                     <Input
                       type="number"
                       value={netAmount}
                       onChange={(e) => setNetAmount(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
+                      className="h-8 text-sm"
                     />
                   </div>
                   <div>
-                    <Label>IVA</Label>
+                    <Label className="text-xs">IVA</Label>
                     <Input
                       type="number"
                       value={ivaAmount}
                       onChange={(e) => setIvaAmount(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
+                      className="h-8 text-sm"
                     />
                   </div>
                   <div>
-                    <Label>Total Bruto</Label>
+                    <Label className="text-xs">Total</Label>
                     <Input
                       type="number"
                       value={totalAmountGross}
                       onChange={(e) => setTotalAmountGross(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
+                      className="h-8 text-sm"
                     />
                   </div>
-                  <div className="flex items-end">
-                    <div className="text-sm text-muted-foreground">
-                      <p>Calculado: {formatCLP(netAmount + ivaAmount)}</p>
-                      {!taxCoherenceValid && (
-                        <p className="text-amber-600">
-                          Diferencia: {formatCLP(Math.abs((netAmount + ivaAmount) - totalAmountGross))}
-                        </p>
-                      )}
-                    </div>
-                  </div>
                 </div>
-
-                {/* Audit timeline */}
-                {auditTrail.length > 0 && (
-                  <ImportAuditTimeline events={auditTrail} className="mt-4" />
-                )}
               </CardContent>
             </Card>
 
-            {/* Items */}
+            {/* Products Table - MINIMAL */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+              <CardHeader className="py-4">
+                <CardTitle className="flex items-center justify-between text-base">
                   <span className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Productos ({items.length})
+                    <Package className="h-4 w-4" />
+                    Productos ({computedLines.length})
                   </span>
                   <div className="flex items-center gap-2">
                     <Search className="h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Buscar producto..."
+                      placeholder="Buscar..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-48"
+                      className="w-36 h-8 text-sm"
                     />
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[220px]">Nombre en factura</TableHead>
-                      <TableHead className="w-[100px]">Estado</TableHead>
-                      <TableHead className="w-[180px]">Producto</TableHead>
-                      <TableHead className="w-[80px]">Cant. Fact.</TableHead>
-                      <TableHead className="w-[90px]">Un. Reales</TableHead>
-                      <TableHead className="w-[100px]">Costo Neto</TableHead>
-                      <TableHead className="w-[70px] text-center">% Dcto</TableHead>
-                      <TableHead className="w-[90px] text-right">Impuestos</TableHead>
-                      <TableHead className="text-right">Total Línea</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item, index) => (
-                      <TableRow 
-                        key={item.id}
-                        className={
-                          item.classification === "expense" ? "bg-amber-50/50" : 
-                          item.review_required ? "bg-red-50/50" :
-                          (item.is_freight && item.classification === "inventory") ? "bg-red-100/50" : ""
-                        }
-                      >
-                        <TableCell className="font-medium text-sm min-w-[220px]">
-                          <div className="whitespace-normal break-words leading-tight" title={item.raw_product_name}>
-                            {item.raw_product_name}
-                          </div>
-                          {item.units_per_pack && (
-                            <span className="text-[10px] text-blue-600 font-medium">
-                              Empaque: ×{item.units_per_pack}
-                            </span>
-                          )}
-                          {item.is_freight && (
-                            <Badge variant="outline" className="text-amber-700 border-amber-400 bg-amber-50 text-[10px] mt-1">
-                              Flete detectado
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {item.review_required ? (
-                            <div className="flex flex-col gap-0.5">
-                              <Badge variant="outline" className="text-red-700 border-red-400 bg-red-50">
-                                REVISAR
-                              </Badge>
-                              <span className="text-[9px] text-red-600">{item.review_reason}</span>
-                            </div>
-                          ) : item.classification === "expense" ? (
-                            <Badge variant="outline" className="text-amber-700 border-amber-400 bg-amber-50">
-                              Gasto
-                            </Badge>
-                          ) : item.item_status === "matched" ? (
-                            <div className="flex flex-col gap-0.5">
-                              {getMatchBadge(item.match_confidence, item.match_source)}
-                            </div>
-                          ) : item.item_status === "pending_match" ? (
-                            <Badge variant="outline" className="text-yellow-700 border-yellow-400 bg-yellow-50">
-                              Sin match
-                            </Badge>
-                          ) : (
-                            getMatchBadge(item.match_confidence, item.match_source)
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {item.classification === "inventory" ? (
-                            <div className="flex gap-1 items-center">
-                              <Select
-                                value={item.selected_product_id || ""}
-                                onValueChange={(value) =>
-                                  updateItem(index, { 
-                                    selected_product_id: value || null,
-                                    item_status: value ? "matched" : "pending_match"
-                                  })
-                                }
-                              >
-                                <SelectTrigger className="w-[160px]">
-                                  <SelectValue placeholder="Seleccionar..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {filteredProducts.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                      {p.name} ({p.code})
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openNewProductDialog(index)}
-                                title="Crear nuevo producto"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => markAsExpense(index)}
-                                title="Marcar como gasto operacional"
-                                className="text-amber-700 border-amber-300 hover:bg-amber-50 h-8 px-2"
-                              >
-                                <Banknote className="h-4 w-4 mr-1" />
-                                Gasto
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex gap-1 items-center">
-                              <Select
-                                value={item.expense_category || ""}
-                                onValueChange={(value) =>
-                                  updateItem(index, { 
-                                    expense_category: value as ExpenseCategory,
-                                    expense_subcategory: value === "operational" ? "Transporte" : "Administrativo"
-                                  })
-                                }
-                              >
-                                <SelectTrigger className="w-[130px]">
-                                  <SelectValue placeholder="Tipo..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="operational">Operacional</SelectItem>
-                                  <SelectItem value="non-operational">No operacional</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => markAsInventory(index)}
-                                title="Volver a inventario"
-                                className="text-muted-foreground hover:text-foreground h-8 px-2"
-                              >
-                                <Undo2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                        {/* Cantidad Facturada */}
-                        <TableCell>
-                          {item.classification === "inventory" ? (
-                            <div className="flex flex-col items-center">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="1"
-                                value={item.quantity}
-                                onChange={(e) => {
-                                  const qty = parseFloat(e.target.value) || 0;
-                                  const pack = item.units_per_pack || item.conversion_factor;
-                                  const realUnits = qty * pack;
-                                  const subtotalWithDiscount = (qty * item.unit_price) - item.discount_amount;
-                                  const subtotalNet = subtotalWithDiscount - item.total_tax_amount;
-                                  const netCost = realUnits > 0 ? Math.round(subtotalNet / realUnits) : 0;
-                                  updateItem(index, { 
-                                    quantity: qty,
-                                    real_units: realUnits,
-                                    normalized_quantity: realUnits,
-                                    net_unit_cost: netCost,
-                                    normalized_unit_cost: netCost,
-                                  });
-                                }}
-                                className="w-16 h-7 text-sm text-center"
-                              />
-                              <span className="text-[10px] text-muted-foreground">
-                                {item.uom}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        {/* Unidades Reales (CRÍTICO) */}
-                        <TableCell>
-                          {item.classification === "inventory" ? (
-                            <div className="flex flex-col items-center">
-                              <span className="font-bold text-primary">{item.real_units.toFixed(0)}</span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {item.units_per_pack ? `(${item.quantity}×${item.units_per_pack})` : "un"}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        {/* Costo Neto Unitario (SIN impuestos - ESTE SE USA PARA CPP) */}
-                        <TableCell>
-                          {item.classification === "inventory" ? (
-                            <div className="flex flex-col items-end">
-                              <span className="font-medium text-green-700">{formatCLP(item.net_unit_cost)}</span>
-                              <span className="text-[10px] text-muted-foreground">por un.</span>
-                              {item.total_tax_amount > 0 && (
-                                <span className="text-[9px] text-purple-600">
-                                  -{formatCLP(item.total_tax_amount)} imp.
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <Input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={item.expense_amount || 0}
-                              onChange={(e) =>
-                                updateItem(index, { expense_amount: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-20 h-7 text-sm"
-                            />
-                          )}
-                        </TableCell>
-                        {/* % Descuento */}
-                        <TableCell className="text-center">
-                          {item.classification === "inventory" ? (
-                            item.discount_percent > 0 ? (
-                              <span className="text-sm text-red-600">-{item.discount_percent.toFixed(1)}%</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        {/* Impuestos (IVA + ILA + IABA) - Solo informativos */}
-                        <TableCell className="text-right">
-                          {item.classification === "inventory" ? (
-                            (() => {
-                              const totalTax = item.total_tax_amount;
-                              if (totalTax > 0) {
-                                const taxLabel = item.tax_category === "licor_31.5" ? "31.5%" :
-                                                item.tax_category === "vino_20.5" ? "VIN" :
-                                                item.tax_category === "cerveza_20.5" ? "CER" :
-                                                item.tax_category === "alto_azucar_18" ? "18%" :
-                                                item.tax_category === "analcoholica_10" ? "10%" : "";
-                                return (
-                                  <div className="flex flex-col items-end">
-                                    <span className="text-xs text-purple-600 font-medium">{formatCLP(totalTax)}</span>
-                                    {taxLabel && <span className="text-[9px] text-muted-foreground">{taxLabel}</span>}
-                                  </div>
-                                );
-                              }
-                              return <span className="text-xs text-muted-foreground">-</span>;
-                            })()
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        {/* Total Línea (solo referencia) */}
-                        <TableCell className="text-right">
-                          {item.classification === "inventory" ? (
-                            <div className="flex flex-col items-end">
-                              {item.discount_amount > 0 && (
-                                <span className="text-xs text-muted-foreground line-through">
-                                  {formatCLP(item.quantity * item.unit_price)}
-                                </span>
-                              )}
-                              <span className="font-medium">
-                                {formatCLP(item.quantity * item.unit_price - item.discount_amount)}
-                              </span>
-                              {/* Mostrar costo neto total */}
-                              <span className="text-[10px] text-green-700">
-                                Neto: {formatCLP(item.real_units * item.net_unit_cost)}
-                              </span>
-                            </div>
-                          ) : (
-                            formatCLP(item.expense_amount || 0)
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-
-                {items.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No se encontraron productos en el documento
-                  </div>
-                )}
+              <CardContent className="p-0">
+                <MinimalReviewTable
+                  lines={computedLines}
+                  products={products}
+                  searchQuery={searchQuery}
+                  onUpdateLine={handleUpdateLine}
+                  onMarkAsExpense={handleMarkAsExpense}
+                  onMarkAsInventory={handleMarkAsInventory}
+                  onOpenDetail={handleOpenDetail}
+                  onCreateProduct={handleCreateProduct}
+                />
               </CardContent>
             </Card>
 
-            {/* Expense Registration Toggle - only show if invoice_to_expense feature is enabled */}
-            {isEnabled("invoice_to_expense") && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Receipt className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <CardTitle className="text-base">Registrar parte como GASTO</CardTitle>
-                        <CardDescription className="text-sm">
-                          Opcionalmente registre ítems como gastos operacionales (ej: hielo, vasos, limpieza)
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={registerExpenses}
-                      onCheckedChange={setRegisterExpenses}
-                    />
-                  </div>
-                </CardHeader>
-                {registerExpenses && (
-                  <CardContent className="pt-0">
-                    <div className="space-y-4">
-                      <div className="flex gap-4">
-                        <Button
-                          variant={expenseMode === "all_inventory" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setExpenseMode("all_inventory");
-                            // Reset all to inventory
-                            setItems(prev => prev.map(item => ({ ...item, classification: "inventory" as const })));
-                          }}
-                        >
-                          Todo es inventario
-                        </Button>
-                        <Button
-                          variant={expenseMode === "partial_expense" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setExpenseMode("partial_expense")}
-                        >
-                          Parte es gasto
-                        </Button>
-                      </div>
-                      
-                      {expenseMode === "partial_expense" && (
-                        <p className="text-sm text-muted-foreground">
-                          Use la columna "Clasificación" en la tabla para marcar ítems como gasto.
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
+            {/* Diagnostic Panel (Admin/Dev) */}
+            {isAdmin && (
+              <DiagnosticPanel
+                rawExtraction={rawExtraction}
+                computedLines={computedLines}
+              />
             )}
 
-            {/* Pre-Confirm Checklist */}
-            <PreConfirmChecklist items={checklistItems} className="mb-4" />
+            {/* Checklist & Confirmation */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <StabilizedChecklist
+                lines={computedLines}
+                hasVenueId={!!venueId}
+                isAdmin={isAdmin}
+              />
 
-            {/* Summary & Confirm */}
-            <Card className="border-primary/30">
-              <CardContent className="p-6">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-6 text-center">
-                    <div>
-                      <p className="text-2xl font-bold text-primary">{totalInventoryItems}</p>
-                      <p className="text-sm text-muted-foreground">Productos</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold">{totalQuantity.toFixed(0)}</p>
-                      <p className="text-sm text-muted-foreground">Unidades Reales</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-green-700">{formatCLP(totalInventoryAmount)}</p>
-                      <p className="text-sm text-muted-foreground">Costo Neto (CPP)</p>
-                    </div>
-                    {expenseItems.length > 0 && (
-                      <div>
-                        <p className="text-2xl font-bold text-amber-600">{formatCLP(totalExpenseAmount)}</p>
-                        <p className="text-sm text-muted-foreground">Gastos ({expenseItems.length})</p>
-                      </div>
-                    )}
-                    {reviewRequiredItems.length > 0 && (
-                      <div>
-                        <p className="text-2xl font-bold text-red-600">{reviewRequiredItems.length}</p>
-                        <p className="text-sm text-muted-foreground">Requieren Revisión</p>
-                      </div>
-                    )}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Resumen</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <span className="text-muted-foreground">Productos a inventario:</span>
+                    <span className="text-right font-medium">{inventoryLines.length}</span>
+                    <span className="text-muted-foreground">Unidades totales:</span>
+                    <span className="text-right font-medium">
+                      {inventoryLines.reduce((s, l) => s + l.real_units, 0)}
+                    </span>
+                    <span className="text-muted-foreground">Monto inventario:</span>
+                    <span className="text-right font-medium">
+                      {formatCLP(inventoryLines.reduce((s, l) => s + l.net_line_for_cost, 0))}
+                    </span>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={resetForm}>
-                      Cancelar
-                    </Button>
-                    <Button
-                      onClick={handleConfirm}
-                      disabled={!canConfirm || confirming}
-                      className="gap-2"
-                    >
-                      {confirming ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Check className="h-4 w-4" />
+                  {expenseLines.length > 0 && (
+                    <>
+                      <Separator />
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="register-expenses" className="text-sm">
+                          Registrar gastos ({expenseLines.length})
+                        </Label>
+                        <Switch
+                          id="register-expenses"
+                          checked={registerExpenses}
+                          onCheckedChange={setRegisterExpenses}
+                        />
+                      </div>
+                      {registerExpenses && (
+                        <div className="text-sm text-amber-700">
+                          Monto: {formatCLP(expenseLines.reduce((s, l) => s + l.gross_line, 0))}
+                        </div>
                       )}
-                      Confirmar Ingreso
-                    </Button>
-                  </div>
-                </div>
+                    </>
+                  )}
 
-                {!canConfirm && items.length > 0 && (
-                  <div className="flex items-center gap-2 mt-4 text-sm text-amber-600">
-                    <AlertCircle className="h-4 w-4" />
-                    Debe asignar al menos un producto o gasto válido
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
+                  <Button
+                    className="w-full"
+                    onClick={handleConfirm}
+                    disabled={!canConfirm || confirming}
+                  >
+                    {confirming ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-2" />
+                    )}
+                    Confirmar Ingreso
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         )}
 
         {/* Complete Step */}
@@ -1501,16 +888,16 @@ export default function PurchasesImport() {
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">¡Ingreso confirmado!</h2>
+              <h2 className="text-2xl font-bold mb-2">¡Ingreso completado!</h2>
               <p className="text-muted-foreground mb-6">
-                El stock ha sido actualizado correctamente en bodega.
+                Los productos han sido agregados al inventario.
               </p>
               <div className="flex justify-center gap-4">
-                <Button variant="outline" onClick={resetForm}>
-                  Importar otro documento
+                <Button variant="outline" onClick={() => navigate("/admin")}>
+                  Ir al panel
                 </Button>
-                <Button onClick={() => navigate("/admin")}>
-                  Volver al panel
+                <Button onClick={resetForm}>
+                  Importar otro documento
                 </Button>
               </div>
             </CardContent>
@@ -1518,42 +905,45 @@ export default function PurchasesImport() {
         )}
       </main>
 
+      {/* Detail Drawer */}
+      <LineDetailDrawer
+        open={showDetailDrawer}
+        onOpenChange={setShowDetailDrawer}
+        line={selectedLineForDetail}
+      />
+
       {/* New Product Dialog */}
       <Dialog open={showNewProductDialog} onOpenChange={setShowNewProductDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Crear nuevo producto
-            </DialogTitle>
+            <DialogTitle>Crear nuevo producto</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nombre del producto</Label>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre</Label>
               <Input
                 value={newProductName}
                 onChange={(e) => setNewProductName(e.target.value)}
-                placeholder="Ej: Vodka Absolut 750ml"
               />
             </div>
-            <div className="space-y-2">
+            <div>
               <Label>Código (opcional)</Label>
               <Input
                 value={newProductCode}
                 onChange={(e) => setNewProductCode(e.target.value)}
-                placeholder="Se generará automáticamente si está vacío"
+                placeholder="Auto-generado si vacío"
               />
             </div>
-            <div className="space-y-2">
+            <div>
               <Label>Categoría</Label>
               <Select value={newProductCategory} onValueChange={setNewProductCategory}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unidades">Unidades</SelectItem>
                   <SelectItem value="ml">Mililitros (ml)</SelectItem>
                   <SelectItem value="gramos">Gramos (g)</SelectItem>
-                  <SelectItem value="unidades">Unidades</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1562,33 +952,13 @@ export default function PurchasesImport() {
             <Button variant="outline" onClick={() => setShowNewProductDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreateProduct} disabled={creatingProduct}>
-              {creatingProduct ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Plus className="h-4 w-4 mr-2" />
-              )}
+            <Button onClick={handleCreateNewProduct} disabled={creatingProduct}>
+              {creatingProduct && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Crear producto
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* UoM Conversion Dialog */}
-      {uomEditingIndex !== null && items[uomEditingIndex] && (
-        <UoMConversionDialog
-          open={showUomDialog}
-          onOpenChange={setShowUomDialog}
-          itemName={items[uomEditingIndex].raw_product_name}
-          extractedUom={items[uomEditingIndex].uom}
-          extractedQuantity={items[uomEditingIndex].quantity}
-          extractedUnitPrice={items[uomEditingIndex].unit_price}
-          productUnit={
-            products.find((p) => p.id === items[uomEditingIndex].selected_product_id)?.unit || "un"
-          }
-          onConfirm={applyUomConversion}
-        />
-      )}
     </div>
   );
 }
