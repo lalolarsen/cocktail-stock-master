@@ -10,12 +10,14 @@ const corsHeaders = {
 interface LineItem {
   raw_product_name: string;
   quantity: number | null;
+  units_per_pack: number | null; // Calculated from pack notation like 6pcx4=24
   unit_price: number | null;
   total: number | null;
-  uom: string | null; // Unidad de medida: Unidad, Caja, Pack, etc.
-  discount_percent: number | null; // Porcentaje de descuento
-  discount_amount: number | null; // Monto de descuento
-  subtotal_before_discount: number | null; // Subtotal antes de descuento
+  uom: string | null; // Normalized: Unidad, Caja, Pack, etc.
+  uom_raw: string | null; // Original as written: CJ, UN, PK
+  discount_percent: number | null;
+  discount_amount: number | null;
+  subtotal_before_discount: number | null;
 }
 
 interface ExtractedData {
@@ -305,12 +307,20 @@ function parseXmlInvoice(base64Content: string): ExtractedData {
     const discAmt = discountAmount(detail);
     const subtotalBefore = qty && unitPriceVal ? qty * unitPriceVal : null;
 
+    const productName = getName(detail);
+    // Try to parse pack notation from XML product name
+    const packMatch = productName.match(/(\d+)\s*(?:pc|px)?\s*x\s*(\d+)/i);
+    const unitsPerPack = packMatch ? parseInt(packMatch[1]) * parseInt(packMatch[2]) : null;
+    const uomRaw = getUom(detail);
+    
     lineItems.push({
-      raw_product_name: getName(detail),
+      raw_product_name: productName,
       quantity: qty,
+      units_per_pack: unitsPerPack,
       unit_price: unitPriceVal,
       total: totalVal,
-      uom: getUom(detail),
+      uom: uomRaw, // Will be normalized later if needed
+      uom_raw: uomRaw,
       discount_percent: discPct,
       discount_amount: discAmt,
       subtotal_before_discount: subtotalBefore,
@@ -364,7 +374,9 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
     {
       "raw_product_name": "full product name as written on the invoice",
       "quantity": number or null,
-      "uom": "unit of measure as written (Unidad, Caja, Pack, Kg, Lt, etc.) or null",
+      "units_per_pack": number or null (calculated from pack notation like 6pcx4=24, or 4PX6=24),
+      "uom": "NORMALIZED unit of measure (see UoM mapping below)",
+      "uom_raw": "original unit as written on invoice",
       "unit_price": number or null (PRICE PER SINGLE UNIT, without currency symbol),
       "discount_percent": number or null (percentage discount for this line, e.g., 20 for 20%),
       "discount_amount": number or null (absolute discount amount in currency),
@@ -376,19 +388,32 @@ async function parseWithAI(base64Content: string, fileType: string): Promise<Ext
 
 CRITICAL EXTRACTION RULES:
 1. Be thorough in extracting ALL line items from the document
-2. For "raw_product_name": Extract the COMPLETE product name as it appears, including brand, size, and all descriptors
-3. For "quantity": The number of units/items purchased
-4. For "uom": Unit of measure - common values are: Unidad, Caja, Pack, Botella, Kg, Lt, ml
-5. For "unit_price": This is the PRICE FOR ONE SINGLE UNIT. If only total is shown, calculate: unit_price = total / quantity
-6. For "discount_percent": Look for columns labeled "%", "Dcto%", "% Descuento" - extract the percentage number (e.g., 20 for 20%)
-7. For "discount_amount": Look for columns labeled "Descuento", "Dcto", "Monto Dcto" - extract the absolute discount value
-8. For "subtotal_before_discount": This is quantity × unit_price BEFORE any discount is applied
-9. For "total": This is the FINAL AMOUNT for this line AFTER discount (often labeled "Valor", "Neto", "Total Línea")
-10. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
-11. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
-12. If a value is unclear, use null
-13. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
-14. Return ONLY the JSON, no other text`;
+2. For "raw_product_name": Extract the COMPLETE product name as it appears, including brand, size, pack notation, and all descriptors
+3. For "quantity": The number of units/items purchased (from "Cantidad" column)
+4. For "units_per_pack": If product name contains pack notation like "6pcx4", "4PX6", "6PCX4", calculate: 6×4=24. Extract this calculated total. Common patterns:
+   - "6pcx4" means 6 packs × 4 units = 24 units
+   - "4PX6" means 4 packs × 6 units = 24 units
+   - If no pack notation, set to null
+5. For "uom" and "uom_raw": Map abbreviations to full names:
+   - CJ, Cj → "Caja"
+   - UN, Un, Und → "Unidad"  
+   - PK, Pk, Pack → "Pack"
+   - BT, Bot → "Botella"
+   - KG, Kg → "Kilogramo"
+   - LT, Lt → "Litro"
+   - ML, Ml → "Mililitro"
+   - DZ, Dz → "Docena"
+   - Store original in "uom_raw", normalized in "uom"
+6. For "unit_price": This is the PRICE FOR ONE SINGLE UNIT. If only total is shown, calculate: unit_price = total / quantity
+7. For "discount_percent": Look for columns labeled "%", "Dcto%", "% Descuento" - extract the percentage number (e.g., 20 for 20%)
+8. For "discount_amount": Look for columns labeled "Descuento", "Dcto", "Monto Dcto" - extract the absolute discount value
+9. For "subtotal_before_discount": This is quantity × unit_price BEFORE any discount is applied
+10. For "total": This is the FINAL AMOUNT for this line AFTER discount (often labeled "Valor", "Neto", "Total Línea")
+11. IMPORTANT: DO NOT confuse unit_price with total. If quantity > 1 and you only see one price, determine if it's the unit or total price based on context
+12. Extract tax summary: net_amount (neto), iva_amount (IVA), total_amount (total bruto)
+13. If a value is unclear, use null
+14. Focus on products/items, ignore subtotals, taxes, and grand totals as line items
+15. Return ONLY the JSON, no other text`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   
@@ -491,11 +516,48 @@ CRITICAL EXTRACTION RULES:
   }, 0);
   const lineTotalCoherenceValid = netAmount === 0 || Math.abs(lineItemsTotal - netAmount) < 1.0;
 
+  // Normalize UoM abbreviations
+  const normalizeUom = (uom: string | undefined | null): string => {
+    if (!uom) return "Unidad";
+    const lower = uom.toLowerCase().trim();
+    const mapping: Record<string, string> = {
+      'cj': 'Caja', 'caja': 'Caja',
+      'un': 'Unidad', 'und': 'Unidad', 'unidad': 'Unidad', 'u': 'Unidad',
+      'pk': 'Pack', 'pack': 'Pack',
+      'bt': 'Botella', 'bot': 'Botella', 'botella': 'Botella',
+      'kg': 'Kilogramo', 'kilogramo': 'Kilogramo',
+      'lt': 'Litro', 'litro': 'Litro', 'l': 'Litro',
+      'ml': 'Mililitro', 'mililitro': 'Mililitro',
+      'dz': 'Docena', 'docena': 'Docena',
+      'gr': 'Gramo', 'g': 'Gramo', 'gramo': 'Gramo',
+    };
+    return mapping[lower] || uom;
+  };
+
+  // Parse pack notation from product name (e.g., "6pcx4" = 24)
+  const parsePackNotation = (name: string): number | null => {
+    // Patterns: 6pcx4, 4PX6, 6PCX4, 12x6, etc.
+    const patterns = [
+      /(\d+)\s*pc\s*x\s*(\d+)/i,  // 6pcx4, 6 pc x 4
+      /(\d+)\s*px\s*(\d+)/i,      // 4px6, 4 PX 6
+      /(\d+)\s*x\s*(\d+)/i,       // 12x6
+    ];
+    for (const pattern of patterns) {
+      const match = name.match(pattern);
+      if (match) {
+        return parseInt(match[1]) * parseInt(match[2]);
+      }
+    }
+    return null;
+  };
+
   // Add uom to line items and calculate missing values
   const lineItemsWithUom = (parsed.line_items || []).map((item: { 
     raw_product_name?: string; 
-    quantity?: number; 
-    uom?: string; 
+    quantity?: number;
+    units_per_pack?: number;
+    uom?: string;
+    uom_raw?: string;
     unit_price?: number; 
     discount_percent?: number;
     discount_amount?: number;
@@ -507,6 +569,14 @@ CRITICAL EXTRACTION RULES:
     const discountPercent = item.discount_percent ?? 0;
     const discountAmount = item.discount_amount ?? 0;
     let subtotalBeforeDiscount = item.subtotal_before_discount ?? null;
+    
+    // Parse pack notation from product name if AI didn't extract it
+    const productName = item.raw_product_name || "";
+    let unitsPerPack = item.units_per_pack ?? parsePackNotation(productName);
+    
+    // Normalize UoM
+    const uomRaw = item.uom_raw || item.uom || null;
+    const uomNormalized = normalizeUom(item.uom);
     
     // If unit_price is missing but we have total and quantity, calculate it
     let unitPrice = item.unit_price ?? null;
@@ -527,9 +597,11 @@ CRITICAL EXTRACTION RULES:
     }
     
     return {
-      raw_product_name: item.raw_product_name || "",
+      raw_product_name: productName,
       quantity: qty,
-      uom: item.uom || "Unidad",
+      units_per_pack: unitsPerPack,
+      uom: uomNormalized,
+      uom_raw: uomRaw,
       unit_price: unitPrice,
       discount_percent: discountPercent,
       discount_amount: discountAmount,
