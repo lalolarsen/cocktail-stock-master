@@ -942,11 +942,11 @@ export default function PurchasesImport() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[200px]">Nombre en factura</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead className="w-[180px]">Producto</TableHead>
-                      <TableHead className="w-[80px]">UoM</TableHead>
-                      <TableHead className="w-[80px]">Cantidad</TableHead>
+                      <TableHead className="min-w-[250px]">Nombre en factura</TableHead>
+                      <TableHead className="w-[90px]">Estado</TableHead>
+                      <TableHead className="w-[200px]">Producto</TableHead>
+                      <TableHead className="w-[70px]">UoM</TableHead>
+                      <TableHead className="w-[70px]">Cant.</TableHead>
                       <TableHead className="w-[100px]">P. Unit.</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       {registerExpenses && expenseMode === "partial_expense" && (
@@ -960,8 +960,10 @@ export default function PurchasesImport() {
                         key={item.id}
                         className={item.classification === "expense" ? "bg-amber-50/50" : ""}
                       >
-                        <TableCell className="font-medium text-sm max-w-[200px] truncate" title={item.raw_product_name}>
-                          {item.raw_product_name}
+                        <TableCell className="font-medium text-sm min-w-[250px]">
+                          <div className="whitespace-normal break-words leading-tight" title={item.raw_product_name}>
+                            {item.raw_product_name}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {item.classification === "expense" ? (
