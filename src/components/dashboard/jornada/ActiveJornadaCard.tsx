@@ -1,9 +1,13 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertTriangle, Square, Play } from "lucide-react";
+import { Calendar, AlertTriangle, Square, Play, Loader2 } from "lucide-react";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
+import { toast } from "sonner";
 
 interface Jornada {
   id: string;
@@ -22,6 +26,7 @@ interface ActiveJornadaCardProps {
   onCloseJornada: (id: string) => void;
   onForceClose: (jornada: Jornada) => void;
   staleThresholdHours?: number;
+  onShiftOpened?: (shiftId: string) => void;
 }
 
 const STALE_JORNADA_THRESHOLD_HOURS = 24;
@@ -31,8 +36,35 @@ export function ActiveJornadaCard({
   onOpenJornada, 
   onCloseJornada,
   onForceClose,
-  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS 
+  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS,
+  onShiftOpened
 }: ActiveJornadaCardProps) {
+  const { venue } = useActiveVenue();
+  const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
+  const [openingShift, setOpeningShift] = useState(false);
+  const [selectedPosLocationId, setSelectedPosLocationId] = useState<string | null>(null);
+
+  // Fetch default POS terminal location on mount
+  useEffect(() => {
+    const fetchDefaultPOS = async () => {
+      if (!venue?.id) return;
+      
+      const { data } = await supabase
+        .from("pos_terminals")
+        .select("id, location_id")
+        .eq("venue_id", venue.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (data?.location_id) {
+        setSelectedPosLocationId(data.location_id);
+      }
+    };
+    
+    fetchDefaultPOS();
+  }, [venue?.id]);
+
   const isStaleJornada = (j: Jornada): boolean => {
     if (j.estado !== "activa") return false;
     const openedAt = new Date(`${j.fecha}T${j.hora_apertura || "00:00:00"}`);
@@ -64,6 +96,47 @@ export function ActiveJornadaCard({
     }
   };
 
+  const handleOpenShift = async () => {
+    if (!venue?.id) {
+      toast.error("No hay venue activo");
+      return;
+    }
+
+    if (!selectedPosLocationId) {
+      toast.error("No hay ubicación de POS configurada");
+      return;
+    }
+
+    setOpeningShift(true);
+    try {
+      const { data, error } = await supabase.rpc("open_shift" as any, {
+        p_venue_id: venue.id,
+        p_location_id: selectedPosLocationId,
+        p_note: "Apertura desde UI"
+      });
+
+      if (error) {
+        toast.error(error.message || "Error al abrir jornada");
+        return;
+      }
+
+      const result = data as { shift_id?: string } | string;
+      const shiftId = typeof result === "string" ? result : result?.shift_id;
+      
+      if (shiftId) {
+        setCurrentShiftId(shiftId);
+        onShiftOpened?.(shiftId);
+        toast.success("Jornada abierta");
+      } else {
+        toast.success("Jornada abierta");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error al abrir jornada");
+    } finally {
+      setOpeningShift(false);
+    }
+  };
+
   if (!jornada) {
     return (
       <Card className="p-5 border-amber-500/30 bg-amber-500/5">
@@ -81,9 +154,13 @@ export function ActiveJornadaCard({
               </p>
             </div>
           </div>
-          <Button onClick={onOpenJornada} size="lg" className="gap-2">
-            <Play className="w-4 h-4" />
-            Abrir Jornada
+          <Button onClick={handleOpenShift} size="lg" className="gap-2" disabled={openingShift}>
+            {openingShift ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            {openingShift ? "Abriendo..." : "Abrir Jornada"}
           </Button>
         </div>
       </Card>
