@@ -14,6 +14,9 @@ interface StabilizedChecklistProps {
 export function StabilizedChecklist({ lines, hasVenueId, isAdmin, className }: StabilizedChecklistProps) {
   const validation = validateForConfirmation(lines);
   
+  const inventoryLines = lines.filter(l => l.status === "OK");
+  const expenseLines = lines.filter(l => l.status === "EXPENSE");
+  
   // Build checklist items
   const items = [
     {
@@ -39,34 +42,61 @@ export function StabilizedChecklist({ lines, hasVenueId, isAdmin, className }: S
     },
     {
       id: "all_matched",
-      label: "Productos de inventario tienen producto asignado",
-      passed: lines.filter(l => l.status === "OK" && !l.matched_product_id).length === 0,
+      label: "Productos de inventario tienen match asignado",
+      passed: inventoryLines.filter(l => !l.matched_product_id).length === 0,
       critical: true,
-      details: lines.filter(l => l.status === "OK" && !l.matched_product_id).length > 0
-        ? `${lines.filter(l => l.status === "OK" && !l.matched_product_id).length} sin producto`
+      details: inventoryLines.filter(l => !l.matched_product_id).length > 0
+        ? `${inventoryLines.filter(l => !l.matched_product_id).length} sin producto`
         : undefined,
     },
     {
       id: "valid_units",
-      label: "Todas las líneas tienen unidades reales válidas",
-      passed: lines.filter(l => l.status === "OK" && l.real_units <= 0).length === 0,
+      label: "Todas las líneas tienen unidades reales > 0",
+      passed: inventoryLines.filter(l => l.real_units <= 0).length === 0,
       critical: true,
-      details: lines.filter(l => l.status === "OK" && l.real_units <= 0).length > 0
-        ? `${lines.filter(l => l.status === "OK" && l.real_units <= 0).length} con unidades inválidas`
+      details: inventoryLines.filter(l => l.real_units <= 0).length > 0
+        ? `${inventoryLines.filter(l => l.real_units <= 0).length} con unidades inválidas`
         : undefined,
     },
     {
-      id: "valid_cost",
-      label: "Todas las líneas tienen costo unitario válido",
-      passed: lines.filter(l => l.status === "OK" && l.net_unit_cost <= 0).length === 0,
+      id: "valid_price",
+      label: "Todas las líneas tienen precio unitario real > 0",
+      passed: inventoryLines.filter(l => l.unit_price_real <= 0).length === 0,
       critical: true,
-      details: lines.filter(l => l.status === "OK" && l.net_unit_cost <= 0).length > 0
-        ? `${lines.filter(l => l.status === "OK" && l.net_unit_cost <= 0).length} con costo inválido`
+      details: inventoryLines.filter(l => l.unit_price_real <= 0).length > 0
+        ? `${inventoryLines.filter(l => l.unit_price_real <= 0).length} con precio inválido`
+        : undefined,
+    },
+    {
+      id: "valid_discount",
+      label: "Descuentos están entre 0% y 100%",
+      passed: inventoryLines.filter(l => l.discount_pct < 0 || l.discount_pct > 100).length === 0,
+      critical: true,
+      details: inventoryLines.filter(l => l.discount_pct < 0 || l.discount_pct > 100).length > 0
+        ? `${inventoryLines.filter(l => l.discount_pct < 0 || l.discount_pct > 100).length} con descuento fuera de rango`
+        : undefined,
+    },
+    {
+      id: "pack_priced_check",
+      label: "Pack switch coherente con multiplicador",
+      passed: inventoryLines.filter(l => l.pack_priced && l.pack_multiplier === 1).length === 0,
+      critical: true,
+      details: inventoryLines.filter(l => l.pack_priced && l.pack_multiplier === 1).length > 0
+        ? `${inventoryLines.filter(l => l.pack_priced && l.pack_multiplier === 1).length} con "Pack?" activo pero mult=1`
+        : undefined,
+    },
+    {
+      id: "expense_classified",
+      label: "Ítems de flete están marcados como gasto",
+      passed: true, // Already auto-detected by isFreightLine
+      critical: false,
+      details: expenseLines.length > 0
+        ? `${expenseLines.length} ítem(s) clasificados como gasto`
         : undefined,
     },
   ];
 
-  const allPassed = items.every(item => item.passed);
+  const allPassed = items.filter(i => i.critical).every(item => item.passed);
   const criticalFailed = items.some(item => item.critical && !item.passed);
 
   return (
@@ -119,7 +149,7 @@ export function StabilizedChecklist({ lines, hasVenueId, isAdmin, className }: S
               <span className={cn({ "font-medium": !item.passed && item.critical })}>
                 {item.label}
               </span>
-              {item.details && !item.passed && (
+              {item.details && (
                 <p className="text-xs text-muted-foreground mt-0.5">{item.details}</p>
               )}
             </div>

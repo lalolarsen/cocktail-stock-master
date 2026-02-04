@@ -294,11 +294,17 @@ export default function PurchasesImport() {
       if (line.id !== id) return line;
       
       // Si cambian valores que afectan cálculos, recalcular
-      if ('qty_invoice' in updates || 'pack_multiplier' in updates || 'discount_amount' in updates) {
+      if (
+        'qty_invoice' in updates || 
+        'pack_multiplier' in updates || 
+        'pack_priced' in updates ||
+        'discount_pct' in updates ||
+        'tax_category' in updates
+      ) {
         return recalculateLine(line, updates);
       }
       
-      // Si solo cambia el match, actualizar directo
+      // Si solo cambia el match u otros campos, actualizar directo
       return { ...line, ...updates };
     }));
   }, []);
