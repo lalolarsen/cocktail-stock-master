@@ -43,6 +43,8 @@ import {
   Search,
   Warehouse,
   Lock,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { logAuditEvent } from "@/lib/monitoring";
@@ -83,19 +85,25 @@ export default function PurchasesImport() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const { hasRole, loading: roleLoading } = useUserRole();
-  const { venue } = useAppSession();
+  const { venue, user } = useAppSession();
   const isAdmin = hasRole("admin");
   
   // Draft persistence hook
   const {
     draftId,
-    initDraft,
-    loadDraft,
+    initializeDraft,
+    loadDraftById,
+    autoHydrate,
     saveDraft,
+    linkDocument,
     markConfirmed,
     isSaving,
     lastSaved,
     currentDraft,
+    error: draftError,
+    clearError,
+    clearAll,
+    isLoading: draftLoading,
   } = usePurchaseDraft();
   
   // Estados principales
@@ -104,6 +112,7 @@ export default function PurchasesImport() {
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [checkingWarehouse, setCheckingWarehouse] = useState(true);
+  const [hydrationAttempted, setHydrationAttempted] = useState(false);
   
   // Navigation confirmation
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -147,34 +156,42 @@ export default function PurchasesImport() {
   const [registerExpenses, setRegisterExpenses] = useState(false);
 
   // ============================================================================
-  // EFECTOS Y CARGA INICIAL
+  // HYDRATION - AUTO-RESTORE DRAFT ON MOUNT
   // ============================================================================
 
-  // Check for draft ID in URL params on mount
+  // Hydrate from URL param or localStorage on mount
   useEffect(() => {
-    const draftParam = searchParams.get("draft");
-    if (draftParam && step === "upload") {
-      // Hydrate from draft
-      loadDraft(draftParam).then((draft) => {
-        if (draft && draft.computed_lines.length > 0) {
-          setDocumentId(draft.purchase_document_id);
-          setProviderName(draft.provider_name);
-          setProviderRut(draft.provider_rut);
-          setDocumentNumber(draft.document_number);
-          setDocumentDate(draft.document_date);
-          setNetAmount(draft.net_amount);
-          setIvaAmount(draft.iva_amount);
-          setTotalAmountGross(draft.total_amount_gross);
-          setRawExtraction(draft.raw_extraction);
-          setComputedLines(draft.computed_lines);
-          setDiscountMode(draft.discount_mode);
-          setVenueId(venue?.id || null);
-          setStep("review");
-          toast.success("Borrador recuperado");
-        }
-      });
-    }
-  }, [searchParams, loadDraft, venue?.id, step]);
+    if (hydrationAttempted || !venue?.id || !user?.id) return;
+    
+    const attemptHydration = async () => {
+      setHydrationAttempted(true);
+      
+      const draft = await autoHydrate();
+      if (draft && draft.computed_lines && draft.computed_lines.length > 0) {
+        // Restore state from draft
+        setDocumentId(draft.purchase_document_id);
+        setProviderName(draft.provider_name);
+        setProviderRut(draft.provider_rut);
+        setDocumentNumber(draft.document_number);
+        setDocumentDate(draft.document_date);
+        setNetAmount(draft.net_amount);
+        setIvaAmount(draft.iva_amount);
+        setTotalAmountGross(draft.total_amount_gross);
+        setRawExtraction(draft.raw_extraction);
+        setComputedLines(draft.computed_lines);
+        setDiscountMode(draft.discount_mode);
+        setVenueId(venue?.id || null);
+        setStep("review");
+        toast.success("Borrador recuperado correctamente");
+      } else if (draft && !draft.computed_lines.length) {
+        // Draft exists but is empty (user started but didn't upload yet)
+        // Stay on upload step
+        setVenueId(venue?.id || null);
+      }
+    };
+    
+    attemptHydration();
+  }, [venue?.id, user?.id, hydrationAttempted, autoHydrate]);
 
   // Auto-save effect - save whenever document data changes
   useEffect(() => {
@@ -261,6 +278,15 @@ export default function PurchasesImport() {
     setStep("processing");
 
     try {
+      // STEP 1: Create or use existing draft BEFORE uploading
+      let currentDraftId = draftId;
+      if (!currentDraftId) {
+        currentDraftId = await initializeDraft();
+        if (!currentDraftId) {
+          throw new Error("No se pudo crear el borrador. Verifique que tiene venue asignado.");
+        }
+      }
+
       const base64 = await fileToBase64(file);
       const fileType = getFileType(file.type);
 
@@ -283,6 +309,9 @@ export default function PurchasesImport() {
 
       if (docError) throw docError;
       setDocumentId(doc.id);
+
+      // Link the document to the draft
+      await linkDocument(doc.id);
 
       setProcessing(true);
       const { data: parseResult, error: parseError } = await supabase.functions.invoke(
@@ -355,13 +384,20 @@ export default function PurchasesImport() {
       setComputedLines(lines);
       setVenueId(venue?.id || null);
       
-      // Initialize draft for persistence
-      try {
-        const newDraftId = await initDraft(doc.id);
-        setSearchParams({ draft: newDraftId });
-      } catch (draftError) {
-        console.warn("Could not initialize draft:", draftError);
-      }
+      // Save initial state to draft
+      saveDraft({
+        purchase_document_id: doc.id,
+        provider_name: updatedDoc?.provider_name || "",
+        provider_rut: updatedDoc?.provider_rut || "",
+        document_number: updatedDoc?.document_number || "",
+        document_date: updatedDoc?.document_date || "",
+        net_amount: updatedDoc?.net_amount || 0,
+        iva_amount: updatedDoc?.iva_amount || 0,
+        total_amount_gross: updatedDoc?.total_amount_gross || 0,
+        raw_extraction: parseResult?.raw_extraction || null,
+        computed_lines: lines,
+        discount_mode: discountMode,
+      });
       
       setStep("review");
       toast.success("Documento procesado correctamente");
@@ -692,6 +728,10 @@ export default function PurchasesImport() {
   };
 
   const resetForm = () => {
+    // Clear all draft data
+    clearAll();
+    
+    // Reset all local state
     setStep("upload");
     setDocumentId(null);
     setProviderName("");
@@ -705,6 +745,10 @@ export default function PurchasesImport() {
     setComputedLines([]);
     setRawExtraction(null);
     setRegisterExpenses(false);
+    setHydrationAttempted(false);
+    
+    // Clear URL params
+    setSearchParams({});
   };
 
   // ============================================================================
@@ -794,8 +838,56 @@ export default function PurchasesImport() {
           </Card>
         )}
 
+        {/* Draft Error Panel */}
+        {draftError && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="py-6">
+              <div className="flex items-start gap-4">
+                <AlertCircle className="h-6 w-6 text-destructive shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-destructive mb-1">
+                    {draftError.type === "MISSING_DRAFT_ID" && "ID de borrador faltante"}
+                    {draftError.type === "DRAFT_NOT_FOUND" && "Borrador no encontrado"}
+                    {draftError.type === "NO_PERMISSION" && "Sin permisos"}
+                    {draftError.type === "FILE_NOT_FOUND" && "Archivo no encontrado"}
+                    {draftError.type === "VENUE_MISSING" && "Venue no asignado"}
+                    {draftError.type === "DB_ERROR" && "Error de base de datos"}
+                    {draftError.type === "UNKNOWN" && "Error desconocido"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {draftError.message}
+                  </p>
+                  <div className="flex gap-2">
+                    {draftError.canRetry && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          clearError();
+                          setHydrationAttempted(false);
+                        }}
+                        className="gap-2"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Reintentar cargar
+                      </Button>
+                    )}
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={resetForm}
+                    >
+                      Volver a Subir
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Loading */}
-        {checkingWarehouse && step !== "no-warehouse" && (
+        {(checkingWarehouse || draftLoading) && step !== "no-warehouse" && !draftError && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>

@@ -1,27 +1,50 @@
 /**
- * usePurchaseDraft - Draft Persistence Hook
+ * usePurchaseDraft - Draft Persistence Hook (Stabilized)
  * 
- * Provides auto-save functionality for purchase import flow:
+ * Provides robust auto-save functionality for purchase import flow:
  * 1. Primary: Saves to DB (purchase_import_drafts table)
  * 2. Fallback: LocalStorage for safety
+ * 3. Automatic URL sync with ?draft= parameter
  * 
  * Key Features:
+ * - Creates draft BEFORE file upload begins
  * - Debounced auto-save (600ms)
  * - Hydration from DB or localStorage on mount
  * - Conflict resolution (DB takes priority)
+ * - Specific error types for debugging
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import type { ComputedLine, DiscountMode } from "@/lib/purchase-calculator";
 import { toast } from "sonner";
 
-// LocalStorage key prefix
-const LS_PREFIX = "purchase_import_draft:";
+// LocalStorage keys
+const LS_DRAFT_ID_KEY = "purchase_import_draft_id";
+const LS_DRAFT_DATA_PREFIX = "purchase_import_draft:";
+
+// Error types for specific handling
+export type DraftErrorType = 
+  | "MISSING_DRAFT_ID"
+  | "DRAFT_NOT_FOUND"
+  | "NO_PERMISSION"
+  | "FILE_NOT_FOUND"
+  | "VENUE_MISSING"
+  | "DB_ERROR"
+  | "UNKNOWN";
+
+export interface DraftError {
+  type: DraftErrorType;
+  message: string;
+  canRetry: boolean;
+}
 
 export interface DraftData {
   id: string;
+  venue_id: string;
+  user_id: string;
   purchase_document_id: string | null;
   provider_name: string;
   provider_rut: string;
@@ -43,14 +66,22 @@ interface UsePurchaseDraftReturn {
   isLoading: boolean;
   isSaving: boolean;
   lastSaved: Date | null;
+  error: DraftError | null;
   
-  // Methods
-  initDraft: (purchaseDocId: string) => Promise<string>;
-  loadDraft: (draftId: string) => Promise<DraftData | null>;
-  saveDraft: (data: Partial<DraftData>) => Promise<void>;
+  // Lifecycle methods
+  initializeDraft: () => Promise<string | null>;
+  loadDraftById: (id: string) => Promise<DraftData | null>;
+  autoHydrate: () => Promise<DraftData | null>;
+  
+  // CRUD methods
+  saveDraft: (data: Partial<DraftData>) => void;
+  linkDocument: (documentId: string) => Promise<void>;
   markConfirmed: () => Promise<void>;
   abandonDraft: () => Promise<void>;
-  clearLocalStorage: () => void;
+  
+  // Utils
+  clearError: () => void;
+  clearAll: () => void;
   
   // Current draft data
   currentDraft: DraftData | null;
@@ -58,11 +89,15 @@ interface UsePurchaseDraftReturn {
 
 export function usePurchaseDraft(): UsePurchaseDraftReturn {
   const { venue, user } = useAppSession();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
   const [draftId, setDraftId] = useState<string | null>(null);
   const [currentDraft, setCurrentDraft] = useState<DraftData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [error, setError] = useState<DraftError | null>(null);
   
   // Debounce timer ref
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,110 +105,191 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
   // Pending save data ref (for debouncing)
   const pendingSaveRef = useRef<Partial<DraftData> | null>(null);
   
-  /**
-   * Save to localStorage (fallback)
-   */
+  // =========================================================================
+  // LOCAL STORAGE HELPERS
+  // =========================================================================
+  
   const saveToLocalStorage = useCallback((id: string, data: Partial<DraftData>) => {
     try {
-      const existing = localStorage.getItem(`${LS_PREFIX}${id}`);
+      // Save draft ID for recovery
+      localStorage.setItem(LS_DRAFT_ID_KEY, id);
+      
+      // Save draft data
+      const existing = localStorage.getItem(`${LS_DRAFT_DATA_PREFIX}${id}`);
       const merged = existing 
         ? { ...JSON.parse(existing), ...data, updated_at: new Date().toISOString() }
         : { ...data, id, updated_at: new Date().toISOString() };
-      localStorage.setItem(`${LS_PREFIX}${id}`, JSON.stringify(merged));
+      localStorage.setItem(`${LS_DRAFT_DATA_PREFIX}${id}`, JSON.stringify(merged));
     } catch (e) {
       console.error("Error saving to localStorage:", e);
     }
   }, []);
   
-  /**
-   * Load from localStorage
-   */
   const loadFromLocalStorage = useCallback((id: string): DraftData | null => {
     try {
-      const data = localStorage.getItem(`${LS_PREFIX}${id}`);
+      const data = localStorage.getItem(`${LS_DRAFT_DATA_PREFIX}${id}`);
       return data ? JSON.parse(data) : null;
     } catch {
       return null;
     }
   }, []);
   
-  /**
-   * Clear localStorage for current draft
-   */
-  const clearLocalStorage = useCallback(() => {
-    if (draftId) {
-      localStorage.removeItem(`${LS_PREFIX}${draftId}`);
+  const getSavedDraftId = useCallback((): string | null => {
+    try {
+      return localStorage.getItem(LS_DRAFT_ID_KEY);
+    } catch {
+      return null;
+    }
+  }, []);
+  
+  const clearLocalStorage = useCallback((id?: string) => {
+    try {
+      const targetId = id || draftId;
+      if (targetId) {
+        localStorage.removeItem(`${LS_DRAFT_DATA_PREFIX}${targetId}`);
+      }
+      localStorage.removeItem(LS_DRAFT_ID_KEY);
+    } catch (e) {
+      console.error("Error clearing localStorage:", e);
     }
   }, [draftId]);
   
-  /**
-   * Initialize a new draft
-   */
-  const initDraft = useCallback(async (purchaseDocId: string): Promise<string> => {
+  const clearAll = useCallback(() => {
+    clearLocalStorage();
+    setDraftId(null);
+    setCurrentDraft(null);
+    setError(null);
+    setLastSaved(null);
+  }, [clearLocalStorage]);
+  
+  // =========================================================================
+  // ERROR HANDLING
+  // =========================================================================
+  
+  const createError = (type: DraftErrorType, message: string, canRetry = true): DraftError => ({
+    type,
+    message,
+    canRetry,
+  });
+  
+  const clearError = useCallback(() => setError(null), []);
+  
+  // =========================================================================
+  // DRAFT INITIALIZATION (BEFORE UPLOAD)
+  // =========================================================================
+  
+  const initializeDraft = useCallback(async (): Promise<string | null> => {
     if (!venue?.id || !user?.id) {
-      throw new Error("Venue o usuario no disponible");
+      setError(createError("VENUE_MISSING", "Venue o usuario no disponible", false));
+      return null;
     }
     
     setIsLoading(true);
+    setError(null);
+    
     try {
-      // Check for existing draft for this document
-      const { data: existing } = await supabase
-        .from("purchase_import_drafts")
-        .select("id")
-        .eq("purchase_document_id", purchaseDocId)
-        .eq("status", "draft")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      if (existing) {
-        setDraftId(existing.id);
-        return existing.id;
-      }
-      
-      // Create new draft
-      const { data: newDraft, error } = await supabase
+      // Create new draft immediately
+      const { data: newDraft, error: dbError } = await supabase
         .from("purchase_import_drafts")
         .insert({
           venue_id: venue.id,
           user_id: user.id,
-          purchase_document_id: purchaseDocId,
           status: "draft",
+          computed_lines: [],
         })
         .select("id")
         .single();
       
-      if (error) throw error;
+      if (dbError) {
+        console.error("DB error creating draft:", dbError);
+        setError(createError("DB_ERROR", `Error al crear borrador: ${dbError.message}`));
+        return null;
+      }
       
-      setDraftId(newDraft.id);
-      return newDraft.id;
+      const newId = newDraft.id;
+      
+      // Sync to localStorage
+      localStorage.setItem(LS_DRAFT_ID_KEY, newId);
+      saveToLocalStorage(newId, { id: newId, venue_id: venue.id, user_id: user.id, status: "draft" });
+      
+      // Update URL
+      setSearchParams({ draft: newId });
+      
+      setDraftId(newId);
+      setCurrentDraft({
+        id: newId,
+        venue_id: venue.id,
+        user_id: user.id,
+        purchase_document_id: null,
+        provider_name: "",
+        provider_rut: "",
+        document_number: "",
+        document_date: "",
+        net_amount: 0,
+        iva_amount: 0,
+        total_amount_gross: 0,
+        raw_extraction: null,
+        computed_lines: [],
+        discount_mode: "APPLY_TO_GROSS",
+        status: "draft",
+        updated_at: new Date().toISOString(),
+      });
+      
+      return newId;
+    } catch (e) {
+      console.error("Error initializing draft:", e);
+      setError(createError("UNKNOWN", "Error inesperado al crear borrador"));
+      return null;
     } finally {
       setIsLoading(false);
     }
-  }, [venue?.id, user?.id]);
+  }, [venue?.id, user?.id, setSearchParams, saveToLocalStorage]);
   
-  /**
-   * Load existing draft
-   */
-  const loadDraft = useCallback(async (id: string): Promise<DraftData | null> => {
+  // =========================================================================
+  // DRAFT LOADING
+  // =========================================================================
+  
+  const loadDraftById = useCallback(async (id: string): Promise<DraftData | null> => {
+    if (!id) {
+      setError(createError("MISSING_DRAFT_ID", "ID de borrador faltante"));
+      return null;
+    }
+    
     setIsLoading(true);
+    setError(null);
+    
     try {
       // Try DB first
-      const { data: dbDraft, error } = await supabase
+      const { data: dbDraft, error: dbError } = await supabase
         .from("purchase_import_drafts")
         .select("*")
         .eq("id", id)
-        .eq("status", "draft")
         .maybeSingle();
       
-      if (error) {
-        console.error("Error loading draft from DB:", error);
+      if (dbError) {
+        console.error("Error loading draft from DB:", dbError);
+        // Don't fail yet - try localStorage
       }
       
-      // If DB has data, use it
+      // If DB has data and is still a draft
       if (dbDraft) {
+        if (dbDraft.status !== "draft") {
+          setError(createError("DRAFT_NOT_FOUND", "Este borrador ya fue confirmado o abandonado", false));
+          clearLocalStorage(id);
+          return null;
+        }
+        
+        // Check permission (same venue)
+        if (venue?.id && dbDraft.venue_id !== venue.id) {
+          setError(createError("NO_PERMISSION", "Sin permisos para este borrador", false));
+          clearLocalStorage(id);
+          return null;
+        }
+        
         const draft: DraftData = {
           id: dbDraft.id,
+          venue_id: dbDraft.venue_id,
+          user_id: dbDraft.user_id,
           purchase_document_id: dbDraft.purchase_document_id,
           provider_name: dbDraft.provider_name || "",
           provider_rut: dbDraft.provider_rut || "",
@@ -192,7 +308,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
         setDraftId(id);
         setCurrentDraft(draft);
         
-        // Also save to localStorage as backup
+        // Sync to localStorage as backup
         saveToLocalStorage(id, draft);
         
         return draft;
@@ -201,41 +317,16 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       // Fallback to localStorage
       const localDraft = loadFromLocalStorage(id);
       if (localDraft) {
+        console.log("Restoring from localStorage fallback");
         setDraftId(id);
         setCurrentDraft(localDraft);
         
-        // Sync to DB (use insert/update pattern for proper typing)
+        // Try to sync back to DB
         if (venue?.id && user?.id) {
-          // First try to check if it exists
-          const { data: existingDraft } = await supabase
-            .from("purchase_import_drafts")
-            .select("id")
-            .eq("id", localDraft.id)
-            .maybeSingle();
-          
-          if (existingDraft) {
-            // Update existing - use type assertion to bypass strict JSON type checking
+          try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (supabase.from("purchase_import_drafts") as any)
-              .update({
-                provider_name: localDraft.provider_name,
-                provider_rut: localDraft.provider_rut,
-                document_number: localDraft.document_number,
-                document_date: localDraft.document_date,
-                net_amount: localDraft.net_amount,
-                iva_amount: localDraft.iva_amount,
-                total_amount_gross: localDraft.total_amount_gross,
-                raw_extraction: localDraft.raw_extraction,
-                computed_lines: JSON.parse(JSON.stringify(localDraft.computed_lines)),
-                discount_mode: localDraft.discount_mode,
-                status: localDraft.status,
-              })
-              .eq("id", localDraft.id);
-          } else {
-            // Insert new - use type assertion to bypass strict JSON type checking
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase.from("purchase_import_drafts") as any)
-              .insert({
+              .upsert({
                 id: localDraft.id,
                 venue_id: venue.id,
                 user_id: user.id,
@@ -247,26 +338,80 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
                 iva_amount: localDraft.iva_amount,
                 total_amount_gross: localDraft.total_amount_gross,
                 raw_extraction: localDraft.raw_extraction,
-                computed_lines: JSON.parse(JSON.stringify(localDraft.computed_lines)),
+                computed_lines: JSON.parse(JSON.stringify(localDraft.computed_lines || [])),
                 discount_mode: localDraft.discount_mode,
-                status: localDraft.status,
+                status: "draft",
               });
+          } catch (e) {
+            console.warn("Could not sync localStorage draft to DB:", e);
           }
         }
         
-        toast.info("Draft restaurado desde almacenamiento local");
+        toast.info("Borrador restaurado desde almacenamiento local");
         return localDraft;
       }
       
+      // Draft not found anywhere
+      setError(createError("DRAFT_NOT_FOUND", "Borrador no encontrado en base de datos"));
+      clearLocalStorage(id);
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, [venue?.id, user?.id, saveToLocalStorage, loadFromLocalStorage]);
+  }, [venue?.id, user?.id, saveToLocalStorage, loadFromLocalStorage, clearLocalStorage]);
   
-  /**
-   * Debounced save to DB
-   */
+  // =========================================================================
+  // AUTO HYDRATION (on page load)
+  // =========================================================================
+  
+  const autoHydrate = useCallback(async (): Promise<DraftData | null> => {
+    // Priority 1: URL param
+    const urlDraftId = searchParams.get("draft");
+    if (urlDraftId) {
+      return loadDraftById(urlDraftId);
+    }
+    
+    // Priority 2: localStorage saved ID
+    const savedDraftId = getSavedDraftId();
+    if (savedDraftId) {
+      // Update URL to match
+      setSearchParams({ draft: savedDraftId });
+      return loadDraftById(savedDraftId);
+    }
+    
+    // No draft found - will need to create new one
+    return null;
+  }, [searchParams, setSearchParams, loadDraftById, getSavedDraftId]);
+  
+  // =========================================================================
+  // LINK DOCUMENT TO DRAFT
+  // =========================================================================
+  
+  const linkDocument = useCallback(async (documentId: string) => {
+    if (!draftId) return;
+    
+    try {
+      const { error: dbError } = await supabase
+        .from("purchase_import_drafts")
+        .update({ purchase_document_id: documentId })
+        .eq("id", draftId);
+      
+      if (dbError) {
+        console.error("Error linking document:", dbError);
+      }
+      
+      // Update local state
+      setCurrentDraft(prev => prev ? { ...prev, purchase_document_id: documentId } : null);
+      saveToLocalStorage(draftId, { purchase_document_id: documentId });
+    } catch (e) {
+      console.error("Error linking document:", e);
+    }
+  }, [draftId, saveToLocalStorage]);
+  
+  // =========================================================================
+  // DEBOUNCED SAVE
+  // =========================================================================
+  
   const executeSave = useCallback(async () => {
     const dataToSave = pendingSaveRef.current;
     if (!dataToSave || !draftId) return;
@@ -278,7 +423,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       // Always save to localStorage first (fast, reliable)
       saveToLocalStorage(draftId, dataToSave);
       
-      // Prepare data for DB (convert computed_lines to JSON-compatible)
+      // Prepare data for DB
       const dbData: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
@@ -297,14 +442,14 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       }
       if (dataToSave.discount_mode !== undefined) dbData.discount_mode = dataToSave.discount_mode;
       
-      // Then save to DB - use type assertion to bypass strict JSON type checking
+      // Save to DB
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from("purchase_import_drafts") as any)
+      const { error: dbError } = await (supabase.from("purchase_import_drafts") as any)
         .update(dbData)
         .eq("id", draftId);
       
-      if (error) {
-        console.error("Error saving to DB:", error);
+      if (dbError) {
+        console.error("Error saving to DB:", dbError);
         // LocalStorage already saved as fallback
       } else {
         setLastSaved(new Date());
@@ -317,10 +462,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
     }
   }, [draftId, saveToLocalStorage]);
   
-  /**
-   * Save draft (debounced)
-   */
-  const saveDraft = useCallback(async (data: Partial<DraftData>) => {
+  const saveDraft = useCallback((data: Partial<DraftData>) => {
     if (!draftId) return;
     
     // Accumulate pending changes
@@ -338,9 +480,10 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
     saveTimeoutRef.current = setTimeout(executeSave, 600);
   }, [draftId, executeSave]);
   
-  /**
-   * Mark draft as confirmed
-   */
+  // =========================================================================
+  // FINALIZATION
+  // =========================================================================
+  
   const markConfirmed = useCallback(async () => {
     if (!draftId) return;
     
@@ -349,19 +492,20 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       clearTimeout(saveTimeoutRef.current);
     }
     
-    await supabase
-      .from("purchase_import_drafts")
-      .update({ status: "confirmed" })
-      .eq("id", draftId);
+    try {
+      await supabase
+        .from("purchase_import_drafts")
+        .update({ status: "confirmed" })
+        .eq("id", draftId);
+    } catch (e) {
+      console.error("Error marking draft as confirmed:", e);
+    }
     
-    clearLocalStorage();
+    clearLocalStorage(draftId);
     setDraftId(null);
     setCurrentDraft(null);
   }, [draftId, clearLocalStorage]);
   
-  /**
-   * Abandon draft
-   */
   const abandonDraft = useCallback(async () => {
     if (!draftId) return;
     
@@ -370,17 +514,24 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       clearTimeout(saveTimeoutRef.current);
     }
     
-    await supabase
-      .from("purchase_import_drafts")
-      .update({ status: "abandoned" })
-      .eq("id", draftId);
+    try {
+      await supabase
+        .from("purchase_import_drafts")
+        .update({ status: "abandoned" })
+        .eq("id", draftId);
+    } catch (e) {
+      console.error("Error abandoning draft:", e);
+    }
     
-    clearLocalStorage();
+    clearLocalStorage(draftId);
     setDraftId(null);
     setCurrentDraft(null);
   }, [draftId, clearLocalStorage]);
   
-  // Cleanup on unmount
+  // =========================================================================
+  // CLEANUP
+  // =========================================================================
+  
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -394,12 +545,16 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
     isLoading,
     isSaving,
     lastSaved,
-    initDraft,
-    loadDraft,
+    error,
+    initializeDraft,
+    loadDraftById,
+    autoHydrate,
     saveDraft,
+    linkDocument,
     markConfirmed,
     abandonDraft,
-    clearLocalStorage,
+    clearError,
+    clearAll,
     currentDraft,
   };
 }
