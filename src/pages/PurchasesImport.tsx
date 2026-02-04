@@ -50,6 +50,8 @@ import {
   Calculator,
   CheckCircle,
   AlertTriangle,
+  Banknote,
+  Undo2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -364,6 +366,28 @@ export default function PurchasesImport() {
     setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...updates } : item))
     );
+  };
+
+  const markAsExpense = (index: number) => {
+    const item = items[index];
+    updateItem(index, {
+      classification: "expense",
+      item_status: "marked_as_expense",
+      expense_category: "operational",
+      expense_subcategory: "Transporte",
+      expense_amount: item.quantity * item.unit_price,
+      selected_product_id: null,
+    });
+  };
+
+  const markAsInventory = (index: number) => {
+    updateItem(index, {
+      classification: "inventory",
+      item_status: "pending_match",
+      expense_category: undefined,
+      expense_subcategory: undefined,
+      expense_amount: undefined,
+    });
   };
 
   const getMatchBadge = (confidence: number, matchSource?: string) => {
@@ -984,14 +1008,17 @@ export default function PurchasesImport() {
                         </TableCell>
                         <TableCell>
                           {item.classification === "inventory" ? (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 items-center">
                               <Select
                                 value={item.selected_product_id || ""}
                                 onValueChange={(value) =>
-                                  updateItem(index, { selected_product_id: value || null })
+                                  updateItem(index, { 
+                                    selected_product_id: value || null,
+                                    item_status: value ? "matched" : "pending_match"
+                                  })
                                 }
                               >
-                                <SelectTrigger className="w-[180px]">
+                                <SelectTrigger className="w-[160px]">
                                   <SelectValue placeholder="Seleccionar..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1010,25 +1037,46 @@ export default function PurchasesImport() {
                               >
                                 <Plus className="h-4 w-4" />
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => markAsExpense(index)}
+                                title="Marcar como gasto operacional"
+                                className="text-amber-700 border-amber-300 hover:bg-amber-50 h-8 px-2"
+                              >
+                                <Banknote className="h-4 w-4 mr-1" />
+                                Gasto
+                              </Button>
                             </div>
                           ) : (
-                            <Select
-                              value={item.expense_category || ""}
-                              onValueChange={(value) =>
-                                updateItem(index, { 
-                                  expense_category: value as ExpenseCategory,
-                                  expense_subcategory: undefined 
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Tipo de gasto..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="operational">Operacional</SelectItem>
-                                <SelectItem value="non-operational">No operacional</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="flex gap-1 items-center">
+                              <Select
+                                value={item.expense_category || ""}
+                                onValueChange={(value) =>
+                                  updateItem(index, { 
+                                    expense_category: value as ExpenseCategory,
+                                    expense_subcategory: value === "operational" ? "Transporte" : "Administrativo"
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="w-[130px]">
+                                  <SelectValue placeholder="Tipo..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="operational">Operacional</SelectItem>
+                                  <SelectItem value="non-operational">No operacional</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => markAsInventory(index)}
+                                title="Volver a inventario"
+                                className="text-muted-foreground hover:text-foreground h-8 px-2"
+                              >
+                                <Undo2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                         {/* UoM Column */}
