@@ -225,81 +225,62 @@ export function BarReplenishment() {
       return;
     }
 
-    if (!warehouse) {
-      toast.error("No hay bodega configurada");
-      return;
-    }
-
     setSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuario no autenticado");
-      
       const { data: profile } = await supabase
         .from("profiles")
         .select("venue_id")
-        .eq("id", user.id)
+        .eq("id", user!.id)
         .single();
       
       const venueId = profile?.venue_id;
-      if (!venueId) throw new Error("No venue encontrado");
+      if (!venueId || !warehouse) throw new Error("No venue/warehouse");
 
-      // Create stock movement record
-      const { error: movementError } = await supabase.from("stock_movements").insert({
+      // Create stock movement
+      const { error: movementError } = await supabase.from("stock_movements").insert([{
         product_id: selectedProductId,
         quantity: quantity,
-        movement_type: "salida",
+        movement_type: "salida" as const,
         from_location_id: warehouse.id,
         to_location_id: selectedBarId,
         source_type: "replenishment",
-        notes: `Reposición desde bodega a ${selectedBar?.name}`,
+        notes: `Reposición rápida a ${selectedBar?.name}`,
         venue_id: venueId,
-      });
+      }]);
 
       if (movementError) throw movementError;
 
       // Update warehouse balance (decrease)
-      const currentWarehouseQty = getWarehouseBalance(selectedProductId);
-      const { error: warehouseError } = await supabase
+      const currentWarehouse = getWarehouseBalance(selectedProductId);
+      await supabase
         .from("stock_balances")
-        .update({ 
-          quantity: currentWarehouseQty - quantity, 
-          updated_at: new Date().toISOString() 
-        })
+        .update({ quantity: currentWarehouse - quantity, updated_at: new Date().toISOString() })
         .eq("location_id", warehouse.id)
         .eq("product_id", selectedProductId);
 
-      if (warehouseError) throw warehouseError;
-
-      // Update or insert bar balance (increase)
-      const currentBarQty = getBarBalance(selectedProductId, selectedBarId);
-      const { data: existingBarBalance } = await supabase
+      // Update bar balance (increase)
+      const currentBar = getBarBalance(selectedProductId, selectedBarId);
+      const { data: existingBar } = await supabase
         .from("stock_balances")
         .select("id")
         .eq("location_id", selectedBarId)
         .eq("product_id", selectedProductId)
         .maybeSingle();
 
-      if (existingBarBalance) {
-        const { error: barUpdateError } = await supabase
+      if (existingBar) {
+        await supabase
           .from("stock_balances")
-          .update({ 
-            quantity: currentBarQty + quantity, 
-            updated_at: new Date().toISOString() 
-          })
+          .update({ quantity: currentBar + quantity, updated_at: new Date().toISOString() })
           .eq("location_id", selectedBarId)
           .eq("product_id", selectedProductId);
-
-        if (barUpdateError) throw barUpdateError;
       } else {
-        const { error: barInsertError } = await supabase.from("stock_balances").insert({
+        await supabase.from("stock_balances").insert({
           location_id: selectedBarId,
           product_id: selectedProductId,
           quantity: quantity,
           venue_id: venueId,
         });
-
-        if (barInsertError) throw barInsertError;
       }
 
       toast.success(`${quantity} ${selectedProduct?.unit || ''} enviados a ${selectedBar?.name}`);

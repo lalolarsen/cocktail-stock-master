@@ -479,21 +479,6 @@ export default function Sales() {
         }
       }
 
-      // Apply sale with recipe to update stock
-      if (selectedPos?.location_id) {
-        const { error: recipeError } = await supabase.rpc(
-          "apply_sale_with_recipe" as any,
-          { 
-            p_sale_id: sale.id, 
-            p_location_id: selectedPos.location_id 
-          }
-        );
-        if (recipeError) {
-          console.warn("Error applying sale recipe:", recipeError);
-          // Non-blocking - continue with sale
-        }
-      }
-
       // Generate pickup QR token
       let pickupData: typeof lastSaleData["pickupData"] = undefined;
       const { data: tokenResult, error: tokenError } = await supabase.rpc(

@@ -29,23 +29,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
+import { useStockData, ProductWithStock } from "@/hooks/useStockData";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-
-// Product type from Supabase
-interface Product {
-  id: string;
-  name: string;
-  code: string;
-  category: "ml" | "unidades" | "gramos";
-  subcategory: string | null;
-  unit: string;
-}
 import {
   Select,
   SelectContent,
@@ -169,29 +158,11 @@ interface EditingState {
 }
 
 export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
-  const { venue } = useActiveVenue();
-  const venueId = venue?.id;
-  const queryClient = useQueryClient();
+  const { products, loading, refetch } = useStockData();
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "" });
-
-  // Fetch products from Supabase
-  const { data: products = [], isLoading: loading, refetch } = useQuery({
-    queryKey: ["products", venueId],
-    queryFn: async () => {
-      if (!venueId) return [];
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, code, category, subcategory, unit")
-        .eq("venue_id", venueId)
-        .order("name");
-      if (error) throw error;
-      return data as Product[];
-    },
-    enabled: !!venueId,
-  });
 
   // Agrupar productos por subcategoría
   const groupedProducts = useMemo(() => {
@@ -202,7 +173,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         )
       : products;
 
-    const groups: Record<string, Product[]> = {};
+    const groups: Record<string, ProductWithStock[]> = {};
     filtered.forEach(product => {
       const subcategory = product.subcategory || "sin_categoria";
       if (!groups[subcategory]) groups[subcategory] = [];
@@ -226,7 +197,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   // Auto-expandir todas las categorías al cargar
   useMemo(() => {
     if (products.length > 0 && expandedCategories.size === 0) {
-      const allCategories = new Set<string>(products.map(p => p.subcategory || "sin_categoria"));
+      const allCategories = new Set(products.map(p => p.subcategory || "sin_categoria"));
       setExpandedCategories(allCategories);
     }
   }, [products]);
@@ -241,7 +212,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setExpandedCategories(newExpanded);
   };
 
-  const handleEditProduct = (product: Product) => {
+  const handleEditProduct = (product: ProductWithStock) => {
     setEditingProduct(product.id);
     setEditingState({
       name: product.name,
@@ -491,7 +462,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
                                   )}
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  Unidad: {product.unit}
+                                  Stock: {product.totalStock} {unitDisplay}
                                 </p>
                               </div>
                               

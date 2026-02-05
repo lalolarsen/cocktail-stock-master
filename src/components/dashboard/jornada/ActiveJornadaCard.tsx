@@ -31,7 +31,7 @@ export function ActiveJornadaCard({
   onOpenJornada, 
   onCloseJornada,
   onForceClose,
-  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS
+  staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS 
 }: ActiveJornadaCardProps) {
   const isStaleJornada = (j: Jornada): boolean => {
     if (j.estado !== "activa") return false;
