@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Info, Banknote, Undo2 } from "lucide-react";
+import { Plus, Info, Banknote, Undo2, Brain, Sparkles } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { ComputedLine, TaxCategory } from "@/lib/purchase-calculator";
@@ -37,8 +37,14 @@ interface Product {
   unit: string;
 }
 
+// Extended line type with memory info
+interface ComputedLineWithMemory extends ComputedLine {
+  match_source?: "memory" | "fuzzy" | "none";
+  from_memory?: boolean;
+}
+
 interface MinimalReviewTableProps {
-  lines: ComputedLine[];
+  lines: ComputedLineWithMemory[];
   products: Product[];
   searchQuery: string;
   onUpdateLine: (id: string, updates: Partial<ComputedLine>) => void;
@@ -121,6 +127,7 @@ export function MinimalReviewTable({
           <TableHeader>
             <TableRow>
               <TableHead className="min-w-[160px]">Nombre Factura</TableHead>
+              <TableHead className="w-[60px] text-center">Memoria</TableHead>
               <TableHead className="min-w-[130px]">Match Producto</TableHead>
               <TableHead className="w-[70px] text-center">Cant.</TableHead>
               <TableHead className="w-[60px] text-center">Mult.</TableHead>
@@ -165,6 +172,49 @@ export function MinimalReviewTable({
                         )}
                       </TooltipContent>
                     </Tooltip>
+                  </TableCell>
+
+                  {/* Memoria Indicator */}
+                  <TableCell className="text-center">
+                    {line.match_source === "memory" || line.from_memory ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex justify-center">
+                            <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-700 text-xs gap-1">
+                              <Brain className="h-3 w-3" />
+                              AUTO
+                            </Badge>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-sm">Encontrado en memoria</p>
+                          <p className="text-xs text-muted-foreground">
+                            Confianza: {Math.round((line.match_confidence || 0) * 100)}%
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : line.matched_product_id ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex justify-center">
+                            <Badge variant="outline" className="bg-blue-50 border-blue-300 text-blue-700 text-xs gap-1">
+                              <Sparkles className="h-3 w-3" />
+                              FUZZY
+                            </Badge>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-sm">Match por similitud</p>
+                          <p className="text-xs text-muted-foreground">
+                            Confianza: {Math.round((line.match_confidence || 0) * 100)}%
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-muted">
+                        NUEVA
+                      </Badge>
+                    )}
                   </TableCell>
 
                   {/* Match Producto */}

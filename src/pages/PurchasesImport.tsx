@@ -51,6 +51,7 @@ import { logAuditEvent } from "@/lib/monitoring";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { usePurchaseDraft } from "@/hooks/usePurchaseDraft";
+import { useSupplierAliases } from "@/hooks/useSupplierAliases";
 
 // Motor de cálculo único
 import {
@@ -76,6 +77,12 @@ interface Product {
   category: string;
   unit: string;
   current_stock: number;
+}
+
+// Extended ComputedLine with memory match info
+export interface ComputedLineWithMemory extends ComputedLine {
+  match_source: "memory" | "fuzzy" | "none";
+  from_memory?: boolean;
 }
 
 type Step = "upload" | "processing" | "review" | "complete" | "no-warehouse" | "no-access";
@@ -106,6 +113,13 @@ export default function PurchasesImport() {
     isLoading: draftLoading,
   } = usePurchaseDraft();
   
+  // Supplier aliases (learning system)
+  const {
+    loadAliasesForSupplier,
+    findMatch,
+    learnFromConfirmation,
+    aliases: loadedAliases,
+  } = useSupplierAliases();
   // Estados principales
   const [step, setStep] = useState<Step>("upload");
   const [uploading, setUploading] = useState(false);
@@ -133,7 +147,7 @@ export default function PurchasesImport() {
   const [rawExtraction, setRawExtraction] = useState<Record<string, unknown> | null>(null);
 
   // Líneas computadas (single source of truth)
-  const [computedLines, setComputedLines] = useState<ComputedLine[]>([]);
+  const [computedLines, setComputedLines] = useState<ComputedLineWithMemory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
   // Modo de descuento del documento
@@ -178,7 +192,13 @@ export default function PurchasesImport() {
         setIvaAmount(draft.iva_amount);
         setTotalAmountGross(draft.total_amount_gross);
         setRawExtraction(draft.raw_extraction);
-        setComputedLines(draft.computed_lines);
+        // Add match_source to restored lines if missing
+        const restoredLines = (draft.computed_lines || []).map((line: ComputedLineWithMemory) => ({
+          ...line,
+          match_source: (line.match_source || (line.matched_product_id ? "fuzzy" : "none")) as "memory" | "fuzzy" | "none",
+          from_memory: Boolean(line.from_memory),
+        }));
+        setComputedLines(restoredLines);
         setDiscountMode(draft.discount_mode);
         setVenueId(venue?.id || null);
         setStep("review");
@@ -354,11 +374,20 @@ export default function PurchasesImport() {
         setVenueId(updatedDoc.venue_id || null);
       }
 
-      // Procesar ítems con el MOTOR DE CÁLCULO ÚNICO
-      const lines = (purchaseItems || []).map((item) => {
+      // Load supplier aliases for this provider (learning system)
+      const supplierName = updatedDoc?.provider_name || "";
+      const aliasesForProvider = supplierName ? await loadAliasesForSupplier(supplierName) : [];
+      
+      // Procesar ítems con el MOTOR DE CÁLCULO ÚNICO + MEMORY MATCHING
+      const lines: ComputedLineWithMemory[] = (purchaseItems || []).map((item) => {
+        const rawName = item.raw_product_name || "";
+        
+        // First try memory match
+        const memoryMatch = findMatch(rawName, aliasesForProvider, products);
+        
         const computed = computePurchaseLine({
           id: item.id,
-          raw_product_name: item.raw_product_name || "",
+          raw_product_name: rawName,
           qty_text: item.extracted_quantity,
           unit_price_text: item.extracted_unit_price,
           line_total_text: item.extracted_total,
@@ -370,14 +399,31 @@ export default function PurchasesImport() {
           tax_ila_vin: item.tax_ila_vin,
           tax_ila_cer: item.tax_ila_cer,
           tax_ila_lic: item.tax_ila_lic,
+          // Apply memory overrides if found
+          pack_multiplier_override: memoryMatch.match_source === "memory" ? memoryMatch.pack_multiplier : undefined,
+          pack_priced_override: memoryMatch.match_source === "memory" ? memoryMatch.pack_priced : undefined,
+          tax_category_override: memoryMatch.match_source === "memory" ? memoryMatch.tax_category : undefined,
         });
 
-        // Asignar match del backend
+        // Use memory match if available, otherwise use backend fuzzy match
+        const useMemory = memoryMatch.match_source === "memory" && memoryMatch.matched_product_id;
+        const finalProductId = useMemory 
+          ? memoryMatch.matched_product_id 
+          : item.matched_product_id;
+        const finalProductName = useMemory
+          ? memoryMatch.matched_product_name
+          : products.find(p => p.id === item.matched_product_id)?.name || null;
+        const finalConfidence = useMemory
+          ? memoryMatch.confidence
+          : item.match_confidence || 0;
+
         return {
           ...computed,
-          matched_product_id: item.matched_product_id,
-          matched_product_name: products.find(p => p.id === item.matched_product_id)?.name || null,
-          match_confidence: item.match_confidence || 0,
+          matched_product_id: finalProductId,
+          matched_product_name: finalProductName,
+          match_confidence: finalConfidence,
+          match_source: (useMemory ? "memory" : (item.matched_product_id ? "fuzzy" : "none")) as "memory" | "fuzzy" | "none",
+          from_memory: Boolean(useMemory),
         };
       });
 
@@ -416,7 +462,7 @@ export default function PurchasesImport() {
   // HANDLERS DE LÍNEAS
   // ============================================================================
 
-  const handleUpdateLine = useCallback((id: string, updates: Partial<ComputedLine>) => {
+  const handleUpdateLine = useCallback((id: string, updates: Partial<ComputedLineWithMemory>) => {
     setComputedLines(prev => prev.map(line => {
       if (line.id !== id) return line;
       
@@ -428,7 +474,12 @@ export default function PurchasesImport() {
         'discount_pct' in updates ||
         'tax_category' in updates
       ) {
-        return recalculateLine(line, updates);
+        const recalculated = recalculateLine(line, updates);
+        return {
+          ...recalculated,
+          match_source: line.match_source,
+          from_memory: line.from_memory,
+        };
       }
       
       // Si solo cambia el match u otros campos, actualizar directo
@@ -457,6 +508,8 @@ export default function PurchasesImport() {
       // Forzar que no sea expense
       return {
         ...recalculated,
+        match_source: line.match_source,
+        from_memory: line.from_memory,
         status: recalculated.real_units > 0 && recalculated.net_unit_cost > 0 ? "OK" : "REVIEW_REQUIRED",
         reasons: recalculated.reasons.filter(r => !r.includes("gasto") && !r.includes("flete")),
       };
@@ -696,6 +749,20 @@ export default function PurchasesImport() {
             // Don't throw - tax expense registration failure shouldn't block inventory intake
           }
         }
+      }
+
+      // LEARNING SYSTEM: Save product aliases for future imports
+      if (providerName) {
+        const linesToLearn = inventoryLines.map(line => ({
+          raw_product_name: line.raw_product_name,
+          product_id: line.matched_product_id,
+          pack_multiplier: line.pack_multiplier,
+          pack_priced: line.pack_priced,
+          tax_category: line.tax_category,
+        }));
+        
+        await learnFromConfirmation(providerName, linesToLearn);
+        console.log(`[Learning] Saved ${linesToLearn.length} aliases for provider "${providerName}"`);
       }
 
       // Mark draft as confirmed
