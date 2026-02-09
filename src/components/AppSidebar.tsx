@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession, FeatureKey } from "@/contexts/AppSessionContext";
+import stockiaLogo from "@/assets/stockia-logo.png";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -37,17 +38,7 @@ type MenuItem = {
 
 // Icon mapping for dynamic config
 const ICON_MAP: Record<string, typeof Wine> = {
-  Wine,
-  Package,
-  Martini,
-  Users,
-  Calendar,
-  FileText,
-  Receipt,
-  Warehouse,
-  ArrowRightLeft,
-  Bell,
-  Ticket,
+  Wine, Package, Martini, Users, Calendar, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket,
 };
 
 // Default role-specific menu configurations (fallback)
@@ -95,10 +86,9 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     navigate(path);
   };
 
-  // Convert custom config to menu items - uses pre-loaded sidebarConfig
+  // Convert custom config to menu items
   const getMenuItemsFromConfig = (): { internal: MenuItem[]; external: Array<{ title: string; path: string; icon: typeof Wine }> } => {
     if (!sidebarConfig || sidebarConfig.length === 0) {
-      // Fallback to hardcoded defaults
       const isGerencia = isReadOnly || role === "gerencia";
       const defaultItems = isGerencia 
         ? filterByFeatureFlags(GERENCIA_MENU, isEnabled)
@@ -112,25 +102,12 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
     sidebarConfig.forEach(item => {
       if (!item.is_enabled) return;
-      
-      // Check feature flag
       if (item.feature_flag && !isEnabled(item.feature_flag as FeatureKey)) return;
-
       const icon = ICON_MAP[item.icon_name] || Wine;
-
       if (item.external_path) {
-        external.push({
-          title: item.menu_label,
-          path: item.external_path,
-          icon,
-        });
+        external.push({ title: item.menu_label, path: item.external_path, icon });
       } else {
-        internal.push({
-          title: item.menu_label,
-          value: item.view_type as ViewType,
-          icon,
-          featureFlag: item.feature_flag as FeatureKey | undefined,
-        });
+        internal.push({ title: item.menu_label, value: item.view_type as ViewType, icon, featureFlag: item.feature_flag as FeatureKey | undefined });
       }
     });
 
@@ -139,7 +116,6 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
   const { internal: menuItems, external: externalLinks } = getMenuItemsFromConfig();
 
-  // Render a menu item
   const renderMenuItem = (item: MenuItem) => {
     const isActive = activeView === item.value;
     return (
@@ -147,10 +123,10 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
         <SidebarMenuButton
           onClick={() => item.path ? handleExternalNavigation(item.path) : setActiveView(item.value)}
           tooltip={item.title}
-          className={`transition-all duration-150 ${
+          className={`transition-fast ${
             isActive 
-              ? "bg-primary text-primary-foreground" 
-              : "hover:bg-muted/50"
+              ? "bg-primary text-primary-foreground font-medium" 
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
           }`}
         >
           <item.icon className="w-4 h-4" />
@@ -160,13 +136,12 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
     );
   };
 
-  // Render external link
   const renderExternalLink = (link: { title: string; path: string; icon: typeof Wine }) => (
     <SidebarMenuItem key={link.path}>
       <SidebarMenuButton
         onClick={() => handleExternalNavigation(link.path)}
         tooltip={link.title}
-        className="transition-all duration-150 hover:bg-muted/50"
+        className="transition-fast text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
       >
         <link.icon className="w-4 h-4" />
         <span>{link.title}</span>
@@ -175,16 +150,14 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   );
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border/50">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-4 space-y-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-            <Wine className="w-6 h-6 text-primary-foreground" />
-          </div>
-          {!isCollapsed && (
-            <div>
-              <h2 className="text-lg font-bold text-foreground">DiStock</h2>
-              <p className="text-xs text-muted-foreground">Gestión de bar</p>
+          {!isCollapsed ? (
+            <img src={stockiaLogo} alt="StockIA" className="h-7 invert" />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-xs">S</span>
             </div>
           )}
         </div>
@@ -192,10 +165,9 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Main Navigation */}
         {menuItems.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Navegación</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Navegación</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {menuItems.map(renderMenuItem)}
@@ -204,10 +176,9 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
           </SidebarGroup>
         )}
 
-        {/* External links */}
         {externalLinks.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Contabilidad</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Contabilidad</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {externalLinks.map(renderExternalLink)}
@@ -217,14 +188,14 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 border-t border-sidebar-border">
         <Button 
-          variant="outline" 
-          className="w-full justify-start gap-2" 
+          variant="ghost" 
+          className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" 
           onClick={handleLogout}
         >
           <LogOut className="w-4 h-4" />
-          {!isCollapsed && <span>Cerrar sesión</span>}
+          {!isCollapsed && <span className="text-sm">Cerrar sesión</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>

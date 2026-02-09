@@ -37,16 +37,16 @@ const Index = () => {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gradient-to-br from-background via-muted to-background">
+      <div className="min-h-screen flex w-full bg-background">
         <AppSidebar activeView={activeView} setActiveView={handleViewChange} />
         
         <main className="flex-1 overflow-auto">
-          <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
+          <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
                 <Menu className="w-5 h-5" />
               </SidebarTrigger>
-              <h1 className="text-2xl font-bold gradient-text">{getViewTitle()}</h1>
+              <h1 className="text-lg font-semibold text-foreground tracking-tight">{getViewTitle()}</h1>
             </div>
           </header>
 

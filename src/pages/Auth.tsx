@@ -8,8 +8,9 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
+import stockiaLogoFull from "@/assets/stockia-logo-full.png";
 
-const LAST_MODE_KEY = "coctelstock_last_mode";
+const LAST_MODE_KEY = "stockia_last_mode";
 
 interface WorkerData {
   id: string;
@@ -264,8 +265,8 @@ export default function Auth() {
   // Mode selection screen
   if (showModeSelection) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-        <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-sm bg-background/95 border-primary/20">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md p-8 space-y-6 border border-border shadow-sm">
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-bold">Selecciona tu modo</h1>
             <p className="text-muted-foreground text-sm">
@@ -281,7 +282,7 @@ export default function Auth() {
                   className="w-full h-16 justify-start gap-4 text-left"
                   onClick={() => handleModeSelect("sales")}
                 >
-                  <ShoppingCart className="h-6 w-6 text-green-500" />
+                  <ShoppingCart className="h-6 w-6 text-primary" />
                   <div>
                     <div className="font-medium">Caja Alcohol</div>
                     <div className="text-xs text-muted-foreground">Punto de venta bebidas</div>
@@ -292,7 +293,7 @@ export default function Auth() {
                   className="w-full h-16 justify-start gap-4 text-left"
                   onClick={() => handleModeSelect("tickets")}
                 >
-                  <Ticket className="h-6 w-6 text-amber-500" />
+                  <Ticket className="h-6 w-6 text-warning" />
                   <div>
                     <div className="font-medium">Caja Entradas</div>
                     <div className="text-xs text-muted-foreground">Venta de tickets</div>
@@ -307,7 +308,7 @@ export default function Auth() {
                 className="w-full h-16 justify-start gap-4 text-left"
                 onClick={() => handleModeSelect("ticket_seller")}
               >
-                <Sparkles className="h-6 w-6 text-amber-500" />
+                <Sparkles className="h-6 w-6 text-warning" />
                 <div>
                   <div className="font-medium">Entradas</div>
                   <div className="text-xs text-muted-foreground">Venta de tickets</div>
@@ -321,7 +322,7 @@ export default function Auth() {
                 className="w-full h-16 justify-start gap-4 text-left"
                 onClick={() => handleModeSelect("bar")}
               >
-                <Wine className="h-6 w-6 text-purple-500" />
+                <Wine className="h-6 w-6 text-muted-foreground" />
                 <div>
                   <div className="font-medium">Barra</div>
                   <div className="text-xs text-muted-foreground">Entrega de pedidos</div>
@@ -335,7 +336,7 @@ export default function Auth() {
                 className="w-full h-16 justify-start gap-4 text-left"
                 onClick={() => handleModeSelect(workerRoles.includes("admin") ? "admin" : "gerencia")}
               >
-                <Shield className="h-6 w-6 text-blue-500" />
+                <Shield className="h-6 w-6 text-info" />
                 <div>
                   <div className="font-medium">Administración</div>
                   <div className="text-xs text-muted-foreground">
@@ -364,11 +365,11 @@ export default function Auth() {
 
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-sm bg-background/95 border-primary/20">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold gradient-text">CoctelStock</h1>
-          <p className="text-muted-foreground">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md p-8 space-y-6 border border-border shadow-sm">
+        <div className="text-center space-y-4">
+          <img src={stockiaLogoFull} alt="StockIA by IAnticipa" className="h-12 mx-auto" />
+          <p className="text-muted-foreground text-sm">
             Inicia sesión con tu RUT y PIN
           </p>
         </div>
