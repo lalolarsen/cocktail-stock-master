@@ -66,11 +66,11 @@ export function ImportSummaryPanel({
   
   // Breakdown of specific taxes by type
   const taxBreakdown = {
-    iaba10: inventoryLines.filter(l => l.tax_category === "IABA10").reduce((sum, l) => sum + l.specific_tax_amount, 0),
-    iaba18: inventoryLines.filter(l => l.tax_category === "IABA18").reduce((sum, l) => sum + l.specific_tax_amount, 0),
-    ilaVino: inventoryLines.filter(l => l.tax_category === "ILA_VINO_20_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
-    ilaCerveza: inventoryLines.filter(l => l.tax_category === "ILA_CERVEZA_20_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
-    ilaDestilados: inventoryLines.filter(l => l.tax_category === "ILA_DESTILADOS_31_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    iaba10: inventoryLines.filter(l => l.tax_category === "IABA_10").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    iaba18: inventoryLines.filter(l => l.tax_category === "IABA_18").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaVino: inventoryLines.filter(l => l.tax_category === "ILA_VINO_205").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaCerveza: inventoryLines.filter(l => l.tax_category === "ILA_CERVEZA_205").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaDestilados: inventoryLines.filter(l => l.tax_category === "ILA_DESTILADOS_315").reduce((sum, l) => sum + l.specific_tax_amount, 0),
   };
   
   return (

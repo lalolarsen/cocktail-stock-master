@@ -56,11 +56,11 @@ interface MinimalReviewTableProps {
 
 const TAX_CATEGORY_OPTIONS: { value: TaxCategory; label: string; color: string }[] = [
   { value: 'NONE', label: 'Sin impuesto', color: 'bg-gray-100 text-gray-600' },
-  { value: 'IABA10', label: 'IABA 10%', color: 'bg-blue-100 text-blue-700' },
-  { value: 'IABA18', label: 'IABA 18%', color: 'bg-blue-200 text-blue-800' },
-  { value: 'ILA_VINO_20_5', label: 'ILA Vino 20,5%', color: 'bg-purple-100 text-purple-700' },
-  { value: 'ILA_CERVEZA_20_5', label: 'ILA Cerveza 20,5%', color: 'bg-amber-100 text-amber-700' },
-  { value: 'ILA_DESTILADOS_31_5', label: 'ILA Dest. 31,5%', color: 'bg-red-100 text-red-700' },
+  { value: 'IABA_10', label: 'IABA 10%', color: 'bg-blue-100 text-blue-700' },
+  { value: 'IABA_18', label: 'IABA 18%', color: 'bg-blue-200 text-blue-800' },
+  { value: 'ILA_VINO_205', label: 'ILA Vino 20,5%', color: 'bg-purple-100 text-purple-700' },
+  { value: 'ILA_CERVEZA_205', label: 'ILA Cerveza 20,5%', color: 'bg-amber-100 text-amber-700' },
+  { value: 'ILA_DESTILADOS_315', label: 'ILA Dest. 31,5%', color: 'bg-red-100 text-red-700' },
 ];
 
 export function MinimalReviewTable({

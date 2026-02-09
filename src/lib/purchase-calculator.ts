@@ -5,6 +5,8 @@
  * Este módulo es la ÚNICA fuente de verdad para todos los cálculos de líneas de compra.
  * Cualquier cifra visible en UI debe venir de este motor.
  * NO se permiten cálculos ad-hoc en otros archivos.
+ * 
+ * ACTUALIZADO: Sistema de prorrateo de impuestos específicos por categoría
  */
 
 // ============================================================================
@@ -17,12 +19,25 @@ export type DiscountMode = "INCLUDED_IN_PRICE" | "APPLY_TO_GROSS" | "GLOBAL_PROR
 
 export type TaxCategory = 
   | "NONE" 
-  | "IVA" 
-  | "IABA10" 
-  | "IABA18" 
-  | "ILA_VINO_20_5" 
-  | "ILA_CERVEZA_20_5" 
-  | "ILA_DESTILADOS_31_5";
+  | "IABA_10" 
+  | "IABA_18" 
+  | "ILA_VINO_205" 
+  | "ILA_CERVEZA_205" 
+  | "ILA_DESTILADOS_315";
+
+// Legacy aliases for backwards compatibility
+export const TAX_CATEGORY_LEGACY_MAP: Record<string, TaxCategory> = {
+  'IABA10': 'IABA_10',
+  'IABA18': 'IABA_18',
+  'ILA_VINO_20_5': 'ILA_VINO_205',
+  'ILA_CERVEZA_20_5': 'ILA_CERVEZA_205',
+  'ILA_DESTILADOS_31_5': 'ILA_DESTILADOS_315',
+};
+
+export function normalizeTaxCategory(category: string): TaxCategory {
+  if (TAX_CATEGORY_LEGACY_MAP[category]) return TAX_CATEGORY_LEGACY_MAP[category];
+  return category as TaxCategory;
+}
 
 export interface RawLineExtraction {
   raw_product_name: string;
@@ -34,16 +49,50 @@ export interface RawLineExtraction {
   uom_text: string | null;
 }
 
-// Tax rates for specific taxes (capitalized to inventory cost)
+// Tasas para cálculo informativo (cuando NO hay totales de header)
 export const TAX_RATES: Record<TaxCategory, number> = {
   NONE: 0,
-  IVA: 0, // IVA is informational only, NOT capitalized
-  IABA10: 0.10,
-  IABA18: 0.18,
-  ILA_VINO_20_5: 0.205,
-  ILA_CERVEZA_20_5: 0.205,
-  ILA_DESTILADOS_31_5: 0.315,
+  IABA_10: 0.10,
+  IABA_18: 0.18,
+  ILA_VINO_205: 0.205,
+  ILA_CERVEZA_205: 0.205,
+  ILA_DESTILADOS_315: 0.315,
 };
+
+// ============================================================================
+// TIPOS DE PRORRATEO
+// ============================================================================
+
+export interface HeaderTaxTotals {
+  iaba_10_total: number;
+  iaba_18_total: number;
+  ila_vino_205_total: number;
+  ila_cerveza_205_total: number;
+  ila_destilados_315_total: number;
+  // Metadatos
+  sources: {
+    iaba_10_source?: "extracted" | "missing";
+    iaba_18_source?: "extracted" | "missing";
+    ila_vino_205_source?: "extracted" | "missing";
+    ila_cerveza_205_source?: "extracted" | "missing";
+    ila_destilados_315_source?: "extracted" | "missing";
+  };
+}
+
+export interface ProrationDiagnostic {
+  category: TaxCategory;
+  total_from_header: number;
+  base_net_amount: number;
+  lines_count: number;
+  sum_prorated: number;
+  rounding_adjustment: number;
+  is_valid: boolean;
+  error_message?: string;
+}
+
+// ============================================================================
+// LINEA COMPUTADA
+// ============================================================================
 
 export interface ComputedLine {
   // Identificador
@@ -74,10 +123,10 @@ export interface ComputedLine {
   discount_mode: DiscountMode;
   discount_amount: number;
   
-  // Impuestos - ILA/IABA ahora se CAPITALIZAN al costo
+  // Clasificación tributaria (editable)
   tax_category: TaxCategory;
-  tax_rate: number; // Tasa aplicable según tax_category
-  taxes_excluded_for_cost: number; // DEPRECATED - mantener por compatibilidad
+  tax_rate: number; // Tasa aplicable según tax_category (informativo)
+  taxes_excluded_for_cost: number; // DEPRECATED
   tax_details: {
     iva?: number;
     iaba_10?: number;
@@ -91,8 +140,11 @@ export interface ComputedLine {
   net_line_for_cost: number; // unit_price_after_discount * real_units (neto puro)
   net_unit_cost: number; // unit_price_after_discount (neto puro)
   
-  // NUEVOS: Cálculos de inventario (INCLUYEN impuestos específicos ILA/IABA)
-  specific_tax_amount: number; // Monto de impuestos específicos para esta línea
+  // PRORRATEO: Impuestos específicos prorrateados desde header
+  specific_tax_amount: number; // Monto prorrateado para esta línea
+  specific_tax_source: "PRORATION" | "CALCULATED" | "NONE"; // Origen del impuesto
+  
+  // INVENTARIO: Costo incluyendo impuestos específicos
   inventory_cost_line: number; // net_line_for_cost + specific_tax_amount
   inventory_unit_cost: number; // inventory_cost_line / real_units (USAR PARA CPP)
   
@@ -116,6 +168,8 @@ export interface DocumentHeader {
   net_total: number | null;
   iva_total: number | null;
   gross_total: number | null;
+  // NUEVO: Totales de impuestos por categoría
+  tax_totals?: HeaderTaxTotals;
 }
 
 export interface ComputeLineInput {
@@ -131,7 +185,7 @@ export interface ComputeLineInput {
   discount_pct_override?: number;
   tax_category_override?: TaxCategory;
   uom_text?: string | null;
-  // Impuestos por línea (si vienen en la factura)
+  // Impuestos por línea (si vienen en la factura - legacy)
   tax_iaba_10?: number;
   tax_iaba_18?: number;
   tax_ila_vin?: number;
@@ -160,15 +214,14 @@ const UOM_MAPPING: Record<string, string> = {
   'gr': 'Gramo', 'g': 'Gramo', 'gramo': 'Gramo',
 };
 
-// Keywords para clasificación de impuestos por producto
+// Keywords para clasificación de impuestos por producto (heurística)
 const TAX_CATEGORY_KEYWORDS: Record<TaxCategory, string[]> = {
   NONE: [],
-  IVA: [],
-  IABA10: ['bebida', 'gaseosa', 'jugo', 'agua mineral', 'limonada'],
-  IABA18: ['energy', 'red bull', 'monster', 'energética', 'hipertónica'],
-  ILA_VINO_20_5: ['vino', 'sauvignon', 'cabernet', 'merlot', 'chardonnay', 'carmenere', 'malbec', 'pinot'],
-  ILA_CERVEZA_20_5: ['cerveza', 'beer', 'heineken', 'corona', 'kunstmann', 'austral', 'cristal', 'escudo', 'becker'],
-  ILA_DESTILADOS_31_5: ['vodka', 'gin', 'ron', 'whisky', 'pisco', 'tequila', 'aguardiente', 'brandy', 'cognac', 'licor'],
+  IABA_10: ['bebida', 'gaseosa', 'jugo', 'agua mineral', 'limonada', 'néctar'],
+  IABA_18: ['energy', 'red bull', 'monster', 'energética', 'hipertónica', 'energizante'],
+  ILA_VINO_205: ['vino', 'sauvignon', 'cabernet', 'merlot', 'chardonnay', 'carmenere', 'malbec', 'pinot', 'espumante', 'champaña', 'champagne'],
+  ILA_CERVEZA_205: ['cerveza', 'beer', 'heineken', 'corona', 'kunstmann', 'austral', 'cristal', 'escudo', 'becker', 'stella', 'budweiser', 'dorada'],
+  ILA_DESTILADOS_315: ['vodka', 'gin', 'ron', 'whisky', 'whiskey', 'pisco', 'tequila', 'aguardiente', 'brandy', 'cognac', 'licor', 'aperol', 'campari', 'jagermeister'],
 };
 
 // ============================================================================
@@ -195,8 +248,6 @@ export function parseNumber(value: string | number | null | undefined): number |
 
 /**
  * Detecta multiplicador de empaque desde el nombre del producto
- * Formatos: 6PCX4, 4PC X 6, LAT250X24, 24PF, X06, 6PF-220CC, 24UN, 12X1
- * Retorna el patrón detectado como razón
  */
 export function detectPackMultiplier(productName: string): { 
   multiplier: number | null; 
@@ -233,7 +284,6 @@ export function detectPackMultiplier(productName: string): {
   // Patrón 5: X seguido de número (X06 = 6)
   const xMatch = name.match(/\bX\s*0?(\d+)\b/i);
   if (xMatch && !name.match(/\d+\s*X\s*\d+/)) {
-    // Solo si no es parte de un patrón NxM
     return { multiplier: parseInt(xMatch[1]), confidence: 'low', pattern: xMatch[0] };
   }
   
@@ -242,7 +292,6 @@ export function detectPackMultiplier(productName: string): {
   if (genericMatch) {
     const first = parseInt(genericMatch[1]);
     const second = parseInt(genericMatch[2]);
-    // Si el primer número parece volumen (> 100), asumimos que es pack
     if (first > 100) {
       return { multiplier: second, confidence: 'medium', pattern: genericMatch[0] };
     }
@@ -261,26 +310,26 @@ export function isFreightLine(productName: string): boolean {
 }
 
 /**
- * Detecta categoría de impuesto según nombre del producto
+ * Detecta categoría de impuesto según nombre del producto (heurística)
  */
 export function detectTaxCategory(productName: string): TaxCategory {
   const lower = productName.toLowerCase();
   
   // Orden de prioridad: destilados > vino > cerveza > iaba18 > iaba10
-  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_DESTILADOS_31_5) {
-    if (lower.includes(kw)) return 'ILA_DESTILADOS_31_5';
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_DESTILADOS_315) {
+    if (lower.includes(kw)) return 'ILA_DESTILADOS_315';
   }
-  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_VINO_20_5) {
-    if (lower.includes(kw)) return 'ILA_VINO_20_5';
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_VINO_205) {
+    if (lower.includes(kw)) return 'ILA_VINO_205';
   }
-  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_CERVEZA_20_5) {
-    if (lower.includes(kw)) return 'ILA_CERVEZA_20_5';
+  for (const kw of TAX_CATEGORY_KEYWORDS.ILA_CERVEZA_205) {
+    if (lower.includes(kw)) return 'ILA_CERVEZA_205';
   }
-  for (const kw of TAX_CATEGORY_KEYWORDS.IABA18) {
-    if (lower.includes(kw)) return 'IABA18';
+  for (const kw of TAX_CATEGORY_KEYWORDS.IABA_18) {
+    if (lower.includes(kw)) return 'IABA_18';
   }
-  for (const kw of TAX_CATEGORY_KEYWORDS.IABA10) {
-    if (lower.includes(kw)) return 'IABA10';
+  for (const kw of TAX_CATEGORY_KEYWORDS.IABA_10) {
+    if (lower.includes(kw)) return 'IABA_10';
   }
   
   return 'NONE';
@@ -297,13 +346,11 @@ export function normalizeUom(uom: string | null | undefined): string {
 
 /**
  * Parsea descuento desde texto
- * Soporta: "20%", "$5.000", "-15%", etc.
  */
 export function parseDiscount(text: string | number | null, grossLine: number): { percent: number; amount: number } {
   if (text === null || text === undefined) return { percent: 0, amount: 0 };
   
   if (typeof text === 'number') {
-    // Si es un número pequeño (<100), probablemente es porcentaje
     if (text <= 100) {
       return { percent: text, amount: Math.round(grossLine * text / 100) };
     }
@@ -312,7 +359,6 @@ export function parseDiscount(text: string | number | null, grossLine: number): 
   
   const cleaned = text.trim();
   
-  // Detectar porcentaje
   if (cleaned.includes('%')) {
     const pct = parseNumber(cleaned.replace('%', ''));
     if (pct !== null) {
@@ -320,7 +366,6 @@ export function parseDiscount(text: string | number | null, grossLine: number): 
     }
   }
   
-  // Es un monto absoluto
   const amount = parseNumber(cleaned);
   if (amount !== null) {
     return { percent: 0, amount };
@@ -335,14 +380,33 @@ export function parseDiscount(text: string | number | null, grossLine: number): 
 export function getTaxCategoryLabel(category: TaxCategory): string {
   const labels: Record<TaxCategory, string> = {
     NONE: 'Sin impuesto',
-    IVA: 'IVA 19%',
-    IABA10: 'IABA 10%',
-    IABA18: 'IABA 18%',
-    ILA_VINO_20_5: 'ILA Vino 20,5%',
-    ILA_CERVEZA_20_5: 'ILA Cerveza 20,5%',
-    ILA_DESTILADOS_31_5: 'ILA Destilados 31,5%',
+    IABA_10: 'IABA 10%',
+    IABA_18: 'IABA 18%',
+    ILA_VINO_205: 'ILA Vino 20,5%',
+    ILA_CERVEZA_205: 'ILA Cerveza 20,5%',
+    ILA_DESTILADOS_315: 'ILA Destilados 31,5%',
   };
-  return labels[category];
+  return labels[category] || category;
+}
+
+/**
+ * Crea header tax totals vacío
+ */
+export function createEmptyHeaderTaxTotals(): HeaderTaxTotals {
+  return {
+    iaba_10_total: 0,
+    iaba_18_total: 0,
+    ila_vino_205_total: 0,
+    ila_cerveza_205_total: 0,
+    ila_destilados_315_total: 0,
+    sources: {
+      iaba_10_source: "missing",
+      iaba_18_source: "missing",
+      ila_vino_205_source: "missing",
+      ila_cerveza_205_source: "missing",
+      ila_destilados_315_source: "missing",
+    },
+  };
 }
 
 // ============================================================================
@@ -353,6 +417,9 @@ export function getTaxCategoryLabel(category: TaxCategory): string {
  * MOTOR ÚNICO DE CÁLCULO
  * Esta función calcula TODOS los valores derivados de una línea de compra.
  * Es determinística y pura (mismo input = mismo output).
+ * 
+ * NOTA: specific_tax_amount se inicializa en 0 aquí.
+ * El prorrateo real se aplica después con applyTaxProration()
  */
 export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   const reasons: string[] = [];
@@ -377,7 +444,7 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     }
   }
   
-  // 3. Determinar si precio viene por pack (default: false = precio por unidad)
+  // 3. Determinar si precio viene por pack
   const packPriced = input.pack_priced_override ?? false;
   
   // 4. Calcular precio unitario real
@@ -393,11 +460,10 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   // 5. Calcular unidades reales
   const realUnits = qtyInvoice * packMultiplier;
   
-  // 6. Parsear descuento (preferir override, luego OCR)
+  // 6. Parsear descuento
   const discountParsed = parseDiscount(input.discount_text, invoiceUnitPriceRaw * qtyInvoice);
   const discountPct = input.discount_pct_override ?? discountParsed.percent;
   
-  // Validar rango de descuento
   const validDiscountPct = Math.max(0, Math.min(100, discountPct));
   if (discountPct !== validDiscountPct) {
     reasons.push(`Descuento ajustado de ${discountPct}% a ${validDiscountPct}%`);
@@ -406,7 +472,7 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   // 7. Calcular precio después de descuento
   const unitPriceAfterDiscount = Math.round(unitPriceReal * (1 - validDiscountPct / 100));
   
-  // 8. Determinar gross_line (preferir total de línea si existe)
+  // 8. Determinar gross_line
   let grossLine = 0;
   if (lineTotal !== null && lineTotal > 0) {
     grossLine = lineTotal;
@@ -418,62 +484,40 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     if (status === "OK") status = "REVIEW_REQUIRED";
   }
   
-  // 9. Detectar categoría de impuesto y obtener tasa
+  // 9. Detectar categoría de impuesto
   const taxCategory = input.tax_category_override ?? detectTaxCategory(input.raw_product_name);
   const taxRate = TAX_RATES[taxCategory] || 0;
   
-  // 10. Datos de impuestos por línea (para compatibilidad con formatos que traen detalle)
-  const taxIaba10 = input.tax_iaba_10 ?? 0;
-  const taxIaba18 = input.tax_iaba_18 ?? 0;
-  const taxIlaVin = input.tax_ila_vin ?? 0;
-  const taxIlaCer = input.tax_ila_cer ?? 0;
-  const taxIlaLic = input.tax_ila_lic ?? 0;
-  const taxesExcluded = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic; // deprecated
-  
-  // 11. Calcular neto para costo (SIN impuestos)
+  // 10. Calcular neto para costo (SIN impuestos)
   const netLineForCost = unitPriceAfterDiscount * realUnits;
   const netUnitCost = unitPriceAfterDiscount;
   
-  // 12. NUEVO: Calcular impuestos específicos capitalizados al inventario
-  // Fórmula: specific_tax_amount = net_line_for_cost * tax_rate
-  const specificTaxAmount = Math.round(netLineForCost * taxRate);
-  
-  // 13. NUEVO: Costo inventario = neto + impuestos específicos (ILA/IABA)
-  const inventoryCostLine = netLineForCost + specificTaxAmount;
+  // 11. Impuestos específicos: inicializar en 0
+  // El prorrateo real se aplica después con applyTaxProration()
+  const specificTaxAmount = 0;
+  const inventoryCostLine = netLineForCost; // Sin impuestos por ahora
   const inventoryUnitCost = realUnits > 0 ? Math.round(inventoryCostLine / realUnits) : 0;
   
-  // 14. Detectar primero si es flete/gasto
+  // 12. Detectar si es flete/gasto
   const isFreight = isFreightLine(input.raw_product_name);
   if (isFreight) {
     status = "EXPENSE";
     reasons.push('Detectado como flete/despacho');
   }
   
-  // 15. Validaciones estrictas (solo si no es gasto)
+  // 13. Validaciones estrictas (solo si no es gasto)
   if (status !== "EXPENSE") {
     if (realUnits <= 0) {
       status = "REVIEW_REQUIRED";
       reasons.push('Unidades reales <= 0');
     }
-    
     if (unitPriceReal <= 0) {
       status = "REVIEW_REQUIRED";
       reasons.push('Precio unitario real <= 0');
     }
-    
-    if (inventoryUnitCost <= 0 && realUnits > 0) {
-      status = "REVIEW_REQUIRED";
-      reasons.push('Costo unitario inventario <= 0');
-    }
-    
-    // Validar que si hay impuesto específico, debe poder calcularse
-    if (taxCategory !== 'NONE' && taxCategory !== 'IVA' && specificTaxAmount === 0 && netLineForCost > 0) {
-      // Esto podría indicar un problema de cálculo, pero no es crítico
-      reasons.push(`Impuesto ${taxCategory} calculado = $0 (revisar tasa)`);
-    }
   }
   
-  // 16. Normalizar UoM
+  // 14. Normalizar UoM
   const uomNormalized = normalizeUom(input.uom_text);
   
   return {
@@ -493,17 +537,12 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     discount_amount: Math.round(unitPriceReal * realUnits * validDiscountPct / 100),
     tax_category: taxCategory,
     tax_rate: taxRate,
-    taxes_excluded_for_cost: taxesExcluded, // deprecated
-    tax_details: {
-      iaba_10: taxIaba10 || undefined,
-      iaba_18: taxIaba18 || undefined,
-      ila_vin: taxIlaVin || undefined,
-      ila_cer: taxIlaCer || undefined,
-      ila_lic: taxIlaLic || undefined,
-    },
+    taxes_excluded_for_cost: 0,
+    tax_details: {},
     net_line_for_cost: netLineForCost,
     net_unit_cost: netUnitCost,
     specific_tax_amount: specificTaxAmount,
+    specific_tax_source: "NONE",
     inventory_cost_line: inventoryCostLine,
     inventory_unit_cost: inventoryUnitCost,
     status,
@@ -516,8 +555,204 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
   };
 }
 
+// ============================================================================
+// PRORRATEO DE IMPUESTOS POR CATEGORÍA
+// ============================================================================
+
+/**
+ * Obtiene el campo de HeaderTaxTotals para una categoría
+ */
+function getTaxTotalForCategory(taxTotals: HeaderTaxTotals, category: TaxCategory): number {
+  switch (category) {
+    case 'IABA_10': return taxTotals.iaba_10_total;
+    case 'IABA_18': return taxTotals.iaba_18_total;
+    case 'ILA_VINO_205': return taxTotals.ila_vino_205_total;
+    case 'ILA_CERVEZA_205': return taxTotals.ila_cerveza_205_total;
+    case 'ILA_DESTILADOS_315': return taxTotals.ila_destilados_315_total;
+    default: return 0;
+  }
+}
+
+/**
+ * Aplica prorrateo de impuestos específicos a las líneas
+ * 
+ * REGLAS:
+ * 1. Agrupa líneas por tax_category
+ * 2. Calcula base neta por categoría (sum net_line_for_cost)
+ * 3. Prorratea el total de header según participación de cada línea
+ * 4. Ajusta redondeo en la línea con mayor neto
+ * 5. Si base = 0 pero hay impuesto, marca REVIEW_REQUIRED
+ */
+export function applyTaxProration(
+  lines: ComputedLine[],
+  headerTaxTotals: HeaderTaxTotals
+): { 
+  lines: ComputedLine[]; 
+  diagnostics: ProrationDiagnostic[];
+} {
+  const diagnostics: ProrationDiagnostic[] = [];
+  const categories: TaxCategory[] = [
+    'IABA_10', 'IABA_18', 'ILA_VINO_205', 'ILA_CERVEZA_205', 'ILA_DESTILADOS_315'
+  ];
+  
+  // Clonar líneas para no mutar
+  let resultLines = lines.map(l => ({ ...l }));
+  
+  for (const category of categories) {
+    const totalFromHeader = getTaxTotalForCategory(headerTaxTotals, category);
+    
+    // Filtrar líneas de inventario (no gasto) con esta categoría
+    const categoryLines = resultLines.filter(
+      l => l.tax_category === category && l.status !== 'EXPENSE' && l.status !== 'IGNORED'
+    );
+    
+    if (categoryLines.length === 0) {
+      // No hay líneas para esta categoría
+      if (totalFromHeader > 0) {
+        diagnostics.push({
+          category,
+          total_from_header: totalFromHeader,
+          base_net_amount: 0,
+          lines_count: 0,
+          sum_prorated: 0,
+          rounding_adjustment: 0,
+          is_valid: false,
+          error_message: `Impuesto de header ($${totalFromHeader.toLocaleString('es-CL')}) sin líneas asignadas`,
+        });
+      }
+      continue;
+    }
+    
+    // Calcular base neta
+    const baseNetAmount = categoryLines.reduce((sum, l) => sum + l.net_line_for_cost, 0);
+    
+    if (totalFromHeader === 0) {
+      // No hay impuesto en header para esta categoría
+      // Calcular estimado usando tasa (modo fallback)
+      const rate = TAX_RATES[category];
+      categoryLines.forEach(line => {
+        const idx = resultLines.findIndex(l => l.id === line.id);
+        if (idx >= 0) {
+          const estimatedTax = Math.round(line.net_line_for_cost * rate);
+          resultLines[idx] = {
+            ...resultLines[idx],
+            specific_tax_amount: estimatedTax,
+            specific_tax_source: "CALCULATED",
+            inventory_cost_line: line.net_line_for_cost + estimatedTax,
+            inventory_unit_cost: line.real_units > 0 
+              ? Math.round((line.net_line_for_cost + estimatedTax) / line.real_units) 
+              : 0,
+          };
+        }
+      });
+      
+      diagnostics.push({
+        category,
+        total_from_header: 0,
+        base_net_amount: baseNetAmount,
+        lines_count: categoryLines.length,
+        sum_prorated: categoryLines.reduce((s, l) => s + Math.round(l.net_line_for_cost * TAX_RATES[category]), 0),
+        rounding_adjustment: 0,
+        is_valid: true,
+        error_message: "Sin total de header - usando cálculo por tasa",
+      });
+      continue;
+    }
+    
+    if (baseNetAmount === 0) {
+      // Base = 0 pero hay impuesto -> marcar REVIEW_REQUIRED
+      categoryLines.forEach(line => {
+        const idx = resultLines.findIndex(l => l.id === line.id);
+        if (idx >= 0) {
+          resultLines[idx] = {
+            ...resultLines[idx],
+            status: "REVIEW_REQUIRED",
+            reasons: [...resultLines[idx].reasons, `No se puede prorratear impuesto ${category}: base neta = 0`],
+          };
+        }
+      });
+      
+      diagnostics.push({
+        category,
+        total_from_header: totalFromHeader,
+        base_net_amount: 0,
+        lines_count: categoryLines.length,
+        sum_prorated: 0,
+        rounding_adjustment: 0,
+        is_valid: false,
+        error_message: "Base neta = 0, no se puede prorratear",
+      });
+      continue;
+    }
+    
+    // Prorratear impuesto
+    const proratedAmounts: { lineId: string; amount: number; netAmount: number }[] = [];
+    
+    categoryLines.forEach(line => {
+      const proportion = line.net_line_for_cost / baseNetAmount;
+      const proratedRaw = totalFromHeader * proportion;
+      const proratedRounded = Math.round(proratedRaw);
+      
+      proratedAmounts.push({
+        lineId: line.id,
+        amount: proratedRounded,
+        netAmount: line.net_line_for_cost,
+      });
+    });
+    
+    // Ajuste de redondeo
+    const sumProrated = proratedAmounts.reduce((s, p) => s + p.amount, 0);
+    const diff = totalFromHeader - sumProrated;
+    
+    if (diff !== 0) {
+      // Aplicar diferencia a la línea con mayor neto
+      const maxLine = proratedAmounts.reduce((max, p) => 
+        p.netAmount > max.netAmount ? p : max
+      , proratedAmounts[0]);
+      maxLine.amount += diff;
+    }
+    
+    // Aplicar montos prorrateados a las líneas
+    proratedAmounts.forEach(({ lineId, amount }) => {
+      const idx = resultLines.findIndex(l => l.id === lineId);
+      if (idx >= 0) {
+        const line = resultLines[idx];
+        const newInventoryCostLine = line.net_line_for_cost + amount;
+        const newInventoryUnitCost = line.real_units > 0 
+          ? Math.round(newInventoryCostLine / line.real_units) 
+          : 0;
+        
+        resultLines[idx] = {
+          ...line,
+          specific_tax_amount: amount,
+          specific_tax_source: "PRORATION",
+          inventory_cost_line: newInventoryCostLine,
+          inventory_unit_cost: newInventoryUnitCost,
+        };
+      }
+    });
+    
+    diagnostics.push({
+      category,
+      total_from_header: totalFromHeader,
+      base_net_amount: baseNetAmount,
+      lines_count: categoryLines.length,
+      sum_prorated: proratedAmounts.reduce((s, p) => s + p.amount, 0),
+      rounding_adjustment: diff,
+      is_valid: true,
+    });
+  }
+  
+  return { lines: resultLines, diagnostics };
+}
+
+// ============================================================================
+// RECALCULO DE LÍNEA
+// ============================================================================
+
 /**
  * Recalcula una línea cuando cambia un valor editable
+ * NOTA: No aplica prorrateo - eso se hace a nivel de documento
  */
 export function recalculateLine(
   line: ComputedLine, 
@@ -548,9 +783,13 @@ export function recalculateLine(
   const newNetLine = newUnitPriceAfterDiscount * newRealUnits;
   const newDiscountAmount = Math.round(newUnitPriceReal * newRealUnits * newDiscountPct / 100);
   
-  // NUEVO: Calcular impuestos específicos capitalizados
-  const newSpecificTaxAmount = Math.round(newNetLine * newTaxRate);
-  const newInventoryCostLine = newNetLine + newSpecificTaxAmount;
+  // Impuestos: resetear a 0 (se recalculará con prorrateo a nivel documento)
+  // Si cambió la categoría, el prorrateo debe re-ejecutarse
+  const categoryChanged = updates.tax_category !== undefined && updates.tax_category !== line.tax_category;
+  const specificTaxAmount = categoryChanged ? 0 : line.specific_tax_amount;
+  const specificTaxSource = categoryChanged ? "NONE" as const : line.specific_tax_source;
+  
+  const newInventoryCostLine = newNetLine + specificTaxAmount;
   const newInventoryUnitCost = newRealUnits > 0 ? Math.round(newInventoryCostLine / newRealUnits) : 0;
   
   // Re-evaluar status
@@ -563,7 +802,6 @@ export function recalculateLine(
   } else if (line.status === "IGNORED") {
     status = "IGNORED";
   } else {
-    // Validar solo líneas de inventario
     if (newRealUnits <= 0) {
       status = "REVIEW_REQUIRED";
       reasons.push('Unidades reales <= 0');
@@ -572,13 +810,13 @@ export function recalculateLine(
       status = "REVIEW_REQUIRED";
       reasons.push('Precio unitario real <= 0');
     }
-    if (newInventoryUnitCost <= 0 && newRealUnits > 0) {
-      status = "REVIEW_REQUIRED";
-      reasons.push('Costo unitario inventario <= 0');
-    }
     if (newPackPriced && newMultiplier === 1) {
       status = "REVIEW_REQUIRED";
       reasons.push('⚠️ Precio por PACK pero multiplicador=1');
+    }
+    // Si la categoría cambió, marcar para re-prorrateo
+    if (categoryChanged) {
+      reasons.push(`Categoría cambiada a ${getTaxCategoryLabel(newTaxCategory)} - requiere re-prorrateo`);
     }
   }
   
@@ -596,7 +834,8 @@ export function recalculateLine(
     net_unit_cost: newUnitPriceAfterDiscount,
     tax_category: newTaxCategory,
     tax_rate: newTaxRate,
-    specific_tax_amount: newSpecificTaxAmount,
+    specific_tax_amount: specificTaxAmount,
+    specific_tax_source: specificTaxSource,
     inventory_cost_line: newInventoryCostLine,
     inventory_unit_cost: newInventoryUnitCost,
     status,
@@ -604,10 +843,17 @@ export function recalculateLine(
   };
 }
 
+// ============================================================================
+// VALIDACIÓN PARA CONFIRMACIÓN
+// ============================================================================
+
 /**
  * Valida si un documento puede ser confirmado
  */
-export function validateForConfirmation(lines: ComputedLine[]): {
+export function validateForConfirmation(
+  lines: ComputedLine[],
+  headerTaxTotals?: HeaderTaxTotals
+): {
   canConfirm: boolean;
   errors: string[];
   warnings: string[];
@@ -626,6 +872,12 @@ export function validateForConfirmation(lines: ComputedLine[]): {
     errors.push(`${unmatchedInventory.length} línea(s) de inventario sin producto asignado`);
   }
   
+  // Validar que todas las líneas de inventario tengan tax_category definida
+  const noTaxCategory = inventoryLines.filter(l => !l.tax_category);
+  if (noTaxCategory.length > 0) {
+    errors.push(`${noTaxCategory.length} línea(s) sin categoría tributaria definida`);
+  }
+  
   const zeroUnits = inventoryLines.filter(l => l.real_units <= 0);
   if (zeroUnits.length > 0) {
     errors.push(`${zeroUnits.length} línea(s) con unidades reales = 0`);
@@ -636,9 +888,32 @@ export function validateForConfirmation(lines: ComputedLine[]): {
     errors.push(`${zeroPrice.length} línea(s) con precio unitario = 0`);
   }
   
-  const invalidDiscount = inventoryLines.filter(l => l.discount_pct < 0 || l.discount_pct > 100);
-  if (invalidDiscount.length > 0) {
-    errors.push(`${invalidDiscount.length} línea(s) con descuento inválido`);
+  // Validar prorrateo si hay totales de header
+  if (headerTaxTotals) {
+    const categories: Array<{ key: keyof HeaderTaxTotals; category: TaxCategory }> = [
+      { key: 'iaba_10_total', category: 'IABA_10' },
+      { key: 'iaba_18_total', category: 'IABA_18' },
+      { key: 'ila_vino_205_total', category: 'ILA_VINO_205' },
+      { key: 'ila_cerveza_205_total', category: 'ILA_CERVEZA_205' },
+      { key: 'ila_destilados_315_total', category: 'ILA_DESTILADOS_315' },
+    ];
+    
+    for (const { key, category } of categories) {
+      const headerTotal = headerTaxTotals[key] as number;
+      if (headerTotal > 0) {
+        const categoryLines = inventoryLines.filter(l => l.tax_category === category);
+        const sumProrated = categoryLines.reduce((s, l) => s + l.specific_tax_amount, 0);
+        
+        if (Math.abs(headerTotal - sumProrated) > 1) {
+          errors.push(`Prorrateo de ${getTaxCategoryLabel(category)} no cuadra: header $${headerTotal.toLocaleString('es-CL')} vs prorrateado $${sumProrated.toLocaleString('es-CL')}`);
+        }
+        
+        const baseNet = categoryLines.reduce((s, l) => s + l.net_line_for_cost, 0);
+        if (baseNet === 0 && headerTotal > 0) {
+          errors.push(`Categoría ${getTaxCategoryLabel(category)}: impuesto $${headerTotal.toLocaleString('es-CL')} pero base neta = 0`);
+        }
+      }
+    }
   }
   
   return {
@@ -647,6 +922,10 @@ export function validateForConfirmation(lines: ComputedLine[]): {
     warnings,
   };
 }
+
+// ============================================================================
+// DIAGNÓSTICO
+// ============================================================================
 
 /**
  * Genera resumen de diagnóstico para debugging
@@ -665,9 +944,15 @@ export function generateDiagnostic(
   totals: {
     grossTotal: number;
     discountTotal: number;
-    taxTotal: number;
     netTotal: number;
+    specificTaxTotal: number;
+    inventoryCostTotal: number;
   };
+  byCategory: Record<TaxCategory, {
+    linesCount: number;
+    netTotal: number;
+    taxTotal: number;
+  }>;
   validation: ReturnType<typeof validateForConfirmation>;
 } {
   const summary = {
@@ -678,16 +963,32 @@ export function generateDiagnostic(
     ignoredLines: lines.filter(l => l.status === "IGNORED").length,
   };
   
+  const inventoryLines = lines.filter(l => l.status === "OK");
+  
   const totals = {
     grossTotal: lines.reduce((s, l) => s + l.gross_line, 0),
     discountTotal: lines.reduce((s, l) => s + l.discount_amount, 0),
-    taxTotal: lines.reduce((s, l) => s + l.taxes_excluded_for_cost, 0),
-    netTotal: lines.reduce((s, l) => s + l.net_line_for_cost, 0),
+    netTotal: inventoryLines.reduce((s, l) => s + l.net_line_for_cost, 0),
+    specificTaxTotal: inventoryLines.reduce((s, l) => s + l.specific_tax_amount, 0),
+    inventoryCostTotal: inventoryLines.reduce((s, l) => s + l.inventory_cost_line, 0),
   };
+  
+  const categories: TaxCategory[] = ['NONE', 'IABA_10', 'IABA_18', 'ILA_VINO_205', 'ILA_CERVEZA_205', 'ILA_DESTILADOS_315'];
+  const byCategory = {} as Record<TaxCategory, { linesCount: number; netTotal: number; taxTotal: number }>;
+  
+  for (const cat of categories) {
+    const catLines = inventoryLines.filter(l => l.tax_category === cat);
+    byCategory[cat] = {
+      linesCount: catLines.length,
+      netTotal: catLines.reduce((s, l) => s + l.net_line_for_cost, 0),
+      taxTotal: catLines.reduce((s, l) => s + l.specific_tax_amount, 0),
+    };
+  }
   
   return {
     summary,
     totals,
-    validation: validateForConfirmation(lines),
+    byCategory,
+    validation: validateForConfirmation(lines, header.tax_totals),
   };
 }
