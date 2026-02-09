@@ -115,9 +115,10 @@ export function NewProductWizard({
       return;
     }
 
-    // Cost Law: unit_cost is required
-    if (!productCost || parseFloat(productCost) < 0) {
-      toast.error("El costo unitario es requerido y debe ser >= 0");
+    // Ley de Costos ESTRICTA: costo >= $1 obligatorio
+    const costValue = parseFloat(productCost);
+    if (!productCost || isNaN(costValue) || costValue < 1) {
+      toast.error("El costo unitario debe ser al menos $1 (Ley de Costos)");
       return;
     }
 
@@ -274,18 +275,18 @@ export function NewProductWizard({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Costo unitario *</Label>
+                  <Label>Costo unitario * (mín. $1)</Label>
                   <Input
                     type="number"
-                    min="0"
-                    step="0.01"
+                    min="1"
+                    step="1"
                     value={productCost}
                     onChange={(e) => setProductCost(e.target.value)}
-                    placeholder="Requerido"
-                    className={!productCost || parseFloat(productCost) < 0 ? "border-destructive" : ""}
+                    placeholder="Mínimo $1"
+                    className={!productCost || parseFloat(productCost) < 1 ? "border-destructive" : ""}
                   />
-                  {(!productCost || parseFloat(productCost) < 0) && (
-                    <p className="text-xs text-destructive">El costo es obligatorio (Ley de Costos)</p>
+                  {(!productCost || parseFloat(productCost) < 1) && (
+                    <p className="text-xs text-destructive">El costo debe ser al menos $1</p>
                   )}
                 </div>
               </div>
