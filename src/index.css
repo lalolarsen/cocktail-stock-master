@@ -2,117 +2,131 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Soft Minimal Design System
-   - Neutral palette with one accent color
-   - Reduced visual weight: subtle borders, no heavy shadows
-   - Faster feel: reduced motion, tighter spacing
-   All colors MUST be HSL.
-*/
+/**
+ * DiStock POS Design System
+ * Dark theme optimized for POS terminals
+ * All colors MUST be HSL values only (no hsl() wrapper).
+ */
 
 @layer base {
   :root {
-    /* Neutral backgrounds */
-    --background: 0 0% 98%;
-    --foreground: 220 15% 15%;
+    /* Background & Foreground */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 15% 15%;
+    /* Card */
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 15%;
+    /* Popover */
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
 
-    /* Single accent color - teal/emerald */
-    --primary: 160 45% 40%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 160 40% 50%;
+    /* Primary (Green accent) */
+    --primary: 142 71% 45%;
+    --primary-foreground: 222 47% 6%;
 
-    /* Neutral secondary */
-    --secondary: 220 10% 94%;
-    --secondary-foreground: 220 15% 25%;
-    --secondary-glow: 220 10% 88%;
+    /* Secondary */
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 220 10% 96%;
-    --muted-foreground: 220 10% 50%;
+    /* Muted */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 220 10% 94%;
-    --accent-foreground: 220 15% 25%;
+    /* Accent */
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
 
-    /* Destructive - reserved for critical only */
-    --destructive: 0 70% 55%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 38 90% 50%;
-    --warning-foreground: 0 0% 100%;
+    /* Destructive (Red) */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 220 10% 90%;
-    --input: 220 10% 90%;
-    --ring: 160 45% 40%;
+    /* Border & Input */
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 142 71% 45%;
 
-    /* Reduced radius for cleaner look */
-    --radius: 0.5rem;
-
-    /* Removed gradients - use solid colors */
-    --shadow-soft: 0 1px 3px hsl(220 15% 15% / 0.06);
-    --shadow-medium: 0 2px 8px hsl(220 15% 15% / 0.08);
-
-    /* Faster transitions */
-    --transition-fast: all 0.15s ease;
-    --transition-normal: all 0.2s ease;
+    /* Radius */
+    --radius: 0.75rem;
 
     /* Sidebar */
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 15% 25%;
-    --sidebar-primary: 160 45% 40%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 10% 96%;
-    --sidebar-accent-foreground: 220 15% 25%;
-    --sidebar-border: 220 10% 92%;
-    --sidebar-ring: 160 45% 40%;
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 217 33% 14%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 14%;
+    --sidebar-ring: 142 71% 45%;
+
+    /* Semantic Colors */
+    --success: 142 71% 45%;
+    --success-foreground: 222 47% 6%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 6%;
+    --info: 199 89% 48%;
+    --info-foreground: 222 47% 6%;
+
+    /* Chart colors */
+    --chart-1: 142 71% 45%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 
+  /* Dark mode (same as root for this theme) */
   .dark {
-    --background: 220 15% 8%;
-    --foreground: 220 10% 92%;
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
 
-    --card: 220 15% 11%;
-    --card-foreground: 220 10% 92%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 220 15% 11%;
-    --popover-foreground: 220 10% 92%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 160 45% 45%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 160 40% 55%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 222 47% 6%;
 
-    --secondary: 220 15% 18%;
-    --secondary-foreground: 220 10% 85%;
-    --secondary-glow: 220 15% 22%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 220 15% 15%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 220 15% 18%;
-    --accent-foreground: 220 10% 85%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 65% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 38 85% 45%;
-    --warning-foreground: 0 0% 100%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 220 15% 18%;
-    --input: 220 15% 18%;
-    --ring: 160 45% 45%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 142 71% 45%;
 
-    --shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.2);
-    --shadow-medium: 0 2px 8px hsl(0 0% 0% / 0.3);
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 217 33% 14%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 14%;
+    --sidebar-ring: 142 71% 45%;
 
-    --sidebar-background: 220 15% 10%;
-    --sidebar-foreground: 220 10% 85%;
-    --sidebar-primary: 160 45% 45%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 15%;
-    --sidebar-accent-foreground: 220 10% 85%;
-    --sidebar-border: 220 15% 15%;
-    --sidebar-ring: 160 45% 45%;
+    --success: 142 71% 45%;
+    --success-foreground: 222 47% 6%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 6%;
+    --info: 199 89% 48%;
+    --info-foreground: 222 47% 6%;
+
+    --chart-1: 142 71% 45%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 }
 
@@ -123,46 +137,58 @@
 
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
     min-height: 100vh;
   }
 }
 
+/* ============================================
+   CUSTOM SCROLLBAR
+   ============================================ */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
 @layer components {
-  /* Simplified card - no gradient, subtle border */
+  /* Card with subtle border */
   .card-minimal {
-    @apply bg-card border border-border;
-    box-shadow: var(--shadow-soft);
-  }
-
-  /* Soft shadow only */
-  .shadow-soft {
-    box-shadow: var(--shadow-soft);
-  }
-
-  .shadow-medium {
-    box-shadow: var(--shadow-medium);
+    @apply bg-card border border-border rounded-lg;
   }
 
   /* Fast transitions */
   .transition-fast {
-    transition: var(--transition-fast);
+    transition: all 0.15s ease;
   }
 
   .transition-normal {
-    transition: var(--transition-normal);
+    transition: all 0.2s ease;
   }
 
-  /* Minimal hover - subtle scale only */
+  /* Hover lift effect */
   .hover-lift {
-    transition: var(--transition-fast);
+    transition: all 0.15s ease;
   }
 
   .hover-lift:hover {
     transform: translateY(-1px);
-    box-shadow: var(--shadow-medium);
   }
 
-  /* Reduced animation - simple fade */
+  /* Fade in animation */
   .fade-in {
     animation: fade-in 0.15s ease;
   }
