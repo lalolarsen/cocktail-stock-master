@@ -136,8 +136,10 @@ export function MinimalReviewTable({
               <TableHead className="w-[60px] text-center">Pack?</TableHead>
               <TableHead className="w-[60px] text-center">Desc.%</TableHead>
               <TableHead className="w-[90px] text-right">P. Neto Unit.</TableHead>
-              <TableHead className="w-[90px] text-right">Total Línea</TableHead>
-              <TableHead className="w-[110px]">Impuestos (info)</TableHead>
+              <TableHead className="w-[110px]">Impuesto Esp.</TableHead>
+              <TableHead className="w-[100px] text-right bg-green-50">
+                <span className="text-green-700 font-semibold">Costo Inv.</span>
+              </TableHead>
               <TableHead className="w-[70px] text-center">Estado</TableHead>
               <TableHead className="w-[40px]"></TableHead>
             </TableRow>
@@ -391,13 +393,13 @@ export function MinimalReviewTable({
                     )}
                   </TableCell>
 
-                  {/* Precio Neto Unitario (calculado) - en VERDE */}
+                  {/* Precio Neto Unitario (calculado) */}
                   <TableCell className="text-right">
                     {!isExpenseOrIgnored ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={cn("font-medium text-sm", {
-                            "text-green-700": line.unit_price_after_discount > 0,
+                          <span className={cn("text-sm", {
+                            "text-muted-foreground": line.unit_price_after_discount > 0,
                             "text-red-600": line.unit_price_after_discount <= 0,
                           })}>
                             {formatCLP(line.unit_price_after_discount)}
@@ -416,14 +418,7 @@ export function MinimalReviewTable({
                     )}
                   </TableCell>
 
-                  {/* Total Línea */}
-                  <TableCell className="text-right">
-                    <span className="text-sm">
-                      {formatCLP(line.net_line_for_cost)}
-                    </span>
-                  </TableCell>
-
-                  {/* Impuestos (info) - dropdown + chip */}
+                  {/* Impuesto Específico (dropdown + monto) */}
                   <TableCell>
                     {!isExpenseOrIgnored ? (
                       <div className="flex flex-col gap-1">
@@ -433,7 +428,7 @@ export function MinimalReviewTable({
                             onUpdateLine(line.id, { tax_category: value as TaxCategory })
                           }
                         >
-                          <SelectTrigger className="h-6 text-xs w-[100px]">
+                          <SelectTrigger className="h-6 text-xs w-[90px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -444,10 +439,44 @@ export function MinimalReviewTable({
                             ))}
                           </SelectContent>
                         </Select>
-                        {getTaxCategoryChip(line.tax_category)}
+                        {line.tax_category !== 'NONE' && line.specific_tax_amount > 0 && (
+                          <span className="text-xs text-blue-600">
+                            +{formatCLP(line.specific_tax_amount)}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+
+                  {/* NUEVO: Costo Unitario Inventario (VERDE) - incluye ILA/IABA */}
+                  <TableCell className="text-right bg-green-50/50">
+                    {!isExpenseOrIgnored ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={cn("font-bold text-sm", {
+                            "text-green-700": line.inventory_unit_cost > 0,
+                            "text-red-600": line.inventory_unit_cost <= 0,
+                          })}>
+                            {formatCLP(line.inventory_unit_cost)}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <div className="text-xs">
+                            <p>Neto unitario: {formatCLP(line.net_unit_cost)}</p>
+                            {line.specific_tax_amount > 0 && (
+                              <p className="text-blue-600">+ Imp. esp./unit: {formatCLP(Math.round(line.specific_tax_amount / line.real_units))}</p>
+                            )}
+                            <p className="font-bold text-green-700 mt-1">= {formatCLP(line.inventory_unit_cost)}</p>
+                            <p className="text-muted-foreground mt-1">Este valor se usa para CPP</p>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-xs text-amber-700">
+                        {formatCLP(line.gross_line)}
+                      </span>
                     )}
                   </TableCell>
 

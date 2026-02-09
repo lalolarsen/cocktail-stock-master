@@ -71,29 +71,36 @@ Para trazabilidad completa:
 ### Formula Financiera
 
 ```text
-Nuevo CPP = (Stock Existente * CPP Actual + Cantidad Ingresada * Costo Factura) 
+Nuevo CPP = (Stock Existente * CPP Actual + Cantidad Ingresada * Costo Inventario Unitario) 
             / (Stock Existente + Cantidad Ingresada)
 ```
 
+### Costo Inventario Unitario (REGLA ACTUALIZADA 2026-02-09)
+
+```text
+net_line = real_units * unit_price_after_discount
+specific_tax_amount = net_line * tax_rate  (IABA 10/18%, ILA 20.5/31.5%)
+inventory_cost_line = net_line + specific_tax_amount
+inventory_unit_cost = inventory_cost_line / real_units  ← USAR PARA CPP
+```
+
+**IMPORTANTE**: ILA e IABA se CAPITALIZAN al costo de inventario (NO son gastos operacionales).
+El IVA sigue siendo informativo y NO entra al costo.
+
 ### Casos Especiales
 
-1. **Stock Cero**: CPP = Costo de factura directamente
+1. **Stock Cero**: CPP = inventory_unit_cost directamente
 2. **Exclusion de Gastos**: Items marcados como GASTO no afectan CPP
 3. **Factor de Conversion**: Normalizar cantidad y costo antes del calculo
 
 ### Modificacion de Funcion `confirm_purchase_intake`
 
-Reemplazar la logica actual de "promedio simple" por CPP real:
-
 ```text
--- Actual (incorrecto):
-cost_per_unit = (cost_per_unit + v_unit_cost) / 2
-
--- Nuevo (CPP correcto):
+-- Usar inventory_unit_cost (incluye ILA/IABA)
 cost_per_unit = CASE 
-  WHEN current_stock = 0 OR cost_per_unit IS NULL OR cost_per_unit = 0 THEN v_normalized_cost
-  ELSE ((current_stock * cost_per_unit) + (v_normalized_qty * v_normalized_cost)) 
-       / (current_stock + v_normalized_qty)
+  WHEN current_stock = 0 OR cost_per_unit IS NULL OR cost_per_unit = 0 THEN v_inventory_unit_cost
+  ELSE ((current_stock * cost_per_unit) + (v_real_units * v_inventory_unit_cost)) 
+       / (current_stock + v_real_units)
 END
 ```
 

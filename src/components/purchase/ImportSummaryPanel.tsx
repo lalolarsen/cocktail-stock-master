@@ -2,11 +2,13 @@
  * ImportSummaryPanel - Detailed summary breakdown
  * 
  * Shows 5-line breakdown as required:
- * 1. Subtotal neto (productos) - inventory only
- * 2. Impuestos específicos (IABA/ILA)
- * 3. IVA (informativo)
+ * 1. Subtotal neto (productos) - sum of net lines
+ * 2. Impuestos específicos (IABA/ILA) - CAPITALIZED to inventory cost
+ * 3. IVA (informativo) - NOT included in inventory
  * 4. Gastos operacionales (flete + otros)
  * 5. TOTAL factura
+ * 
+ * RULE: ILA/IABA are now CAPITALIZED to inventory cost (not expenses)
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,21 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Check, Clock } from "lucide-react";
+import { Loader2, Check, Clock, PackagePlus } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import type { ComputedLine, TaxCategory } from "@/lib/purchase-calculator";
+import { TAX_RATES } from "@/lib/purchase-calculator";
 import { cn } from "@/lib/utils";
-
-// Tax rates for calculation
-const TAX_RATES: Record<TaxCategory, number> = {
-  NONE: 0,
-  IVA: 0.19,
-  IABA10: 0.10,
-  IABA18: 0.18,
-  ILA_VINO_20_5: 0.205,
-  ILA_CERVEZA_20_5: 0.205,
-  ILA_DESTILADOS_31_5: 0.315,
-};
 
 interface ImportSummaryPanelProps {
   lines: ComputedLine[];
@@ -57,30 +49,28 @@ export function ImportSummaryPanel({
   const inventoryLines = lines.filter(l => l.status === "OK" && l.matched_product_id);
   const expenseLines = lines.filter(l => l.status === "EXPENSE");
   
-  // Subtotal neto (productos) - sum of net_line_for_cost for inventory
+  // 1. Subtotal neto (productos) - sum of net lines (before specific taxes)
   const subtotalNetoProductos = inventoryLines.reduce((sum, l) => sum + l.net_line_for_cost, 0);
   
-  // Calculate specific tax amounts per line
-  const specificTaxTotal = inventoryLines.reduce((sum, line) => {
-    const rate = TAX_RATES[line.tax_category] || 0;
-    // Tax is calculated ON the net line (informative)
-    const taxAmount = Math.round(line.net_line_for_cost * rate);
-    return sum + taxAmount;
-  }, 0);
+  // 2. Impuestos específicos CAPITALIZADOS (sum of specific_tax_amount)
+  const specificTaxTotal = inventoryLines.reduce((sum, line) => sum + line.specific_tax_amount, 0);
   
-  // Gastos operacionales (flete + otros)
+  // 3. TOTAL INVENTARIO (Subtotal + Impuestos específicos) = sum of inventory_cost_line
+  const totalInventario = inventoryLines.reduce((sum, l) => sum + l.inventory_cost_line, 0);
+  
+  // 4. Gastos operacionales (flete + otros)
   const gastosOperacionales = expenseLines.reduce((sum, l) => sum + l.gross_line, 0);
   
-  // Total factura
-  const totalFactura = subtotalNetoProductos + specificTaxTotal + ivaAmount + gastosOperacionales;
+  // 5. Total factura (inventario + gastos + IVA)
+  const totalFactura = totalInventario + gastosOperacionales + ivaAmount;
   
-  // Breakdown of specific taxes
+  // Breakdown of specific taxes by type
   const taxBreakdown = {
-    iaba10: inventoryLines.filter(l => l.tax_category === "IABA10").reduce((sum, l) => sum + Math.round(l.net_line_for_cost * 0.10), 0),
-    iaba18: inventoryLines.filter(l => l.tax_category === "IABA18").reduce((sum, l) => sum + Math.round(l.net_line_for_cost * 0.18), 0),
-    ilaVino: inventoryLines.filter(l => l.tax_category === "ILA_VINO_20_5").reduce((sum, l) => sum + Math.round(l.net_line_for_cost * 0.205), 0),
-    ilaCerveza: inventoryLines.filter(l => l.tax_category === "ILA_CERVEZA_20_5").reduce((sum, l) => sum + Math.round(l.net_line_for_cost * 0.205), 0),
-    ilaDestilados: inventoryLines.filter(l => l.tax_category === "ILA_DESTILADOS_31_5").reduce((sum, l) => sum + Math.round(l.net_line_for_cost * 0.315), 0),
+    iaba10: inventoryLines.filter(l => l.tax_category === "IABA10").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    iaba18: inventoryLines.filter(l => l.tax_category === "IABA18").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaVino: inventoryLines.filter(l => l.tax_category === "ILA_VINO_20_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaCerveza: inventoryLines.filter(l => l.tax_category === "ILA_CERVEZA_20_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
+    ilaDestilados: inventoryLines.filter(l => l.tax_category === "ILA_DESTILADOS_31_5").reduce((sum, l) => sum + l.specific_tax_amount, 0),
   };
   
   return (
@@ -115,22 +105,22 @@ export function ImportSummaryPanel({
             <span className="font-medium">{formatCLP(subtotalNetoProductos)}</span>
           </div>
           
-          {/* 2. Impuestos específicos (IABA/ILA) */}
+          {/* 2. Impuestos específicos (IABA/ILA) - CAPITALIZADOS */}
           <div className="flex justify-between">
             <span className="text-muted-foreground flex items-center gap-1">
               Impuestos específicos
               {specificTaxTotal > 0 && (
-                <span className="text-xs text-blue-600">(info)</span>
+                <span className="text-xs text-green-600 font-medium">(+inventario)</span>
               )}
             </span>
-            <span className={cn("font-medium", specificTaxTotal > 0 ? "text-blue-700" : "")}>
+            <span className={cn("font-medium", specificTaxTotal > 0 ? "text-green-700" : "")}>
               {formatCLP(specificTaxTotal)}
             </span>
           </div>
           
           {/* Tax breakdown (collapsible if there are taxes) */}
           {specificTaxTotal > 0 && (
-            <div className="ml-4 space-y-1 text-xs text-muted-foreground border-l-2 border-blue-200 pl-2">
+            <div className="ml-4 space-y-1 text-xs text-muted-foreground border-l-2 border-green-200 pl-2">
               {taxBreakdown.iaba10 > 0 && (
                 <div className="flex justify-between">
                   <span>IABA 10%</span>
@@ -164,11 +154,24 @@ export function ImportSummaryPanel({
             </div>
           )}
           
-          {/* 3. IVA (informativo) */}
+          <Separator className="my-2" />
+          
+          {/* TOTAL INVENTARIO = Subtotal + Impuestos específicos */}
+          <div className="flex justify-between bg-green-50 p-2 rounded -mx-2">
+            <span className="font-semibold text-green-800 flex items-center gap-1">
+              <PackagePlus className="h-4 w-4" />
+              TOTAL INVENTARIO
+            </span>
+            <span className="font-bold text-green-800">{formatCLP(totalInventario)}</span>
+          </div>
+          
+          <Separator className="my-2" />
+          
+          {/* 3. IVA (informativo - no afecta inventario) */}
           <div className="flex justify-between">
             <span className="text-muted-foreground flex items-center gap-1">
               IVA 19%
-              <span className="text-xs text-purple-600">(doc)</span>
+              <span className="text-xs text-purple-600">(doc, no inventario)</span>
             </span>
             <span className="font-medium text-purple-700">{formatCLP(ivaAmount)}</span>
           </div>
@@ -185,7 +188,7 @@ export function ImportSummaryPanel({
           
           <Separator className="my-2" />
           
-          {/* 5. TOTAL */}
+          {/* 5. TOTAL FACTURA */}
           <div className="flex justify-between text-base font-semibold">
             <span>TOTAL FACTURA</span>
             <span>{formatCLP(totalFactura)}</span>
@@ -202,9 +205,9 @@ export function ImportSummaryPanel({
           <span className="text-right font-medium">
             {inventoryLines.reduce((s, l) => s + l.real_units, 0)}
           </span>
-          <span className="text-muted-foreground">Monto inventario (CPP):</span>
-          <span className="text-right font-medium text-green-700">
-            {formatCLP(subtotalNetoProductos)}
+          <span className="text-muted-foreground">Valor inventario (con imp.):</span>
+          <span className="text-right font-bold text-green-700">
+            {formatCLP(totalInventario)}
           </span>
         </div>
         
@@ -238,12 +241,18 @@ export function ImportSummaryPanel({
           </>
         )}
         
-        {/* Tax expense info */}
+        {/* Tax capitalization info */}
         {specificTaxTotal > 0 && (
-          <div className="text-xs bg-blue-50 text-blue-800 p-2 rounded">
-            <strong>Nota:</strong> Los impuestos específicos ({formatCLP(specificTaxTotal)}) 
-            se registrarán como gasto fiscal (TAX_EXPENSE) y NO afectarán el costo 
-            de inventario (CPP).
+          <div className="text-xs bg-green-50 text-green-800 p-2 rounded border border-green-200">
+            <strong>✓ Impuestos capitalizados:</strong> Los impuestos específicos ({formatCLP(specificTaxTotal)}) 
+            están incluidos en el costo de inventario y afectarán el CPP de cada producto.
+          </div>
+        )}
+        
+        {/* IVA info */}
+        {ivaAmount > 0 && (
+          <div className="text-xs bg-purple-50 text-purple-800 p-2 rounded border border-purple-200">
+            <strong>Nota:</strong> El IVA ({formatCLP(ivaAmount)}) es informativo y NO afecta el costo de inventario.
           </div>
         )}
         
