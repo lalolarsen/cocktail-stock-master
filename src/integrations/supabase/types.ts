@@ -3727,6 +3727,7 @@ export type Database = {
         Returns: boolean
       }
       is_feature_enabled: { Args: { flag_key: string }; Returns: boolean }
+      is_product_sellable: { Args: { p_product_id: string }; Returns: boolean }
       log_admin_action: {
         Args: {
           p_action: string
