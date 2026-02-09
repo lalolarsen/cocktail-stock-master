@@ -58,6 +58,7 @@ import {
   computePurchaseLine,
   recalculateLine,
   validateForConfirmation,
+  TAX_RATES,
   type ComputedLine,
   type DiscountMode,
   type TaxCategory,
@@ -618,16 +619,7 @@ export default function PurchasesImport() {
     [computedLines]
   );
   
-  // Tax rates for calculating specific tax amounts
-  const TAX_RATES: Record<TaxCategory, number> = {
-    NONE: 0,
-    IVA: 0.19,
-    IABA10: 0.10,
-    IABA18: 0.18,
-    ILA_VINO_20_5: 0.205,
-    ILA_CERVEZA_20_5: 0.205,
-    ILA_DESTILADOS_31_5: 0.315,
-  };
+  // Use TAX_RATES from purchase-calculator (already imported)
   
   // Calculate specific tax total (for expense registration)
   const specificTaxTotal = useMemo(() => 
@@ -714,7 +706,7 @@ export default function PurchasesImport() {
         const taxExpensesByType: Record<string, number> = {};
         
         inventoryLines.forEach(line => {
-          if (line.tax_category !== 'NONE' && line.tax_category !== 'IVA') {
+          if (line.tax_category !== 'NONE') {
             const rate = TAX_RATES[line.tax_category] || 0;
             const taxAmount = Math.round(line.net_line_for_cost * rate);
             if (taxAmount > 0) {

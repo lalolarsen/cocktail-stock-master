@@ -1,4 +1,4 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
+// XHR polyfill for Deno
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -23,9 +23,18 @@ interface RawLineExtraction {
   line_total_text: string | null;
   discount_text: string | null;
   uom_text: string | null;
-  // Impuestos como texto (sin procesar)
   tax_iaba_text: string | null;
   tax_ila_text: string | null;
+}
+
+// Totales de impuestos por categoría (del header del documento)
+interface HeaderTaxTotals {
+  iaba_10_total: number;
+  iaba_18_total: number;
+  ila_vino_205_total: number;
+  ila_cerveza_205_total: number;
+  ila_destilados_315_total: number;
+  sources: Record<string, "extracted" | "missing">;
 }
 
 interface RawExtraction {
@@ -37,6 +46,8 @@ interface RawExtraction {
     net_total_text: string | null;
     iva_total_text: string | null;
     gross_total_text: string | null;
+    // NUEVO: Totales de impuestos por categoría
+    tax_totals?: HeaderTaxTotals;
   };
   lines: RawLineExtraction[];
   raw_text: string;

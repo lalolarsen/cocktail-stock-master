@@ -151,10 +151,10 @@ export function LineDetailDrawer({ open, onOpenChange, line }: LineDetailDrawerP
                 variant="outline" 
                 className={cn("text-sm", {
                   "bg-gray-100 text-gray-600": line.tax_category === 'NONE',
-                  "bg-blue-100 text-blue-700": line.tax_category === 'IABA10' || line.tax_category === 'IABA18',
-                  "bg-purple-100 text-purple-700": line.tax_category === 'ILA_VINO_20_5',
-                  "bg-amber-100 text-amber-700": line.tax_category === 'ILA_CERVEZA_20_5',
-                  "bg-red-100 text-red-700": line.tax_category === 'ILA_DESTILADOS_31_5',
+                  "bg-blue-100 text-blue-700": line.tax_category === 'IABA_10' || line.tax_category === 'IABA_18',
+                  "bg-purple-100 text-purple-700": line.tax_category === 'ILA_VINO_205',
+                  "bg-amber-100 text-amber-700": line.tax_category === 'ILA_CERVEZA_205',
+                  "bg-red-100 text-red-700": line.tax_category === 'ILA_DESTILADOS_315',
                 })}
               >
                 {getTaxCategoryLabel(line.tax_category)}
