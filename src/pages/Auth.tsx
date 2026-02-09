@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
-import stockiaLogoFull from "@/assets/stockia-logo-full.png";
+import stockiaLogoFull from "@/assets/stockia-logo-full-white.png";
 
 const LAST_MODE_KEY = "stockia_last_mode";
 
