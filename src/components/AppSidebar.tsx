@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession, FeatureKey } from "@/contexts/AppSessionContext";
-import stockiaLogo from "@/assets/stockia-logo.png";
+import stockiaLogo from "@/assets/stockia-logo-white.png";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
 
@@ -154,7 +154,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       <SidebarHeader className="p-4 space-y-3">
         <div className="flex items-center gap-3">
           {!isCollapsed ? (
-            <img src={stockiaLogo} alt="StockIA" className="h-7 invert" />
+            <img src={stockiaLogo} alt="StockIA" className="h-8" />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-xs">S</span>
