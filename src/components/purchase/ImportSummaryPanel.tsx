@@ -110,17 +110,17 @@ export function ImportSummaryPanel({
             <span className="text-muted-foreground flex items-center gap-1">
               Impuestos específicos
               {specificTaxTotal > 0 && (
-                <span className="text-xs text-green-600 font-medium">(+inventario)</span>
+                <span className="text-xs text-primary font-medium">(+inventario)</span>
               )}
             </span>
-            <span className={cn("font-medium", specificTaxTotal > 0 ? "text-green-700" : "")}>
+            <span className={cn("font-medium", specificTaxTotal > 0 ? "text-primary" : "")}>
               {formatCLP(specificTaxTotal)}
             </span>
           </div>
           
           {/* Tax breakdown (collapsible if there are taxes) */}
           {specificTaxTotal > 0 && (
-            <div className="ml-4 space-y-1 text-xs text-muted-foreground border-l-2 border-green-200 pl-2">
+            <div className="ml-4 space-y-1 text-xs text-muted-foreground border-l-2 border-primary/30 pl-2">
               {taxBreakdown.iaba10 > 0 && (
                 <div className="flex justify-between">
                   <span>IABA 10%</span>
@@ -157,12 +157,12 @@ export function ImportSummaryPanel({
           <Separator className="my-2" />
           
           {/* TOTAL INVENTARIO = Subtotal + Impuestos específicos */}
-          <div className="flex justify-between bg-green-50 p-2 rounded -mx-2">
-            <span className="font-semibold text-green-800 flex items-center gap-1">
-              <PackagePlus className="h-4 w-4" />
+          <div className="flex justify-between bg-primary/10 p-2 rounded -mx-2">
+            <span className="font-semibold text-foreground flex items-center gap-1">
+              <PackagePlus className="h-4 w-4 text-primary" />
               TOTAL INVENTARIO
             </span>
-            <span className="font-bold text-green-800">{formatCLP(totalInventario)}</span>
+            <span className="font-bold text-primary">{formatCLP(totalInventario)}</span>
           </div>
           
           <Separator className="my-2" />
@@ -171,9 +171,9 @@ export function ImportSummaryPanel({
           <div className="flex justify-between">
             <span className="text-muted-foreground flex items-center gap-1">
               IVA 19%
-              <span className="text-xs text-purple-600">(doc, no inventario)</span>
+              <span className="text-xs text-muted-foreground">(doc, no inventario)</span>
             </span>
-            <span className="font-medium text-purple-700">{formatCLP(ivaAmount)}</span>
+            <span className="font-medium text-muted-foreground">{formatCLP(ivaAmount)}</span>
           </div>
           
           {/* 4. Gastos operacionales */}
@@ -181,7 +181,7 @@ export function ImportSummaryPanel({
             <span className="text-muted-foreground">
               Gastos operacionales ({expenseLines.length})
             </span>
-            <span className={cn("font-medium", gastosOperacionales > 0 ? "text-amber-700" : "")}>
+            <span className={cn("font-medium", gastosOperacionales > 0 ? "text-warning" : "")}>
               {formatCLP(gastosOperacionales)}
             </span>
           </div>
@@ -206,7 +206,7 @@ export function ImportSummaryPanel({
             {inventoryLines.reduce((s, l) => s + l.real_units, 0)}
           </span>
           <span className="text-muted-foreground">Valor inventario (con imp.):</span>
-          <span className="text-right font-bold text-green-700">
+          <span className="text-right font-bold text-primary">
             {formatCLP(totalInventario)}
           </span>
         </div>
@@ -229,7 +229,7 @@ export function ImportSummaryPanel({
               />
             </div>
             {registerExpenses && (
-              <div className="text-sm text-amber-700 bg-amber-50 p-2 rounded">
+              <div className="text-sm text-warning bg-warning/10 p-2 rounded">
                 <div className="font-medium">Se registrará como gasto:</div>
                 <ul className="text-xs mt-1 space-y-1">
                   {expenseLines.map((l) => (
@@ -243,7 +243,7 @@ export function ImportSummaryPanel({
         
         {/* Tax capitalization info */}
         {specificTaxTotal > 0 && (
-          <div className="text-xs bg-green-50 text-green-800 p-2 rounded border border-green-200">
+          <div className="text-xs bg-primary/5 text-foreground p-2 rounded border border-primary/20">
             <strong>✓ Impuestos capitalizados:</strong> Los impuestos específicos ({formatCLP(specificTaxTotal)}) 
             están incluidos en el costo de inventario y afectarán el CPP de cada producto.
           </div>
@@ -251,7 +251,7 @@ export function ImportSummaryPanel({
         
         {/* IVA info */}
         {ivaAmount > 0 && (
-          <div className="text-xs bg-purple-50 text-purple-800 p-2 rounded border border-purple-200">
+          <div className="text-xs bg-muted text-muted-foreground p-2 rounded border border-border">
             <strong>Nota:</strong> El IVA ({formatCLP(ivaAmount)}) es informativo y NO afecta el costo de inventario.
           </div>
         )}

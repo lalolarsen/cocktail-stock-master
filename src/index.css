@@ -1,129 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /**
- * DiStock POS Design System
- * Dark theme optimized for POS terminals
+ * STOCKIA by IAnticipa — Design System
+ * B2B SaaS, minimal, high-contrast
+ * Palette: #000000 / #FFFFFF / #6E6E6E / #00E676
  * All colors MUST be HSL values only (no hsl() wrapper).
  */
 
 @layer base {
   :root {
     /* Background & Foreground */
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
 
     /* Card */
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
 
     /* Popover */
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
 
-    /* Primary (Green accent) */
-    --primary: 142 71% 45%;
-    --primary-foreground: 222 47% 6%;
+    /* Primary (Verde IAnticipa #00E676) */
+    --primary: 145 100% 45%;
+    --primary-foreground: 0 0% 0%;
 
     /* Secondary */
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 0%;
 
     /* Muted */
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 43%;
 
     /* Accent */
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 0%;
 
-    /* Destructive (Red) */
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive (Red - subtle) */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
     /* Border & Input */
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 142 71% 45%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 145 100% 45%;
 
     /* Radius */
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sidebar */
-    --sidebar-background: 222 47% 7%;
-    --sidebar-foreground: 210 40% 90%;
-    --sidebar-primary: 142 71% 45%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 217 33% 14%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 14%;
-    --sidebar-ring: 142 71% 45%;
+    /* Sidebar (negro) */
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 145 100% 45%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 145 100% 45%;
 
     /* Semantic Colors */
-    --success: 142 71% 45%;
-    --success-foreground: 222 47% 6%;
+    --success: 145 100% 45%;
+    --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
-    --info: 199 89% 48%;
-    --info-foreground: 222 47% 6%;
+    --warning-foreground: 0 0% 0%;
+    --info: 210 100% 50%;
+    --info-foreground: 0 0% 100%;
 
     /* Chart colors */
-    --chart-1: 142 71% 45%;
-    --chart-2: 199 89% 48%;
+    --chart-1: 145 100% 45%;
+    --chart-2: 210 100% 50%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
 
-  /* Dark mode (same as root for this theme) */
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 142 71% 45%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 145 100% 45%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 43%;
 
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 142 71% 45%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 145 100% 45%;
 
-    --sidebar-background: 222 47% 7%;
-    --sidebar-foreground: 210 40% 90%;
-    --sidebar-primary: 142 71% 45%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 217 33% 14%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 14%;
-    --sidebar-ring: 142 71% 45%;
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 145 100% 45%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 145 100% 45%;
 
-    --success: 142 71% 45%;
-    --success-foreground: 222 47% 6%;
+    --success: 145 100% 45%;
+    --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
-    --info: 199 89% 48%;
-    --info-foreground: 222 47% 6%;
+    --warning-foreground: 0 0% 0%;
+    --info: 210 100% 50%;
+    --info-foreground: 0 0% 100%;
 
-    --chart-1: 142 71% 45%;
-    --chart-2: 199 89% 48%;
+    --chart-1: 145 100% 45%;
+    --chart-2: 210 100% 50%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
@@ -137,8 +139,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    font-weight: 700;
   }
 }
 
@@ -194,12 +201,8 @@
   }
 
   @keyframes fade-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   /* Outline badge variant */

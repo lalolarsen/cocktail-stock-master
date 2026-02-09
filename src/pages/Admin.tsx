@@ -58,7 +58,7 @@ export default function Admin() {
 
   if (!isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <WorkerPinDialog
           open={showPinDialog}
           onVerified={handlePinVerified}
@@ -90,17 +90,17 @@ export default function Admin() {
   return (
     <VenueGuard>
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        <div className="min-h-screen flex w-full bg-background">
           <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
           
           <main className="flex-1 overflow-auto">
-            <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-6 py-4">
+            <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
                     <Menu className="w-5 h-5" />
                   </SidebarTrigger>
-                  <h1 className="text-xl font-semibold text-foreground">{getViewTitle()}</h1>
+                  <h1 className="text-lg font-semibold text-foreground tracking-tight">{getViewTitle()}</h1>
                 </div>
                 <VenueIndicator variant="header" showRole />
               </div>
