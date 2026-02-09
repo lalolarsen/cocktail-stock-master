@@ -34,6 +34,17 @@ export interface RawLineExtraction {
   uom_text: string | null;
 }
 
+// Tax rates for specific taxes (capitalized to inventory cost)
+export const TAX_RATES: Record<TaxCategory, number> = {
+  NONE: 0,
+  IVA: 0, // IVA is informational only, NOT capitalized
+  IABA10: 0.10,
+  IABA18: 0.18,
+  ILA_VINO_20_5: 0.205,
+  ILA_CERVEZA_20_5: 0.205,
+  ILA_DESTILADOS_31_5: 0.315,
+};
+
 export interface ComputedLine {
   // Identificador
   id: string;
@@ -63,9 +74,10 @@ export interface ComputedLine {
   discount_mode: DiscountMode;
   discount_amount: number;
   
-  // Impuestos informativos (NO afectan costo)
+  // Impuestos - ILA/IABA ahora se CAPITALIZAN al costo
   tax_category: TaxCategory;
-  taxes_excluded_for_cost: number; // IVA/ILA/IABA
+  tax_rate: number; // Tasa aplicable según tax_category
+  taxes_excluded_for_cost: number; // DEPRECATED - mantener por compatibilidad
   tax_details: {
     iva?: number;
     iaba_10?: number;
@@ -75,9 +87,14 @@ export interface ComputedLine {
     ila_lic?: number;
   };
   
-  // Cálculos finales (SINGLE SOURCE OF TRUTH)
-  net_line_for_cost: number; // unit_price_after_discount * real_units
-  net_unit_cost: number; // unit_price_after_discount
+  // Cálculos de neto (SIN impuestos específicos)
+  net_line_for_cost: number; // unit_price_after_discount * real_units (neto puro)
+  net_unit_cost: number; // unit_price_after_discount (neto puro)
+  
+  // NUEVOS: Cálculos de inventario (INCLUYEN impuestos específicos ILA/IABA)
+  specific_tax_amount: number; // Monto de impuestos específicos para esta línea
+  inventory_cost_line: number; // net_line_for_cost + specific_tax_amount
+  inventory_unit_cost: number; // inventory_cost_line / real_units (USAR PARA CPP)
   
   // Estado y validación
   status: LineStatus;
@@ -401,31 +418,38 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     if (status === "OK") status = "REVIEW_REQUIRED";
   }
   
-  // 9. Detectar categoría de impuesto
+  // 9. Detectar categoría de impuesto y obtener tasa
   const taxCategory = input.tax_category_override ?? detectTaxCategory(input.raw_product_name);
+  const taxRate = TAX_RATES[taxCategory] || 0;
   
-  // 10. Sumar impuestos (NUNCA forman parte del costo - SOLO INFORMATIVOS)
+  // 10. Datos de impuestos por línea (para compatibilidad con formatos que traen detalle)
   const taxIaba10 = input.tax_iaba_10 ?? 0;
   const taxIaba18 = input.tax_iaba_18 ?? 0;
   const taxIlaVin = input.tax_ila_vin ?? 0;
   const taxIlaCer = input.tax_ila_cer ?? 0;
   const taxIlaLic = input.tax_ila_lic ?? 0;
-  const taxesExcluded = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic;
+  const taxesExcluded = taxIaba10 + taxIaba18 + taxIlaVin + taxIlaCer + taxIlaLic; // deprecated
   
-  // 11. Calcular neto para costo (basado en precio después de descuento)
+  // 11. Calcular neto para costo (SIN impuestos)
   const netLineForCost = unitPriceAfterDiscount * realUnits;
-  
-  // 12. Calcular costo unitario neto (= precio después de descuento)
   const netUnitCost = unitPriceAfterDiscount;
   
-  // 13. Detectar primero si es flete/gasto
+  // 12. NUEVO: Calcular impuestos específicos capitalizados al inventario
+  // Fórmula: specific_tax_amount = net_line_for_cost * tax_rate
+  const specificTaxAmount = Math.round(netLineForCost * taxRate);
+  
+  // 13. NUEVO: Costo inventario = neto + impuestos específicos (ILA/IABA)
+  const inventoryCostLine = netLineForCost + specificTaxAmount;
+  const inventoryUnitCost = realUnits > 0 ? Math.round(inventoryCostLine / realUnits) : 0;
+  
+  // 14. Detectar primero si es flete/gasto
   const isFreight = isFreightLine(input.raw_product_name);
   if (isFreight) {
     status = "EXPENSE";
     reasons.push('Detectado como flete/despacho');
   }
   
-  // 14. Validaciones estrictas (solo si no es gasto)
+  // 15. Validaciones estrictas (solo si no es gasto)
   if (status !== "EXPENSE") {
     if (realUnits <= 0) {
       status = "REVIEW_REQUIRED";
@@ -437,13 +461,19 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
       reasons.push('Precio unitario real <= 0');
     }
     
-    if (netUnitCost <= 0 && realUnits > 0) {
+    if (inventoryUnitCost <= 0 && realUnits > 0) {
       status = "REVIEW_REQUIRED";
-      reasons.push('Costo unitario neto <= 0');
+      reasons.push('Costo unitario inventario <= 0');
+    }
+    
+    // Validar que si hay impuesto específico, debe poder calcularse
+    if (taxCategory !== 'NONE' && taxCategory !== 'IVA' && specificTaxAmount === 0 && netLineForCost > 0) {
+      // Esto podría indicar un problema de cálculo, pero no es crítico
+      reasons.push(`Impuesto ${taxCategory} calculado = $0 (revisar tasa)`);
     }
   }
   
-  // 15. Normalizar UoM
+  // 16. Normalizar UoM
   const uomNormalized = normalizeUom(input.uom_text);
   
   return {
@@ -462,7 +492,8 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     discount_mode: input.discount_mode,
     discount_amount: Math.round(unitPriceReal * realUnits * validDiscountPct / 100),
     tax_category: taxCategory,
-    taxes_excluded_for_cost: taxesExcluded,
+    tax_rate: taxRate,
+    taxes_excluded_for_cost: taxesExcluded, // deprecated
     tax_details: {
       iaba_10: taxIaba10 || undefined,
       iaba_18: taxIaba18 || undefined,
@@ -472,6 +503,9 @@ export function computePurchaseLine(input: ComputeLineInput): ComputedLine {
     },
     net_line_for_cost: netLineForCost,
     net_unit_cost: netUnitCost,
+    specific_tax_amount: specificTaxAmount,
+    inventory_cost_line: inventoryCostLine,
+    inventory_unit_cost: inventoryUnitCost,
     status,
     reasons,
     matched_product_id: null,
@@ -500,6 +534,7 @@ export function recalculateLine(
   const newPackPriced = updates.pack_priced ?? line.pack_priced;
   const newDiscountPct = Math.max(0, Math.min(100, updates.discount_pct ?? line.discount_pct));
   const newTaxCategory = updates.tax_category ?? line.tax_category;
+  const newTaxRate = TAX_RATES[newTaxCategory] || 0;
   
   // Recalcular precio unitario real
   let newUnitPriceReal = line.invoice_unit_price_raw;
@@ -507,11 +542,16 @@ export function recalculateLine(
     newUnitPriceReal = Math.round(line.invoice_unit_price_raw / newMultiplier);
   }
   
-  // Recalcular resto de valores
+  // Recalcular resto de valores netos
   const newRealUnits = newQty * newMultiplier;
   const newUnitPriceAfterDiscount = Math.round(newUnitPriceReal * (1 - newDiscountPct / 100));
   const newNetLine = newUnitPriceAfterDiscount * newRealUnits;
   const newDiscountAmount = Math.round(newUnitPriceReal * newRealUnits * newDiscountPct / 100);
+  
+  // NUEVO: Calcular impuestos específicos capitalizados
+  const newSpecificTaxAmount = Math.round(newNetLine * newTaxRate);
+  const newInventoryCostLine = newNetLine + newSpecificTaxAmount;
+  const newInventoryUnitCost = newRealUnits > 0 ? Math.round(newInventoryCostLine / newRealUnits) : 0;
   
   // Re-evaluar status
   const reasons: string[] = [];
@@ -532,9 +572,9 @@ export function recalculateLine(
       status = "REVIEW_REQUIRED";
       reasons.push('Precio unitario real <= 0');
     }
-    if (newUnitPriceAfterDiscount <= 0 && newRealUnits > 0) {
+    if (newInventoryUnitCost <= 0 && newRealUnits > 0) {
       status = "REVIEW_REQUIRED";
-      reasons.push('Costo unitario neto <= 0');
+      reasons.push('Costo unitario inventario <= 0');
     }
     if (newPackPriced && newMultiplier === 1) {
       status = "REVIEW_REQUIRED";
@@ -555,6 +595,10 @@ export function recalculateLine(
     net_line_for_cost: newNetLine,
     net_unit_cost: newUnitPriceAfterDiscount,
     tax_category: newTaxCategory,
+    tax_rate: newTaxRate,
+    specific_tax_amount: newSpecificTaxAmount,
+    inventory_cost_line: newInventoryCostLine,
+    inventory_unit_cost: newInventoryUnitCost,
     status,
     reasons: status === "EXPENSE" ? line.reasons : reasons,
   };
