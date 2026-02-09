@@ -1806,7 +1806,7 @@ export type Database = {
           product_id: string
           provider_name: string
           raw_product_name: string
-          venue_id: string | null
+          venue_id: string
         }
         Insert: {
           confidence_score?: number | null
@@ -1816,7 +1816,7 @@ export type Database = {
           product_id: string
           provider_name: string
           raw_product_name: string
-          venue_id?: string | null
+          venue_id: string
         }
         Update: {
           confidence_score?: number | null
@@ -1826,7 +1826,7 @@ export type Database = {
           product_id?: string
           provider_name?: string
           raw_product_name?: string
-          venue_id?: string | null
+          venue_id?: string
         }
         Relationships: [
           {
@@ -3096,6 +3096,72 @@ export type Database = {
           },
         ]
       }
+      supplier_product_aliases: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          id: string
+          last_seen: string | null
+          normalized_text: string
+          pack_multiplier: number | null
+          pack_priced: boolean | null
+          product_id: string | null
+          raw_examples: Json | null
+          supplier_name: string
+          tax_category: string | null
+          times_seen: number | null
+          updated_at: string | null
+          venue_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          last_seen?: string | null
+          normalized_text: string
+          pack_multiplier?: number | null
+          pack_priced?: boolean | null
+          product_id?: string | null
+          raw_examples?: Json | null
+          supplier_name: string
+          tax_category?: string | null
+          times_seen?: number | null
+          updated_at?: string | null
+          venue_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          last_seen?: string | null
+          normalized_text?: string
+          pack_multiplier?: number | null
+          pack_priced?: boolean | null
+          product_id?: string | null
+          raw_examples?: Json | null
+          supplier_name?: string
+          tax_category?: string | null
+          times_seen?: number | null
+          updated_at?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_product_aliases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_product_aliases_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_sale_items: {
         Row: {
           created_at: string | null
@@ -3689,6 +3755,7 @@ export type Database = {
         Returns: string
       }
       migrate_stock_to_lots: { Args: never; Returns: Json }
+      normalize_invoice_text: { Args: { input_text: string }; Returns: string }
       open_jornada_manual: { Args: { p_cash_amounts?: Json }; Returns: Json }
       record_login_attempt: {
         Args: {

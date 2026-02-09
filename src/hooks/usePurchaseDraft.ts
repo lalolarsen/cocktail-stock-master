@@ -21,6 +21,12 @@ import { useAppSession } from "@/contexts/AppSessionContext";
 import type { ComputedLine, DiscountMode } from "@/lib/purchase-calculator";
 import { toast } from "sonner";
 
+// Extended line type with memory info (compatible with draft storage)
+interface ComputedLineWithMemory extends ComputedLine {
+  match_source?: "memory" | "fuzzy" | "none";
+  from_memory?: boolean;
+}
+
 // LocalStorage keys
 const LS_DRAFT_ID_KEY = "purchase_import_draft_id";
 const LS_DRAFT_DATA_PREFIX = "purchase_import_draft:";
@@ -54,7 +60,7 @@ export interface DraftData {
   iva_amount: number;
   total_amount_gross: number;
   raw_extraction: Record<string, unknown> | null;
-  computed_lines: ComputedLine[];
+  computed_lines: ComputedLineWithMemory[];
   discount_mode: DiscountMode;
   status: "draft" | "confirmed" | "abandoned";
   updated_at: string;
