@@ -87,7 +87,7 @@ interface FinancialSummary {
 }
 
 export function JornadaManagement() {
-  const { hasActiveJornada } = useAppSession();
+  const { hasActiveJornada, role } = useAppSession();
   const [jornadas, setJornadas] = useState<Jornada[]>([]);
   const [jornadaStats, setJornadaStats] = useState<Record<string, JornadaStats>>({});
   const [financialSummaries, setFinancialSummaries] = useState<Record<string, FinancialSummary>>({});
@@ -133,7 +133,11 @@ export function JornadaManagement() {
       if (error) throw error;
       setJornadas(data || []);
       
-      const active = data?.find(j => j.estado === "activa") || null;
+      // Only consider today's active jornada (America/Santiago)
+      const now = new Date();
+      const santiagoDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Santiago" }));
+      const today = `${santiagoDate.getFullYear()}-${String(santiagoDate.getMonth() + 1).padStart(2, "0")}-${String(santiagoDate.getDate()).padStart(2, "0")}`;
+      const active = data?.find(j => j.estado === "activa" && j.fecha === today) || null;
       setActiveJornada(active);
       
       if (data && data.length > 0) {
@@ -470,7 +474,7 @@ export function JornadaManagement() {
             actionLoading={actionLoading}
             onCloseJornada={handleCloseJornada}
             onDeleteJornada={deleteJornada}
-            onForceClose={(j) => setShowForceCloseConfirm(j)}
+            onForceClose={role === "admin" ? (j) => setShowForceCloseConfirm(j) : undefined}
             onShowDetail={(id) => setDetailDrawerJornadaId(id)}
             onExportCSV={exportJornadaCSV}
           />

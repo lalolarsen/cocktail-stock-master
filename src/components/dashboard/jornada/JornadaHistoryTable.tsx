@@ -54,7 +54,7 @@ interface JornadaHistoryTableProps {
   actionLoading: string | null;
   onCloseJornada: (id: string) => void;
   onDeleteJornada: (id: string) => void;
-  onForceClose: (jornada: Jornada) => void;
+  onForceClose?: (jornada: Jornada) => void;
   onShowDetail: (jornadaId: string) => void;
   onExportCSV: (jornada: Jornada) => void;
   staleThresholdHours?: number;
@@ -151,7 +151,7 @@ export function JornadaHistoryTable({
                         <Download className="w-4 h-4" />
                       </Button>
                     )}
-                    {jornada.estado === "activa" && isStaleJornada(jornada) && (
+                    {jornada.estado === "activa" && isStaleJornada(jornada) && onForceClose && (
                       <Button
                         size="sm" variant="ghost"
                         className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
