@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&display=swap');
+/* SF Pro system font stack — no external import needed */
 
 @tailwind base;
 @tailwind components;
@@ -51,7 +51,7 @@
     --ring: 145 100% 45%;
 
     /* Radius */
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
     /* Sidebar (negro puro) */
     --sidebar-background: 0 0% 0%;
@@ -139,12 +139,14 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
     font-weight: 700;
   }
 }
