@@ -1,8 +1,7 @@
 import { MapPin } from "lucide-react";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { useUserRole, AppRole } from "@/hooks/useUserRole";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DEFAULT_VENUE_DISPLAY } from "@/lib/venue";
 
 interface VenueIndicatorProps {
   variant?: "header" | "sidebar";
@@ -21,21 +20,9 @@ const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 export function VenueIndicator({ variant = "header", className = "", showRole = false }: VenueIndicatorProps) {
-  const { displayName, isLoading, error, isDemo } = useActiveVenue();
   const { role, loading: roleLoading } = useUserRole();
 
-  if (isLoading || roleLoading) {
-    return (
-      <div className={`flex items-center gap-2 ${className}`}>
-        <Skeleton className="h-4 w-4 rounded-full" />
-        <Skeleton className="h-4 w-24" />
-      </div>
-    );
-  }
-
-  if (error || !displayName) {
-    return null; // Error is handled by VenueGuard
-  }
+  const displayName = DEFAULT_VENUE_DISPLAY;
 
   const roleLabel = role ? ROLE_LABELS[role] : null;
 
@@ -45,11 +32,6 @@ export function VenueIndicator({ variant = "header", className = "", showRole = 
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-muted/50 text-foreground">
           <MapPin className="w-4 h-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-medium truncate">{displayName}</span>
-          {isDemo && (
-            <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400">
-              DEMO
-            </Badge>
-          )}
         </div>
         {showRole && roleLabel && (
           <div className="px-2">
@@ -70,11 +52,6 @@ export function VenueIndicator({ variant = "header", className = "", showRole = 
       {showRole && roleLabel && (
         <Badge variant="outline" className="text-xs font-normal ml-1">
           {roleLabel}
-        </Badge>
-      )}
-      {isDemo && (
-        <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 ml-1">
-          DEMO
         </Badge>
       )}
     </div>
