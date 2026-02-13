@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAppSession } from "@/contexts/AppSessionContext";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 
 export interface FinanceMTD {
   salesTotal: number;
@@ -23,14 +23,13 @@ function getMonthRange(year: number, month: number): { start: string; end: strin
 }
 
 export function useFinanceMTD(year: number, month: number): FinanceMTD {
-  const { venue } = useAppSession();
+  const venueId = DEFAULT_VENUE_ID;
   const [salesTotal, setSalesTotal] = useState(0);
   const [cogsTotal, setCogsTotal] = useState(0);
   const [opexTotal, setOpexTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!venue?.id) return;
     setLoading(true);
 
     const { start, end } = getMonthRange(year, month);
@@ -41,46 +40,40 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
     try {
       const [salesRes, cogsRes, opexRes] = await Promise.all([
-        // Sales MTD (non-cancelled)
         supabase
           .from("sales")
           .select("total_amount")
-          .eq("venue_id", venue.id)
+          .eq("venue_id", venueId)
           .eq("is_cancelled", false)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS MTD from stock_movements
         supabase
           .from("stock_movements")
           .select("quantity, unit_cost")
-          .eq("venue_id", venue.id)
+          .eq("venue_id", venueId)
           .eq("movement_type", "salida")
           .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // OPEX MTD
         supabase
           .from("operational_expenses")
           .select("amount")
-          .eq("venue_id", venue.id)
+          .eq("venue_id", venueId)
           .gte("expense_date", start)
           .lte("expense_date", end),
       ]);
 
-      // Sum sales
       const sales = (salesRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
       setSalesTotal(sales);
 
-      // Sum COGS
       const cogs = (cogsRes.data || []).reduce(
         (s, r) => s + Math.abs(Number(r.quantity)) * (Number(r.unit_cost) || 0),
         0
       );
       setCogsTotal(cogs);
 
-      // Sum OPEX
       const opex = (opexRes.data || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       setOpexTotal(opex);
     } catch (err) {
@@ -88,7 +81,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     } finally {
       setLoading(false);
     }
-  }, [venue?.id, year, month]);
+  }, [venueId, year, month]);
 
   useEffect(() => {
     fetchData();

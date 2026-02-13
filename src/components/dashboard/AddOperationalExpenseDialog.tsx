@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -26,7 +27,7 @@ interface Props {
 }
 
 export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: Props) {
-  const { venue, user } = useAppSession();
+  const { user } = useAppSession();
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
@@ -35,7 +36,7 @@ export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: P
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!venue?.id || !user?.id) return;
+    if (!user?.id) return;
     if (!amount || !category) {
       toast.error("Completa monto y categoría");
       return;
@@ -43,7 +44,7 @@ export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: P
 
     setSaving(true);
     const { error } = await supabase.from("operational_expenses").insert({
-      venue_id: venue.id,
+      venue_id: DEFAULT_VENUE_ID,
       expense_date: date,
       amount: Number(amount),
       category,

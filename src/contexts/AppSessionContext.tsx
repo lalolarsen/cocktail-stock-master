@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
+import { DEFAULT_VENUE_ID, DEFAULT_VENUE_NAME, DEFAULT_VENUE_SLUG, DEFAULT_VENUE_DISPLAY } from "@/lib/venue";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AppRole = "admin" | "vendedor" | "gerencia" | "bar" | "ticket_seller" | "developer";
@@ -86,7 +87,7 @@ const KEY_MAPPING: Record<string, string> = {
   'erp_accounting': 'contabilidad_avanzada',
 };
 
-// Format venue name helper
+// Format venue name helper (kept for compatibility, but single-venue uses constant)
 function formatVenueName(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) {
@@ -125,9 +126,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   // Fetch all user data in parallel
   const fetchUserData = useCallback(async (userId: string) => {
     try {
-      // Start all fetches in parallel
-      const [profileResult, workerRolesResult, userRolesResult] = await Promise.all([
-        supabase.from("profiles").select("venue_id").eq("id", userId).single(),
+      // Single-venue mode: use hardcoded venue, only fetch roles
+      const [workerRolesResult, userRolesResult] = await Promise.all([
         supabase.from("worker_roles").select("role").eq("worker_id", userId),
         supabase.from("user_roles").select("role").eq("user_id", userId),
       ]);
@@ -145,35 +145,23 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       const primaryRole = priorityOrder.find(r => fetchedRoles.includes(r)) || fetchedRoles[0] || null;
       setRole(primaryRole);
 
-      // Check venue
-      if (profileResult.error || !profileResult.data?.venue_id) {
-        setVenueError("No se encontró venue asignado al usuario");
-        setVenue(null);
-        return;
-      }
+      // Single-venue mode: always use DEFAULT_VENUE_ID
+      const venueId = DEFAULT_VENUE_ID;
 
-      const venueId = profileResult.data.venue_id;
+      // Set venue directly from constants (no DB fetch needed)
+      setVenue({
+        id: DEFAULT_VENUE_ID,
+        name: DEFAULT_VENUE_NAME,
+        slug: DEFAULT_VENUE_SLUG,
+        isDemo: false,
+      });
+      setVenueError(null);
 
-      // Fetch venue details, feature flags, and sidebar config in parallel
-      const [venueResult, flagsResult, sidebarResult] = await Promise.all([
-        supabase.from("venues").select("id, name, slug, is_demo").eq("id", venueId).single(),
+      // Fetch feature flags and sidebar config in parallel
+      const [flagsResult, sidebarResult] = await Promise.all([
         supabase.rpc("get_venue_flags", { p_venue_id: venueId }),
         primaryRole ? supabase.rpc("get_sidebar_config", { p_venue_id: venueId, p_role: primaryRole }) : Promise.resolve({ data: null, error: null }),
       ]);
-
-      // Set venue
-      if (venueResult.error || !venueResult.data) {
-        setVenueError("No se pudo cargar la información del venue");
-        setVenue(null);
-      } else {
-        setVenue({
-          id: venueResult.data.id,
-          name: venueResult.data.name,
-          slug: venueResult.data.slug,
-          isDemo: venueResult.data.is_demo || venueResult.data.slug === 'demo-distock',
-        });
-        setVenueError(null);
-      }
 
       // Set feature flags
       if (!flagsResult.error && flagsResult.data) {
@@ -292,8 +280,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     hasRole,
     venue,
     venueError,
-    displayName: venue ? formatVenueName(venue.name) : null,
-    isDemo: venue?.isDemo || venue?.slug === 'demo-distock' || false,
+    displayName: DEFAULT_VENUE_DISPLAY,
+    isDemo: false,
     featureFlags,
     isEnabled,
     sidebarConfig,

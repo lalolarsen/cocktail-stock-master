@@ -1,8 +1,12 @@
-// Re-export from centralized context for backwards compatibility
-import { useAppSession } from "@/contexts/AppSessionContext";
-import type { ActiveVenue } from "@/contexts/AppSessionContext";
+// Single-venue mode: returns hardcoded venue constants
+import { DEFAULT_VENUE_ID, DEFAULT_VENUE_NAME, DEFAULT_VENUE_SLUG, DEFAULT_VENUE_DISPLAY } from "@/lib/venue";
 
-export type { ActiveVenue };
+export interface ActiveVenue {
+  id: string;
+  name: string;
+  slug: string;
+  isDemo: boolean;
+}
 
 interface UseActiveVenueReturn {
   venue: ActiveVenue | null;
@@ -13,13 +17,16 @@ interface UseActiveVenueReturn {
 }
 
 export function useActiveVenue(): UseActiveVenueReturn {
-  const { venue, isLoading, venueError, displayName, isDemo } = useAppSession();
-  
   return {
-    venue,
-    isLoading,
-    error: venueError,
-    displayName,
-    isDemo,
+    venue: {
+      id: DEFAULT_VENUE_ID,
+      name: DEFAULT_VENUE_NAME,
+      slug: DEFAULT_VENUE_SLUG,
+      isDemo: false,
+    },
+    isLoading: false,
+    error: null,
+    displayName: DEFAULT_VENUE_DISPLAY,
+    isDemo: false,
   };
 }
