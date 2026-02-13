@@ -9,6 +9,7 @@ import { es } from "date-fns/locale";
 interface Jornada {
   id: string;
   numero_jornada: number;
+  nombre?: string;
   semana_inicio: string;
   fecha: string;
   hora_apertura: string | null;
@@ -124,7 +125,7 @@ export function ActiveJornadaCard({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xl font-semibold">
-                Jornada {jornada.numero_jornada}
+                {jornada.nombre || `Jornada ${jornada.numero_jornada}`}
               </span>
               {getStatusBadge(jornada.estado, jornada)}
             </div>
