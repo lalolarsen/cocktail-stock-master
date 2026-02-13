@@ -3585,7 +3585,7 @@ export type Database = {
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       clean_berlin_demo_data: { Args: never; Returns: Json }
       close_jornada_manual: {
-        Args: { p_cash_closings?: Json; p_jornada_id: string }
+        Args: { p_cash_closings: Json; p_jornada_id: string }
         Returns: Json
       }
       close_jornada_with_summary: {
