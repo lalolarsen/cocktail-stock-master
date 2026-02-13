@@ -1135,11 +1135,16 @@ export type Database = {
           created_at: string
           estado: string
           fecha: string
+          forced_at: string | null
+          forced_by_user_id: string | null
+          forced_close: boolean
+          forced_reason: string | null
           hora_apertura: string | null
           hora_cierre: string | null
           id: string
           nombre: string
           numero_jornada: number
+          requires_review: boolean
           semana_inicio: string
           updated_at: string
           venue_id: string
@@ -1148,11 +1153,16 @@ export type Database = {
           created_at?: string
           estado?: string
           fecha: string
+          forced_at?: string | null
+          forced_by_user_id?: string | null
+          forced_close?: boolean
+          forced_reason?: string | null
           hora_apertura?: string | null
           hora_cierre?: string | null
           id?: string
           nombre?: string
           numero_jornada: number
+          requires_review?: boolean
           semana_inicio: string
           updated_at?: string
           venue_id: string
@@ -1161,11 +1171,16 @@ export type Database = {
           created_at?: string
           estado?: string
           fecha?: string
+          forced_at?: string | null
+          forced_by_user_id?: string | null
+          forced_close?: boolean
+          forced_reason?: string | null
           hora_apertura?: string | null
           hora_cierre?: string | null
           id?: string
           nombre?: string
           numero_jornada?: number
+          requires_review?: boolean
           semana_inicio?: string
           updated_at?: string
           venue_id?: string
@@ -3654,6 +3669,10 @@ export type Database = {
         Returns: Json
       }
       factory_reset_non_demo: { Args: never; Returns: Json }
+      force_close_jornada: {
+        Args: { p_jornada_id: string; p_reason: string }
+        Returns: Json
+      }
       generate_jornada_financial_summaries: {
         Args: { p_closed_by: string; p_jornada_id: string }
         Returns: undefined

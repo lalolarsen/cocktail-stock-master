@@ -128,12 +128,33 @@ export function JornadaDetailDrawer({ open, onClose, jornadaId }: JornadaDetailD
                     </span>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 flex items-center gap-2">
                   <Badge variant={jornada.estado === "activa" ? "default" : "secondary"}>
                     {jornada.estado === "activa" ? "Abierta" : "Cerrada"}
                   </Badge>
+                  {jornada.forced_close && (
+                    <Badge variant="destructive" className="text-xs">Cierre Forzado</Badge>
+                  )}
                 </div>
               </Card>
+
+              {/* Forced close banner */}
+              {jornada.forced_close && (
+                <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+                    <span className="font-semibold text-sm text-destructive">Jornada cerrada de forma forzada</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Incluye ajuste manual por diferencia de caja. Requiere revisión administrativa.
+                  </p>
+                  {jornada.forced_reason && (
+                    <p className="text-xs p-2 bg-muted rounded italic text-muted-foreground">
+                      <strong>Motivo:</strong> {jornada.forced_reason}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Sales summary */}
               {summary && (

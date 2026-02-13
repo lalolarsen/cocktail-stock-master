@@ -105,8 +105,15 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [orphanSalesCount, setOrphanSalesCount] = useState(0);
   const [showOrphanDialog, setShowOrphanDialog] = useState(false);
 
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+
   useEffect(() => {
     fetchData();
+    supabase
+      .from("jornadas")
+      .select("*", { count: "exact", head: true })
+      .eq("requires_review", true)
+      .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
   const fetchData = async () => {
@@ -295,6 +302,26 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
               className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
             >
               Reasignar ventas
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* ── Pending Review Alert ── */}
+      {pendingReviewCount > 0 && (
+        <Alert className="border-destructive/50 bg-destructive/10">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-destructive">
+              <strong>{pendingReviewCount} jornada{pendingReviewCount > 1 ? "s" : ""}</strong> con cierre forzado pendiente{pendingReviewCount > 1 ? "s" : ""} de revisión.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate?.("jornadas")}
+              className="ml-4 border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              Ver jornadas
             </Button>
           </AlertDescription>
         </Alert>

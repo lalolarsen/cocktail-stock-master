@@ -12,6 +12,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Loader2, 
   Calendar, 
@@ -98,16 +100,24 @@ export function JornadaManagement() {
   const [activeJornada, setActiveJornada] = useState<Jornada | null>(null);
   const [showForceCloseConfirm, setShowForceCloseConfirm] = useState<Jornada | null>(null);
   const [forceCloseLoading, setForceCloseLoading] = useState(false);
+  const [forceCloseReason, setForceCloseReason] = useState("");
+  const [forceCloseDifference, setForceCloseDifference] = useState<number | null>(null);
+  const [showDoubleConfirm, setShowDoubleConfirm] = useState(false);
   const [detailDrawerJornadaId, setDetailDrawerJornadaId] = useState<string | null>(null);
   const [activePosCount, setActivePosCount] = useState(0);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   useEffect(() => {
     fetchJornadas();
     fetchActivePosCount();
+    fetchPendingReviewCount();
     
     const channel = supabase
       .channel("jornada-management")
-      .on("postgres_changes", { event: "*", schema: "public", table: "jornadas" }, () => fetchJornadas())
+      .on("postgres_changes", { event: "*", schema: "public", table: "jornadas" }, () => {
+        fetchJornadas();
+        fetchPendingReviewCount();
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -120,6 +130,14 @@ export function JornadaManagement() {
       .eq("is_active", true)
       .eq("is_cash_register", true);
     setActivePosCount(count || 0);
+  };
+
+  const fetchPendingReviewCount = async () => {
+    const { count } = await supabase
+      .from("jornadas")
+      .select("*", { count: "exact", head: true })
+      .eq("requires_review", true);
+    setPendingReviewCount(count || 0);
   };
 
   const fetchJornadas = async () => {
@@ -213,37 +231,71 @@ export function JornadaManagement() {
     fetchJornadas();
   };
 
+  const calculateForceCloseDifference = async (jornadaId: string) => {
+    try {
+      const { data: posTerminals } = await supabase
+        .from("pos_terminals")
+        .select("id")
+        .eq("is_active", true)
+        .eq("is_cash_register", true);
+
+      let totalDiff = 0;
+      for (const pos of (posTerminals || [])) {
+        const [openingRes, salesRes, expensesRes] = await Promise.all([
+          supabase.from("jornada_cash_openings").select("opening_cash_amount").eq("jornada_id", jornadaId).eq("pos_id", pos.id).maybeSingle(),
+          supabase.from("sales").select("total_amount").eq("jornada_id", jornadaId).eq("payment_method", "cash").eq("is_cancelled", false),
+          supabase.from("expenses").select("amount").eq("jornada_id", jornadaId).eq("payment_method", "cash"),
+        ]);
+        const opening = Number(openingRes.data?.opening_cash_amount || 0);
+        const cashSales = (salesRes.data || []).reduce((s, r) => s + Number(r.total_amount), 0);
+        const cashExpenses = (expensesRes.data || []).reduce((s, r) => s + Number(r.amount), 0);
+        const expected = opening + cashSales - cashExpenses;
+        totalDiff += (0 - expected); // No counted cash
+      }
+      setForceCloseDifference(totalDiff);
+    } catch {
+      setForceCloseDifference(null);
+    }
+  };
+
+  const openForceCloseModal = (jornada: Jornada) => {
+    setShowForceCloseConfirm(jornada);
+    setForceCloseReason("");
+    setForceCloseDifference(null);
+    setShowDoubleConfirm(false);
+    calculateForceCloseDifference(jornada.id);
+  };
+
   const handleForceClose = async () => {
     if (!showForceCloseConfirm) return;
+
+    // Double confirmation for large differences
+    if (forceCloseDifference !== null && Math.abs(forceCloseDifference) > 100000 && !showDoubleConfirm) {
+      setShowDoubleConfirm(true);
+      return;
+    }
+
     setForceCloseLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Debe iniciar sesión"); return; }
-
-      const { data: jornadaData } = await supabase
-        .from("jornadas").select("venue_id").eq("id", showForceCloseConfirm.id).single();
-
-      const { error: updateError } = await supabase
-        .from("jornadas")
-        .update({ estado: "cerrada", hora_cierre: format(new Date(), "HH:mm:ss"), updated_at: new Date().toISOString() })
-        .eq("id", showForceCloseConfirm.id);
-
-      if (updateError) throw updateError;
-
-      await supabase.from("jornada_audit_log").insert({
-        jornada_id: showForceCloseConfirm.id,
-        venue_id: jornadaData?.venue_id || null,
-        actor_user_id: user.id,
-        actor_source: "ui",
-        action: "forced_close",
-        reason: `Jornada forzadamente cerrada por admin - abierta por más de ${STALE_JORNADA_THRESHOLD_HOURS} horas`,
-        meta: { arqueo_skipped: true, jornada_numero: showForceCloseConfirm.numero_jornada },
+      const { data, error } = await supabase.rpc("force_close_jornada", {
+        p_jornada_id: showForceCloseConfirm.id,
+        p_reason: forceCloseReason.trim(),
       });
 
-      await logAuditEvent({ action: "jornada_forced_close", status: "success", metadata: { jornada_id: showForceCloseConfirm.id } });
+      if (error) throw error;
 
-      toast.success("Jornada cerrada forzosamente.");
+      const result = data as unknown as { success: boolean; error?: string; difference_total?: number };
+      if (!result.success) {
+        toast.error(result.error || "Error al forzar cierre");
+        return;
+      }
+
+      await logAuditEvent({ action: "jornada_forced_close", status: "success", metadata: { jornada_id: showForceCloseConfirm.id, difference_total: result.difference_total } });
+
+      toast.success("Jornada cerrada forzosamente. Requiere revisión administrativa.");
       setShowForceCloseConfirm(null);
+      setForceCloseReason("");
+      setShowDoubleConfirm(false);
       fetchJornadas();
     } catch (error) {
       console.error("Error force closing jornada:", error);
@@ -474,7 +526,7 @@ export function JornadaManagement() {
             actionLoading={actionLoading}
             onCloseJornada={handleCloseJornada}
             onDeleteJornada={deleteJornada}
-            onForceClose={role === "admin" ? (j) => setShowForceCloseConfirm(j) : undefined}
+            onForceClose={(role === "admin" || role === "gerencia") ? (j) => openForceCloseModal(j) : undefined}
             onShowDetail={(id) => setDetailDrawerJornadaId(id)}
             onExportCSV={exportJornadaCSV}
           />
@@ -509,33 +561,82 @@ export function JornadaManagement() {
       />
 
       {/* Force Close Confirmation */}
-      <Dialog open={!!showForceCloseConfirm} onOpenChange={() => setShowForceCloseConfirm(null)}>
-        <DialogContent className="max-w-md">
+      <Dialog open={!!showForceCloseConfirm} onOpenChange={(v) => { if (!v) { setShowForceCloseConfirm(null); setForceCloseReason(""); setShowDoubleConfirm(false); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="w-5 h-5" />
               Forzar Cierre de Jornada
             </DialogTitle>
-            <DialogDescription className="pt-2 space-y-3">
-              <p>
-                Esta acción cerrará la jornada "<strong>{showForceCloseConfirm?.nombre || `#${showForceCloseConfirm?.numero_jornada}`}</strong>" de forma forzada.
-              </p>
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm">
-                <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">⚠️ Advertencias:</p>
-                <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>El arqueo de caja será <strong>omitido</strong></li>
-                  <li>No se generará resumen financiero automático</li>
-                  <li>Esta acción es <strong>irreversible</strong></li>
-                </ul>
+            <DialogDescription asChild>
+              <div className="pt-2 space-y-4">
+                <p>
+                  Cerrar forzadamente "<strong>{showForceCloseConfirm?.nombre || `#${showForceCloseConfirm?.numero_jornada}`}</strong>".
+                </p>
+
+                {/* Difference display */}
+                {forceCloseDifference !== null && Math.abs(forceCloseDifference) > 0.01 && (
+                  <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm">
+                    <p className="font-medium text-destructive mb-1">Diferencia de caja estimada</p>
+                    <p className="text-2xl font-bold text-destructive tabular-nums">{formatCLP(Math.abs(forceCloseDifference))}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {forceCloseDifference < 0 ? "Faltante — se generará gasto de ajuste" : "Sobrante — se registrará ingreso extra"}
+                    </p>
+                  </div>
+                )}
+
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm space-y-2">
+                  <p className="font-medium text-destructive">⚠ Advertencias:</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                    <li>Este cierre generará un <strong>ajuste contable automático</strong></li>
+                    <li>La jornada quedará marcada para <strong>revisión administrativa</strong></li>
+                    <li>Esta acción es <strong>irreversible</strong></li>
+                  </ul>
+                </div>
+
+                {/* Reason textarea */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Motivo del cierre forzado <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    value={forceCloseReason}
+                    onChange={(e) => setForceCloseReason(e.target.value)}
+                    placeholder="Describe el motivo detalladamente (mínimo 30 caracteres)..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {forceCloseReason.trim().length}/30 caracteres mínimos
+                  </p>
+                </div>
+
+                {/* Double confirmation for large differences */}
+                {showDoubleConfirm && (
+                  <div className="p-3 bg-destructive/20 border border-destructive/50 rounded-lg text-sm">
+                    <p className="font-bold text-destructive">
+                      ⚠ La diferencia supera $100.000 CLP. ¿Está seguro de continuar?
+                    </p>
+                  </div>
+                )}
               </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowForceCloseConfirm(null)} disabled={forceCloseLoading}>
+            <Button variant="outline" onClick={() => { setShowForceCloseConfirm(null); setForceCloseReason(""); setShowDoubleConfirm(false); }} disabled={forceCloseLoading}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleForceClose} disabled={forceCloseLoading} className="bg-amber-600 hover:bg-amber-700">
-              {forceCloseLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cerrando...</> : <><AlertTriangle className="w-4 h-4 mr-2" />Confirmar Cierre Forzado</>}
+            <Button
+              variant="destructive"
+              onClick={handleForceClose}
+              disabled={forceCloseLoading || forceCloseReason.trim().length < 30}
+            >
+              {forceCloseLoading
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cerrando...</>
+                : showDoubleConfirm
+                  ? <><AlertTriangle className="w-4 h-4 mr-2" />Sí, confirmar cierre forzado</>
+                  : <><AlertTriangle className="w-4 h-4 mr-2" />Forzar Cierre</>
+              }
             </Button>
           </DialogFooter>
         </DialogContent>
