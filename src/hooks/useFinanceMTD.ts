@@ -104,12 +104,17 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const opexPct = salesTotal > 0 ? (opexTotal / salesTotal) * 100 : 0;
   const marginPct = salesTotal > 0 ? (grossMargin / salesTotal) * 100 : 0;
 
-  // Forecast
-  const now2 = new Date();
+  // Forecast (solo proyectar si el mes seleccionado es el mes actual)
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth();
+  const nowDay = now.getDate();
+
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = now2.getDate();
-  const daysElapsed = Math.max(today, 1);
-  const factor = daysElapsed > 0 ? daysInMonth / daysElapsed : 1;
+  const isCurrentMonth = year === nowYear && month === nowMonth;
+
+  const daysElapsed = isCurrentMonth ? Math.max(nowDay, 1) : daysInMonth;
+  const factor = isCurrentMonth && daysElapsed > 0 ? daysInMonth / daysElapsed : 1;
 
   const salesForecast = salesTotal * factor;
   const cogsForecast = cogsTotal * factor;
