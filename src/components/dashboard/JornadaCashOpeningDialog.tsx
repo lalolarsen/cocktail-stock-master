@@ -131,6 +131,26 @@ export function JornadaCashOpeningDialog({
   const handleConfirm = async () => {
     setSaving(true);
     try {
+      // Safety check: verify no active jornada exists today before creating
+      const now = new Date();
+      const santiagoDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Santiago" }));
+      const today = `${santiagoDate.getFullYear()}-${String(santiagoDate.getMonth() + 1).padStart(2, "0")}-${String(santiagoDate.getDate()).padStart(2, "0")}`;
+
+      const { data: existing } = await supabase
+        .from("jornadas")
+        .select("id")
+        .eq("estado", "activa")
+        .eq("fecha", today)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        toast.error("Ya existe una jornada activa hoy. No se puede abrir otra.");
+        setSaving(false);
+        onClose();
+        return;
+      }
+
       const cashData = cashAmounts.map((item) => ({
         pos_id: item.pos_id,
         amount: item.amount,

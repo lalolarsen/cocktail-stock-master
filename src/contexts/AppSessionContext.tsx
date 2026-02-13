@@ -158,10 +158,16 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   // ── Active jornada subscription ──
   const fetchActiveJornada = useCallback(async () => {
     try {
+      // Calculate today in America/Santiago timezone
+      const now = new Date();
+      const santiagoDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Santiago" }));
+      const today = `${santiagoDate.getFullYear()}-${String(santiagoDate.getMonth() + 1).padStart(2, "0")}-${String(santiagoDate.getDate()).padStart(2, "0")}`;
+
       const { data, error } = await supabase
         .from("jornadas")
         .select("id")
         .eq("estado", "activa")
+        .eq("fecha", today)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
