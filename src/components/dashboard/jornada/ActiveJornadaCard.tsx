@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertTriangle, Square, Play } from "lucide-react";
+import { Calendar, AlertTriangle, Square, Play, Ban } from "lucide-react";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -33,6 +34,7 @@ export function ActiveJornadaCard({
   onForceClose,
   staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS 
 }: ActiveJornadaCardProps) {
+  const { hasActiveJornada } = useAppSession();
   const isStaleJornada = (j: Jornada): boolean => {
     if (j.estado !== "activa") return false;
     const openedAt = new Date(`${j.fecha}T${j.hora_apertura || "00:00:00"}`);
@@ -77,13 +79,29 @@ export function ActiveJornadaCard({
                 Sin jornada abierta
               </span>
               <p className="text-sm text-muted-foreground">
-                Las ventas están bloqueadas. Abre una jornada para comenzar a vender.
+                {hasActiveJornada
+                  ? "Ya existe una jornada activa."
+                  : "Las ventas están bloqueadas. Abre una jornada para comenzar a vender."}
               </p>
             </div>
           </div>
-          <Button onClick={onOpenJornada} size="lg" className="gap-2">
-            <Play className="w-4 h-4" />
-            Abrir Jornada
+          <Button
+            onClick={onOpenJornada}
+            size="lg"
+            className="gap-2"
+            disabled={hasActiveJornada}
+          >
+            {hasActiveJornada ? (
+              <>
+                <Ban className="w-4 h-4" />
+                Jornada activa
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Abrir Jornada
+              </>
+            )}
           </Button>
         </div>
       </Card>
