@@ -10,6 +10,16 @@ export interface FinanceMTD {
   operationalResult: number;
   opexPct: number;
   marginPct: number;
+  // Forecast
+  daysElapsed: number;
+  daysInMonth: number;
+  salesForecast: number;
+  cogsForecast: number;
+  opexForecast: number;
+  grossProfitForecast: number;
+  operatingResultForecast: number;
+  grossMarginPctForecast: number;
+  opexPctForecast: number;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -92,6 +102,21 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const opexPct = salesTotal > 0 ? (opexTotal / salesTotal) * 100 : 0;
   const marginPct = salesTotal > 0 ? (grossMargin / salesTotal) * 100 : 0;
 
+  // Forecast
+  const now2 = new Date();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = now2.getDate();
+  const daysElapsed = Math.max(today, 1);
+  const factor = daysElapsed > 0 ? daysInMonth / daysElapsed : 1;
+
+  const salesForecast = salesTotal * factor;
+  const cogsForecast = cogsTotal * factor;
+  const opexForecast = opexTotal * factor;
+  const grossProfitForecast = salesForecast - cogsForecast;
+  const operatingResultForecast = grossProfitForecast - opexForecast;
+  const grossMarginPctForecast = salesForecast > 0 ? (grossProfitForecast / salesForecast) * 100 : 0;
+  const opexPctForecast = salesForecast > 0 ? (opexForecast / salesForecast) * 100 : 0;
+
   return {
     salesTotal,
     cogsTotal,
@@ -100,6 +125,15 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     operationalResult,
     opexPct,
     marginPct,
+    daysElapsed,
+    daysInMonth,
+    salesForecast,
+    cogsForecast,
+    opexForecast,
+    grossProfitForecast,
+    operatingResultForecast,
+    grossMarginPctForecast,
+    opexPctForecast,
     loading,
     refresh: fetchData,
   };
