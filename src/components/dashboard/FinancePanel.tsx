@@ -1,45 +1,62 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFinanceMTD } from "@/hooks/useFinanceMTD";
 import { AddOperationalExpenseDialog } from "./AddOperationalExpenseDialog";
 import { formatCLP } from "@/lib/currency";
-import { Plus, TrendingUp, TrendingDown, DollarSign, Receipt, BarChart3, Percent, Loader2, CalendarClock } from "lucide-react";
+import {
+  Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
+  BarChart3, CalendarClock, AlertCircle,
+} from "lucide-react";
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
 
-interface MetricCard {
+interface MetricCardProps {
   label: string;
   value: string;
   sub?: string;
   icon: React.ElementType;
-  color: string;
+  negative?: boolean;
 }
 
-function MetricGrid({ cards }: { cards: MetricCard[] }) {
+function MetricCard({ label, value, sub, icon: Icon, negative }: MetricCardProps) {
+  return (
+    <Card className="relative overflow-hidden">
+      <CardContent className="p-5 flex items-start justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
+            {label}
+          </p>
+          <p className={`text-2xl font-bold tabular-nums leading-tight ${negative ? "text-destructive" : "text-foreground"}`}>
+            {value}
+          </p>
+          {sub && (
+            <p className={`text-sm font-medium ${negative ? "text-destructive" : "text-muted-foreground"}`}>
+              {sub}
+            </p>
+          )}
+        </div>
+        <Icon className={`w-5 h-5 shrink-0 mt-0.5 opacity-30 ${negative ? "text-destructive" : "text-muted-foreground"}`} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricGridSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {cards.map((card) => (
-        <Card key={card.label} className="relative overflow-hidden">
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  {card.label}
-                </p>
-                <p className={`text-2xl font-bold tabular-nums ${card.color}`}>
-                  {card.value}
-                </p>
-                {card.sub && (
-                  <p className={`text-sm font-medium ${card.color}`}>{card.sub}</p>
-                )}
-              </div>
-              <card.icon className={`w-5 h-5 mt-1 ${card.color} opacity-60`} />
-            </div>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Card key={i}>
+          <CardContent className="p-5 space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-32" />
+            <Skeleton className="h-4 w-16" />
           </CardContent>
         </Card>
       ))}
@@ -55,29 +72,19 @@ export function FinancePanel() {
 
   const mtd = useFinanceMTD(selectedYear, selectedMonth);
 
-  const mtdCards: MetricCard[] = [
-    { label: "Ventas", value: formatCLP(mtd.salesTotal), icon: DollarSign, color: "text-foreground" },
-    { label: "COGS", value: formatCLP(mtd.cogsTotal), icon: Receipt, color: "text-foreground" },
-    { label: "Margen Bruto", value: formatCLP(mtd.grossMargin), sub: `${mtd.marginPct.toFixed(1)}%`, icon: TrendingUp, color: mtd.grossMargin >= 0 ? "text-primary" : "text-destructive" },
-    { label: "Gastos Operacionales", value: formatCLP(mtd.opexTotal), sub: `${mtd.opexPct.toFixed(1)}% de ventas`, icon: BarChart3, color: "text-foreground" },
-    { label: "Resultado Operacional", value: formatCLP(mtd.operationalResult), icon: mtd.operationalResult >= 0 ? TrendingUp : TrendingDown, color: mtd.operationalResult >= 0 ? "text-primary" : "text-destructive" },
-  ];
-
-  const forecastCards: MetricCard[] = [
-    { label: "Ventas proyectadas", value: formatCLP(mtd.salesForecast), icon: DollarSign, color: "text-foreground" },
-    { label: "COGS proyectado", value: formatCLP(mtd.cogsForecast), icon: Receipt, color: "text-foreground" },
-    { label: "Margen Bruto proyectado", value: formatCLP(mtd.grossProfitForecast), sub: `${mtd.grossMarginPctForecast.toFixed(1)}%`, icon: TrendingUp, color: mtd.grossProfitForecast >= 0 ? "text-primary" : "text-destructive" },
-    { label: "OPEX proyectado", value: formatCLP(mtd.opexForecast), sub: `${mtd.opexPctForecast.toFixed(1)}% de ventas`, icon: BarChart3, color: "text-foreground" },
-    { label: "Resultado Op. proyectado", value: formatCLP(mtd.operatingResultForecast), icon: mtd.operatingResultForecast >= 0 ? TrendingUp : TrendingDown, color: mtd.operatingResultForecast >= 0 ? "text-primary" : "text-destructive" },
-  ];
+  const noSales = !mtd.loading && mtd.salesTotal === 0;
 
   return (
-    <div className="space-y-8">
-      {/* Header controls */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-10">
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Finanzas</h1>
+          <p className="text-sm text-muted-foreground">Estado de resultados mes a la fecha</p>
+        </div>
         <div className="flex items-center gap-3">
           <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[150px] h-9 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -88,39 +95,107 @@ export function FinancePanel() {
               ))}
             </SelectContent>
           </Select>
+          <Button onClick={() => setShowExpenseDialog(true)} size="sm">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Agregar gasto operacional
+          </Button>
         </div>
-        <Button onClick={() => setShowExpenseDialog(true)} size="sm">
-          <Plus className="w-4 h-4 mr-1" />
-          Agregar gasto operacional
-        </Button>
       </div>
 
       {mtd.loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <div className="space-y-10">
+          <MetricGridSkeleton />
+          <MetricGridSkeleton />
         </div>
+      ) : noSales ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
+            <AlertCircle className="w-8 h-8 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground">
+              Aún no hay ventas en el periodo seleccionado.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          {/* Section 1: MTD */}
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Estado de Resultados (MTD)
-            </h2>
-            <MetricGrid cards={mtdCards} />
+          {/* ── Section 1: MTD ── */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Estado de Resultados (MTD)
+              </h2>
+              <Badge variant="secondary" className="text-xs font-medium tabular-nums">
+                Margen {mtd.marginPct.toFixed(1)}%
+              </Badge>
+              <Badge variant="secondary" className="text-xs font-medium tabular-nums">
+                OPEX {mtd.opexPct.toFixed(1)}%
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <MetricCard label="Ventas" value={formatCLP(mtd.salesTotal)} icon={DollarSign} />
+              <MetricCard label="COGS" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
+              <MetricCard
+                label="Margen Bruto"
+                value={formatCLP(mtd.grossMargin)}
+                sub={`${mtd.marginPct.toFixed(1)}%`}
+                icon={TrendingUp}
+                negative={mtd.grossMargin < 0}
+              />
+              <MetricCard
+                label="Gastos Operacionales"
+                value={formatCLP(mtd.opexTotal)}
+                sub={`${mtd.opexPct.toFixed(1)}% de ventas`}
+                icon={BarChart3}
+              />
+              <MetricCard
+                label="Resultado Operacional"
+                value={formatCLP(mtd.operationalResult)}
+                icon={mtd.operationalResult >= 0 ? TrendingUp : TrendingDown}
+                negative={mtd.operationalResult < 0}
+              />
+            </div>
           </section>
 
-          {/* Section 2: Forecast */}
-          <section className="space-y-3">
+          {/* ── Section 2: Forecast ── */}
+          <section className="space-y-4">
             <div className="flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                 Proyección al cierre del mes
               </h2>
             </div>
-            <MetricGrid cards={forecastCards} />
-            <p className="text-xs text-muted-foreground">
-              Proyección basada en promedio diario ({mtd.daysElapsed}/{mtd.daysInMonth} días transcurridos).
-            </p>
+
+            <Card className="bg-muted/40 border-border/50">
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <MetricCard label="Ventas proyectadas" value={formatCLP(mtd.salesForecast)} icon={DollarSign} />
+                  <MetricCard label="COGS proyectado" value={formatCLP(mtd.cogsForecast)} icon={Receipt} />
+                  <MetricCard
+                    label="Margen Bruto proyectado"
+                    value={formatCLP(mtd.grossProfitForecast)}
+                    sub={`${mtd.grossMarginPctForecast.toFixed(1)}%`}
+                    icon={TrendingUp}
+                    negative={mtd.grossProfitForecast < 0}
+                  />
+                  <MetricCard
+                    label="OPEX proyectado"
+                    value={formatCLP(mtd.opexForecast)}
+                    sub={`${mtd.opexPctForecast.toFixed(1)}% de ventas`}
+                    icon={BarChart3}
+                  />
+                  <MetricCard
+                    label="Resultado Op. proyectado"
+                    value={formatCLP(mtd.operatingResultForecast)}
+                    icon={mtd.operatingResultForecast >= 0 ? TrendingUp : TrendingDown}
+                    negative={mtd.operatingResultForecast < 0}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Promedio diario ({mtd.daysElapsed}/{mtd.daysInMonth} días).
+                </p>
+              </CardContent>
+            </Card>
           </section>
         </>
       )}
