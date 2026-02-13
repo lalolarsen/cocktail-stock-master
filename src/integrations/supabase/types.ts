@@ -1399,6 +1399,13 @@ export type Database = {
           description: string | null
           expense_date: string
           id: string
+          net_amount: number
+          specific_tax_amount: number
+          supplier_source: string
+          tax_notes: string | null
+          total_amount: number
+          vat_amount: number
+          vat_rate: number
           venue_id: string
         }
         Insert: {
@@ -1409,6 +1416,13 @@ export type Database = {
           description?: string | null
           expense_date: string
           id?: string
+          net_amount?: number
+          specific_tax_amount?: number
+          supplier_source?: string
+          tax_notes?: string | null
+          total_amount?: number
+          vat_amount?: number
+          vat_rate?: number
           venue_id: string
         }
         Update: {
@@ -1419,6 +1433,13 @@ export type Database = {
           description?: string | null
           expense_date?: string
           id?: string
+          net_amount?: number
+          specific_tax_amount?: number
+          supplier_source?: string
+          tax_notes?: string | null
+          total_amount?: number
+          vat_amount?: number
+          vat_rate?: number
           venue_id?: string
         }
         Relationships: [
