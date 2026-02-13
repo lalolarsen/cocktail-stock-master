@@ -26,6 +26,7 @@ import PurchasesImport from "./pages/PurchasesImport";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
+import NoJornada from "./pages/NoJornada";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
@@ -59,6 +60,7 @@ function AppRoutes() {
       />
       <Route path="/auth" element={<Auth />} />
       <Route path="/dev-auth" element={<DevAuth />} />
+      <Route path="/no-jornada" element={<NoJornada />} />
       <Route
         path="/admin"
         element={

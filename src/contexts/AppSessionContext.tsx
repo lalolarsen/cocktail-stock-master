@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { DEFAULT_VENUE_ID, DEFAULT_VENUE_NAME, DEFAULT_VENUE_SLUG, DEFAULT_VENUE_DISPLAY } from "@/lib/venue";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,10 @@ interface AppSessionContextValue {
   isEnabled: (key: string) => boolean;
   isLoading: boolean;
   refreshSession: () => Promise<void>;
+  /** Active jornada */
+  activeJornadaId: string | null;
+  hasActiveJornada: boolean;
+  jornadaLoading: boolean;
 }
 
 const AppSessionContext = createContext<AppSessionContextValue | undefined>(undefined);
@@ -48,6 +52,11 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [venue, setVenue] = useState<ActiveVenue | null>(null);
   const [venueError, setVenueError] = useState<string | null>(null);
+
+  // Active jornada state
+  const [activeJornadaId, setActiveJornadaId] = useState<string | null>(null);
+  const [jornadaLoading, setJornadaLoading] = useState(true);
+  const jornadaChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const fetchUserData = useCallback(async (userId: string) => {
     try {
@@ -90,6 +99,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setRoles([]);
     setVenue(null);
     setVenueError(null);
+    setActiveJornadaId(null);
   }, []);
 
   const initializeSession = useCallback(async () => {
@@ -145,6 +155,50 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   // Stub: always enabled (flags removed)
   const isEnabled = useCallback((_key: string): boolean => true, []);
 
+  // ── Active jornada subscription ──
+  const fetchActiveJornada = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("jornadas")
+        .select("id")
+        .eq("estado", "activa")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error) {
+        setActiveJornadaId(data?.id || null);
+      }
+    } catch (err) {
+      console.error("Error checking active jornada:", err);
+    }
+    setJornadaLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchActiveJornada();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel("global-jornada-status")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "jornadas" },
+        () => fetchActiveJornada()
+      )
+      .subscribe();
+    jornadaChannelRef.current = channel;
+
+    // Fallback polling every 15s
+    const poll = setInterval(fetchActiveJornada, 15000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+      jornadaChannelRef.current = null;
+    };
+  }, [fetchActiveJornada]);
+
   const value: AppSessionContextValue = {
     user,
     session,
@@ -161,6 +215,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     isEnabled,
     isLoading,
     refreshSession,
+    activeJornadaId,
+    hasActiveJornada: !!activeJornadaId,
+    jornadaLoading,
   };
 
   return (

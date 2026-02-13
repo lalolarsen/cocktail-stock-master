@@ -1,5 +1,5 @@
 import { Navigate } from "react-router-dom";
-import { useUserRole, AppRole } from "@/hooks/useUserRole";
+import { useAppSession, AppRole } from "@/contexts/AppSessionContext";
 import { Loader2 } from "lucide-react";
 
 type ProtectedRouteProps = {
@@ -7,10 +7,12 @@ type ProtectedRouteProps = {
   allowedRoles: AppRole[];
 };
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { user, roles, loading } = useUserRole();
+const JORNADA_EXEMPT_ROLES: AppRole[] = ["admin", "gerencia", "developer"];
 
-  if (loading) {
+export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { user, roles, isLoading, hasActiveJornada, jornadaLoading } = useAppSession();
+
+  if (isLoading || jornadaLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -44,6 +46,12 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       default:
         return <Navigate to="/auth" replace />;
     }
+  }
+
+  // Jornada guard: non-exempt roles blocked when no active jornada
+  const isExempt = roles.some(r => JORNADA_EXEMPT_ROLES.includes(r));
+  if (!isExempt && !hasActiveJornada) {
+    return <Navigate to="/no-jornada" replace />;
   }
 
   return <>{children}</>;

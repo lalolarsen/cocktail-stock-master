@@ -13,6 +13,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDemoLogging } from "@/hooks/useDemoLogging";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import {
@@ -77,7 +78,7 @@ export default function Tickets() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
-  const [activeJornadaId, setActiveJornadaId] = useState<string | null>(null);
+  const { activeJornadaId, hasActiveJornada } = useAppSession();
   const [step, setStep] = useState<Step>("select-pos");
   
   // POS selection
@@ -95,7 +96,6 @@ export default function Tickets() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | undefined>(undefined);
   useEffect(() => {
     fetchPosTerminals();
-    fetchActiveJornada();
   }, []);
 
   const fetchPosTerminals = async () => {
@@ -180,18 +180,6 @@ export default function Tickets() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchActiveJornada = async () => {
-    const { data } = await supabase
-      .from("jornadas")
-      .select("id")
-      .eq("estado", "activa")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    
-    setActiveJornadaId(data?.id || null);
   };
 
   const fetchRecentSales = async () => {

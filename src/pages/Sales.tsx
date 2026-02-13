@@ -12,7 +12,7 @@ import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
-import { OutsideJornadaBanner, useActiveJornada } from "@/components/dashboard/OutsideJornadaBanner";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
@@ -60,7 +60,7 @@ type POSTerminal = {
 // BarLocation removed - bar is determined at redemption time, not at sale
 
 export default function Sales() {
-  const { activeJornadaId, hasActiveJornada } = useActiveJornada();
+  const { activeJornadaId, hasActiveJornada } = useAppSession();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const { venue } = useActiveVenue();
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
@@ -744,7 +744,11 @@ export default function Sales() {
               </Button>
             </div>
           </div>
-          <OutsideJornadaBanner blockSales={true} />
+          {!hasActiveJornada && (
+            <div className="bg-destructive/10 border border-destructive/30 px-4 py-2 text-sm text-destructive font-medium">
+              Ventas bloqueadas — No hay jornada activa.
+            </div>
+          )}
         </div>
 
         <div className="max-w-7xl mx-auto p-4">
