@@ -123,10 +123,10 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
         <SidebarMenuButton
           onClick={() => item.path ? handleExternalNavigation(item.path) : setActiveView(item.value)}
           tooltip={item.title}
-          className={`relative transition-fast rounded-lg ${
+          className={`transition-fast ${
             isActive 
-              ? "bg-sidebar-accent text-white font-medium before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-5 before:rounded-r-full before:bg-sidebar-primary" 
-              : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+              ? "bg-primary text-primary-foreground font-medium" 
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
           }`}
         >
           <item.icon className="w-4 h-4" />
@@ -141,7 +141,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       <SidebarMenuButton
         onClick={() => handleExternalNavigation(link.path)}
         tooltip={link.title}
-        className="transition-fast text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 rounded-lg"
+        className="transition-fast text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
       >
         <link.icon className="w-4 h-4" />
         <span>{link.title}</span>
@@ -151,13 +151,13 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="p-4 pb-6 space-y-4">
+      <SidebarHeader className="p-4 space-y-3">
         <div className="flex items-center gap-3">
           {!isCollapsed ? (
-            <img src={stockiaLogo} alt="StockIA" className="h-7" />
+            <img src={stockiaLogo} alt="StockIA" className="h-8" />
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <span className="text-sidebar-primary-foreground font-bold text-xs">S</span>
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-xs">S</span>
             </div>
           )}
         </div>
@@ -167,7 +167,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       <SidebarContent>
         {menuItems.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel className="text-sidebar-foreground/30 uppercase text-[10px] tracking-widest font-medium">Navegación</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Navegación</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {menuItems.map(renderMenuItem)}
@@ -178,7 +178,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
         {externalLinks.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel className="text-sidebar-foreground/30 uppercase text-[10px] tracking-widest font-medium">Contabilidad</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Contabilidad</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {externalLinks.map(renderExternalLink)}
@@ -191,7 +191,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       <SidebarFooter className="p-4 border-t border-sidebar-border">
         <Button 
           variant="ghost" 
-          className="w-full justify-start gap-2 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 rounded-lg" 
+          className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" 
           onClick={handleLogout}
         >
           <LogOut className="w-4 h-4" />

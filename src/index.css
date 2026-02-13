@@ -1,77 +1,78 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /**
- * STOCKIA by IAnticipa — Design System v2
- * Light content + Dark sidebar — SaaS Analytics
+ * STOCKIA by IAnticipa — Design System
+ * B2B SaaS, minimal, high-contrast
+ * Palette: #000000 / #FFFFFF / #6E6E6E / #00E676
  * All colors MUST be HSL values only (no hsl() wrapper).
  */
 
 @layer base {
   :root {
-    /* Background & Foreground — LIGHT */
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    /* Background & Foreground — DARK */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
 
     /* Card */
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
 
     /* Popover */
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 100%;
 
-    /* Primary (Verde Stockia #22C55E) */
-    --primary: 142 71% 45%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary (Verde IAnticipa #00E676) */
+    --primary: 145 100% 45%;
+    --primary-foreground: 0 0% 0%;
 
     /* Secondary */
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
 
     /* Muted */
-    --muted: 220 14% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 43%;
 
     /* Accent */
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 100%;
 
-    /* Destructive */
+    /* Destructive (Red - subtle) */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
     /* Border & Input */
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 142 71% 45%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 145 100% 45%;
 
     /* Radius */
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sidebar (azul-negro profundo) */
-    --sidebar-background: 216 50% 10%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 142 71% 45%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 216 40% 16%;
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 216 40% 16%;
-    --sidebar-ring: 142 71% 45%;
+    /* Sidebar (negro puro) */
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 145 100% 45%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 145 100% 45%;
 
     /* Semantic Colors */
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 145 100% 45%;
+    --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
     --info: 210 100% 50%;
     --info-foreground: 0 0% 100%;
 
     /* Chart colors */
-    --chart-1: 142 71% 45%;
+    --chart-1: 145 100% 45%;
     --chart-2: 210 100% 50%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
@@ -79,51 +80,51 @@
   }
 
   .dark {
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 142 71% 45%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 145 100% 45%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 43%;
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 142 71% 45%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 145 100% 45%;
 
-    --sidebar-background: 216 50% 10%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 142 71% 45%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 216 40% 16%;
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 216 40% 16%;
-    --sidebar-ring: 142 71% 45%;
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 145 100% 45%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 145 100% 45%;
 
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 145 100% 45%;
+    --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
     --info: 210 100% 50%;
     --info-foreground: 0 0% 100%;
 
-    --chart-1: 142 71% 45%;
+    --chart-1: 145 100% 45%;
     --chart-2: 210 100% 50%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
@@ -138,16 +139,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    font-weight: 700;
   }
 }
 
@@ -155,27 +153,28 @@
    CUSTOM SCROLLBAR
    ============================================ */
 .scrollbar-thin::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
+  background: hsl(var(--muted));
+  border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.2);
+  background: hsl(var(--muted-foreground) / 0.3);
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.35);
+  background: hsl(var(--muted-foreground) / 0.5);
 }
 
 @layer components {
   /* Card with subtle border */
   .card-minimal {
-    @apply bg-card border border-border rounded-xl shadow-sm;
+    @apply bg-card border border-border rounded-lg;
   }
 
   /* Fast transitions */
@@ -194,7 +193,6 @@
 
   .hover-lift:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px -2px hsl(var(--foreground) / 0.06);
   }
 
   /* Fade in animation */
