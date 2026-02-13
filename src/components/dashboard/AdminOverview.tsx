@@ -258,6 +258,27 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
   return (
     <div className="space-y-10">
+      {/* ── No-jornada banner for admin/gerencia ── */}
+      {!jornadaActive && !isReadOnly && (
+        <Alert className="border-amber-500/50 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-amber-700 dark:text-amber-200">
+              <strong>Sin jornada activa</strong> — abre una para que el equipo pueda operar.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate?.("jornadas")}
+              className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
+            >
+              <Play className="w-3 h-3 mr-1" />
+              Abrir jornada
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* ── Orphan Sales Alert ── */}
       {!isReadOnly && orphanSalesCount > 0 && (
         <Alert className="border-amber-500/50 bg-amber-500/10">
