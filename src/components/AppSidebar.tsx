@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket, Landmark } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -33,31 +33,82 @@ type MenuItem = {
   icon: typeof Wine;
 };
 
-// ── Hardcoded menus by role (no flags, no DB config) ──
+type MenuSection = {
+  label: string;
+  items: MenuItem[];
+};
 
-const ADMIN_MENU: MenuItem[] = [
-  { title: "Panel General", value: "overview", icon: Wine },
-  { title: "Jornadas", value: "jornadas", icon: Calendar },
-  { title: "Puntos de Venta", value: "pos", icon: Receipt },
-  { title: "Inventario", value: "inventory", icon: Warehouse },
-  { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
-  { title: "Carta", value: "menu", icon: Martini },
-  { title: "Trabajadores", value: "workers", icon: Users },
-  { title: "Reportes", value: "reports", icon: FileText },
-  { title: "Finanzas", value: "finance", icon: Landmark },
+// ── Admin: full access ──
+const ADMIN_SECTIONS: MenuSection[] = [
+  {
+    label: "Dashboard",
+    items: [
+      { title: "Dashboard", value: "overview", icon: Wine },
+    ],
+  },
+  {
+    label: "Operación",
+    items: [
+      { title: "Jornadas", value: "jornadas", icon: Calendar },
+      { title: "Puntos de Venta", value: "pos", icon: Receipt },
+    ],
+  },
+  {
+    label: "Inventario",
+    items: [
+      { title: "Inventario", value: "inventory", icon: Warehouse },
+      { title: "Productos", value: "products", icon: Package },
+      { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
+    ],
+  },
+  {
+    label: "Ventas",
+    items: [
+      { title: "Carta / Recetas", value: "menu", icon: Martini },
+      { title: "Reportes", value: "reports", icon: FileText },
+    ],
+  },
+  {
+    label: "Gestión",
+    items: [
+      { title: "Trabajadores", value: "workers", icon: Users },
+      { title: "Tickets", value: "tickets", icon: Ticket },
+    ],
+  },
+  {
+    label: "Finanzas",
+    items: [
+      { title: "Finanzas", value: "finance", icon: Landmark },
+    ],
+  },
 ];
 
-const GERENCIA_MENU: MenuItem[] = [
-  { title: "Panel General", value: "overview", icon: Wine },
-  { title: "Finanzas", value: "finance", icon: Landmark },
-  { title: "Reportes", value: "reports", icon: FileText },
-  { title: "Inventario", value: "inventory", icon: Warehouse },
-  { title: "Notificaciones", value: "notifications", icon: Bell },
-];
-
-const GERENCIA_EXTERNAL: Array<{ title: string; path: string; icon: typeof Wine }> = [
-  { title: "Estado de Resultados", path: "/admin/reports/estado-resultados", icon: FileText },
-  { title: "Auditoría Retiros", path: "/admin/pickups", icon: Receipt },
+// ── Gerencia: read-only subset ──
+const GERENCIA_SECTIONS: MenuSection[] = [
+  {
+    label: "Dashboard",
+    items: [
+      { title: "Dashboard", value: "overview", icon: Wine },
+    ],
+  },
+  {
+    label: "Inventario",
+    items: [
+      { title: "Inventario", value: "inventory", icon: Warehouse },
+    ],
+  },
+  {
+    label: "Ventas",
+    items: [
+      { title: "Reportes", value: "reports", icon: FileText },
+    ],
+  },
+  {
+    label: "Finanzas",
+    items: [
+      { title: "Finanzas", value: "finance", icon: Landmark },
+    ],
+  },
 ];
 
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
@@ -72,28 +123,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
   };
 
   const isGerencia = isReadOnly || role === "gerencia";
-  const menuItems = isGerencia ? GERENCIA_MENU : ADMIN_MENU;
-  const externalLinks = isGerencia ? GERENCIA_EXTERNAL : [];
-
-  const renderMenuItem = (item: MenuItem) => {
-    const isActive = activeView === item.value;
-    return (
-      <SidebarMenuItem key={item.value}>
-        <SidebarMenuButton
-          onClick={() => setActiveView(item.value)}
-          tooltip={item.title}
-          className={`transition-fast ${
-            isActive 
-              ? "bg-primary text-primary-foreground font-medium" 
-              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-          }`}
-        >
-          <item.icon className="w-4 h-4" />
-          <span>{item.title}</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
-  };
+  const sections = isGerencia ? GERENCIA_SECTIONS : ADMIN_SECTIONS;
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -111,42 +141,42 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Navegación</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map(renderMenuItem)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {externalLinks.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">Contabilidad</SidebarGroupLabel>
+        {sections.map((section) => (
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest px-3 pb-0.5">
+              {section.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {externalLinks.map((link) => (
-                  <SidebarMenuItem key={link.path}>
-                    <SidebarMenuButton
-                      onClick={() => navigate(link.path)}
-                      tooltip={link.title}
-                      className="transition-fast text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                    >
-                      <link.icon className="w-4 h-4" />
-                      <span>{link.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {section.items.map((item) => {
+                  const isActive = activeView === item.value;
+                  return (
+                    <SidebarMenuItem key={item.value}>
+                      <SidebarMenuButton
+                        onClick={() => setActiveView(item.value)}
+                        tooltip={item.title}
+                        className={`h-8 transition-fast ${
+                          isActive
+                            ? "bg-primary text-primary-foreground font-medium"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        <span className="text-sm">{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
+        ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" 
+      <SidebarFooter className="p-3 border-t border-sidebar-border">
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 h-8 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
           onClick={handleLogout}
         >
           <LogOut className="w-4 h-4" />
