@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket, Landmark } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -19,7 +19,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession, FeatureKey } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -38,7 +38,7 @@ type MenuItem = {
 
 // Icon mapping for dynamic config
 const ICON_MAP: Record<string, typeof Wine> = {
-  Wine, Package, Martini, Users, Calendar, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket,
+  Wine, Package, Martini, Users, Calendar, FileText, Receipt, Warehouse, ArrowRightLeft, Bell, Ticket, Landmark,
 };
 
 // Default role-specific menu configurations (fallback)
@@ -51,10 +51,12 @@ const ADMIN_MENU: MenuItem[] = [
   { title: "Carta", value: "menu", icon: Martini, featureFlag: "ventas_alcohol" },
   { title: "Trabajadores", value: "workers", icon: Users },
   { title: "Reportes", value: "reports", icon: FileText, featureFlag: "reportes" },
+  { title: "Finanzas", value: "finance", icon: Landmark, featureFlag: "contabilidad_basica" },
 ];
 
 const GERENCIA_MENU: MenuItem[] = [
   { title: "Panel General", value: "overview", icon: Wine },
+  { title: "Finanzas", value: "finance", icon: Landmark, featureFlag: "contabilidad_basica" },
   { title: "Reportes", value: "reports", icon: FileText, featureFlag: "reportes" },
   { title: "Notificaciones", value: "notifications", icon: Bell },
 ];
