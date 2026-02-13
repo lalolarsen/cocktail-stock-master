@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useFinanceMTD } from "@/hooks/useFinanceMTD";
-import { AddOperationalExpenseDialog } from "./AddOperationalExpenseDialog";
+import { AddOperationalExpenseDialog, getCategoryLabel } from "./AddOperationalExpenseDialog";
 import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
+  FileText, Scale,
 } from "lucide-react";
 
 const MONTHS = [
@@ -66,6 +68,20 @@ function MetricGridSkeleton() {
   );
 }
 
+/** Inline row for the income statement */
+function StatementRow({ label, value, bold, negative, indent }: {
+  label: string; value: number; bold?: boolean; negative?: boolean; indent?: boolean;
+}) {
+  return (
+    <div className={`flex justify-between items-center py-1 ${indent ? "pl-4" : ""} ${bold ? "font-semibold" : "text-sm"}`}>
+      <span className={negative ? "text-destructive" : "text-muted-foreground"}>{label}</span>
+      <span className={`tabular-nums ${negative ? "text-destructive font-medium" : ""} ${bold ? "text-foreground" : ""}`}>
+        {formatCLP(value)}
+      </span>
+    </div>
+  );
+}
+
 export function FinancePanel() {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
@@ -83,7 +99,7 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const noSales = !mtd.loading && mtd.salesTotal === 0;
+  const noSales = !mtd.loading && mtd.salesBruto === 0;
 
   return (
     <div className="space-y-10">
@@ -108,7 +124,7 @@ export function FinancePanel() {
           </Select>
           <Button onClick={() => setShowExpenseDialog(true)} size="sm">
             <Plus className="w-4 h-4 mr-1.5" />
-            Agregar gasto operacional
+            Agregar gasto
           </Button>
         </div>
       </div>
@@ -119,7 +135,7 @@ export function FinancePanel() {
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertDescription className="text-destructive">
             <strong>{pendingReviewCount} jornada{pendingReviewCount > 1 ? "s" : ""} pendiente{pendingReviewCount > 1 ? "s" : ""} de revisión.</strong>{" "}
-            Existen cierres forzados sin revisar. La exportación del estado mensual está bloqueada hasta resolver.
+            La exportación del estado mensual está bloqueada hasta resolver.
           </AlertDescription>
         </Alert>
       )}
@@ -140,7 +156,7 @@ export function FinancePanel() {
         </Card>
       ) : (
         <>
-          {/* ── Section 1: MTD ── */}
+          {/* ── Section 1: Income Statement MTD ── */}
           <section className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -154,8 +170,9 @@ export function FinancePanel() {
               </Badge>
             </div>
 
+            {/* Key metrics cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <MetricCard label="Ventas" value={formatCLP(mtd.salesTotal)} icon={DollarSign} />
+              <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNeto)} icon={DollarSign} />
               <MetricCard label="COGS" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
               <MetricCard
                 label="Margen Bruto"
@@ -165,7 +182,7 @@ export function FinancePanel() {
                 negative={mtd.grossMargin < 0}
               />
               <MetricCard
-                label="Gastos Operacionales"
+                label="Total OPEX"
                 value={formatCLP(mtd.opexTotal)}
                 sub={`${mtd.opexPct.toFixed(1)}% de ventas`}
                 icon={BarChart3}
@@ -177,6 +194,100 @@ export function FinancePanel() {
                 negative={mtd.operationalResult < 0}
               />
             </div>
+
+            {/* Full statement breakdown */}
+            <Card>
+              <CardContent className="p-5 space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  Detalle completo
+                </p>
+
+                {/* Sales block */}
+                <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesBruto} />
+                <StatementRow label="IVA débito fiscal" value={-mtd.ivaDebito} indent />
+                <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNeto} bold />
+
+                <div className="border-t my-2" />
+
+                {/* COGS */}
+                <StatementRow label="Costo de ventas (COGS)" value={-mtd.cogsTotal} negative />
+                <StatementRow label="Margen bruto" value={mtd.grossMargin} bold negative={mtd.grossMargin < 0} />
+
+                <div className="border-t my-2" />
+
+                {/* OPEX by category */}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">
+                  Gastos Operacionales (OPEX)
+                </p>
+
+                {mtd.opexByCategory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground pl-4 py-1">Sin gastos registrados</p>
+                ) : (
+                  <Accordion type="multiple" className="w-full">
+                    {mtd.opexByCategory.map((cat) => (
+                      <AccordionItem key={cat.category} value={cat.category} className="border-0">
+                        <AccordionTrigger className="py-1.5 hover:no-underline">
+                          <div className="flex justify-between w-full pr-2 text-sm">
+                            <span>{getCategoryLabel(cat.category)}</span>
+                            <span className="tabular-nums font-medium">{formatCLP(cat.total)}</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-1 pl-4">
+                            {cat.items.map((item) => (
+                              <div key={item.id} className="flex justify-between text-xs text-muted-foreground">
+                                <span className="truncate mr-2">
+                                  {item.expense_date} — {item.description || "Sin descripción"}
+                                </span>
+                                <span className="tabular-nums shrink-0">{formatCLP(item.total_amount)}</span>
+                              </div>
+                            ))}
+                            {(cat.vatTotal > 0 || cat.specificTaxTotal > 0) && (
+                              <div className="pt-1 mt-1 border-t text-xs text-muted-foreground space-y-0.5">
+                                {cat.vatTotal > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>IVA incluido</span>
+                                    <span className="tabular-nums">{formatCLP(cat.vatTotal)}</span>
+                                  </div>
+                                )}
+                                {cat.specificTaxTotal > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Imp. específicos</span>
+                                    <span className="tabular-nums">{formatCLP(cat.specificTaxTotal)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                )}
+
+                <StatementRow label="Total OPEX" value={-mtd.opexTotal} bold negative />
+
+                <div className="border-t my-2" />
+
+                {/* Operating result */}
+                <StatementRow label="Resultado operacional" value={mtd.operationalResult} bold negative={mtd.operationalResult < 0} />
+
+                <div className="border-t border-dashed my-3" />
+
+                {/* Tax block */}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  Bloque Tributario
+                </p>
+                <StatementRow label="IVA débito fiscal (ventas)" value={mtd.ivaDebito} indent />
+                <StatementRow label="IVA crédito fiscal (facturas)" value={-mtd.ivaCreditoFacturas} indent />
+                <StatementRow
+                  label="IVA neto del periodo"
+                  value={mtd.ivaNeto}
+                  bold
+                  negative={mtd.ivaNeto > 0}
+                />
+              </CardContent>
+            </Card>
           </section>
 
           {/* ── Section 2: Forecast ── */}
