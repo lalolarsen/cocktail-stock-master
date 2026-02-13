@@ -25,10 +25,12 @@ export interface FinanceMTD {
 }
 
 function getMonthRange(year: number, month: number): { start: string; end: string } {
-  // Build dates in America/Santiago context
+  const now = new Date();
   const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const end = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  // If viewing current month, cap at today; otherwise use last day of month
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const endDay = isCurrentMonth ? now.getDate() : new Date(year, month + 1, 0).getDate();
+  const end = `${year}-${String(month + 1).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
   return { start, end };
 }
 
