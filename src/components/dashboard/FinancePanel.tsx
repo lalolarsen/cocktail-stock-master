@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFinanceMTD } from "@/hooks/useFinanceMTD";
 import { AddOperationalExpenseDialog } from "./AddOperationalExpenseDialog";
 import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
-  BarChart3, CalendarClock, AlertCircle,
+  BarChart3, CalendarClock, AlertCircle, AlertTriangle,
 } from "lucide-react";
 
 const MONTHS = [
@@ -69,8 +71,17 @@ export function FinancePanel() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear] = useState(now.getFullYear());
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   const mtd = useFinanceMTD(selectedYear, selectedMonth);
+
+  useEffect(() => {
+    supabase
+      .from("jornadas")
+      .select("*", { count: "exact", head: true })
+      .eq("requires_review", true)
+      .then(({ count }) => setPendingReviewCount(count || 0));
+  }, []);
 
   const noSales = !mtd.loading && mtd.salesTotal === 0;
 
@@ -101,6 +112,17 @@ export function FinancePanel() {
           </Button>
         </div>
       </div>
+
+      {/* Pending review alert */}
+      {pendingReviewCount > 0 && (
+        <Alert className="border-destructive/50 bg-destructive/10">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="text-destructive">
+            <strong>{pendingReviewCount} jornada{pendingReviewCount > 1 ? "s" : ""} pendiente{pendingReviewCount > 1 ? "s" : ""} de revisión.</strong>{" "}
+            Existen cierres forzados sin revisar. La exportación del estado mensual está bloqueada hasta resolver.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {mtd.loading ? (
         <div className="space-y-10">

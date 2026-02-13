@@ -99,6 +99,17 @@ export function JornadaHistoryTable({
     }
   };
 
+  const getForcedBadge = (jornada: Jornada) => {
+    if ((jornada as any).forced_close) {
+      return (
+        <Badge variant="destructive" className="text-[10px] ml-1">
+          Forzado
+        </Badge>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="rounded-lg border">
       <Table>
@@ -140,7 +151,12 @@ export function JornadaHistoryTable({
                       : "-"
                   }
                 </TableCell>
-                <TableCell>{getStatusBadge(jornada.estado, jornada)}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    {getStatusBadge(jornada.estado, jornada)}
+                    {getForcedBadge(jornada)}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => onShowDetail(jornada.id)} title="Ver detalle">
