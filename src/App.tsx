@@ -26,9 +26,7 @@ import PurchasesImport from "./pages/PurchasesImport";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
-import DeveloperPanel from "./pages/DeveloperPanel";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { FeatureGate } from "./components/FeatureGate";
 
 const queryClient = new QueryClient();
 
@@ -177,14 +175,11 @@ function AppRoutes() {
         path="/tickets"
         element={
           <ProtectedRoute allowedRoles={["ticket_seller", "vendedor", "admin"]}>
-            <FeatureGate feature="tickets_module" featureName="Módulo de Entradas">
-              <Tickets />
-            </FeatureGate>
+            <Tickets />
           </ProtectedRoute>
         }
       />
       <Route path="/help" element={<Help />} />
-      <Route path="/developer" element={<DeveloperPanel />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
