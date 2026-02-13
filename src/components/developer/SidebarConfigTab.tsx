@@ -82,7 +82,7 @@ const ROLES = ["admin", "gerencia", "vendedor", "bar", "ticket_seller"];
 
 // Default configs for quick reset
 const DEFAULT_ADMIN_CONFIG: SidebarItem[] = [
-  { menu_key: "overview", menu_label: "Panel General", icon_name: "Wine", view_type: "overview", feature_flag: null, external_path: null, sort_order: 0, is_enabled: true },
+  { menu_key: "overview", menu_label: "Dashboard", icon_name: "Wine", view_type: "overview", feature_flag: null, external_path: null, sort_order: 0, is_enabled: true },
   { menu_key: "jornadas", menu_label: "Jornadas", icon_name: "Calendar", view_type: "jornadas", feature_flag: "jornadas", external_path: null, sort_order: 1, is_enabled: true },
   { menu_key: "pos", menu_label: "Puntos de Venta", icon_name: "Receipt", view_type: "pos", feature_flag: null, external_path: null, sort_order: 2, is_enabled: true },
   { menu_key: "inventory", menu_label: "Inventario", icon_name: "Warehouse", view_type: "inventory", feature_flag: "inventario", external_path: null, sort_order: 3, is_enabled: true },
@@ -93,7 +93,7 @@ const DEFAULT_ADMIN_CONFIG: SidebarItem[] = [
 ];
 
 const DEFAULT_GERENCIA_CONFIG: SidebarItem[] = [
-  { menu_key: "overview", menu_label: "Panel General", icon_name: "Wine", view_type: "overview", feature_flag: null, external_path: null, sort_order: 0, is_enabled: true },
+  { menu_key: "overview", menu_label: "Dashboard", icon_name: "Wine", view_type: "overview", feature_flag: null, external_path: null, sort_order: 0, is_enabled: true },
   { menu_key: "reports", menu_label: "Reportes", icon_name: "FileText", view_type: "reports", feature_flag: "reportes", external_path: null, sort_order: 1, is_enabled: true },
   { menu_key: "notifications", menu_label: "Notificaciones", icon_name: "Bell", view_type: "notifications", feature_flag: null, external_path: null, sort_order: 2, is_enabled: true },
   { menu_key: "estado-resultados", menu_label: "Estado de Resultados", icon_name: "FileText", view_type: "overview", feature_flag: null, external_path: "/admin/reports/estado-resultados", sort_order: 3, is_enabled: true },

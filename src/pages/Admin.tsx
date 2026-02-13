@@ -71,7 +71,7 @@ export default function Admin() {
 
   const getViewTitle = () => {
     switch (activeView) {
-      case "overview": return "Panel General";
+      case "overview": return "Dashboard";
       case "products": return "Productos";
       case "menu": return "Carta";
       case "jornadas": return "Jornadas";

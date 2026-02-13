@@ -5,16 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Calendar, 
-  DollarSign, 
-  QrCode, 
-  Store, 
-  Package, 
-  ClipboardList, 
-  UtensilsCrossed,
+import {
+  Calendar,
+  DollarSign,
+  QrCode,
+  Store,
   ShieldAlert,
-  TrendingUp
+  TrendingUp,
+  Play,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
@@ -41,7 +40,7 @@ interface TodayStats {
 interface BarStatus {
   id: string;
   name: string;
-  status: 'operational' | 'low';
+  status: "operational" | "low";
   lowCount: number;
   totalProducts: number;
 }
@@ -51,10 +50,57 @@ interface Props {
   onNavigate?: (view: string) => void;
 }
 
+/* ─── Small metric card ─── */
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  negative,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: React.ElementType;
+  negative?: boolean;
+}) {
+  return (
+    <Card className="relative overflow-hidden">
+      <CardContent className="p-5 flex items-start justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
+            {label}
+          </p>
+          <p
+            className={`text-2xl font-bold tabular-nums leading-tight ${
+              negative ? "text-destructive" : "text-foreground"
+            }`}
+          >
+            {value}
+          </p>
+          {sub && (
+            <p className="text-xs text-muted-foreground">{sub}</p>
+          )}
+        </div>
+        <Icon
+          className={`w-5 h-5 shrink-0 mt-0.5 opacity-20 ${
+            negative ? "text-destructive" : "text-muted-foreground"
+          }`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [jornada, setJornada] = useState<Jornada | null>(null);
-  const [todayStats, setTodayStats] = useState<TodayStats>({ salesToday: 0, transactionsToday: 0, qrsRedeemed: 0, grossIncome: 0 });
+  const [todayStats, setTodayStats] = useState<TodayStats>({
+    salesToday: 0,
+    transactionsToday: 0,
+    qrsRedeemed: 0,
+    grossIncome: 0,
+  });
   const [barStatuses, setBarStatuses] = useState<BarStatus[]>([]);
   const [orphanSalesCount, setOrphanSalesCount] = useState(0);
   const [showOrphanDialog, setShowOrphanDialog] = useState(false);
@@ -70,7 +116,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         fetchJornada(),
         fetchTodayStats(),
         fetchBarStatuses(),
-        fetchOrphanSalesCount()
+        fetchOrphanSalesCount(),
       ]);
     } finally {
       setLoading(false);
@@ -82,10 +128,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .from("sales")
       .select("*", { count: "exact", head: true })
       .is("jornada_id", null);
-    
-    if (!error) {
-      setOrphanSalesCount(count || 0);
-    }
+    if (!error) setOrphanSalesCount(count || 0);
   };
 
   const fetchJornada = async () => {
@@ -102,50 +145,49 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
   const fetchTodayStats = async () => {
     const today = new Date().toISOString().split("T")[0];
-    
-    // Sales today
+
     const { data: salesData } = await supabase
       .from("sales")
       .select("total_amount")
       .gte("created_at", `${today}T00:00:00`)
       .eq("payment_status", "paid")
       .eq("is_cancelled", false);
-    
-    // Ticket sales today
+
     const { data: ticketData } = await supabase
       .from("ticket_sales")
       .select("total")
       .gte("created_at", `${today}T00:00:00`)
       .eq("payment_status", "paid");
 
-    // QRs redeemed today
     const { count: qrCount } = await supabase
       .from("pickup_redemptions_log")
       .select("*", { count: "exact", head: true })
       .gte("redeemed_at", `${today}T00:00:00`)
       .eq("result", "success");
 
-    // Gross income today
     const { data: incomeData } = await supabase
       .from("gross_income_entries")
       .select("amount")
       .gte("created_at", `${today}T00:00:00`);
 
-    const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
-    const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
-    const transactionsCount = (salesData?.length || 0) + (ticketData?.length || 0);
-    const grossIncomeTotal = incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
+    const barSalesTotal =
+      salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
+    const ticketSalesTotal =
+      ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
+    const transactionsCount =
+      (salesData?.length || 0) + (ticketData?.length || 0);
+    const grossIncomeTotal =
+      incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
 
     setTodayStats({
       salesToday: barSalesTotal + ticketSalesTotal,
       transactionsToday: transactionsCount,
       qrsRedeemed: qrCount || 0,
-      grossIncome: grossIncomeTotal
+      grossIncome: grossIncomeTotal,
     });
   };
 
   const fetchBarStatuses = async () => {
-    // Get bar locations
     const { data: bars } = await supabase
       .from("stock_locations")
       .select("id, name")
@@ -157,70 +199,77 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       return;
     }
 
-    // Get products with minimum stock
     const { data: products } = await supabase
       .from("products")
       .select("id, minimum_stock");
 
-    const productMinMap = new Map(products?.map(p => [p.id, p.minimum_stock]) || []);
+    const productMinMap = new Map(
+      products?.map((p) => [p.id, p.minimum_stock]) || []
+    );
 
-    // Get stock balances for bars
     const { data: balances } = await supabase
       .from("stock_balances")
       .select("location_id, product_id, quantity")
-      .in("location_id", bars.map(b => b.id));
+      .in(
+        "location_id",
+        bars.map((b) => b.id)
+      );
 
-    // Calculate bar statuses
-    const statuses: BarStatus[] = bars.map(bar => {
-      const barBalances = balances?.filter(b => b.location_id === bar.id) || [];
-      const lowCount = barBalances.filter(b => {
+    const statuses: BarStatus[] = bars.map((bar) => {
+      const barBalances =
+        balances?.filter((b) => b.location_id === bar.id) || [];
+      const lowCount = barBalances.filter((b) => {
         const minStock = productMinMap.get(b.product_id) || 0;
         return Number(b.quantity) < minStock * 0.5;
       }).length;
-      
+
       return {
         id: bar.id,
         name: bar.name,
-        status: lowCount > 3 ? 'low' : 'operational',
+        status: lowCount > 3 ? "low" : "operational",
         lowCount,
-        totalProducts: barBalances.length
+        totalProducts: barBalances.length,
       };
     });
 
     setBarStatuses(statuses);
   };
 
-  const getJornadaStatus = () => {
-    if (!jornada) return { label: "Sin jornada", variant: "outline" as const };
-    if (jornada.estado === "activa") return { label: "Activa", variant: "default" as const };
-    return { label: "Cerrada", variant: "secondary" as const };
-  };
-
+  /* ─── Loading skeleton ─── */
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="space-y-10">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-56 rounded-lg" />
+          ))}
+        </div>
       </div>
     );
   }
 
-  const jornadaStatus = getJornadaStatus();
+  const jornadaActive = jornada?.estado === "activa";
+  const noSales = todayStats.salesToday === 0 && todayStats.transactionsToday === 0;
 
   return (
-    <div className="space-y-6">
-      {/* Orphan Sales Alert Banner */}
+    <div className="space-y-10">
+      {/* ── Orphan Sales Alert ── */}
       {!isReadOnly && orphanSalesCount > 0 && (
         <Alert className="border-amber-500/50 bg-amber-500/10">
           <ShieldAlert className="h-4 w-4 text-amber-600" />
           <AlertDescription className="flex items-center justify-between">
             <span className="text-amber-700">
-              Hay <strong>{orphanSalesCount}</strong> ventas sin jornada. Debes reasignarlas para que entren al estado de resultados.
+              Hay <strong>{orphanSalesCount}</strong> ventas sin jornada.
+              Debes reasignarlas para que entren al estado de resultados.
             </span>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowOrphanDialog(true)}
               className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
             >
@@ -230,7 +279,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         </Alert>
       )}
 
-      {/* Orphan Sales Recovery Dialog */}
       <OrphanSalesRecoveryDialog
         open={showOrphanDialog}
         onOpenChange={setShowOrphanDialog}
@@ -241,112 +289,140 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         }}
       />
 
-      {/* A) Estado de hoy - Enhanced Visual Design */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Jornada Status Card */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-primary/10" />
-          <CardContent className="relative p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-primary/10">
-                <Calendar className="h-5 w-5 text-primary" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Jornada</p>
-            </div>
-            <div className="space-y-1">
-              <Badge 
-                variant={jornadaStatus.variant}
-                className={`text-sm px-3 py-1 ${jornada?.estado === "activa" ? "bg-emerald-500 hover:bg-emerald-600" : ""}`}
-              >
-                {jornadaStatus.label}
-              </Badge>
-              {jornada?.estado === "activa" && jornada.hora_apertura && (
-                <p className="text-xs text-muted-foreground mt-2">Desde las {jornada.hora_apertura}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           BLOQUE 1 — Operación en vivo
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Operación en vivo
+        </h2>
 
-        {/* Gross Income Card */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10" />
-          <CardContent className="relative p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Ingresos brutos</p>
-            </div>
-            <p className="text-2xl font-bold text-emerald-600">{formatCLP(todayStats.grossIncome)}</p>
-          </CardContent>
-        </Card>
-
-        {/* Sales Card */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-500/10" />
-          <CardContent className="relative p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/10">
-                <DollarSign className="h-5 w-5 text-blue-600" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Ventas</p>
-            </div>
-            <p className="text-2xl font-bold">{formatCLP(todayStats.salesToday)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{todayStats.transactionsToday} transacciones</p>
-          </CardContent>
-        </Card>
-
-        {/* QRs Redeemed Card */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-violet-500/10" />
-          <CardContent className="relative p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-violet-500/10">
-                <QrCode className="h-5 w-5 text-violet-600" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">QRs canjeados</p>
-            </div>
-            <p className="text-2xl font-bold text-violet-600">{todayStats.qrsRedeemed}</p>
-          </CardContent>
-        </Card>
-
-        {/* Bar Status Card */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-amber-500/10" />
-          <CardContent className="relative p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-amber-500/10">
-                <Store className="h-5 w-5 text-amber-600" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Barras</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {barStatuses.length === 0 ? (
-                <span className="text-sm text-muted-foreground">Sin barras</span>
-              ) : (
-                barStatuses.map(bar => (
-                  <Badge 
-                    key={bar.id} 
-                    variant={bar.status === 'operational' ? 'outline' : 'destructive'}
-                    className={`text-xs ${bar.status === 'operational' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}`}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Jornada */}
+          {jornadaActive ? (
+            <StatCard
+              label="Jornada"
+              value={`#${jornada!.numero_jornada}`}
+              sub={jornada!.hora_apertura ? `Desde las ${jornada!.hora_apertura}` : undefined}
+              icon={Calendar}
+            />
+          ) : (
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center gap-2 min-h-[112px]">
+                <Calendar className="w-6 h-6 text-muted-foreground opacity-30" />
+                <p className="text-xs text-muted-foreground">
+                  No hay jornada activa.
+                </p>
+                {!isReadOnly && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-1 h-7 text-xs"
+                    onClick={() => onNavigate?.("jornadas")}
                   >
-                    {bar.name.replace('Barra ', '')}: {bar.status === 'operational' ? '✓' : '↓'}
-                  </Badge>
-                ))
+                    <Play className="w-3 h-3 mr-1" />
+                    Iniciar jornada
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Ingresos */}
+          <StatCard
+            label="Ingresos brutos"
+            value={formatCLP(todayStats.grossIncome)}
+            icon={TrendingUp}
+          />
+
+          {/* Ventas */}
+          {noSales ? (
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center gap-1 min-h-[112px]">
+                <DollarSign className="w-5 h-5 text-muted-foreground opacity-30" />
+                <p className="text-xs text-muted-foreground">
+                  Aún no hay ventas en esta jornada.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <StatCard
+              label="Ventas"
+              value={formatCLP(todayStats.salesToday)}
+              sub={`${todayStats.transactionsToday} transacciones`}
+              icon={DollarSign}
+            />
+          )}
+
+          {/* QRs */}
+          <StatCard
+            label="QRs canjeados"
+            value={todayStats.qrsRedeemed}
+            icon={QrCode}
+          />
+
+          {/* Barras */}
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
+                  Barras
+                </p>
+                <Store className="w-5 h-5 text-muted-foreground opacity-20 shrink-0" />
+              </div>
+              {barStatuses.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-3">Sin barras configuradas</p>
+              ) : (
+                <ul className="mt-3 space-y-1.5">
+                  {barStatuses.map((bar) => (
+                    <li key={bar.id} className="flex items-center gap-2 text-sm">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          bar.status === "operational"
+                            ? "bg-primary"
+                            : "bg-destructive"
+                        }`}
+                      />
+                      <span className="truncate">{bar.name}</span>
+                      {bar.status === "low" && (
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
+                          {bar.lowCount} bajos
+                        </Badge>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
-      {/* C) Live Charts & Alerts */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <LiveSalesChart />
-        <TopProductsChart />
-        <COGSBreakdownPanel compact />
-        <StockAlertsPanel onNavigate={onNavigate} />
-      </div>
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           BLOQUE 2 — KPIs de la jornada
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          KPIs de la jornada
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <LiveSalesChart />
+          <TopProductsChart />
+          <COGSBreakdownPanel compact />
+        </div>
+      </section>
 
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           BLOQUE 3 — Alertas y estado
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Alertas y estado
+        </h2>
+        <div className="grid md:grid-cols-1 lg:grid-cols-1 gap-3">
+          <StockAlertsPanel onNavigate={onNavigate} />
+        </div>
+      </section>
     </div>
   );
 }

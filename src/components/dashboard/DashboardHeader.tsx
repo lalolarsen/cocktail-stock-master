@@ -25,7 +25,7 @@ export const DashboardHeader = ({ activeView, setActiveView }: DashboardHeaderPr
             onClick={() => setActiveView("overview")}
           >
             <Wine className="mr-2 h-4 w-4" />
-            Panel General
+            Dashboard
           </Button>
           <Button
             variant={activeView === "products" ? "default" : "outline"}
