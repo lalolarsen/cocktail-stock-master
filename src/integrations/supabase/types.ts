@@ -1942,6 +1942,7 @@ export type Database = {
           provider_name: string | null
           provider_rut: string | null
           raw_text: string | null
+          specific_tax_amount: number | null
           status: string
           total_amount: number | null
           total_amount_gross: number | null
@@ -1964,6 +1965,7 @@ export type Database = {
           provider_name?: string | null
           provider_rut?: string | null
           raw_text?: string | null
+          specific_tax_amount?: number | null
           status?: string
           total_amount?: number | null
           total_amount_gross?: number | null
@@ -1986,6 +1988,7 @@ export type Database = {
           provider_name?: string | null
           provider_rut?: string | null
           raw_text?: string | null
+          specific_tax_amount?: number | null
           status?: string
           total_amount?: number | null
           total_amount_gross?: number | null

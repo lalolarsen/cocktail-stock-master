@@ -26,6 +26,11 @@ export interface FinanceMTD {
   ivaDebito: number;        // IVA from sales
   cogsTotal: number;
 
+  // Specific taxes (ILA/IABA) — separate from COGS
+  specificTaxTotal: number;
+  specificTaxFromInvoices: number;
+  specificTaxFromOpex: number;
+
   // OPEX
   opexTotal: number;
   opexByCategory: OpexCategoryBreakdown[];
@@ -37,6 +42,7 @@ export interface FinanceMTD {
 
   // Results
   grossMargin: number;
+  marginPostSpecificTax: number;
   operationalResult: number;
   marginPct: number;
   opexPct: number;
@@ -46,6 +52,7 @@ export interface FinanceMTD {
   daysInMonth: number;
   salesForecast: number;
   cogsForecast: number;
+  specificTaxForecast: number;
   opexForecast: number;
   grossProfitForecast: number;
   operatingResultForecast: number;
@@ -74,6 +81,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const [cogsTotal, setCogsTotal] = useState(0);
   const [opexByCategory, setOpexByCategory] = useState<OpexCategoryBreakdown[]>([]);
   const [ivaCreditoFacturas, setIvaCreditoFacturas] = useState(0);
+  const [specificTaxFromInvoices, setSpecificTaxFromInvoices] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -111,10 +119,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("expense_date", start)
           .lte("expense_date", end),
 
-        // IVA crédito from invoices
+        // IVA crédito + specific tax from invoices
         supabase
           .from("purchase_documents")
-          .select("iva_amount")
+          .select("iva_amount, specific_tax_amount")
           .eq("venue_id", venueId)
           .eq("status", "confirmed")
           .gte("document_date", start)
@@ -160,9 +168,12 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       }
       setOpexByCategory(Array.from(categoryMap.values()).sort((a, b) => b.total - a.total));
 
-      // IVA crédito
-      const credito = (invoiceRes.data || []).reduce((s, r) => s + Number(r.iva_amount || 0), 0);
+      // IVA crédito + specific tax from invoices
+      const invoiceRows = invoiceRes.data || [];
+      const credito = invoiceRows.reduce((s, r) => s + Number(r.iva_amount || 0), 0);
       setIvaCreditoFacturas(credito);
+      const specTaxInv = invoiceRows.reduce((s, r) => s + Number(r.specific_tax_amount || 0), 0);
+      setSpecificTaxFromInvoices(specTaxInv);
     } catch (err) {
       console.error("Error fetching finance MTD:", err);
     } finally {
@@ -179,9 +190,12 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const ivaDebito = salesBruto - salesNeto;
   const opexTotal = opexByCategory.reduce((s, c) => s + c.total, 0);
   const opexVatTotal = opexByCategory.reduce((s, c) => s + c.vatTotal, 0);
+  const specificTaxFromOpex = opexByCategory.reduce((s, c) => s + c.specificTaxTotal, 0);
+  const specificTaxTotal = specificTaxFromInvoices + specificTaxFromOpex;
   const ivaNeto = ivaDebito - ivaCreditoFacturas;
   const grossMargin = salesNeto - cogsTotal;
-  const operationalResult = grossMargin - opexTotal;
+  const marginPostSpecificTax = grossMargin - specificTaxTotal;
+  const operationalResult = marginPostSpecificTax - opexTotal;
   const marginPct = salesNeto > 0 ? (grossMargin / salesNeto) * 100 : 0;
   const opexPct = salesNeto > 0 ? (opexTotal / salesNeto) * 100 : 0;
 
@@ -194,9 +208,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
   const salesForecast = salesNeto * factor;
   const cogsForecast = cogsTotal * factor;
+  const specificTaxForecast = specificTaxTotal * factor;
   const opexForecast = opexTotal * factor;
   const grossProfitForecast = salesForecast - cogsForecast;
-  const operatingResultForecast = grossProfitForecast - opexForecast;
+  const operatingResultForecast = (grossProfitForecast - specificTaxForecast) - opexForecast;
   const grossMarginPctForecast = salesForecast > 0 ? (grossProfitForecast / salesForecast) * 100 : 0;
   const opexPctForecast = salesForecast > 0 ? (opexForecast / salesForecast) * 100 : 0;
 
@@ -205,12 +220,16 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     salesNeto,
     ivaDebito,
     cogsTotal,
+    specificTaxTotal,
+    specificTaxFromInvoices,
+    specificTaxFromOpex,
     opexTotal,
     opexByCategory,
     opexVatTotal,
     ivaCreditoFacturas,
     ivaNeto,
     grossMargin,
+    marginPostSpecificTax,
     operationalResult,
     marginPct,
     opexPct,
@@ -218,6 +237,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     daysInMonth,
     salesForecast,
     cogsForecast,
+    specificTaxForecast,
     opexForecast,
     grossProfitForecast,
     operatingResultForecast,
