@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  FileText, Scale,
+  FileText, Scale, Landmark,
 } from "lucide-react";
 
 const MONTHS = [
@@ -173,13 +173,18 @@ export function FinancePanel() {
             {/* Key metrics cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNeto)} icon={DollarSign} />
-              <MetricCard label="COGS" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
+              <MetricCard label="COGS (neto)" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
               <MetricCard
                 label="Margen Bruto"
                 value={formatCLP(mtd.grossMargin)}
                 sub={`${mtd.marginPct.toFixed(1)}%`}
                 icon={TrendingUp}
                 negative={mtd.grossMargin < 0}
+              />
+              <MetricCard
+                label="Imp. específicos (ILA/IABA)"
+                value={formatCLP(mtd.specificTaxTotal)}
+                icon={Landmark}
               />
               <MetricCard
                 label="Total OPEX"
@@ -210,8 +215,19 @@ export function FinancePanel() {
                 <div className="border-t my-2" />
 
                 {/* COGS */}
-                <StatementRow label="Costo de ventas (COGS)" value={-mtd.cogsTotal} negative />
+                <StatementRow label="Costo de ventas (COGS neto)" value={-mtd.cogsTotal} negative />
                 <StatementRow label="Margen bruto" value={mtd.grossMargin} bold negative={mtd.grossMargin < 0} />
+
+                <div className="border-t my-2" />
+
+                {/* Specific taxes */}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">
+                  Impuestos Específicos (ILA / IABA)
+                </p>
+                <StatementRow label="Desde facturas importadas" value={-mtd.specificTaxFromInvoices} indent negative={mtd.specificTaxFromInvoices > 0} />
+                <StatementRow label="Desde gastos manuales" value={-mtd.specificTaxFromOpex} indent negative={mtd.specificTaxFromOpex > 0} />
+                <StatementRow label="Total impuestos específicos" value={-mtd.specificTaxTotal} bold negative />
+                <StatementRow label="Margen post impuestos específicos" value={mtd.marginPostSpecificTax} bold negative={mtd.marginPostSpecificTax < 0} />
 
                 <div className="border-t my-2" />
 
@@ -310,6 +326,11 @@ export function FinancePanel() {
                     sub={`${mtd.grossMarginPctForecast.toFixed(1)}%`}
                     icon={TrendingUp}
                     negative={mtd.grossProfitForecast < 0}
+                  />
+                  <MetricCard
+                    label="Imp. específicos proyectado"
+                    value={formatCLP(mtd.specificTaxForecast)}
+                    icon={Landmark}
                   />
                   <MetricCard
                     label="OPEX proyectado"
