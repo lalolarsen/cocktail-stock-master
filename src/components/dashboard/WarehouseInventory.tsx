@@ -47,8 +47,7 @@ import {
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
 import { toast } from "sonner";
-import { Plus, FileText } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockLocation {
@@ -120,7 +119,6 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 
 // ─── Component ──────────────────────────────────────────────
 export function WarehouseInventory() {
-  const navigate = useNavigate();
   const { venue } = useActiveVenue();
   
 
@@ -371,39 +369,22 @@ export function WarehouseInventory() {
         </button>
       </div>
 
-      {/* ━━━ STOCK INTAKE ACTION CARDS ━━━ */}
+      {/* ━━━ STOCK INTAKE ACTION ━━━ */}
       {warehouseLocation && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
-            <CardContent className="flex items-start gap-4 p-5">
-              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
-                <Plus className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm">Ingreso manual</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Agrega productos manualmente a Bodega Principal</p>
-                <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
-                  Ingresar stock
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => navigate("/admin/proveedores")}>
-            <CardContent className="flex items-start gap-4 p-5">
-              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
-                <FileText className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm">Ingreso por factura</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Sube una factura y deja que el sistema la procese con IA</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={(e) => { e.stopPropagation(); navigate("/admin/proveedores"); }}>
-                  Subir factura
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
+          <CardContent className="flex items-start gap-4 p-5">
+            <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
+              <Plus className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm">Ingreso manual</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Agrega productos manualmente a Bodega Principal</p>
+              <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
+                Ingresar stock
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* ━━━ LOCATION SELECTOR + KPIs ━━━ */}
