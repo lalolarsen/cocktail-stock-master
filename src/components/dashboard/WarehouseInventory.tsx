@@ -48,6 +48,7 @@ import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
 import { toast } from "sonner";
 import { ClipboardList, FileText, FileSpreadsheet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockLocation {
@@ -119,6 +120,7 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 
 // ─── Component ──────────────────────────────────────────────
 export function WarehouseInventory() {
+  const navigate = useNavigate();
   const { venue } = useActiveVenue();
   
 
@@ -386,9 +388,9 @@ export function WarehouseInventory() {
             <Button
               variant="outline"
               className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
-              disabled
+              onClick={() => navigate("/purchases-import")}
             >
-              <FileText className="h-5 w-5 text-muted-foreground" />
+              <FileText className="h-5 w-5 text-primary" />
               <span className="text-sm font-medium">Importar factura</span>
               <span className="text-[10px] text-muted-foreground">Lector PDF con conciliación</span>
             </Button>
