@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
-import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, Plus, Trash2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, Plus, Trash2, RefreshCw, ShieldAlert } from "lucide-react";
 import ProductPicker from "@/components/purchase/ProductPicker";
+import { buildFinancialSummary, type FinancialSummary, type ImportLineInput, type ImportHeaderInput } from "@/lib/purchase-financial-engine";
 
 interface ImportLine {
   id: string;
@@ -230,11 +232,26 @@ export default function ProveedoresImportDetail() {
 
   const inventoryValid = inventoryLines.length === 0 || inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0 && l.tax_category_id);
   const expensesValid = expenseLines.every(l => (l.line_total_net || l.unit_price_net || 0) > 0);
+
+  // Financial engine — compute summary & cuadratura
+  const financialSummary: FinancialSummary | null = useMemo(() => {
+    if (!imp || lines.length === 0) return null;
+    return buildFinancialSummary(imp as ImportHeaderInput, lines as ImportLineInput[]);
+  }, [imp, lines]);
+
+  const isBalanced = financialSummary?.validation.is_balanced ?? false;
   const canConfirm = reviewLines.length === 0 && (inventoryLines.length > 0 || expenseLines.length > 0) && inventoryValid && expensesValid;
 
   // Confirm
   const handleConfirm = async () => {
-    if (!imp || !id || !venue?.id) return;
+    if (!imp || !id || !venue?.id || !financialSummary) return;
+
+    // Block if cuadratura fails
+    if (!financialSummary.validation.is_balanced) {
+      toast.error(`Cuadratura no cuadra: diferencia de ${formatCLP(financialSummary.validation.difference)} (tolerancia: ${formatCLP(financialSummary.validation.tolerance)})`);
+      return;
+    }
+
     setConfirming(true);
 
     try {
@@ -379,9 +396,10 @@ export default function ProveedoresImportDetail() {
         }
       }
 
-      // Update import status
+      // Update import status + persist financial summary
       await supabase.from("purchase_imports" as any).update({
         status: "CONFIRMED",
+        financial_summary: financialSummary,
         updated_at: new Date().toISOString(),
       }).eq("id", id);
 
@@ -800,31 +818,95 @@ export default function ProveedoresImportDetail() {
         )}
 
         {/* STEP 3: Confirm */}
-        {step === 3 && (
+        {step === 3 && financialSummary && (
           <div className="space-y-4 max-w-lg mx-auto">
+            {/* Cuadratura alert */}
+            {!financialSummary.validation.is_balanced && (
+              <Alert variant="destructive">
+                <ShieldAlert className="h-4 w-4" />
+                <AlertTitle>Cuadratura no cuadra</AlertTitle>
+                <AlertDescription>
+                  La suma de componentes ({formatCLP(financialSummary.validation.computed_sum)}) difiere del total del documento ({formatCLP(financialSummary.validation.document_total)}) en {formatCLP(financialSummary.validation.difference)}. Tolerancia: {formatCLP(financialSummary.validation.tolerance)}.
+                  Revisa las líneas antes de confirmar.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {financialSummary.validation.is_balanced && (
+              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  Cuadratura OK — diferencia {formatCLP(financialSummary.validation.difference)} dentro de tolerancia.
+                </p>
+              </div>
+            )}
+
             <Card>
-              <CardHeader><CardTitle className="text-base">Confirmación final</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Productos inventariables</span><span className="font-medium">{inventoryLines.length} líneas</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Unidades totales</span><span className="font-medium">{inventoryLines.reduce((s, l) => s + l.units_real, 0)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Neto total inventario</span><span className="font-semibold">{formatCLP(inventoryLines.reduce((s, l) => s + l.units_real * l.cost_unit_net, 0))}</span></div>
-                  {inventoryLines.some(l => l.tax_amount > 0) && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Impuestos específicos (no afecta CPP)</span>
-                      <span className="font-medium text-primary">{formatCLP(inventoryLines.reduce((s, l) => s + (l.tax_amount || 0), 0))}</span>
-                    </div>
-                  )}
-                  {imp.vat_amount && <div className="flex justify-between"><span className="text-muted-foreground">IVA Crédito Fiscal</span><span className="font-medium">{formatCLP(imp.vat_amount)}</span></div>}
-                  {expenseLines.length > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gastos (flete/otros)</span>
-                      <span className="font-medium">{formatCLP(expensesTotal)} ({expenseLines.length} líneas)</span>
-                    </div>
-                  )}
+              <CardHeader><CardTitle className="text-base">Motor financiero</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {/* Inventory impact */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Impacto inventario</p>
+                  <div className="flex justify-between text-sm"><span>Líneas</span><span className="font-medium">{financialSummary.inventory_impact.lines_count}</span></div>
+                  <div className="flex justify-between text-sm"><span>Unidades totales</span><span className="font-medium">{financialSummary.inventory_impact.total_units}</span></div>
+                  <div className="flex justify-between text-sm font-semibold"><span>Neto inventario</span><span>{formatCLP(financialSummary.inventory_impact.total_inventory_net)}</span></div>
                 </div>
 
-                <div className="border-t pt-4 space-y-3">
+                <div className="border-t" />
+
+                {/* Tax credit */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Crédito fiscal</p>
+                  <div className="flex justify-between text-sm"><span>IVA 19%</span><span className="font-medium">{formatCLP(financialSummary.tax_credit.iva_credit_19)}</span></div>
+                </div>
+
+                {/* Specific taxes */}
+                {financialSummary.specific_taxes.total > 0 && (
+                  <>
+                    <div className="border-t" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Impuestos específicos (no afecta CPP)</p>
+                      {financialSummary.specific_taxes.iaba_10 > 0 && <div className="flex justify-between text-sm"><span>IABA 10%</span><span>{formatCLP(financialSummary.specific_taxes.iaba_10)}</span></div>}
+                      {financialSummary.specific_taxes.iaba_18 > 0 && <div className="flex justify-between text-sm"><span>IABA 18%</span><span>{formatCLP(financialSummary.specific_taxes.iaba_18)}</span></div>}
+                      {financialSummary.specific_taxes.ila_vino > 0 && <div className="flex justify-between text-sm"><span>ILA Vino 20,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_vino)}</span></div>}
+                      {financialSummary.specific_taxes.ila_cerveza > 0 && <div className="flex justify-between text-sm"><span>ILA Cerveza 20,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_cerveza)}</span></div>}
+                      {financialSummary.specific_taxes.ila_destilados > 0 && <div className="flex justify-between text-sm"><span>ILA Destilados 31,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_destilados)}</span></div>}
+                      <div className="flex justify-between text-sm font-semibold"><span>Total imp. específicos</span><span>{formatCLP(financialSummary.specific_taxes.total)}</span></div>
+                    </div>
+                  </>
+                )}
+
+                {/* Operational expenses */}
+                {financialSummary.operational_expenses.total > 0 && (
+                  <>
+                    <div className="border-t" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Gastos operacionales</p>
+                      {financialSummary.operational_expenses.freight_total > 0 && <div className="flex justify-between text-sm"><span>Flete/Transporte</span><span>{formatCLP(financialSummary.operational_expenses.freight_total)}</span></div>}
+                      {financialSummary.operational_expenses.other_total > 0 && <div className="flex justify-between text-sm"><span>Otros gastos</span><span>{formatCLP(financialSummary.operational_expenses.other_total)}</span></div>}
+                      <div className="flex justify-between text-sm font-semibold"><span>Total gastos</span><span>{formatCLP(financialSummary.operational_expenses.total)}</span></div>
+                    </div>
+                  </>
+                )}
+
+                <div className="border-t" />
+
+                {/* Accounts payable / validation */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cuadratura</p>
+                  <div className="flex justify-between text-sm"><span>Neto inv. + IVA + Imp. espec. + Gastos</span><span className="font-medium">{formatCLP(financialSummary.validation.computed_sum)}</span></div>
+                  <div className="flex justify-between text-sm"><span>Total documento</span><span className="font-medium">{formatCLP(financialSummary.validation.document_total)}</span></div>
+                  <div className={`flex justify-between text-sm font-semibold ${financialSummary.validation.is_balanced ? "text-green-600" : "text-destructive"}`}>
+                    <span>Diferencia</span>
+                    <span>{formatCLP(financialSummary.validation.difference)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Checkbox id="c1" checked={checks.reviewed} onCheckedChange={(v) => setChecks(p => ({ ...p, reviewed: !!v }))} />
                     <label htmlFor="c1" className="text-sm">Revisé productos, cantidades y categorías tributarias</label>
@@ -839,7 +921,7 @@ export default function ProveedoresImportDetail() {
                   <Button variant="outline" onClick={() => setStep(2)} className="flex-1">← Volver</Button>
                   <Button
                     onClick={handleConfirm}
-                    disabled={!checks.reviewed || !checks.understood || confirming}
+                    disabled={!checks.reviewed || !checks.understood || confirming || !financialSummary.validation.is_balanced}
                     className="flex-1 bg-green-600 hover:bg-green-700"
                   >
                     {confirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

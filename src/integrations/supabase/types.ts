@@ -2340,6 +2340,7 @@ export type Database = {
           currency: string
           document_date: string | null
           document_number: string | null
+          financial_summary: Json | null
           iaba_10_total: number
           iaba_18_total: number
           id: string
@@ -2366,6 +2367,7 @@ export type Database = {
           currency?: string
           document_date?: string | null
           document_number?: string | null
+          financial_summary?: Json | null
           iaba_10_total?: number
           iaba_18_total?: number
           id?: string
@@ -2392,6 +2394,7 @@ export type Database = {
           currency?: string
           document_date?: string | null
           document_number?: string | null
+          financial_summary?: Json | null
           iaba_10_total?: number
           iaba_18_total?: number
           id?: string
