@@ -80,7 +80,7 @@ export default function Admin() {
       case "reports": return "Reportes";
       case "documents": return "Documentos Electrónicos";
       case "pos": return "Barras y POS";
-      case "inventory": return "Inventario por Ubicación";
+      case "inventory": return "Inventario en Tiempo Real";
       case "replenishment": return "Reposición de Stock";
       case "notifications": return "Notificaciones";
       case "tickets": return "Tipos de Entrada";
