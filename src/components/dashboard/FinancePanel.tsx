@@ -99,7 +99,7 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const hasAnyData = mtd.salesBruto > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
+  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
   const noSales = !mtd.loading && !hasAnyData;
 
   return (
@@ -173,7 +173,9 @@ export function FinancePanel() {
 
             {/* Key metrics cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNeto)} icon={DollarSign} />
+              <MetricCard label="Ventas brutas" value={formatCLP(mtd.salesGross)} icon={DollarSign} />
+              <MetricCard label="IVA Débito Fiscal" value={formatCLP(mtd.ivaDebito)} icon={Scale} />
+              <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNet)} icon={DollarSign} />
               <MetricCard label="COGS (neto)" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
               <MetricCard
                 label="Margen Bruto"

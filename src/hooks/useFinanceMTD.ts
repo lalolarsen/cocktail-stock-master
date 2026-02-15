@@ -28,10 +28,13 @@ export interface SpecificTaxBreakdown {
 }
 
 export interface FinanceMTD {
-  // Sales
+  // Sales (read directly from sales table columns)
+  salesGross: number;
+  salesNet: number;
+  ivaDebito: number;
+  // Legacy compat aliases
   salesBruto: number;
   salesNeto: number;
-  ivaDebito: number;
   cogsTotal: number;
 
   // Specific taxes (ILA/IABA) — separate from COGS
@@ -91,7 +94,9 @@ function getMonthRange(year: number, month: number): { start: string; end: strin
 
 export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const venueId = DEFAULT_VENUE_ID;
-  const [salesBruto, setSalesBruto] = useState(0);
+  const [salesGross, setSalesGross] = useState(0);
+  const [salesNet, setSalesNet] = useState(0);
+  const [ivaDebitoState, setIvaDebitoState] = useState(0);
   const [cogsTotal, setCogsTotal] = useState(0);
   const [opexByCategory, setOpexByCategory] = useState<OpexCategoryBreakdown[]>([]);
   const [ivaCreditoFacturas, setIvaCreditoFacturas] = useState(0);
@@ -111,11 +116,12 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
     try {
       const [salesRes, cogsRes, opexRes, invoiceRes, importsRes] = await Promise.all([
-        // Sales
+        // Sales — read net_amount and iva_debit_amount directly
         supabase
           .from("sales")
-          .select("total_amount")
+          .select("total_amount, net_amount, iva_debit_amount")
           .eq("venue_id", venueId)
+          .eq("payment_status", "paid")
           .eq("is_cancelled", false)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
@@ -157,9 +163,14 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .lte("document_date", end),
       ]);
 
-      // Sales bruto (con IVA)
-      const bruto = (salesRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
-      setSalesBruto(bruto);
+      // Sales — directly from columns
+      const rows = salesRes.data || [];
+      const gross = rows.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+      const net = rows.reduce((s, r) => s + Number(r.net_amount || 0), 0);
+      const ivaD = rows.reduce((s, r) => s + Number(r.iva_debit_amount || 0), 0);
+      setSalesGross(gross);
+      setSalesNet(net);
+      setIvaDebitoState(ivaD);
 
       // COGS
       const cogs = (cogsRes.data || []).reduce(
@@ -238,9 +249,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     fetchData();
   }, [fetchData]);
 
-  // Derived
-  const salesNeto = Math.round(salesBruto / 1.19);
-  const ivaDebito = salesBruto - salesNeto;
+  // Derived — use direct DB values, no division
+  const ivaDebito = ivaDebitoState;
+  const salesNeto = salesNet;
+  const salesBruto = salesGross;
   const opexTotal = opexByCategory.reduce((s, c) => s + c.total, 0) + freightFromImports;
   const opexVatTotal = opexByCategory.reduce((s, c) => s + c.vatTotal, 0);
   const specificTaxFromOpex = opexByCategory.reduce((s, c) => s + c.specificTaxTotal, 0);
@@ -270,6 +282,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const opexPctForecast = salesForecast > 0 ? (opexForecast / salesForecast) * 100 : 0;
 
   return {
+    salesGross,
+    salesNet,
     salesBruto,
     salesNeto,
     ivaDebito,
