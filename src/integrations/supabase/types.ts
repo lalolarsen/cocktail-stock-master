@@ -2801,6 +2801,58 @@ export type Database = {
           },
         ]
       }
+      stock_location_minimums: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string
+          minimum_stock: number
+          product_id: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id: string
+          minimum_stock?: number
+          product_id: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string
+          minimum_stock?: number
+          product_id?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_location_minimums_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_location_minimums_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_location_minimums_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_locations: {
         Row: {
           created_at: string
@@ -2915,12 +2967,14 @@ export type Database = {
           product_id: string | null
           quantity: number
           source_type: string | null
+          specific_tax_amount: number | null
           stock_lot_id: string | null
           to_location_id: string | null
           total_cost_snapshot: number | null
           transfer_id: string | null
           unit_cost: number | null
           unit_cost_snapshot: number | null
+          vat_amount: number | null
           venue_id: string
         }
         Insert: {
@@ -2934,12 +2988,14 @@ export type Database = {
           product_id?: string | null
           quantity: number
           source_type?: string | null
+          specific_tax_amount?: number | null
           stock_lot_id?: string | null
           to_location_id?: string | null
           total_cost_snapshot?: number | null
           transfer_id?: string | null
           unit_cost?: number | null
           unit_cost_snapshot?: number | null
+          vat_amount?: number | null
           venue_id: string
         }
         Update: {
@@ -2953,12 +3009,14 @@ export type Database = {
           product_id?: string | null
           quantity?: number
           source_type?: string | null
+          specific_tax_amount?: number | null
           stock_lot_id?: string | null
           to_location_id?: string | null
           total_cost_snapshot?: number | null
           transfer_id?: string | null
           unit_cost?: number | null
           unit_cost_snapshot?: number | null
+          vat_amount?: number | null
           venue_id?: string
         }
         Relationships: [

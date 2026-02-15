@@ -105,6 +105,8 @@ export function WarehouseStockIntake({
   const [manualProductId, setManualProductId] = useState("");
   const [manualQuantity, setManualQuantity] = useState("");
   const [manualUnitCost, setManualUnitCost] = useState("");
+  const [manualVatAmount, setManualVatAmount] = useState("");
+  const [manualSpecificTax, setManualSpecificTax] = useState("0");
   const [manualReason, setManualReason] = useState("");
   const [manualNotes, setManualNotes] = useState("");
   const [submittingManual, setSubmittingManual] = useState(false);
@@ -163,6 +165,20 @@ export function WarehouseStockIntake({
       return;
     }
 
+    // Tax validation
+    if (!manualUnitCost || parseFloat(manualUnitCost) <= 0) {
+      toast.error("El costo neto unitario es obligatorio");
+      return;
+    }
+    if (!manualVatAmount && manualVatAmount !== "0") {
+      toast.error("El IVA pagado es obligatorio (puede ser 0)");
+      return;
+    }
+    if (manualSpecificTax === "") {
+      toast.error("El impuesto específico es obligatorio (puede ser 0)");
+      return;
+    }
+
     const quantity = parseFloat(manualQuantity);
     if (isNaN(quantity) || quantity <= 0) {
       toast.error("La cantidad debe ser un número positivo");
@@ -184,7 +200,10 @@ export function WarehouseStockIntake({
 
       const unitCost = manualUnitCost ? parseFloat(manualUnitCost) : null;
       
-      // Create stock movement
+      const vatAmount = parseFloat(manualVatAmount) || 0;
+      const specificTax = parseFloat(manualSpecificTax) || 0;
+
+      // Create stock movement with tax tracking
       const { error: movementError } = await supabase
         .from("stock_movements")
         .insert({
@@ -193,6 +212,8 @@ export function WarehouseStockIntake({
           movement_type: "entrada",
           to_location_id: warehouseId,
           unit_cost: unitCost,
+          vat_amount: vatAmount,
+          specific_tax_amount: specificTax,
           source_type: "manual",
           notes: `${manualReason}${manualNotes ? `: ${manualNotes}` : ""}`,
           venue_id: venueId,
@@ -270,6 +291,8 @@ export function WarehouseStockIntake({
     setManualProductId("");
     setManualQuantity("");
     setManualUnitCost("");
+    setManualVatAmount("");
+    setManualSpecificTax("0");
     setManualReason("");
     setManualNotes("");
   };
@@ -475,8 +498,9 @@ export function WarehouseStockIntake({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Manual Intake */}
             <button
+              id="btn-manual-intake"
               onClick={() => setShowManualDialog(true)}
-              className="glass-effect p-4 rounded-lg text-left hover:bg-primary/5 transition-colors group"
+              className="bg-card border border-border p-4 rounded-lg text-left hover:border-primary/40 transition-fast group"
             >
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-green-500/10 rounded-lg group-hover:bg-green-500/20 transition-colors">
@@ -507,8 +531,9 @@ export function WarehouseStockIntake({
 
             {/* Excel Import */}
             <button
+              id="btn-excel-intake"
               onClick={() => setShowExcelDialog(true)}
-              className="glass-effect p-4 rounded-lg text-left hover:bg-primary/5 transition-colors group"
+              className="bg-card border border-border p-4 rounded-lg text-left hover:border-primary/40 transition-fast group"
             >
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
@@ -526,14 +551,14 @@ export function WarehouseStockIntake({
 
       {/* Manual Intake Dialog */}
       <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5" />
               Ingreso manual de stock
             </DialogTitle>
             <DialogDescription>
-              El stock se agregará directamente a bodega
+              El stock se agregará a bodega. Todos los costos e impuestos son obligatorios.
             </DialogDescription>
           </DialogHeader>
 
@@ -554,29 +579,92 @@ export function WarehouseStockIntake({
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Cantidad *</Label>
-                <Input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={manualQuantity}
-                  onChange={(e) => setManualQuantity(e.target.value)}
-                  placeholder="0"
-                />
+            <div className="space-y-2">
+              <Label>Cantidad *</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={manualQuantity}
+                onChange={(e) => setManualQuantity(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+
+            {/* ── Tax & Cost Section ── */}
+            <div className="border border-border rounded-lg p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Costos e Impuestos (obligatorio)</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Costo neto unit. *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualUnitCost}
+                    onChange={(e) => setManualUnitCost(e.target.value)}
+                    placeholder="$0"
+                    className={!manualUnitCost ? "border-destructive/50" : ""}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Sin IVA</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">IVA pagado *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualVatAmount}
+                    onChange={(e) => setManualVatAmount(e.target.value)}
+                    placeholder="$0"
+                    className={!manualVatAmount ? "border-destructive/50" : ""}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Monto IVA</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Imp. específico *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualSpecificTax}
+                    onChange={(e) => setManualSpecificTax(e.target.value)}
+                    placeholder="$0"
+                  />
+                  <p className="text-[10px] text-muted-foreground">ILA/IABA (0 si no aplica)</p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Costo unitario</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={manualUnitCost}
-                  onChange={(e) => setManualUnitCost(e.target.value)}
-                  placeholder="Opcional"
-                />
-              </div>
+              {/* Totals */}
+              {manualQuantity && manualUnitCost && (
+                <div className="border-t border-border pt-2 space-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Costo neto total</span>
+                    <span className="text-foreground font-medium">
+                      {formatCLP(parseFloat(manualQuantity || "0") * parseFloat(manualUnitCost || "0"))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>IVA total</span>
+                    <span>{formatCLP(parseFloat(manualVatAmount || "0"))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Impuesto específico total</span>
+                    <span>{formatCLP(parseFloat(manualSpecificTax || "0"))}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-dashed border-border pt-1 font-semibold text-foreground">
+                    <span>Costo total final</span>
+                    <span>
+                      {formatCLP(
+                        parseFloat(manualQuantity || "0") * parseFloat(manualUnitCost || "0") +
+                        parseFloat(manualSpecificTax || "0")
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    El IVA no se suma al costo del producto; queda como IVA crédito fiscal.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
