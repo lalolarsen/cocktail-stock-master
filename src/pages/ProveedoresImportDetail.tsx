@@ -109,6 +109,8 @@ export default function ProveedoresImportDetail() {
     await supabase.from("purchase_imports" as any).update({
       ...totals, specific_taxes_total,
     }).eq("id", id);
+    // Refresh imp state so Summary tab reflects new totals
+    setImp((prev: any) => prev ? { ...prev, ...totals, specific_taxes_total } : prev);
   };
 
   const updateLine = async (lineId: string, updates: Partial<ImportLine>) => {
@@ -284,6 +286,31 @@ export default function ProveedoresImportDetail() {
         );
       }
 
+      // Create expense_lines for specific taxes (IABA/ILA) -> Estado de Resultados
+      const taxExpenseLines: Array<{ purchase_id: string; expense_type: string; description: string; amount_net: number; vat_amount: number }> = [];
+      const taxMapping = [
+        { field: "iaba_10_total", label: "IABA 10%" },
+        { field: "iaba_18_total", label: "IABA 18%" },
+        { field: "ila_vino_total", label: "ILA Vino 20,5%" },
+        { field: "ila_cerveza_total", label: "ILA Cerveza 20,5%" },
+        { field: "ila_destilados_total", label: "ILA Destilados 31,5%" },
+      ];
+      for (const tm of taxMapping) {
+        const amt = imp[tm.field] || 0;
+        if (amt > 0) {
+          taxExpenseLines.push({
+            purchase_id: purchaseId,
+            expense_type: "tax_specific",
+            description: `Impuesto específico: ${tm.label}`,
+            amount_net: amt,
+            vat_amount: 0,
+          });
+        }
+      }
+      if (taxExpenseLines.length > 0) {
+        await supabase.from("expense_lines" as any).insert(taxExpenseLines);
+      }
+
       // Update stock for each inventory line (CPP)
       for (const line of invLines) {
         const { data: product } = await supabase.from("products").select("current_stock, cost_per_unit").eq("id", line.product_id!).single();
@@ -453,7 +480,7 @@ export default function ProveedoresImportDetail() {
 
             {taxes.length > 0 && (
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Impuestos detectados</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Impuestos detectados (factura)</CardTitle></CardHeader>
                 <CardContent className="space-y-1">
                   {taxes.map((t: any) => (
                     <div key={t.id} className="flex justify-between text-sm">
@@ -464,6 +491,44 @@ export default function ProveedoresImportDetail() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Specific taxes from lines */}
+            {(imp.specific_taxes_total > 0 || inventoryLines.some(l => l.tax_category_id)) && (
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Impuestos específicos</CardTitle></CardHeader>
+                <CardContent className="space-y-1">
+                  {[
+                    { label: "IABA 10%", field: "iaba_10_total" },
+                    { label: "IABA 18%", field: "iaba_18_total" },
+                    { label: "ILA Vino 20,5%", field: "ila_vino_total" },
+                    { label: "ILA Cerveza 20,5%", field: "ila_cerveza_total" },
+                    { label: "ILA Destilados 31,5%", field: "ila_destilados_total" },
+                  ].filter(item => (imp[item.field] || 0) > 0).map(item => (
+                    <div key={item.field} className="flex justify-between text-sm">
+                      <span>{item.label}</span>
+                      <span className="font-medium">{formatCLP(imp[item.field])}</span>
+                    </div>
+                  ))}
+                  <div className="border-t pt-1 mt-1 flex justify-between text-sm font-semibold">
+                    <span>Total Impuestos específicos</span>
+                    <span>{formatCLP(imp.specific_taxes_total || 0)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Alert: missing tax categories */}
+            {imp.specific_taxes_total > 0 && (() => {
+              const missingCount = inventoryLines.filter(l => !l.tax_category_id).length;
+              return missingCount > 0 ? (
+                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Faltan categorías tributarias en {missingCount} línea(s). Los impuestos específicos podrían estar incompletos.
+                  </p>
+                </div>
+              ) : null;
+            })()}
 
             {reviewLines.length > 0 ? (
               <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center gap-2">
