@@ -28,6 +28,7 @@ import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
 import Proveedores from "./pages/Proveedores";
+import DebugProducts from "./pages/DebugProducts";
 import NoJornada from "./pages/NoJornada";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -127,6 +128,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route path="/debug/products" element={<DebugProducts />} />
       <Route
         path="/admin/purchases/import"
         element={
