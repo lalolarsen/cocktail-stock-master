@@ -2694,6 +2694,41 @@ export type Database = {
           },
         ]
       }
+      specific_tax_categories: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          rate_pct: number
+          venue_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          rate_pct?: number
+          venue_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          rate_pct?: number
+          venue_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "specific_tax_categories_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_alerts: {
         Row: {
           alert_type: string
@@ -2794,6 +2829,153 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_balances_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_intake_batches: {
+        Row: {
+          created_at: string
+          created_by: string
+          default_location_id: string | null
+          id: string
+          items_count: number
+          notes: string | null
+          total_amount: number
+          total_net: number
+          total_other_tax: number
+          total_specific_tax: number
+          total_vat: number
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          default_location_id?: string | null
+          id?: string
+          items_count?: number
+          notes?: string | null
+          total_amount?: number
+          total_net?: number
+          total_other_tax?: number
+          total_specific_tax?: number
+          total_vat?: number
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          default_location_id?: string | null
+          id?: string
+          items_count?: number
+          notes?: string | null
+          total_amount?: number
+          total_net?: number
+          total_other_tax?: number
+          total_specific_tax?: number
+          total_vat?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_intake_batches_default_location_id_fkey"
+            columns: ["default_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_intake_batches_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_intake_items: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          location_id: string
+          net_unit_cost: number
+          other_tax_unit: number
+          product_id: string
+          quantity: number
+          specific_tax_unit: number
+          tax_category_id: string | null
+          total_line: number
+          total_unit: number
+          vat_unit: number
+          venue_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          location_id: string
+          net_unit_cost: number
+          other_tax_unit?: number
+          product_id: string
+          quantity: number
+          specific_tax_unit?: number
+          tax_category_id?: string | null
+          total_line?: number
+          total_unit?: number
+          vat_unit?: number
+          venue_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          location_id?: string
+          net_unit_cost?: number
+          other_tax_unit?: number
+          product_id?: string
+          quantity?: number
+          specific_tax_unit?: number
+          tax_category_id?: string | null
+          total_line?: number
+          total_unit?: number
+          vat_unit?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_intake_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "stock_intake_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_intake_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_intake_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_intake_items_tax_category_id_fkey"
+            columns: ["tax_category_id"]
+            isOneToOne: false
+            referencedRelation: "specific_tax_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_intake_items_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"
