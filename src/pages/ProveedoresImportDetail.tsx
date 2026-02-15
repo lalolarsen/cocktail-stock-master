@@ -83,22 +83,24 @@ export default function ProveedoresImportDetail() {
     if (!line) return;
 
     const merged = { ...line, ...updates };
-    // Recalculate derived fields
-    if (updates.detected_multiplier !== undefined || updates.qty_invoiced !== undefined) {
-      merged.units_real = (merged.qty_invoiced || 0) * (merged.detected_multiplier || 1);
-    }
-    if (updates.detected_multiplier !== undefined || updates.line_total_net !== undefined || updates.unit_price_net !== undefined || updates.discount_pct !== undefined || updates.qty_invoiced !== undefined) {
-      let packNet = merged.line_total_net ? merged.line_total_net / (merged.qty_invoiced || 1) : (merged.unit_price_net || 0);
-      if (merged.discount_pct && merged.discount_pct > 0) packNet *= (1 - merged.discount_pct / 100);
-      merged.cost_unit_net = merged.detected_multiplier > 0 ? Math.round((packNet / merged.detected_multiplier) * 100) / 100 : 0;
+    // Recalculate derived fields (only for inventory lines)
+    if (merged.classification !== "freight" && merged.classification !== "other_expense") {
+      if (updates.detected_multiplier !== undefined || updates.qty_invoiced !== undefined) {
+        merged.units_real = (merged.qty_invoiced || 0) * (merged.detected_multiplier || 1);
+      }
+      if (updates.detected_multiplier !== undefined || updates.line_total_net !== undefined || updates.unit_price_net !== undefined || updates.discount_pct !== undefined || updates.qty_invoiced !== undefined) {
+        let packNet = merged.line_total_net ? merged.line_total_net / (merged.qty_invoiced || 1) : (merged.unit_price_net || 0);
+        if (merged.discount_pct && merged.discount_pct > 0) packNet *= (1 - merged.discount_pct / 100);
+        merged.cost_unit_net = merged.detected_multiplier > 0 ? Math.round((packNet / merged.detected_multiplier) * 100) / 100 : 0;
+      }
     }
 
-    // Auto status
-    if (merged.classification === "freight") {
+    // Auto status for expense lines
+    if (merged.classification === "freight" || merged.classification === "other_expense") {
       merged.status = "OK";
       merged.product_id = null;
-    } else if (merged.product_id && merged.units_real > 0 && merged.cost_unit_net > 0) {
-      // Keep as REVIEW unless explicitly marked OK
+      merged.tax_category_id = null;
+      // Keep units_real as-is (not required for expenses)
     }
 
     setLines(prev => prev.map(l => l.id === lineId ? merged : l));
@@ -122,11 +124,12 @@ export default function ProveedoresImportDetail() {
   const markLineOK = async (lineId: string) => {
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
-    if (line.classification === "inventory" && !line.product_id) {
+    const isExpense = line.classification === "freight" || line.classification === "other_expense";
+    if (!isExpense && !line.product_id) {
       toast.error("Asigna un producto primero"); return;
     }
-    if (line.units_real <= 0) { toast.error("Unidades reales debe ser > 0"); return; }
-    if (line.classification === "inventory" && line.cost_unit_net <= 0) { toast.error("Costo neto debe ser > 0"); return; }
+    if (!isExpense && line.units_real <= 0) { toast.error("Unidades reales debe ser > 0"); return; }
+    if (!isExpense && line.cost_unit_net <= 0) { toast.error("Costo neto debe ser > 0"); return; }
     await updateLine(lineId, { status: "OK" });
     toast.success("Línea marcada OK");
   };
