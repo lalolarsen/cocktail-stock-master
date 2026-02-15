@@ -27,6 +27,7 @@ import ProveedoresImportDetail from "./pages/ProveedoresImportDetail";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
+import Proveedores from "./pages/Proveedores";
 import NoJornada from "./pages/NoJornada";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -115,6 +116,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
             <IncomeStatement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/proveedores"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Proveedores />
           </ProtectedRoute>
         }
       />
