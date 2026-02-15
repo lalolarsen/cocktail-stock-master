@@ -155,7 +155,7 @@ export default function ProveedoresImportDetail() {
   // Validation
   const inventoryLines = lines.filter(l => l.classification === "inventory");
   const reviewLines = lines.filter(l => l.status === "REVIEW");
-  const canConfirm = reviewLines.length === 0 && inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0);
+  const canConfirm = reviewLines.length === 0 && inventoryLines.length > 0 && inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0 && l.tax_category_id);
 
   // Confirm
   const handleConfirm = async () => {
@@ -447,6 +447,7 @@ export default function ProveedoresImportDetail() {
                     <TableHead className="w-20">Uds. reales</TableHead>
                     <TableHead className="w-24">Costo unit. neto</TableHead>
                     <TableHead className="min-w-[160px]">Producto</TableHead>
+                    <TableHead className="min-w-[140px]">Cat. tributaria</TableHead>
                     <TableHead className="w-28">Clasif.</TableHead>
                     <TableHead className="w-16">Estado</TableHead>
                     <TableHead className="w-20"></TableHead>
@@ -496,6 +497,28 @@ export default function ProveedoresImportDetail() {
                               {products.map(p => (
                                 <SelectItem key={p.id} value={p.id} className="text-xs">
                                   {p.name} {p.code ? `(${p.code})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {line.classification === "freight" ? (
+                          <span className="text-xs text-muted-foreground italic">—</span>
+                        ) : (
+                          <Select
+                            value={line.tax_category_id || "none"}
+                            onValueChange={(v) => updateLine(line.id, { tax_category_id: v === "none" ? null : v })}
+                          >
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue placeholder="Sin impuesto" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none" className="text-xs">Sin impuesto</SelectItem>
+                              {taxCategories.map((tc: any) => (
+                                <SelectItem key={tc.id} value={tc.id} className="text-xs">
+                                  {tc.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -571,7 +594,12 @@ export default function ProveedoresImportDetail() {
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>← Resumen</Button>
               <Button onClick={() => setStep(3)} disabled={!canConfirm}>
-                {canConfirm ? "Continuar a confirmación →" : `${reviewLines.length} líneas en REVIEW`}
+                {canConfirm ? "Continuar a confirmación →" : 
+                  reviewLines.length > 0 ? `${reviewLines.length} líneas en REVIEW` :
+                  inventoryLines.some(l => !l.tax_category_id) ? "Falta categoría tributaria" :
+                  inventoryLines.some(l => !l.product_id) ? "Falta producto" :
+                  "Complete todos los campos"
+                }
               </Button>
             </div>
           </div>
@@ -602,7 +630,7 @@ export default function ProveedoresImportDetail() {
                 <div className="border-t pt-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Checkbox id="c1" checked={checks.reviewed} onCheckedChange={(v) => setChecks(p => ({ ...p, reviewed: !!v }))} />
-                    <label htmlFor="c1" className="text-sm">Revisé productos y cantidades</label>
+                    <label htmlFor="c1" className="text-sm">Revisé productos, cantidades y categorías tributarias</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox id="c2" checked={checks.understood} onCheckedChange={(v) => setChecks(p => ({ ...p, understood: !!v }))} />

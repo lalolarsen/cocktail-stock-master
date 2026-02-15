@@ -28,7 +28,9 @@ interface PurchaseImport {
 
 const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   UPLOADED: { label: "Subido", variant: "secondary" },
+  EXTRACTING: { label: "Extrayendo...", variant: "outline" },
   EXTRACTED: { label: "Extraído", variant: "default" },
+  REVIEW: { label: "En revisión", variant: "outline" },
   RECONCILING: { label: "En revisión", variant: "outline" },
   READY_TO_CONFIRM: { label: "Listo", variant: "default" },
   CONFIRMED: { label: "Confirmado", variant: "default" },
