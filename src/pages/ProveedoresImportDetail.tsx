@@ -63,7 +63,7 @@ export default function ProveedoresImportDetail() {
       supabase.from("purchase_imports" as any).select("*").eq("id", id).single(),
       supabase.from("purchase_import_lines" as any).select("*").eq("purchase_import_id", id).order("line_index"),
       supabase.from("purchase_import_taxes" as any).select("*").eq("purchase_import_id", id),
-      supabase.from("products").select("id, name, code, category").eq("venue_id", venue?.id || "").eq("is_active_in_sales", true).order("name"),
+      supabase.from("products").select("id, name, code, category").eq("venue_id", venue?.id || "").order("name"),
       supabase.from("specific_tax_categories" as any).select("*").eq("is_active", true),
     ]);
 

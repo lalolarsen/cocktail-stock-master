@@ -39,7 +39,7 @@ export default function ProductPicker({ venueId, value, displayName, disabled, o
       .select("id, name, code, category")
       .eq("venue_id", venueId)
       .order("name")
-      .limit(100);
+      .limit(300);
 
     if (search.trim()) {
       q = q.ilike("name", `%${search.trim()}%`);
