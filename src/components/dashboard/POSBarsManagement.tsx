@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Store, Monitor, Trash2, Edit, MapPin, Info } from "lucide-react";
+import { Plus, Monitor, Trash2, Edit, Info, ChevronDown, ChevronUp, Search, Store, MapPin } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface StockLocation {
   id: string;
@@ -62,41 +63,307 @@ interface POSTerminal {
   location?: StockLocation | null;
 }
 
+type FilterKey = "all" | "active" | "inactive" | "cash" | "no_cash" | "alcohol" | "tickets";
+
+const POS_TYPE_LABELS: Record<POSType, string> = {
+  alcohol_sales: "Alcohol · Caja",
+  ticket_sales: "Tickets · Caja",
+  bar_redemption: "Barra · Sin caja",
+};
+
+const POS_TYPE_DESCRIPTIONS: Record<POSType, string> = {
+  alcohol_sales: "Registra ventas de bar y participa en arqueo.",
+  ticket_sales: "Registra entradas y participa en arqueo.",
+  bar_redemption: "Solo redime QRs (no maneja efectivo).",
+};
+
+const FILTER_CHIPS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "Todos" },
+  { key: "active", label: "Activos" },
+  { key: "inactive", label: "Inactivos" },
+  { key: "cash", label: "Con caja" },
+  { key: "no_cash", label: "Sin caja" },
+  { key: "alcohol", label: "Alcohol" },
+  { key: "tickets", label: "Tickets" },
+];
+
+/* ───── Info Banner ───── */
+function InfoBanner() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="border border-border rounded-lg px-3 py-2 flex items-start gap-2 bg-secondary/30">
+      <Info className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+      <div className="flex-1 text-sm text-muted-foreground leading-snug">
+        Los terminales POS no requieren ubicación. El inventario se descuenta al redimir el QR en barra.
+        {expanded && (
+          <span className="block mt-1 text-xs">
+            Las ventas generan un QR que el cliente presenta en cualquier barra. Al escanear, se descuenta el inventario de esa barra específica.
+          </span>
+        )}
+      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-primary hover:underline shrink-0 mt-0.5"
+      >
+        {expanded ? "Ocultar" : "Ver más"}
+      </button>
+    </div>
+  );
+}
+
+/* ───── POS Terminal Row ───── */
+function TerminalRow({
+  terminal,
+  onEdit,
+  onDelete,
+  onToggle,
+}: {
+  terminal: POSTerminal;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: (active: boolean) => void;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/20 transition-fast cursor-pointer group"
+      onClick={(e) => {
+        const tag = (e.target as HTMLElement).closest("button, label, [role='switch']");
+        if (!tag) onEdit();
+      }}
+    >
+      {/* Left: icon + name + type */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="p-2 rounded-md bg-secondary">
+          <Monitor className="w-4 h-4 text-foreground" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-medium text-sm truncate">{terminal.name}</p>
+          <Badge
+            variant="outline"
+            className="text-[10px] mt-0.5 font-normal"
+          >
+            {POS_TYPE_LABELS[terminal.pos_type] ?? terminal.pos_type}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Right: status + toggle + actions */}
+      <div className="flex items-center gap-2 shrink-0">
+        <Badge
+          variant={terminal.is_active ? "default" : "secondary"}
+          className={
+            terminal.is_active
+              ? "bg-primary/15 text-primary border-primary/30 text-[10px]"
+              : "text-[10px]"
+          }
+        >
+          {terminal.is_active ? "Activo" : "Inactivo"}
+        </Badge>
+
+        <Switch
+          checked={terminal.is_active}
+          onCheckedChange={onToggle}
+          className="data-[state=checked]:bg-primary"
+        />
+
+        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+          <Edit className="w-3.5 h-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 hover:text-destructive"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ───── Create / Edit Dialog ───── */
+function TerminalDialog({
+  open,
+  onOpenChange,
+  editing,
+  terminals,
+  barLocations,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  editing: POSTerminal | null;
+  terminals: POSTerminal[];
+  barLocations: StockLocation[];
+  onSave: (data: { name: string; posType: POSType; locationId: string | null; isActive: boolean }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [posType, setPosType] = useState<POSType>("alcohol_sales");
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      if (editing) {
+        setName(editing.name);
+        setPosType(editing.pos_type || "alcohol_sales");
+        setLocationId(editing.location_id || null);
+        setIsActive(editing.is_active);
+      } else {
+        setName("");
+        setPosType("alcohol_sales");
+        setLocationId(null);
+        setIsActive(true);
+      }
+      setTouched(false);
+    }
+  }, [open, editing]);
+
+  const nameError = touched && name.trim().length < 3 ? "Mínimo 3 caracteres." : null;
+  const duplicateName =
+    touched &&
+    name.trim().length >= 3 &&
+    terminals.some(
+      (t) => t.name.toLowerCase() === name.trim().toLowerCase() && t.id !== editing?.id
+    )
+      ? "Ya existe un terminal con ese nombre."
+      : null;
+
+  const canSave = name.trim().length >= 3 && posType && !(posType === "bar_redemption" && !locationId);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar terminal POS" : "Nuevo terminal POS"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Section A: Identification */}
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Identificación</Label>
+            <div className="space-y-1">
+              <Label htmlFor="pos-name">Nombre del terminal</Label>
+              <Input
+                id="pos-name"
+                value={name}
+                onChange={(e) => { setName(e.target.value); setTouched(true); }}
+                placeholder="Ej: Caja Club / Caja Entrada / Lector Barra Pista"
+              />
+              <p className="text-[11px] text-muted-foreground">Usa nombres que el equipo reconozca en operación.</p>
+              {nameError && <p className="text-[11px] text-destructive">{nameError}</p>}
+              {duplicateName && <p className="text-[11px] text-warning">{duplicateName}</p>}
+            </div>
+          </div>
+
+          {/* Section B: Type */}
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Tipo de terminal</Label>
+            <RadioGroup
+              value={posType}
+              onValueChange={(v) => {
+                const val = v as POSType;
+                setPosType(val);
+                if (val !== "bar_redemption") setLocationId(null);
+              }}
+              className="space-y-2"
+            >
+              {(Object.keys(POS_TYPE_LABELS) as POSType[]).map((key) => (
+                <label
+                  key={key}
+                  className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-fast ${
+                    posType === key ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                  }`}
+                >
+                  <RadioGroupItem value={key} className="mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">{POS_TYPE_LABELS[key]}</p>
+                    <p className="text-[11px] text-muted-foreground">{POS_TYPE_DESCRIPTIONS[key]}</p>
+                  </div>
+                </label>
+              ))}
+            </RadioGroup>
+
+            {posType === "bar_redemption" && (
+              <div className="space-y-1 pt-1">
+                <Label>Ubicación (Barra)</Label>
+                <Select value={locationId || ""} onValueChange={(v) => setLocationId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una barra" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {barLocations.filter((l) => l?.id).map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">El inventario se descontará de esta ubicación al escanear QR.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Section C: Estado */}
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Estado</Label>
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">Activo</p>
+                <p className="text-[11px] text-muted-foreground">Los terminales inactivos no aparecen para operar.</p>
+              </div>
+              <Switch checked={isActive} onCheckedChange={setIsActive} />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button
+            disabled={!canSave}
+            onClick={() => onSave({ name: name.trim(), posType, locationId, isActive })}
+          >
+            {editing ? "Guardar" : "Crear terminal"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════ */
 export function POSBarsManagement() {
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [terminals, setTerminals] = useState<POSTerminal[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Dialog states
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [showPOSDialog, setShowPOSDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  
+
   // Form states
   const [locationForm, setLocationForm] = useState<{ name: string; type: "bar" | "warehouse" }>({ name: "", type: "bar" });
-  const [posForm, setPosForm] = useState({ 
-    name: "", 
-    locationId: "" as string | null, 
-    posType: "alcohol_sales" as POSType 
-  });
   const [editingLocation, setEditingLocation] = useState<StockLocation | null>(null);
   const [editingPOS, setEditingPOS] = useState<POSTerminal | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "location" | "pos"; item: StockLocation | POSTerminal } | null>(null);
-  
-  useEffect(() => {
-    fetchData();
-  }, []);
+
+  // POS list controls
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
+
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
       const [locResult, posResult] = await Promise.all([
         supabase.from("stock_locations").select("*").order("type", { ascending: false }).order("name"),
-        supabase.from("pos_terminals").select("*, location:stock_locations(*)").order("name")
+        supabase.from("pos_terminals").select("*, location:stock_locations(*)").order("name"),
       ]);
-      
       if (locResult.error) throw locResult.error;
       if (posResult.error) throw posResult.error;
-      
       setLocations(locResult.data as StockLocation[] || []);
       setTerminals(posResult.data as POSTerminal[] || []);
     } catch (error) {
@@ -107,85 +374,55 @@ export function POSBarsManagement() {
     }
   };
 
-  const barLocations = locations.filter(l => l.type === "bar");
-  const warehouseLocation = locations.find(l => l.type === "warehouse");
+  const barLocations = locations.filter((l) => l.type === "bar");
+  const warehouseLocation = locations.find((l) => l.type === "warehouse");
 
-  const handleCreateLocation = async () => {
-    if (!locationForm.name.trim()) {
-      toast.error("Nombre es requerido");
-      return;
+  /* ── Filtered terminals ── */
+  const filteredTerminals = useMemo(() => {
+    let list = terminals;
+    // search
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((t) => t.name.toLowerCase().includes(q));
     }
-    
-    try {
-      if (editingLocation) {
-        const { error } = await supabase
-          .from("stock_locations")
-          .update({ name: locationForm.name })
-          .eq("id", editingLocation.id);
-        if (error) throw error;
-        toast.success("Ubicación actualizada");
-      } else {
-        const { error } = await supabase
-          .from("stock_locations")
-          .insert({ name: locationForm.name, type: locationForm.type });
-        if (error) throw error;
-        toast.success("Ubicación creada");
-      }
-      
-      setShowLocationDialog(false);
-      setEditingLocation(null);
-      setLocationForm({ name: "", type: "bar" });
-      fetchData();
-    } catch (error: any) {
-      console.error("Error:", error);
-      toast.error(error.message || "Error al guardar ubicación");
+    // filter chips
+    switch (filter) {
+      case "active": list = list.filter((t) => t.is_active); break;
+      case "inactive": list = list.filter((t) => !t.is_active); break;
+      case "cash": list = list.filter((t) => t.is_cash_register); break;
+      case "no_cash": list = list.filter((t) => !t.is_cash_register); break;
+      case "alcohol": list = list.filter((t) => t.pos_type === "alcohol_sales"); break;
+      case "tickets": list = list.filter((t) => t.pos_type === "ticket_sales"); break;
     }
-  };
+    return list;
+  }, [terminals, search, filter]);
 
-  const handleCreatePOS = async () => {
-    if (!posForm.name.trim()) {
-      toast.error("Nombre del POS es requerido");
-      return;
-    }
-    
-    // Location is only required for bar_redemption terminals
-    if (posForm.posType === "bar_redemption" && !posForm.locationId) {
+  /* ── Handlers ── */
+  const handleSavePOS = async (data: { name: string; posType: POSType; locationId: string | null; isActive: boolean }) => {
+    if (data.posType === "bar_redemption" && !data.locationId) {
       toast.error("Los lectores de barra requieren una ubicación asociada");
       return;
     }
-    
     try {
-      const isCashRegister = posForm.posType !== "bar_redemption";
-      const locationId = posForm.locationId || null;
-      
+      const isCashRegister = data.posType !== "bar_redemption";
+      const locationId = data.locationId || null;
+
       if (editingPOS) {
         const { error } = await supabase
           .from("pos_terminals")
-          .update({ 
-            name: posForm.name, 
-            location_id: locationId,
-            pos_type: posForm.posType,
-            is_cash_register: isCashRegister
-          })
+          .update({ name: data.name, location_id: locationId, pos_type: data.posType, is_cash_register: isCashRegister, is_active: data.isActive })
           .eq("id", editingPOS.id);
         if (error) throw error;
-        toast.success("Terminal actualizado");
+        toast.success("Cambios guardados");
       } else {
         const { error } = await supabase
           .from("pos_terminals")
-          .insert({ 
-            name: posForm.name, 
-            location_id: locationId,
-            pos_type: posForm.posType,
-            is_cash_register: isCashRegister
-          });
+          .insert({ name: data.name, location_id: locationId, pos_type: data.posType, is_cash_register: isCashRegister, is_active: data.isActive });
         if (error) throw error;
         toast.success("Terminal creado");
       }
-      
       setShowPOSDialog(false);
       setEditingPOS(null);
-      setPosForm({ name: "", locationId: null, posType: "alcohol_sales" });
       fetchData();
     } catch (error: any) {
       console.error("Error:", error);
@@ -194,29 +431,28 @@ export function POSBarsManagement() {
   };
 
   const handleToggleActive = async (type: "location" | "pos", id: string, isActive: boolean) => {
+    // Optimistic update
+    if (type === "pos") {
+      setTerminals((prev) => prev.map((t) => (t.id === id ? { ...t, is_active: isActive } : t)));
+    }
     try {
       const table = type === "location" ? "stock_locations" : "pos_terminals";
-      const { error } = await supabase
-        .from(table)
-        .update({ is_active: isActive })
-        .eq("id", id);
-      
+      const { error } = await supabase.from(table).update({ is_active: isActive }).eq("id", id);
       if (error) throw error;
-      toast.success(isActive ? "Activado" : "Desactivado");
+      toast.success(isActive ? "Terminal activado" : "Terminal desactivado");
       fetchData();
     } catch (error: any) {
       console.error("Error:", error);
       toast.error(error.message || "Error al actualizar estado");
+      fetchData(); // revert
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    
     try {
       const table = deleteTarget.type === "location" ? "stock_locations" : "pos_terminals";
       const { error } = await supabase.from(table).delete().eq("id", deleteTarget.item.id);
-      
       if (error) throw error;
       toast.success("Eliminado correctamente");
       setShowDeleteDialog(false);
@@ -229,45 +465,41 @@ export function POSBarsManagement() {
     }
   };
 
+  const handleCreateLocation = async () => {
+    if (!locationForm.name.trim()) { toast.error("Nombre es requerido"); return; }
+    try {
+      if (editingLocation) {
+        const { error } = await supabase.from("stock_locations").update({ name: locationForm.name }).eq("id", editingLocation.id);
+        if (error) throw error;
+        toast.success("Ubicación actualizada");
+      } else {
+        const { error } = await supabase.from("stock_locations").insert({ name: locationForm.name, type: locationForm.type });
+        if (error) throw error;
+        toast.success("Ubicación creada");
+      }
+      setShowLocationDialog(false);
+      setEditingLocation(null);
+      setLocationForm({ name: "", type: "bar" });
+      fetchData();
+    } catch (error: any) {
+      console.error("Error:", error);
+      toast.error(error.message || "Error al guardar ubicación");
+    }
+  };
+
   const openEditLocation = (loc: StockLocation) => {
     setEditingLocation(loc);
     setLocationForm({ name: loc.name, type: loc.type });
     setShowLocationDialog(true);
   };
 
-  const openEditPOS = (pos: POSTerminal) => {
-    setEditingPOS(pos);
-    setPosForm({ 
-      name: pos.name, 
-      locationId: pos.location_id || null, 
-      posType: pos.pos_type || "alcohol_sales" 
-    });
-    setShowPOSDialog(true);
-  };
-
-  const getPOSTypeBadge = (type: POSType) => {
-    switch (type) {
-      case "alcohol_sales":
-        return <Badge variant="outline" className="text-xs">Venta Alcohol</Badge>;
-      case "ticket_sales":
-        return <Badge variant="outline" className="text-xs">Venta Tickets</Badge>;
-      case "bar_redemption":
-        return <Badge variant="secondary" className="text-xs">Lector Barra</Badge>;
-      default:
-        return null;
-    }
-  };
-
+  /* ── Render ── */
   if (loading) {
     return (
-      <Card className="glass-effect">
-        <CardHeader>
-          <CardTitle>Barras y Puntos de Venta</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
+      <Card className="border border-border">
+        <CardHeader><p className="text-lg font-semibold">Barras y Puntos de Venta</p></CardHeader>
+        <CardContent className="space-y-3">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
         </CardContent>
       </Card>
     );
@@ -275,13 +507,8 @@ export function POSBarsManagement() {
 
   return (
     <>
-      <Card className="glass-effect shadow-elegant">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-2xl bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            Barras y Puntos de Venta
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="border border-border">
+        <CardContent className="pt-6">
           <Tabs defaultValue="pos" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="pos" className="flex items-center gap-2">
@@ -293,78 +520,87 @@ export function POSBarsManagement() {
                 Ubicaciones
               </TabsTrigger>
             </TabsList>
-            
+
+            {/* ════ POS TAB ════ */}
             <TabsContent value="pos" className="space-y-4">
-              <Alert className="border-primary/20 bg-primary/5">
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Ley de Oro:</strong> Los terminales de venta no requieren ubicación. El inventario solo se descuenta cuando el QR es redimido en cualquier barra.
-                </AlertDescription>
-              </Alert>
-              
-              <div className="flex justify-end">
-                <Button onClick={() => setShowPOSDialog(true)} className="gap-2">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Terminales POS</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">Configura cajas y lectores. Las ventas y arqueos dependen de esto.</p>
+                </div>
+                <Button onClick={() => { setEditingPOS(null); setShowPOSDialog(true); }} className="gap-2 shrink-0">
                   <Plus className="w-4 h-4" />
-                  Nuevo Terminal
+                  Nuevo terminal
                 </Button>
               </div>
-              
+
+              {/* Info banner */}
+              <InfoBanner />
+
+              {/* Search + filters */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nombre…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 h-9"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {FILTER_CHIPS.map((chip) => (
+                    <button
+                      key={chip.key}
+                      onClick={() => setFilter(chip.key)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-fast ${
+                        filter === chip.key
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Terminal list */}
               {terminals.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Monitor className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No hay terminales POS configurados</p>
-                  <p className="text-sm">Crea un terminal para empezar a vender</p>
+                <div className="text-center py-12 border border-border rounded-lg">
+                  <Monitor className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+                  <p className="font-medium">No hay terminales POS</p>
+                  <p className="text-sm text-muted-foreground mt-1">Crea un terminal para empezar a vender.</p>
+                  <Button className="mt-4 gap-2" onClick={() => { setEditingPOS(null); setShowPOSDialog(true); }}>
+                    <Plus className="w-4 h-4" /> Crear terminal
+                  </Button>
+                </div>
+              ) : filteredTerminals.length === 0 ? (
+                <div className="text-center py-10 border border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    Sin resultados para "<span className="text-foreground">{search || filter}</span>"
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearch(""); setFilter("all"); }}>
+                    Limpiar filtros
+                  </Button>
                 </div>
               ) : (
-                <div className="grid gap-4">
-                  {terminals.map((terminal) => (
-                    <div
+                <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
+                  {filteredTerminals.map((terminal) => (
+                    <TerminalRow
                       key={terminal.id}
-                      className="glass-effect p-4 rounded-lg flex items-center justify-between hover-lift"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 primary-gradient rounded-lg">
-                          <Monitor className="w-5 h-5 text-primary-foreground" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{terminal.name}</h3>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            {getPOSTypeBadge(terminal.pos_type)}
-                            {!terminal.is_cash_register && (
-                              <Badge variant="secondary" className="text-xs">Sin Caja</Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge variant={terminal.is_active ? "default" : "secondary"}>
-                          {terminal.is_active ? "Activo" : "Inactivo"}
-                        </Badge>
-                        <Switch
-                          checked={terminal.is_active}
-                          onCheckedChange={(checked) => handleToggleActive("pos", terminal.id, checked)}
-                        />
-                        <Button size="icon" variant="outline" onClick={() => openEditPOS(terminal)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="hover:bg-destructive hover:text-destructive-foreground"
-                          onClick={() => {
-                            setDeleteTarget({ type: "pos", item: terminal });
-                            setShowDeleteDialog(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
+                      terminal={terminal}
+                      onEdit={() => { setEditingPOS(terminal); setShowPOSDialog(true); }}
+                      onDelete={() => { setDeleteTarget({ type: "pos", item: terminal }); setShowDeleteDialog(true); }}
+                      onToggle={(active) => handleToggleActive("pos", terminal.id, active)}
+                    />
                   ))}
                 </div>
               )}
             </TabsContent>
-            
+
+            {/* ════ LOCATIONS TAB ════ */}
             <TabsContent value="locations" className="space-y-4">
               <Alert className="border-primary/20 bg-primary/5">
                 <Info className="h-4 w-4" />
@@ -372,69 +608,54 @@ export function POSBarsManagement() {
                   Cada <strong>barra</strong> es un punto físico donde se almacena inventario y se redimen QR. La bodega repone a las barras.
                 </AlertDescription>
               </Alert>
-              
+
               <div className="flex justify-end">
                 <Button onClick={() => setShowLocationDialog(true)} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Nueva Barra
+                  <Plus className="w-4 h-4" /> Nueva Barra
                 </Button>
               </div>
-              
+
               {/* Warehouse */}
               {warehouseLocation && (
-                <div className="glass-effect p-4 rounded-lg border-2 border-primary/20">
+                <div className="border border-border rounded-lg p-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg">
-                        <Store className="w-5 h-5 text-white" />
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-md bg-secondary">
+                        <Store className="w-4 h-4 text-warning" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-lg">{warehouseLocation.name}</h3>
-                        <p className="text-sm text-muted-foreground">Punto de reposición central</p>
+                        <p className="font-medium">{warehouseLocation.name}</p>
+                        <p className="text-xs text-muted-foreground">Punto de reposición central</p>
                       </div>
                     </div>
-                    <Badge variant="default">Bodega</Badge>
+                    <Badge variant="outline">Bodega</Badge>
                   </div>
                 </div>
               )}
-              
+
               {/* Bars */}
-              <div className="grid gap-4">
+              <div className="space-y-2">
                 {barLocations.map((location) => (
-                  <div
-                    key={location.id}
-                    className="glass-effect p-4 rounded-lg flex items-center justify-between hover-lift"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-emerald-500 to-green-500 rounded-lg">
-                        <Store className="w-5 h-5 text-white" />
+                  <div key={location.id} className="border border-border rounded-lg p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-md bg-secondary">
+                        <Store className="w-4 h-4 text-primary" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-lg">{location.name}</h3>
-                        <p className="text-sm text-muted-foreground">Punto de inventario y lectura QR</p>
+                        <p className="font-medium">{location.name}</p>
+                        <p className="text-xs text-muted-foreground">Punto de inventario y lectura QR</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant={location.is_active ? "default" : "secondary"}>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={location.is_active ? "default" : "secondary"} className={location.is_active ? "bg-primary/15 text-primary border-primary/30 text-[10px]" : "text-[10px]"}>
                         {location.is_active ? "Activo" : "Inactivo"}
                       </Badge>
-                      <Switch
-                        checked={location.is_active}
-                        onCheckedChange={(checked) => handleToggleActive("location", location.id, checked)}
-                      />
-                      <Button size="icon" variant="outline" onClick={() => openEditLocation(location)}>
-                        <Edit className="w-4 h-4" />
+                      <Switch checked={location.is_active} onCheckedChange={(checked) => handleToggleActive("location", location.id, checked)} />
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEditLocation(location)}>
+                        <Edit className="w-3.5 h-3.5" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={() => {
-                          setDeleteTarget({ type: "location", item: location });
-                          setShowDeleteDialog(true);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-destructive" onClick={() => { setDeleteTarget({ type: "location", item: location }); setShowDeleteDialog(true); }}>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
@@ -445,7 +666,17 @@ export function POSBarsManagement() {
         </CardContent>
       </Card>
 
-      {/* Location Dialog */}
+      {/* ── POS Create/Edit Dialog ── */}
+      <TerminalDialog
+        open={showPOSDialog}
+        onOpenChange={setShowPOSDialog}
+        editing={editingPOS}
+        terminals={terminals}
+        barLocations={barLocations}
+        onSave={handleSavePOS}
+      />
+
+      {/* ── Location Dialog ── */}
       <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
         <DialogContent>
           <DialogHeader>
@@ -454,26 +685,14 @@ export function POSBarsManagement() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="loc-name">Nombre</Label>
-              <Input
-                id="loc-name"
-                value={locationForm.name}
-                onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
-                placeholder="Ej: Barra Principal"
-              />
+              <Input id="loc-name" value={locationForm.name} onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })} placeholder="Ej: Barra Principal" />
             </div>
             {!editingLocation && (
               <div className="space-y-2">
-                <Label htmlFor="loc-type">Tipo</Label>
-                <Select
-                  value={locationForm.type}
-                  onValueChange={(v) => setLocationForm({ ...locationForm, type: v as "bar" })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bar">Barra</SelectItem>
-                  </SelectContent>
+                <Label>Tipo</Label>
+                <Select value={locationForm.type} onValueChange={(v) => setLocationForm({ ...locationForm, type: v as "bar" })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="bar">Barra</SelectItem></SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">Solo se pueden crear ubicaciones tipo Barra</p>
               </div>
@@ -486,83 +705,13 @@ export function POSBarsManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* POS Dialog */}
-      <Dialog open={showPOSDialog} onOpenChange={setShowPOSDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingPOS ? "Editar Terminal" : "Nuevo Terminal POS"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="pos-name">Nombre del Terminal</Label>
-              <Input
-                id="pos-name"
-                value={posForm.name}
-                onChange={(e) => setPosForm({ ...posForm, name: e.target.value })}
-                placeholder="Ej: POS-1"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Tipo de Terminal</Label>
-              <Select
-                value={posForm.posType}
-                onValueChange={(v) => setPosForm({ ...posForm, posType: v as POSType, locationId: v !== "bar_redemption" ? null : posForm.locationId })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="alcohol_sales">Venta de Alcohol (con caja)</SelectItem>
-                  <SelectItem value="ticket_sales">Venta de Tickets (con caja)</SelectItem>
-                  <SelectItem value="bar_redemption">Lector de Barra (sin caja)</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {posForm.posType === "bar_redemption" 
-                  ? "Este terminal escanea QR y descuenta inventario de su ubicación"
-                  : "Este terminal genera ventas y QRs. No requiere ubicación fija."}
-              </p>
-            </div>
-            
-            {/* Location only shown for bar_redemption type */}
-            {posForm.posType === "bar_redemption" && (
-              <div className="space-y-2">
-                <Label>Ubicación (Barra)</Label>
-                <Select
-                  value={posForm.locationId || ""}
-                  onValueChange={(v) => setPosForm({ ...posForm, locationId: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona una barra" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {barLocations.filter(loc => loc?.id).map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  El inventario se descontará de esta ubicación al escanear QR
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPOSDialog(false)}>Cancelar</Button>
-            <Button onClick={handleCreatePOS}>{editingPOS ? "Guardar" : "Crear"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
+      {/* ── Delete Confirmation ── */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar {deleteTarget?.type === "pos" ? "terminal" : "ubicación"}?</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar {deleteTarget?.type === "pos" ? "terminal" : "ubicación"}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Si tiene datos asociados, la eliminación fallará.
-              Considera desactivar en su lugar.
+              Esta acción no se puede deshacer. Si este {deleteTarget?.type === "pos" ? "terminal se usó en ventas históricas" : "ubicación tiene datos asociados"}, no se recomienda eliminar. Considera desactivar en su lugar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
