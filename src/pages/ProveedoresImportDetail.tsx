@@ -158,8 +158,13 @@ export default function ProveedoresImportDetail() {
 
   // Validation
   const inventoryLines = lines.filter(l => l.classification === "inventory");
+  const expenseLines = lines.filter(l => l.classification === "freight" || l.classification === "other_expense");
   const reviewLines = lines.filter(l => l.status === "REVIEW");
-  const canConfirm = reviewLines.length === 0 && inventoryLines.length > 0 && inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0 && l.tax_category_id);
+  const expensesTotal = expenseLines.reduce((s, l) => s + (l.line_total_net || l.unit_price_net || 0), 0);
+
+  const inventoryValid = inventoryLines.length === 0 || inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0 && l.tax_category_id);
+  const expensesValid = expenseLines.every(l => (l.line_total_net || l.unit_price_net || 0) > 0);
+  const canConfirm = reviewLines.length === 0 && (inventoryLines.length > 0 || expenseLines.length > 0) && inventoryValid && expensesValid;
 
   // Confirm
   const handleConfirm = async () => {
@@ -445,12 +450,13 @@ export default function ProveedoresImportDetail() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
+                    <TableHead className="w-16">Tipo</TableHead>
                     <TableHead className="min-w-[180px]">Texto original</TableHead>
                     <TableHead className="w-16">Cant.</TableHead>
                     <TableHead className="w-14">Mult.</TableHead>
                     <TableHead className="w-20">Uds. reales</TableHead>
-                    <TableHead className="w-24">Costo unit. neto</TableHead>
-                    <TableHead className="min-w-[160px]">Producto</TableHead>
+                    <TableHead className="w-24">Costo/Monto neto</TableHead>
+                    <TableHead className="min-w-[160px]">Producto / Cat. gasto</TableHead>
                     <TableHead className="min-w-[140px]">Cat. tributaria</TableHead>
                     <TableHead className="w-28">Clasif.</TableHead>
                     <TableHead className="w-16">Estado</TableHead>
@@ -458,9 +464,16 @@ export default function ProveedoresImportDetail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayedLines.map((line) => (
+                  {displayedLines.map((line) => {
+                    const isExpense = line.classification === "freight" || line.classification === "other_expense";
+                    return (
                     <TableRow key={line.id} className={line.status === "REVIEW" ? "bg-amber-50/50 dark:bg-amber-950/10" : ""}>
                       <TableCell className="text-xs text-muted-foreground">{line.line_index + 1}</TableCell>
+                      <TableCell>
+                        <Badge variant={isExpense ? "secondary" : "outline"} className="text-[10px]">
+                          {isExpense ? "GASTO" : "INV"}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <Input
                           value={line.raw_text || ""}
@@ -469,26 +482,50 @@ export default function ProveedoresImportDetail() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="number"
-                          value={line.qty_invoiced || ""}
-                          onChange={(e) => updateLine(line.id, { qty_invoiced: parseFloat(e.target.value) || 0 })}
-                          className="h-7 text-xs w-16"
-                        />
+                        {isExpense ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <Input
+                            type="number"
+                            value={line.qty_invoiced || ""}
+                            onChange={(e) => updateLine(line.id, { qty_invoiced: parseFloat(e.target.value) || 0 })}
+                            className="h-7 text-xs w-16"
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="number"
-                          value={line.detected_multiplier}
-                          onChange={(e) => updateLine(line.id, { detected_multiplier: parseInt(e.target.value) || 1 })}
-                          className="h-7 text-xs w-14"
-                        />
+                        {isExpense ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <Input
+                            type="number"
+                            value={line.detected_multiplier}
+                            onChange={(e) => updateLine(line.id, { detected_multiplier: parseInt(e.target.value) || 1 })}
+                            className="h-7 text-xs w-14"
+                          />
+                        )}
                       </TableCell>
-                      <TableCell className="text-xs font-medium">{line.units_real}</TableCell>
-                      <TableCell className="text-xs">{formatCLP(line.cost_unit_net)}</TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {isExpense ? "—" : line.units_real}
+                      </TableCell>
                       <TableCell>
-                      {line.classification === "freight" ? (
-                          <span className="text-xs text-muted-foreground italic">Flete</span>
+                        {isExpense ? (
+                          <Input
+                            type="number"
+                            value={line.line_total_net || line.unit_price_net || ""}
+                            onChange={(e) => updateLine(line.id, { line_total_net: parseFloat(e.target.value) || 0 })}
+                            className="h-7 text-xs w-24"
+                            placeholder="Monto neto"
+                          />
+                        ) : (
+                          <span className="text-xs">{formatCLP(line.cost_unit_net)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isExpense ? (
+                          <span className="text-xs text-muted-foreground italic">
+                            {line.classification === "freight" ? "Flete/Transporte" : "Otro gasto"}
+                          </span>
                         ) : (
                           <ProductPicker
                             venueId={venue?.id || ""}
@@ -500,7 +537,7 @@ export default function ProveedoresImportDetail() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {line.classification === "freight" ? (
+                        {isExpense ? (
                           <span className="text-xs text-muted-foreground italic">—</span>
                         ) : (
                           <Select
@@ -538,7 +575,9 @@ export default function ProveedoresImportDetail() {
                       </TableCell>
                       <TableCell>
                         {line.status === "OK" ? (
-                          <Badge variant="default" className="text-[10px] bg-green-600">OK</Badge>
+                          <Badge variant="default" className="text-[10px] bg-green-600">
+                            {isExpense ? "OK ✓" : "OK"}
+                          </Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 cursor-pointer" onClick={() => markLineOK(line.id)}>
                             REVIEW
@@ -558,7 +597,8 @@ export default function ProveedoresImportDetail() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -566,18 +606,23 @@ export default function ProveedoresImportDetail() {
             {/* Totals */}
             <Card>
               <CardContent className="p-4">
-                <div className="grid grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-5 gap-4 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Líneas inventario</p>
                     <p className="font-semibold">{inventoryLines.length}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Total neto</p>
+                    <p className="text-xs text-muted-foreground">Neto inventario</p>
                     <p className="font-semibold">{formatCLP(inventoryLines.reduce((s, l) => s + l.units_real * l.cost_unit_net, 0))}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Gastos/flete</p>
-                    <p className="font-semibold">{formatCLP(lines.filter(l => l.classification !== "inventory").reduce((s, l) => s + (l.line_total_net || 0), 0))}</p>
+                    <p className="text-xs text-muted-foreground">Gastos operacionales</p>
+                    <p className="font-semibold">{formatCLP(expensesTotal)}</p>
+                    <p className="text-[10px] text-muted-foreground">{expenseLines.length} línea(s)</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">IVA crédito fiscal</p>
+                    <p className="font-semibold">{imp.vat_amount ? formatCLP(imp.vat_amount) : "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">En revisión</p>

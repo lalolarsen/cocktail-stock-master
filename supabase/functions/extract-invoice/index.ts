@@ -73,19 +73,39 @@ serve(async (req) => {
     const rawExtraction = await extractWithAI(base64, fileType);
 
     // Detect freight lines and multipliers
-    const freightPatterns = /flete|despacho|transporte|entrega|envío|envio|reparto/i;
+    const freightPatterns = /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a/i;
 
     const lines = rawExtraction.lines.map((line: any, idx: number) => {
-      const isFreight = freightPatterns.test(line.raw_product_name || "");
-      const mult = detectMultiplier(line.raw_product_name || "");
+      const rawName = line.raw_product_name || "";
+      // Use AI hint OR deterministic detection
+      const isFreight = line.line_type === "expense" || freightPatterns.test(rawName);
+      const mult = isFreight ? 1 : detectMultiplier(rawName);
       const qty = parseNum(line.qty_text);
       const unitPrice = parseNum(line.unit_price_text);
       const lineTotal = parseNum(line.line_total_text);
       const discountPct = parseNum(line.discount_text?.replace("%", ""));
 
-      const unitsReal = qty * mult;
+      if (isFreight) {
+        return {
+          purchase_import_id,
+          line_index: idx,
+          raw_text: rawName,
+          qty_invoiced: qty || 1,
+          unit_price_net: unitPrice > 0 ? unitPrice : null,
+          line_total_net: lineTotal > 0 ? lineTotal : (unitPrice > 0 ? unitPrice : null),
+          discount_pct: null,
+          detected_multiplier: 1,
+          units_real: 0,
+          cost_unit_net: 0,
+          classification: "freight",
+          status: "OK",
+          product_id: null,
+          tax_category_id: null,
+          notes: `Auto-clasificado como gasto: ${line.expense_hint || "flete/despacho"}`,
+        };
+      }
 
-      // Calculate cost_unit_net
+      const unitsReal = qty * mult;
       let packNet = lineTotal > 0 ? lineTotal / (qty || 1) : unitPrice;
       if (discountPct > 0 && discountPct <= 100) {
         packNet = packNet * (1 - discountPct / 100);
@@ -95,7 +115,7 @@ serve(async (req) => {
       return {
         purchase_import_id,
         line_index: idx,
-        raw_text: line.raw_product_name || "",
+        raw_text: rawName,
         qty_invoiced: qty,
         unit_price_net: unitPrice > 0 ? unitPrice : null,
         line_total_net: lineTotal > 0 ? lineTotal : null,
@@ -103,10 +123,10 @@ serve(async (req) => {
         detected_multiplier: mult,
         units_real: unitsReal,
         cost_unit_net: Math.round(costUnitNet * 100) / 100,
-        classification: isFreight ? "freight" : "inventory",
-        status: isFreight ? "OK" : unitsReal <= 0 || costUnitNet <= 0 ? "REVIEW" : "REVIEW",
+        classification: "inventory",
+        status: "REVIEW",
         product_id: null,
-        notes: isFreight ? "Auto-clasificado como flete" : null,
+        notes: null,
       };
     });
 
