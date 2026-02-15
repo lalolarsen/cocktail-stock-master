@@ -33,24 +33,19 @@ export default function WorkerPinDialog({ open, onVerified, onCancel }: WorkerPi
         return;
       }
 
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("worker_pin")
-        .eq("id", session.session.user.id)
-        .single();
-
-      if (error) {
-        console.error("Error fetching profile:", error);
+      // Re-verify identity by getting the user's email and re-authenticating
+      const userEmail = session.session.user.email;
+      if (!userEmail) {
         toast.error("Error al verificar credenciales");
         return;
       }
 
-      if (!profile?.worker_pin) {
-        toast.error("No tienes un PIN asignado. Contacta al administrador.");
-        return;
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: pin,
+      });
 
-      if (profile.worker_pin !== pin) {
+      if (error) {
         toast.error("Número de identificación incorrecto");
         return;
       }

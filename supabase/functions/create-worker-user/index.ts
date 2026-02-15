@@ -156,7 +156,6 @@ Deno.serve(async (req) => {
         email: internalEmail,
         internal_email: internalEmail,
         rut_code: normalizedRut,
-        worker_pin: pin,
         venue_id: venue_id,
         full_name: full_name,
         is_active: true,
