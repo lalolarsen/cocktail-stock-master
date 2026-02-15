@@ -66,9 +66,12 @@ serve(async (req) => {
 
     // Convert to base64 without spreading huge arrays (avoids call stack overflow)
     let binary = "";
-    const chunkSize = 0x8000; // 32KB chunks
+    const chunkSize = 8192;
     for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      for (let j = 0; j < chunk.length; j++) {
+        binary += String.fromCharCode(chunk[j]);
+      }
     }
     const base64 = btoa(binary);
     const fileType = filePath.toLowerCase().endsWith(".pdf")
