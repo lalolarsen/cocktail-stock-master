@@ -224,8 +224,25 @@ export function FinancePanel() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">
                   Impuestos Específicos (ILA / IABA)
                 </p>
-                <StatementRow label="Desde facturas importadas" value={-mtd.specificTaxFromInvoices} indent negative={mtd.specificTaxFromInvoices > 0} />
-                <StatementRow label="Desde gastos manuales" value={-mtd.specificTaxFromOpex} indent negative={mtd.specificTaxFromOpex > 0} />
+                {/* Category breakdown */}
+                {mtd.specificTaxBreakdown.iaba_10 > 0 && (
+                  <StatementRow label="IABA 10%" value={-mtd.specificTaxBreakdown.iaba_10} indent negative />
+                )}
+                {mtd.specificTaxBreakdown.iaba_18 > 0 && (
+                  <StatementRow label="IABA 18%" value={-mtd.specificTaxBreakdown.iaba_18} indent negative />
+                )}
+                {mtd.specificTaxBreakdown.ila_vino > 0 && (
+                  <StatementRow label="ILA Vino 20,5%" value={-mtd.specificTaxBreakdown.ila_vino} indent negative />
+                )}
+                {mtd.specificTaxBreakdown.ila_cerveza > 0 && (
+                  <StatementRow label="ILA Cerveza 20,5%" value={-mtd.specificTaxBreakdown.ila_cerveza} indent negative />
+                )}
+                {mtd.specificTaxBreakdown.ila_destilados > 0 && (
+                  <StatementRow label="ILA Destilados 31,5%" value={-mtd.specificTaxBreakdown.ila_destilados} indent negative />
+                )}
+                {/* Source breakdown */}
+                <StatementRow label="Subtotal desde facturas importadas" value={-mtd.specificTaxFromInvoices} indent negative={mtd.specificTaxFromInvoices > 0} />
+                <StatementRow label="Subtotal desde gastos manuales" value={-mtd.specificTaxFromOpex} indent negative={mtd.specificTaxFromOpex > 0} />
                 <StatementRow label="Total impuestos específicos" value={-mtd.specificTaxTotal} bold negative />
                 <StatementRow label="Margen post impuestos específicos" value={mtd.marginPostSpecificTax} bold negative={mtd.marginPostSpecificTax < 0} />
 
@@ -295,13 +312,26 @@ export function FinancePanel() {
                   Bloque Tributario
                 </p>
                 <StatementRow label="IVA débito fiscal (ventas)" value={mtd.ivaDebito} indent />
-                <StatementRow label="IVA crédito fiscal (facturas)" value={-mtd.ivaCreditoFacturas} indent />
+                <StatementRow label="IVA crédito (facturas legacy)" value={-mtd.ivaCreditoFacturas} indent />
+                {mtd.ivaCreditoFromImports > 0 && (
+                  <StatementRow label="IVA crédito (importaciones)" value={-mtd.ivaCreditoFromImports} indent />
+                )}
                 <StatementRow
                   label="IVA neto del periodo"
                   value={mtd.ivaNeto}
                   bold
                   negative={mtd.ivaNeto > 0}
                 />
+
+                {mtd.freightFromImports > 0 && (
+                  <>
+                    <div className="border-t border-dashed my-2" />
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                      Flete desde importaciones
+                    </p>
+                    <StatementRow label="Flete/Transporte (facturas)" value={-mtd.freightFromImports} indent negative />
+                  </>
+                )}
               </CardContent>
             </Card>
           </section>
