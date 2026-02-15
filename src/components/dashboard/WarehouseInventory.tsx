@@ -47,7 +47,7 @@ import {
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
 import { toast } from "sonner";
-import { ClipboardList, FileText, FileSpreadsheet } from "lucide-react";
+import { Plus, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -339,9 +339,9 @@ export function WarehouseInventory() {
     <div className="space-y-6">
       {/* ━━━ HEADER ━━━ */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Inventario en Tiempo Real</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Inventario</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Control centralizado de stock y mínimos por ubicación
+          Control de stock por ubicación
         </p>
       </div>
 
@@ -371,39 +371,38 @@ export function WarehouseInventory() {
         </button>
       </div>
 
-      {/* ━━━ STOCK INTAKE ACTION BUTTONS ━━━ */}
+      {/* ━━━ STOCK INTAKE ACTION CARDS ━━━ */}
       {warehouseLocation && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Ingreso de stock a bodega</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
-              onClick={() => setShowManualEntry(true)}
-            >
-              <ClipboardList className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium">Ingreso manual</span>
-              <span className="text-[10px] text-muted-foreground">Tipo Excel, con cálculo fiscal</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
-              onClick={() => navigate("/purchases-import")}
-            >
-              <FileText className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium">Importar factura</span>
-              <span className="text-[10px] text-muted-foreground">Lector PDF con conciliación</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
-              disabled
-            >
-              <FileSpreadsheet className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Importar Excel</span>
-              <span className="text-[10px] text-muted-foreground">Carga masiva desde archivo</span>
-            </Button>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
+                <Plus className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm">Ingreso manual</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Agrega productos manualmente a Bodega Principal</p>
+                <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
+                  Ingresar stock
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => navigate("/admin/proveedores")}>
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
+                <FileText className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm">Ingreso por factura</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Sube una factura y deja que el sistema la procese con IA</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={(e) => { e.stopPropagation(); navigate("/admin/proveedores"); }}>
+                  Subir factura
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
