@@ -367,6 +367,17 @@ export function WarehouseInventory() {
         </button>
       </div>
 
+      {/* ━━━ STOCK INTAKE ━━━ */}
+      <div id="stock-intake-section">
+        {warehouseLocation && (
+          <WarehouseStockIntake
+            warehouseId={warehouseLocation.id}
+            products={products.map((p) => ({ ...p, code: p.code || "" }))}
+            onStockUpdated={fetchData}
+          />
+        )}
+      </div>
+
       {/* ━━━ LOCATION SELECTOR + KPIs ━━━ */}
       <div className="space-y-4">
         <div className="flex items-center gap-3">
@@ -468,17 +479,6 @@ export function WarehouseInventory() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* ━━━ STOCK INTAKE (hidden behind scroll-to) ━━━ */}
-      <div id="stock-intake-section">
-        {warehouseLocation && (
-          <WarehouseStockIntake
-            warehouseId={warehouseLocation.id}
-            products={products.map((p) => ({ ...p, code: p.code || "" }))}
-            onStockUpdated={fetchData}
-          />
-        )}
       </div>
 
       {/* ━━━ PRODUCT LIST (Collapsible sections) ━━━ */}
