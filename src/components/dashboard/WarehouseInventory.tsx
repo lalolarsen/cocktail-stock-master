@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,7 +32,6 @@ import {
 import {
   Warehouse,
   Package,
-  AlertTriangle,
   Search,
   TrendingDown,
   DollarSign,
@@ -40,14 +39,10 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
-  Plus,
-  FileUp,
-  FileSpreadsheet,
   SlidersHorizontal,
   X,
   Loader2,
   PackageX,
-  Activity,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { WarehouseStockIntake } from "./WarehouseStockIntake";
@@ -124,7 +119,7 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 // ─── Component ──────────────────────────────────────────────
 export function WarehouseInventory() {
   const { venue } = useActiveVenue();
-  const navigate = useNavigate();
+  
 
   // Data state
   const [locations, setLocations] = useState<StockLocation[]>([]);
@@ -344,44 +339,6 @@ export function WarehouseInventory() {
         <p className="text-sm text-muted-foreground mt-1">
           Control centralizado de stock y mínimos por ubicación
         </p>
-      </div>
-
-      {/* Action cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <ActionCard
-          icon={<Plus className="h-5 w-5 text-primary" />}
-          title="Ingreso manual"
-          description="Agrega productos con costo y trazabilidad fiscal"
-          onClick={() => {
-            // Scroll to WarehouseStockIntake and open manual dialog
-            const el = document.getElementById("stock-intake-section");
-            el?.scrollIntoView({ behavior: "smooth" });
-            // Trigger manual dialog via a small delay
-            setTimeout(() => {
-              const btn = document.getElementById("btn-manual-intake");
-              btn?.click();
-            }, 400);
-          }}
-        />
-        <ActionCard
-          icon={<FileUp className="h-5 w-5 text-info" />}
-          title="Importar factura"
-          description="Sube PDF o imagen para ingreso automático"
-          onClick={() => navigate("/admin/purchases/import")}
-        />
-        <ActionCard
-          icon={<FileSpreadsheet className="h-5 w-5 text-primary" />}
-          title="Importar Excel"
-          description="Carga múltiples productos desde .xlsx"
-          onClick={() => {
-            const el = document.getElementById("stock-intake-section");
-            el?.scrollIntoView({ behavior: "smooth" });
-            setTimeout(() => {
-              const btn = document.getElementById("btn-excel-intake");
-              btn?.click();
-            }, 400);
-          }}
-        />
       </div>
 
       {/* Info hint */}
@@ -642,32 +599,6 @@ export function WarehouseInventory() {
 
 // ─── Sub-components ─────────────────────────────────────────
 
-function ActionCard({
-  icon,
-  title,
-  description,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="bg-card border border-border rounded-lg p-4 text-left hover:border-primary/40 transition-fast group"
-    >
-      <div className="flex items-center gap-3 mb-1.5">
-        <div className="p-2 bg-muted rounded-lg group-hover:bg-primary/10 transition-fast">
-          {icon}
-        </div>
-        <span className="font-semibold text-sm">{title}</span>
-      </div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </button>
-  );
-}
 
 function KPICard({
   icon,
