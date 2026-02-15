@@ -45,8 +45,9 @@ import {
   PackageX,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
-import { WarehouseStockIntake } from "./WarehouseStockIntake";
+import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
 import { toast } from "sonner";
+import { ClipboardList, FileText, FileSpreadsheet } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockLocation {
@@ -134,6 +135,7 @@ export function WarehouseInventory() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [chipFilter, setChipFilter] = useState<FilterChip>("all");
   const [infoBannerOpen, setInfoBannerOpen] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
 
   // Collapsible sections
   const [outOfStockOpen, setOutOfStockOpen] = useState(true);
@@ -367,16 +369,41 @@ export function WarehouseInventory() {
         </button>
       </div>
 
-      {/* ━━━ STOCK INTAKE ━━━ */}
-      <div id="stock-intake-section">
-        {warehouseLocation && (
-          <WarehouseStockIntake
-            warehouseId={warehouseLocation.id}
-            products={products.map((p) => ({ ...p, code: p.code || "" }))}
-            onStockUpdated={fetchData}
-          />
-        )}
-      </div>
+      {/* ━━━ STOCK INTAKE ACTION BUTTONS ━━━ */}
+      {warehouseLocation && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Ingreso de stock a bodega</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
+              onClick={() => setShowManualEntry(true)}
+            >
+              <ClipboardList className="h-5 w-5 text-primary" />
+              <span className="text-sm font-medium">Ingreso manual</span>
+              <span className="text-[10px] text-muted-foreground">Tipo Excel, con cálculo fiscal</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
+              disabled
+            >
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Importar factura</span>
+              <span className="text-[10px] text-muted-foreground">Lector PDF con conciliación</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary/5"
+              disabled
+            >
+              <FileSpreadsheet className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Importar Excel</span>
+              <span className="text-[10px] text-muted-foreground">Carga masiva desde archivo</span>
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ━━━ LOCATION SELECTOR + KPIs ━━━ */}
       <div className="space-y-4">
@@ -593,6 +620,16 @@ export function WarehouseInventory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ━━━ MANUAL STOCK ENTRY DIALOG ━━━ */}
+      {warehouseLocation && (
+        <ManualStockEntryDialog
+          open={showManualEntry}
+          onOpenChange={setShowManualEntry}
+          warehouseId={warehouseLocation.id}
+          products={products.map((p) => ({ ...p, code: p.code || "" }))}
+          onStockUpdated={fetchData}
+        />
+      )}
     </div>
   );
 }
