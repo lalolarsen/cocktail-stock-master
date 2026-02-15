@@ -471,6 +471,44 @@ export type Database = {
           },
         ]
       }
+      expense_lines: {
+        Row: {
+          amount_net: number
+          created_at: string
+          description: string | null
+          expense_type: string
+          id: string
+          purchase_id: string
+          vat_amount: number
+        }
+        Insert: {
+          amount_net?: number
+          created_at?: string
+          description?: string | null
+          expense_type?: string
+          id?: string
+          purchase_id: string
+          vat_amount?: number
+        }
+        Update: {
+          amount_net?: number
+          created_at?: string
+          description?: string | null
+          expense_type?: string
+          id?: string
+          purchase_id?: string
+          vat_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_lines_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount: number
@@ -1188,6 +1226,60 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "jornadas_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      learning_product_mappings: {
+        Row: {
+          confidence: number
+          created_at: string
+          detected_multiplier: number
+          id: string
+          last_used_at: string
+          product_id: string
+          raw_text: string
+          supplier_rut: string | null
+          times_used: number
+          venue_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          detected_multiplier?: number
+          id?: string
+          last_used_at?: string
+          product_id: string
+          raw_text: string
+          supplier_rut?: string | null
+          times_used?: number
+          venue_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          detected_multiplier?: number
+          id?: string
+          last_used_at?: string
+          product_id?: string
+          raw_text?: string
+          supplier_rut?: string | null
+          times_used?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learning_product_mappings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learning_product_mappings_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"
@@ -2122,6 +2214,194 @@ export type Database = {
           },
         ]
       }
+      purchase_import_lines: {
+        Row: {
+          classification: string
+          cost_unit_net: number
+          created_at: string
+          detected_multiplier: number
+          discount_pct: number | null
+          id: string
+          line_index: number
+          line_total_net: number | null
+          notes: string | null
+          product_id: string | null
+          purchase_import_id: string
+          qty_invoiced: number | null
+          raw_text: string | null
+          status: string
+          tax_category_id: string | null
+          unit_price_net: number | null
+          units_real: number
+        }
+        Insert: {
+          classification?: string
+          cost_unit_net?: number
+          created_at?: string
+          detected_multiplier?: number
+          discount_pct?: number | null
+          id?: string
+          line_index?: number
+          line_total_net?: number | null
+          notes?: string | null
+          product_id?: string | null
+          purchase_import_id: string
+          qty_invoiced?: number | null
+          raw_text?: string | null
+          status?: string
+          tax_category_id?: string | null
+          unit_price_net?: number | null
+          units_real?: number
+        }
+        Update: {
+          classification?: string
+          cost_unit_net?: number
+          created_at?: string
+          detected_multiplier?: number
+          discount_pct?: number | null
+          id?: string
+          line_index?: number
+          line_total_net?: number | null
+          notes?: string | null
+          product_id?: string | null
+          purchase_import_id?: string
+          qty_invoiced?: number | null
+          raw_text?: string | null
+          status?: string
+          tax_category_id?: string | null
+          unit_price_net?: number | null
+          units_real?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_import_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_import_lines_purchase_import_id_fkey"
+            columns: ["purchase_import_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_import_taxes: {
+        Row: {
+          created_at: string
+          id: string
+          purchase_import_id: string
+          tax_amount: number
+          tax_label: string
+          tax_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          purchase_import_id: string
+          tax_amount?: number
+          tax_label: string
+          tax_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          purchase_import_id?: string
+          tax_amount?: number
+          tax_label?: string
+          tax_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_import_taxes_purchase_import_id_fkey"
+            columns: ["purchase_import_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_imports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          document_date: string | null
+          document_number: string | null
+          id: string
+          issues_count: number
+          location_id: string
+          net_subtotal: number | null
+          raw_extraction_json: Json | null
+          raw_file_url: string | null
+          status: string
+          supplier_name: string | null
+          supplier_rut: string | null
+          total_amount: number | null
+          updated_at: string
+          vat_amount: number | null
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          issues_count?: number
+          location_id: string
+          net_subtotal?: number | null
+          raw_extraction_json?: Json | null
+          raw_file_url?: string | null
+          status?: string
+          supplier_name?: string | null
+          supplier_rut?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          vat_amount?: number | null
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          issues_count?: number
+          location_id?: string
+          net_subtotal?: number | null
+          raw_extraction_json?: Json | null
+          raw_file_url?: string | null
+          status?: string
+          supplier_name?: string | null
+          supplier_rut?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          vat_amount?: number | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_imports_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_imports_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_items: {
         Row: {
           classification: string | null
@@ -2233,6 +2513,124 @@ export type Database = {
           },
           {
             foreignKeyName: "purchase_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_lines: {
+        Row: {
+          cost_unit_net: number
+          created_at: string
+          id: string
+          line_total_net: number
+          product_id: string
+          purchase_id: string
+          units_real: number
+        }
+        Insert: {
+          cost_unit_net: number
+          created_at?: string
+          id?: string
+          line_total_net: number
+          product_id: string
+          purchase_id: string
+          units_real: number
+        }
+        Update: {
+          cost_unit_net?: number
+          created_at?: string
+          id?: string
+          line_total_net?: number
+          product_id?: string
+          purchase_id?: string
+          units_real?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_lines_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchases: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          document_date: string | null
+          document_number: string | null
+          id: string
+          location_id: string
+          net_subtotal: number | null
+          purchase_import_id: string | null
+          supplier_name: string | null
+          supplier_rut: string | null
+          total_amount: number | null
+          vat_credit: number | null
+          venue_id: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          location_id: string
+          net_subtotal?: number | null
+          purchase_import_id?: string | null
+          supplier_name?: string | null
+          supplier_rut?: string | null
+          total_amount?: number | null
+          vat_credit?: number | null
+          venue_id: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          document_date?: string | null
+          document_number?: string | null
+          id?: string
+          location_id?: string
+          net_subtotal?: number | null
+          purchase_import_id?: string | null
+          supplier_name?: string | null
+          supplier_rut?: string | null
+          total_amount?: number | null
+          vat_credit?: number | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_purchase_import_id_fkey"
+            columns: ["purchase_import_id"]
+            isOneToOne: true
+            referencedRelation: "purchase_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"
@@ -2696,25 +3094,31 @@ export type Database = {
       }
       specific_tax_categories: {
         Row: {
+          code: string | null
           created_at: string
           id: string
           is_active: boolean
+          label: string | null
           name: string
           rate_pct: number
           venue_id: string | null
         }
         Insert: {
+          code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          label?: string | null
           name: string
           rate_pct?: number
           venue_id?: string | null
         }
         Update: {
+          code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          label?: string | null
           name?: string
           rate_pct?: number
           venue_id?: string | null
