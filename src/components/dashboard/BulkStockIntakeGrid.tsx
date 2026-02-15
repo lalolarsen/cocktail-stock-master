@@ -3,14 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -28,6 +20,7 @@ import {
   Loader2,
   Check,
   Warehouse,
+  Info,
   AlertCircle,
 } from "lucide-react";
 
@@ -41,12 +34,6 @@ interface Product {
   unit: string;
 }
 
-interface StockLocation {
-  id: string;
-  name: string;
-  type: string;
-}
-
 interface TaxCategory {
   id: string;
   name: string;
@@ -56,7 +43,6 @@ interface TaxCategory {
 interface IntakeRow {
   id: string;
   product_id: string;
-  location_id: string;
   quantity: string;
   net_unit_cost: string;
   tax_category_id: string;
@@ -79,10 +65,9 @@ interface BulkStockIntakeGridProps {
 
 const VAT_PCT = 19;
 
-const createEmptyRow = (defaultLocationId: string): IntakeRow => ({
+const createEmptyRow = (): IntakeRow => ({
   id: crypto.randomUUID(),
   product_id: "",
-  location_id: defaultLocationId,
   quantity: "",
   net_unit_cost: "",
   tax_category_id: "",
@@ -108,10 +93,8 @@ function computeRow(row: IntakeRow, taxCategories: TaxCategory[]): IntakeRow {
   const total_unit = net + iva_unit + specific_tax_unit + other;
   const total_line = total_unit * qty;
 
-  // Validation
   const errors: Record<string, boolean> = {};
   if (!row.product_id) errors.product_id = true;
-  if (!row.location_id) errors.location_id = true;
   if (!row.quantity || qty <= 0) errors.quantity = true;
   if (!row.net_unit_cost || net <= 0) errors.net_unit_cost = true;
   if (!row.tax_category_id) errors.tax_category_id = true;
@@ -125,34 +108,30 @@ export function BulkStockIntakeGrid({
   onStockUpdated,
 }: BulkStockIntakeGridProps) {
   const [taxCategories, setTaxCategories] = useState<TaxCategory[]>([]);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
-  const [defaultLocationId, setDefaultLocationId] = useState(warehouseId);
-  const [rows, setRows] = useState<IntakeRow[]>([createEmptyRow(warehouseId)]);
+  const [rows, setRows] = useState<IntakeRow[]>([createEmptyRow()]);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  // Fetch tax categories & locations
+  // Fetch tax categories
   useEffect(() => {
     const fetchMeta = async () => {
-      const [taxRes, locRes] = await Promise.all([
-        supabase.from("specific_tax_categories").select("id, name, rate_pct").eq("is_active", true).order("name"),
-        supabase.from("stock_locations").select("id, name, type").eq("is_active", true),
-      ]);
-      if (taxRes.data) setTaxCategories(taxRes.data as TaxCategory[]);
-      if (locRes.data) setLocations(locRes.data as StockLocation[]);
+      const { data } = await supabase
+        .from("specific_tax_categories")
+        .select("id, name, rate_pct")
+        .eq("is_active", true)
+        .order("name");
+      if (data) setTaxCategories(data as TaxCategory[]);
     };
     fetchMeta();
   }, []);
 
-  // Recompute rows when tax categories change
   const computedRows = useMemo(
     () => rows.map((r) => computeRow(r, taxCategories)),
     [rows, taxCategories]
   );
 
-  // Summary
   const summary = useMemo(() => {
     const s = { net: 0, vat: 0, specificTax: 0, otherTax: 0, total: 0 };
     computedRows.forEach((r) => {
@@ -167,23 +146,19 @@ export function BulkStockIntakeGrid({
     return s;
   }, [computedRows]);
 
-  // Update a single row field
   const updateRow = useCallback((rowId: string, field: keyof IntakeRow, value: string) => {
     setRows((prev) =>
       prev.map((r) => (r.id === rowId ? { ...r, [field]: value } : r))
     );
   }, []);
 
-  // Add row
   const addRow = useCallback(() => {
-    setRows((prev) => [...prev, createEmptyRow(defaultLocationId)]);
-    // Scroll to bottom
+    setRows((prev) => [...prev, createEmptyRow()]);
     setTimeout(() => {
       tableRef.current?.scrollTo({ top: tableRef.current.scrollHeight, behavior: "smooth" });
     }, 50);
-  }, [defaultLocationId]);
+  }, []);
 
-  // Duplicate selected or last row
   const duplicateRow = useCallback(() => {
     setRows((prev) => {
       const toDuplicate = prev.filter((r) => selectedRows.has(r.id));
@@ -193,17 +168,15 @@ export function BulkStockIntakeGrid({
     });
   }, [selectedRows]);
 
-  // Delete selected rows
   const deleteSelected = useCallback(() => {
     if (selectedRows.size === 0) return;
     setRows((prev) => {
       const remaining = prev.filter((r) => !selectedRows.has(r.id));
-      return remaining.length > 0 ? remaining : [createEmptyRow(defaultLocationId)];
+      return remaining.length > 0 ? remaining : [createEmptyRow()];
     });
     setSelectedRows(new Set());
-  }, [selectedRows, defaultLocationId]);
+  }, [selectedRows]);
 
-  // Handle keyboard in last cell
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent, rowId: string, isLastCol: boolean) => {
       if (e.key === "Enter" && isLastCol) {
@@ -217,7 +190,6 @@ export function BulkStockIntakeGrid({
     [rows, addRow]
   );
 
-  // Toggle row selection
   const toggleRowSelection = (rowId: string) => {
     setSelectedRows((prev) => {
       const next = new Set(prev);
@@ -227,8 +199,12 @@ export function BulkStockIntakeGrid({
     });
   };
 
-  // Submit batch
   const handleSubmit = async () => {
+    if (!warehouseId) {
+      toast.error("No se encontró Bodega Principal activa. Configure una ubicación tipo 'warehouse' primero.");
+      return;
+    }
+
     setShowValidation(true);
 
     const invalidRows = computedRows.filter((r) => Object.keys(r.errors).length > 0);
@@ -248,13 +224,13 @@ export function BulkStockIntakeGrid({
       const venueId = profile?.venue_id;
       if (!venueId) throw new Error("No venue");
 
-      // Create batch
+      // Create batch — all items go to warehouseId
       const { data: batch, error: batchErr } = await supabase
         .from("stock_intake_batches")
         .insert({
           venue_id: venueId,
           created_by: user!.id,
-          default_location_id: defaultLocationId,
+          default_location_id: warehouseId,
           total_net: summary.net,
           total_vat: summary.vat,
           total_specific_tax: summary.specificTax,
@@ -267,11 +243,11 @@ export function BulkStockIntakeGrid({
 
       if (batchErr || !batch) throw batchErr || new Error("Failed to create batch");
 
-      // Insert items
+      // Insert items — location_id always = warehouseId
       const items = computedRows.map((r) => ({
         batch_id: batch.id,
         product_id: r.product_id,
-        location_id: r.location_id,
+        location_id: warehouseId,
         quantity: parseFloat(r.quantity),
         net_unit_cost: parseFloat(r.net_unit_cost),
         vat_unit: r.iva_unit,
@@ -288,30 +264,29 @@ export function BulkStockIntakeGrid({
         .insert(items);
       if (itemsErr) throw itemsErr;
 
-      // Create stock movements and update balances
+      // Create stock movements and update balances — all to warehouseId
       for (const r of computedRows) {
         const qty = parseFloat(r.quantity);
         const net = parseFloat(r.net_unit_cost);
 
-        // Stock movement
         await supabase.from("stock_movements").insert({
           product_id: r.product_id,
           quantity: qty,
           movement_type: "entrada",
-          to_location_id: r.location_id,
+          to_location_id: warehouseId,
           unit_cost: net,
           vat_amount: r.iva_unit * qty,
           specific_tax_amount: r.specific_tax_unit * qty,
           source_type: "manual_batch",
-          notes: r.notes || "Ingreso masivo",
+          notes: r.notes || "Ingreso masivo a Bodega Principal",
           venue_id: venueId,
         });
 
-        // Update stock balance
+        // Update stock balance in warehouse
         const { data: existing } = await supabase
           .from("stock_balances")
           .select("quantity")
-          .eq("location_id", r.location_id)
+          .eq("location_id", warehouseId)
           .eq("product_id", r.product_id)
           .single();
 
@@ -319,11 +294,11 @@ export function BulkStockIntakeGrid({
           await supabase
             .from("stock_balances")
             .update({ quantity: existing.quantity + qty, updated_at: new Date().toISOString() })
-            .eq("location_id", r.location_id)
+            .eq("location_id", warehouseId)
             .eq("product_id", r.product_id);
         } else {
           await supabase.from("stock_balances").insert({
-            location_id: r.location_id,
+            location_id: warehouseId,
             product_id: r.product_id,
             quantity: qty,
             venue_id: venueId,
@@ -348,8 +323,8 @@ export function BulkStockIntakeGrid({
         }
       }
 
-      toast.success(`${computedRows.length} líneas ingresadas correctamente`);
-      setRows([createEmptyRow(defaultLocationId)]);
+      toast.success(`${computedRows.length} líneas ingresadas a Bodega Principal`);
+      setRows([createEmptyRow()]);
       setShowValidation(false);
       setSelectedRows(new Set());
       onStockUpdated();
@@ -363,11 +338,24 @@ export function BulkStockIntakeGrid({
 
   const hasErrors = (row: IntakeRow, field: string) => showValidation && row.errors[field];
 
-  // Product search filter
   const sortedProducts = useMemo(
     () => [...products].sort((a, b) => a.name.localeCompare(b.name)),
     [products]
   );
+
+  if (!warehouseId) {
+    return (
+      <Card className="border-destructive/30">
+        <CardContent className="py-8 text-center">
+          <AlertCircle className="h-10 w-10 mx-auto mb-3 text-destructive" />
+          <h3 className="font-semibold mb-1">Bodega Principal no configurada</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure una ubicación tipo "warehouse" en Barras y POS antes de ingresar stock.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="glass-effect border-primary/20">
@@ -377,10 +365,19 @@ export function BulkStockIntakeGrid({
           Ingreso manual masivo
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Ingrese productos tipo Excel. IVA (19%) e impuesto específico se calculan automáticamente.
+          IVA (19%) e impuesto específico se calculan automáticamente según categoría.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* ── Info banner ── */}
+        <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-4 py-3">
+          <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Todo ingreso se registra en <span className="font-semibold text-foreground">Bodega Principal</span>.
+            La distribución a barras se realiza desde el módulo <span className="font-semibold text-foreground">Reposición</span>.
+          </p>
+        </div>
+
         {/* ── Toolbar ── */}
         <div className="flex flex-wrap items-center gap-3">
           <Button size="sm" variant="outline" onClick={addRow}>
@@ -398,32 +395,15 @@ export function BulkStockIntakeGrid({
           >
             <Trash2 className="h-3.5 w-3.5 mr-1" /> Eliminar ({selectedRows.size})
           </Button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Ubicación default:</span>
-            <Select value={defaultLocationId} onValueChange={setDefaultLocationId}>
-              <SelectTrigger className="w-[180px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {locations.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name} ({l.type === "warehouse" ? "Bodega" : "Barra"})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
-        {/* ── Grid ── */}
+        {/* ── Grid (no location column) ── */}
         <div ref={tableRef} className="border rounded-lg overflow-auto max-h-[60vh]">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="w-8 text-center">#</TableHead>
                 <TableHead className="min-w-[200px]">Producto *</TableHead>
-                <TableHead className="min-w-[150px]">Ubicación *</TableHead>
                 <TableHead className="w-[90px]">Cantidad *</TableHead>
                 <TableHead className="w-[110px]">Neto unit. *</TableHead>
                 <TableHead className="min-w-[180px]">Cat. Impuesto *</TableHead>
@@ -435,10 +415,10 @@ export function BulkStockIntakeGrid({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {computedRows.map((row, idx) => (
+              {computedRows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={`${selectedRows.has(row.id) ? "bg-primary/5" : ""}`}
+                  className={selectedRows.has(row.id) ? "bg-primary/5" : ""}
                 >
                   <TableCell className="text-center">
                     <input
@@ -467,24 +447,6 @@ export function BulkStockIntakeGrid({
                     </select>
                   </TableCell>
 
-                  {/* Location */}
-                  <TableCell className="p-1">
-                    <select
-                      value={row.location_id}
-                      onChange={(e) => updateRow(row.id, "location_id", e.target.value)}
-                      className={`w-full h-8 text-xs rounded-md border px-2 bg-background ${
-                        hasErrors(row, "location_id") ? "border-destructive" : "border-input"
-                      }`}
-                    >
-                      <option value="">Seleccionar...</option>
-                      {locations.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </select>
-                  </TableCell>
-
                   {/* Quantity */}
                   <TableCell className="p-1">
                     <Input
@@ -505,7 +467,6 @@ export function BulkStockIntakeGrid({
                       step="1"
                       value={row.net_unit_cost}
                       onChange={(e) => updateRow(row.id, "net_unit_cost", e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, row.id, false)}
                       placeholder="$0"
                       className={`h-8 text-xs ${hasErrors(row, "net_unit_cost") ? "border-destructive" : ""}`}
                     />
@@ -573,18 +534,22 @@ export function BulkStockIntakeGrid({
             <div>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total Neto</p>
               <p className="text-sm font-semibold">{formatCLP(summary.net)}</p>
+              <p className="text-[9px] text-muted-foreground">→ Inventario</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">IVA Crédito Fiscal</p>
               <p className="text-sm font-semibold text-blue-600">{formatCLP(summary.vat)}</p>
+              <p className="text-[9px] text-muted-foreground">→ IVA Crédito</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Imp. Específico</p>
               <p className="text-sm font-semibold text-amber-600">{formatCLP(summary.specificTax)}</p>
+              <p className="text-[9px] text-muted-foreground">→ Gasto tributario</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Otros Impuestos</p>
               <p className="text-sm font-semibold">{formatCLP(summary.otherTax)}</p>
+              <p className="text-[9px] text-muted-foreground">→ Cuenta separada</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total General</p>
@@ -592,7 +557,7 @@ export function BulkStockIntakeGrid({
             </div>
           </div>
           <p className="text-[10px] text-muted-foreground text-center mt-2 italic">
-            El IVA no se suma al costo del producto; se registra como IVA crédito fiscal. El impuesto específico se reporta separado en EERR.
+            Neto → Inventario · IVA → Crédito Fiscal · Imp. Específico → Gasto tributario separado en EERR
           </p>
         </div>
 
