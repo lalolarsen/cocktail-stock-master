@@ -2914,7 +2914,9 @@ export type Database = {
           created_at: string | null
           id: string
           is_cancelled: boolean | null
+          iva_debit_amount: number | null
           jornada_id: string
+          net_amount: number | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: string
           point_of_sale: string
@@ -2924,6 +2926,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount: number
+          vat_rate: number | null
           venue_id: string
         }
         Insert: {
@@ -2931,7 +2934,9 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
+          iva_debit_amount?: number | null
           jornada_id: string
+          net_amount?: number | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale: string
@@ -2941,6 +2946,7 @@ export type Database = {
           sale_number: string
           seller_id: string
           total_amount?: number
+          vat_rate?: number | null
           venue_id: string
         }
         Update: {
@@ -2948,7 +2954,9 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_cancelled?: boolean | null
+          iva_debit_amount?: number | null
           jornada_id?: string
+          net_amount?: number | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: string
           point_of_sale?: string
@@ -2958,6 +2966,7 @@ export type Database = {
           sale_number?: string
           seller_id?: string
           total_amount?: number
+          vat_rate?: number | null
           venue_id?: string
         }
         Relationships: [
