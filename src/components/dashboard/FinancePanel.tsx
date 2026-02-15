@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  FileText, Scale, Landmark,
+  Scale, Landmark,
 } from "lucide-react";
 
 const MONTHS = [
@@ -102,6 +102,10 @@ export function FinancePanel() {
   const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
   const noSales = !mtd.loading && !hasAnyData;
 
+  // Validation checks
+  const opexMismatch = Math.abs(mtd.opexDetailSum - mtd.opexTotal) > 1;
+  const opexNoDetail = mtd.opexTotal > 0 && mtd.opexByCategory.length === 0;
+
   return (
     <div className="space-y-10">
       {/* ── Header ── */}
@@ -141,6 +145,24 @@ export function FinancePanel() {
         </Alert>
       )}
 
+      {/* Validation warnings */}
+      {!mtd.loading && opexMismatch && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-yellow-700">
+            <strong>Revisar: OPEX no cuadra.</strong> Detalle suma {formatCLP(mtd.opexDetailSum)} vs Total {formatCLP(mtd.opexTotal)}.
+          </AlertDescription>
+        </Alert>
+      )}
+      {!mtd.loading && opexNoDetail && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-yellow-700">
+            <strong>Bug: OPEX sin detalle.</strong> Total OPEX es {formatCLP(mtd.opexTotal)} pero no hay categorías.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {mtd.loading ? (
         <div className="space-y-10">
           <MetricGridSkeleton />
@@ -151,7 +173,7 @@ export function FinancePanel() {
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <AlertCircle className="w-8 h-8 text-muted-foreground opacity-50" />
             <p className="text-sm text-muted-foreground">
-              Aún no hay ventas en el periodo seleccionado.
+              Aún no hay datos en el periodo seleccionado.
             </p>
           </CardContent>
         </Card>
@@ -211,9 +233,9 @@ export function FinancePanel() {
                 </p>
 
                 {/* Sales block */}
-                <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesBruto} />
+                <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesGross} />
                 <StatementRow label="IVA débito fiscal" value={-mtd.ivaDebito} indent />
-                <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNeto} bold />
+                <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNet} bold />
 
                 <div className="border-t my-2" />
 
@@ -227,7 +249,6 @@ export function FinancePanel() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">
                   Impuestos Específicos (ILA / IABA)
                 </p>
-                {/* Category breakdown */}
                 {mtd.specificTaxBreakdown.iaba_10 > 0 && (
                   <StatementRow label="IABA 10%" value={-mtd.specificTaxBreakdown.iaba_10} indent negative />
                 )}
@@ -243,7 +264,6 @@ export function FinancePanel() {
                 {mtd.specificTaxBreakdown.ila_destilados > 0 && (
                   <StatementRow label="ILA Destilados 31,5%" value={-mtd.specificTaxBreakdown.ila_destilados} indent negative />
                 )}
-                {/* Source breakdown */}
                 <StatementRow label="Subtotal desde facturas importadas" value={-mtd.specificTaxFromInvoices} indent negative={mtd.specificTaxFromInvoices > 0} />
                 <StatementRow label="Subtotal desde gastos manuales" value={-mtd.specificTaxFromOpex} indent negative={mtd.specificTaxFromOpex > 0} />
                 <StatementRow label="Total impuestos específicos" value={-mtd.specificTaxTotal} bold negative />
@@ -251,12 +271,12 @@ export function FinancePanel() {
 
                 <div className="border-t my-2" />
 
-                {/* OPEX by category */}
+                {/* OPEX by category (single source, includes freight) */}
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">
                   Gastos Operacionales (OPEX)
                 </p>
 
-                {mtd.opexByCategory.length === 0 ? (
+                {mtd.opexByCategory.length === 0 && mtd.opexTotal === 0 ? (
                   <p className="text-sm text-muted-foreground pl-4 py-1">Sin gastos registrados</p>
                 ) : (
                   <Accordion type="multiple" className="w-full">
@@ -325,16 +345,6 @@ export function FinancePanel() {
                   bold
                   negative={mtd.ivaNeto > 0}
                 />
-
-                {mtd.freightFromImports > 0 && (
-                  <>
-                    <div className="border-t border-dashed my-2" />
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                      Flete desde importaciones
-                    </p>
-                    <StatementRow label="Flete/Transporte (facturas)" value={-mtd.freightFromImports} indent negative />
-                  </>
-                )}
               </CardContent>
             </Card>
           </section>
@@ -390,7 +400,7 @@ export function FinancePanel() {
       <AddOperationalExpenseDialog
         open={showExpenseDialog}
         onOpenChange={setShowExpenseDialog}
-        onSuccess={mtd.refresh}
+        onSuccess={() => mtd.refresh()}
       />
     </div>
   );

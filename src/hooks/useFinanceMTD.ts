@@ -28,30 +28,28 @@ export interface SpecificTaxBreakdown {
 }
 
 export interface FinanceMTD {
-  // Sales (read directly from sales table columns)
+  // Sales
   salesGross: number;
   salesNet: number;
   ivaDebito: number;
-  // Legacy compat aliases
   salesBruto: number;
   salesNeto: number;
   cogsTotal: number;
 
-  // Specific taxes (ILA/IABA) — separate from COGS
+  // Specific taxes (ILA/IABA) — separate block
   specificTaxTotal: number;
   specificTaxFromInvoices: number;
   specificTaxFromOpex: number;
   specificTaxBreakdown: SpecificTaxBreakdown;
 
-  // OPEX
+  // OPEX (single source, includes freight)
   opexTotal: number;
   opexByCategory: OpexCategoryBreakdown[];
   opexVatTotal: number;
+  /** Sum of opexByCategory totals — used for validation */
+  opexDetailSum: number;
 
-  // Freight from confirmed imports
-  freightFromImports: number;
-
-  // IVA crédito from invoices
+  // IVA crédito
   ivaCreditoFacturas: number;
   ivaCreditoFromImports: number;
   ivaCreditoTotal: number;
@@ -105,7 +103,6 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const [specificTaxBreakdown, setSpecificTaxBreakdown] = useState<SpecificTaxBreakdown>({
     iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0,
   });
-  const [freightFromImports, setFreightFromImports] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -116,7 +113,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
     try {
       const [salesRes, cogsRes, opexRes, invoiceRes, importsRes] = await Promise.all([
-        // Sales — read net_amount and iva_debit_amount directly
+        // Sales — read columns directly
         supabase
           .from("sales")
           .select("total_amount, net_amount, iva_debit_amount")
@@ -153,7 +150,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("document_date", start)
           .lte("document_date", end),
 
-        // Confirmed purchase_imports — IVA, specific taxes by category, freight (via financial_summary)
+        // Confirmed purchase_imports — IVA, specific taxes, freight
         supabase
           .from("purchase_imports" as any)
           .select("vat_amount, iaba_10_total, iaba_18_total, ila_vino_total, ila_cerveza_total, ila_destilados_total, specific_taxes_total, financial_summary")
@@ -163,23 +160,29 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .lte("document_date", end),
       ]);
 
-      // Sales — directly from columns
-      const rows = salesRes.data || [];
-      const gross = rows.reduce((s, r) => s + Number(r.total_amount || 0), 0);
-      const net = rows.reduce((s, r) => s + Number(r.net_amount || 0), 0);
-      const ivaD = rows.reduce((s, r) => s + Number(r.iva_debit_amount || 0), 0);
+      // ── Sales with fallback ──
+      const salesRows = salesRes.data || [];
+      let gross = 0, net = 0, ivaD = 0;
+      for (const r of salesRows) {
+        const total = Math.abs(Number(r.total_amount || 0));
+        const netVal = r.net_amount != null ? Math.abs(Number(r.net_amount)) : Math.round(total / 1.19);
+        const ivaVal = r.iva_debit_amount != null ? Math.abs(Number(r.iva_debit_amount)) : total - netVal;
+        gross += total;
+        net += netVal;
+        ivaD += ivaVal;
+      }
       setSalesGross(gross);
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // COGS
+      // ── COGS (abs to normalize) ──
       const cogs = (cogsRes.data || []).reduce(
-        (s, r) => s + Math.abs(Number(r.quantity)) * (Number(r.unit_cost) || 0),
-        0
+        (s, r) => s + Math.abs(Number(r.quantity)) * Math.abs(Number(r.unit_cost) || 0),
+        0,
       );
       setCogsTotal(cogs);
 
-      // OPEX by category
+      // ── OPEX by category (from operational_expenses) ──
       const categoryMap = new Map<string, OpexCategoryBreakdown>();
       for (const row of opexRes.data || []) {
         const cat = row.category || "otros";
@@ -187,10 +190,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           categoryMap.set(cat, { category: cat, netTotal: 0, vatTotal: 0, specificTaxTotal: 0, total: 0, items: [] });
         }
         const bucket = categoryMap.get(cat)!;
-        const netAmt = Number(row.net_amount) || Number(row.amount) || 0;
-        const vatAmt = Number(row.vat_amount) || 0;
-        const specAmt = Number(row.specific_tax_amount) || 0;
-        const totalAmt = Number(row.total_amount) || netAmt;
+        const netAmt = Math.abs(Number(row.net_amount) || Number(row.amount) || 0);
+        const vatAmt = Math.abs(Number(row.vat_amount) || 0);
+        const specAmt = Math.abs(Number(row.specific_tax_amount) || 0);
+        const totalAmt = Math.abs(Number(row.total_amount) || netAmt);
         bucket.netTotal += netAmt;
         bucket.vatTotal += vatAmt;
         bucket.specificTaxTotal += specAmt;
@@ -205,39 +208,59 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           total_amount: totalAmt,
         });
       }
-      setOpexByCategory(Array.from(categoryMap.values()).sort((a, b) => b.total - a.total));
 
-      // IVA crédito + specific tax from purchase_documents (legacy)
+      // ── IVA crédito + specific tax from purchase_documents (legacy) ──
       const invoiceRows = invoiceRes.data || [];
-      const creditoLegacy = invoiceRows.reduce((s, r) => s + Number(r.iva_amount || 0), 0);
+      const creditoLegacy = invoiceRows.reduce((s, r) => s + Math.abs(Number(r.iva_amount || 0)), 0);
       setIvaCreditoFacturas(creditoLegacy);
-      const specTaxLegacy = invoiceRows.reduce((s, r) => s + Number(r.specific_tax_amount || 0), 0);
+      const specTaxLegacy = invoiceRows.reduce((s, r) => s + Math.abs(Number(r.specific_tax_amount || 0)), 0);
 
-      // From confirmed purchase_imports (new system)
+      // ── From confirmed purchase_imports ──
       const importRows = (importsRes.data || []) as any[];
-      const creditoImports = importRows.reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0);
+      const creditoImports = importRows.reduce((s: number, r: any) => s + Math.abs(Number(r.vat_amount || 0)), 0);
       setIvaCreditoFromImports(creditoImports);
 
-      // Specific taxes by category from imports
+      // Specific taxes by category
       const breakdown: SpecificTaxBreakdown = { iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0 };
       let specTaxImports = 0;
       let freightTotal = 0;
       for (const r of importRows) {
-        breakdown.iaba_10 += Number(r.iaba_10_total || 0);
-        breakdown.iaba_18 += Number(r.iaba_18_total || 0);
-        breakdown.ila_vino += Number(r.ila_vino_total || 0);
-        breakdown.ila_cerveza += Number(r.ila_cerveza_total || 0);
-        breakdown.ila_destilados += Number(r.ila_destilados_total || 0);
-        specTaxImports += Number(r.specific_taxes_total || 0);
-        // Extract freight from financial_summary if available
+        breakdown.iaba_10 += Math.abs(Number(r.iaba_10_total || 0));
+        breakdown.iaba_18 += Math.abs(Number(r.iaba_18_total || 0));
+        breakdown.ila_vino += Math.abs(Number(r.ila_vino_total || 0));
+        breakdown.ila_cerveza += Math.abs(Number(r.ila_cerveza_total || 0));
+        breakdown.ila_destilados += Math.abs(Number(r.ila_destilados_total || 0));
+        specTaxImports += Math.abs(Number(r.specific_taxes_total || 0));
+        // Extract freight from financial_summary
         const fs = r.financial_summary as any;
         if (fs?.operational_expenses?.freight_total) {
-          freightTotal += fs.operational_expenses.freight_total;
+          freightTotal += Math.abs(fs.operational_expenses.freight_total);
         }
       }
       setSpecificTaxBreakdown(breakdown);
       setSpecificTaxFromInvoices(specTaxLegacy + specTaxImports);
-      setFreightFromImports(freightTotal);
+
+      // ── Integrate freight into OPEX as "transporte" category ──
+      if (freightTotal > 0) {
+        const freightCat = "transporte";
+        if (!categoryMap.has(freightCat)) {
+          categoryMap.set(freightCat, { category: freightCat, netTotal: 0, vatTotal: 0, specificTaxTotal: 0, total: 0, items: [] });
+        }
+        const bucket = categoryMap.get(freightCat)!;
+        bucket.netTotal += freightTotal;
+        bucket.total += freightTotal;
+        bucket.items.push({
+          id: `freight-imports-${start}`,
+          description: "Flete/Transporte (facturas importadas)",
+          expense_date: start,
+          net_amount: freightTotal,
+          vat_amount: 0,
+          specific_tax_amount: 0,
+          total_amount: freightTotal,
+        });
+      }
+
+      setOpexByCategory(Array.from(categoryMap.values()).sort((a, b) => b.total - a.total));
     } catch (err) {
       console.error("Error fetching finance MTD:", err);
     } finally {
@@ -249,16 +272,22 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     fetchData();
   }, [fetchData]);
 
-  // Derived — use direct DB values, no division
+  // ── Derived (all positive internally, signs applied in UI) ──
   const ivaDebito = ivaDebitoState;
   const salesNeto = salesNet;
   const salesBruto = salesGross;
-  const opexTotal = opexByCategory.reduce((s, c) => s + c.total, 0) + freightFromImports;
+
+  // OPEX total = sum of all category totals (single source, no separate freight)
+  const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
+  const opexTotal = opexDetailSum;
   const opexVatTotal = opexByCategory.reduce((s, c) => s + c.vatTotal, 0);
+
   const specificTaxFromOpex = opexByCategory.reduce((s, c) => s + c.specificTaxTotal, 0);
   const specificTaxTotal = specificTaxFromInvoices + specificTaxFromOpex;
   const ivaCreditoTotal = ivaCreditoFacturas + ivaCreditoFromImports;
   const ivaNeto = ivaDebito - ivaCreditoTotal;
+
+  // Results — all positive values, subtracted once
   const grossMargin = salesNeto - cogsTotal;
   const marginPostSpecificTax = grossMargin - specificTaxTotal;
   const operationalResult = marginPostSpecificTax - opexTotal;
@@ -292,10 +321,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     specificTaxFromInvoices,
     specificTaxFromOpex,
     specificTaxBreakdown,
-    freightFromImports,
     opexTotal,
     opexByCategory,
     opexVatTotal,
+    opexDetailSum,
     ivaCreditoFacturas,
     ivaCreditoFromImports,
     ivaCreditoTotal,
