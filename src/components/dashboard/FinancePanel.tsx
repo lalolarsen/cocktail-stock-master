@@ -99,7 +99,8 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const noSales = !mtd.loading && mtd.salesBruto === 0;
+  const hasAnyData = mtd.salesBruto > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
+  const noSales = !mtd.loading && !hasAnyData;
 
   return (
     <div className="space-y-10">
