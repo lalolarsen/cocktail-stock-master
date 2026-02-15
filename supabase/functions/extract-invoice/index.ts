@@ -62,7 +62,15 @@ serve(async (req) => {
     }
 
     const arrayBuffer = await fileData.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const bytes = new Uint8Array(arrayBuffer);
+
+    // Convert to base64 without spreading huge arrays (avoids call stack overflow)
+    let binary = "";
+    const chunkSize = 0x8000; // 32KB chunks
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
     const fileType = filePath.toLowerCase().endsWith(".pdf")
       ? "pdf"
       : filePath.toLowerCase().endsWith(".png")
@@ -73,7 +81,8 @@ serve(async (req) => {
     const rawExtraction = await extractWithAI(base64, fileType);
 
     // Detect freight lines and multipliers
-    const freightPatterns = /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a/i;
+    const freightPatterns =
+      /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a/i;
 
     const lines = rawExtraction.lines.map((line: any, idx: number) => {
       const rawName = line.raw_product_name || "";
@@ -92,7 +101,7 @@ serve(async (req) => {
           raw_text: rawName,
           qty_invoiced: qty || 1,
           unit_price_net: unitPrice > 0 ? unitPrice : null,
-          line_total_net: lineTotal > 0 ? lineTotal : (unitPrice > 0 ? unitPrice : null),
+          line_total_net: lineTotal > 0 ? lineTotal : unitPrice > 0 ? unitPrice : null,
           discount_pct: null,
           detected_multiplier: 1,
           units_real: 0,
