@@ -2224,13 +2224,16 @@ export type Database = {
           id: string
           line_index: number
           line_total_net: number | null
+          net_line_amount: number
           notes: string | null
           product_id: string | null
           purchase_import_id: string
           qty_invoiced: number | null
           raw_text: string | null
           status: string
+          tax_amount: number
           tax_category_id: string | null
+          tax_rate: number | null
           unit_price_net: number | null
           units_real: number
         }
@@ -2243,13 +2246,16 @@ export type Database = {
           id?: string
           line_index?: number
           line_total_net?: number | null
+          net_line_amount?: number
           notes?: string | null
           product_id?: string | null
           purchase_import_id: string
           qty_invoiced?: number | null
           raw_text?: string | null
           status?: string
+          tax_amount?: number
           tax_category_id?: string | null
+          tax_rate?: number | null
           unit_price_net?: number | null
           units_real?: number
         }
@@ -2262,13 +2268,16 @@ export type Database = {
           id?: string
           line_index?: number
           line_total_net?: number | null
+          net_line_amount?: number
           notes?: string | null
           product_id?: string | null
           purchase_import_id?: string
           qty_invoiced?: number | null
           raw_text?: string | null
           status?: string
+          tax_amount?: number
           tax_category_id?: string | null
+          tax_rate?: number | null
           unit_price_net?: number | null
           units_real?: number
         }
@@ -2331,12 +2340,18 @@ export type Database = {
           currency: string
           document_date: string | null
           document_number: string | null
+          iaba_10_total: number
+          iaba_18_total: number
           id: string
+          ila_cerveza_total: number
+          ila_destilados_total: number
+          ila_vino_total: number
           issues_count: number
           location_id: string
           net_subtotal: number | null
           raw_extraction_json: Json | null
           raw_file_url: string | null
+          specific_taxes_total: number
           status: string
           supplier_name: string | null
           supplier_rut: string | null
@@ -2351,12 +2366,18 @@ export type Database = {
           currency?: string
           document_date?: string | null
           document_number?: string | null
+          iaba_10_total?: number
+          iaba_18_total?: number
           id?: string
+          ila_cerveza_total?: number
+          ila_destilados_total?: number
+          ila_vino_total?: number
           issues_count?: number
           location_id: string
           net_subtotal?: number | null
           raw_extraction_json?: Json | null
           raw_file_url?: string | null
+          specific_taxes_total?: number
           status?: string
           supplier_name?: string | null
           supplier_rut?: string | null
@@ -2371,12 +2392,18 @@ export type Database = {
           currency?: string
           document_date?: string | null
           document_number?: string | null
+          iaba_10_total?: number
+          iaba_18_total?: number
           id?: string
+          ila_cerveza_total?: number
+          ila_destilados_total?: number
+          ila_vino_total?: number
           issues_count?: number
           location_id?: string
           net_subtotal?: number | null
           raw_extraction_json?: Json | null
           raw_file_url?: string | null
+          specific_taxes_total?: number
           status?: string
           supplier_name?: string | null
           supplier_rut?: string | null

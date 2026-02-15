@@ -28,9 +28,21 @@ interface ImportLine {
   product_id: string | null;
   classification: string;
   tax_category_id: string | null;
+  tax_rate: number | null;
+  net_line_amount: number;
+  tax_amount: number;
   status: string;
   notes: string | null;
 }
+
+// Tax category code mapping for header totals
+const TAX_CODE_MAP: Record<string, string> = {
+  IABA_10: "iaba_10_total",
+  IABA_18: "iaba_18_total",
+  ILA_VINO_205: "ila_vino_total",
+  ILA_CERVEZA_205: "ila_cerveza_total",
+  ILA_DEST_315: "ila_destilados_total",
+};
 
 interface Product {
   id: string;
@@ -78,13 +90,36 @@ export default function ProveedoresImportDetail() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // Line editing
+  // Recalculate header tax totals from all lines
+  const recalcHeaderTaxes = async (updatedLines: ImportLine[]) => {
+    if (!id) return;
+    const totals: Record<string, number> = {
+      iaba_10_total: 0, iaba_18_total: 0,
+      ila_vino_total: 0, ila_cerveza_total: 0, ila_destilados_total: 0,
+    };
+    for (const l of updatedLines) {
+      if (l.classification === "freight" || l.classification === "other_expense") continue;
+      if (!l.tax_category_id) continue;
+      const tc = taxCategories.find((c: any) => c.id === l.tax_category_id);
+      if (!tc?.code) continue;
+      const headerField = TAX_CODE_MAP[tc.code];
+      if (headerField) totals[headerField] += l.tax_amount || 0;
+    }
+    const specific_taxes_total = Object.values(totals).reduce((a, b) => a + b, 0);
+    await supabase.from("purchase_imports" as any).update({
+      ...totals, specific_taxes_total,
+    }).eq("id", id);
+  };
+
   const updateLine = async (lineId: string, updates: Partial<ImportLine>) => {
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
 
     const merged = { ...line, ...updates };
+    const isExpense = merged.classification === "freight" || merged.classification === "other_expense";
+
     // Recalculate derived fields (only for inventory lines)
-    if (merged.classification !== "freight" && merged.classification !== "other_expense") {
+    if (!isExpense) {
       if (updates.detected_multiplier !== undefined || updates.qty_invoiced !== undefined) {
         merged.units_real = (merged.qty_invoiced || 0) * (merged.detected_multiplier || 1);
       }
@@ -93,17 +128,40 @@ export default function ProveedoresImportDetail() {
         if (merged.discount_pct && merged.discount_pct > 0) packNet *= (1 - merged.discount_pct / 100);
         merged.cost_unit_net = merged.detected_multiplier > 0 ? Math.round((packNet / merged.detected_multiplier) * 100) / 100 : 0;
       }
+
+      // Calculate net_line_amount and tax_amount
+      merged.net_line_amount = merged.line_total_net
+        ? merged.line_total_net
+        : merged.units_real * merged.cost_unit_net;
+
+      // Look up tax rate from selected category
+      if (merged.tax_category_id) {
+        const tc = taxCategories.find((c: any) => c.id === merged.tax_category_id);
+        if (tc && tc.rate_pct > 0) {
+          merged.tax_rate = tc.rate_pct;
+          merged.tax_amount = Math.round(merged.net_line_amount * (tc.rate_pct / 100));
+        } else {
+          merged.tax_rate = 0;
+          merged.tax_amount = 0;
+        }
+      } else {
+        merged.tax_rate = null;
+        merged.tax_amount = 0;
+      }
     }
 
     // Auto status for expense lines
-    if (merged.classification === "freight" || merged.classification === "other_expense") {
+    if (isExpense) {
       merged.status = "OK";
       merged.product_id = null;
       merged.tax_category_id = null;
-      // Keep units_real as-is (not required for expenses)
+      merged.tax_rate = null;
+      merged.tax_amount = 0;
+      merged.net_line_amount = merged.line_total_net || merged.unit_price_net || 0;
     }
 
-    setLines(prev => prev.map(l => l.id === lineId ? merged : l));
+    const newLines = lines.map(l => l.id === lineId ? merged : l);
+    setLines(newLines);
 
     await supabase.from("purchase_import_lines" as any).update({
       product_id: merged.product_id,
@@ -118,7 +176,13 @@ export default function ProveedoresImportDetail() {
       line_total_net: merged.line_total_net,
       discount_pct: merged.discount_pct,
       tax_category_id: merged.tax_category_id,
+      tax_rate: merged.tax_rate,
+      net_line_amount: merged.net_line_amount,
+      tax_amount: merged.tax_amount,
     }).eq("id", lineId);
+
+    // Recalculate header totals
+    await recalcHeaderTaxes(newLines);
   };
 
   const markLineOK = async (lineId: string) => {
@@ -458,6 +522,7 @@ export default function ProveedoresImportDetail() {
                     <TableHead className="w-24">Costo/Monto neto</TableHead>
                     <TableHead className="min-w-[160px]">Producto / Cat. gasto</TableHead>
                     <TableHead className="min-w-[140px]">Cat. tributaria</TableHead>
+                    <TableHead className="w-20">Imp. espec.</TableHead>
                     <TableHead className="w-28">Clasif.</TableHead>
                     <TableHead className="w-16">Estado</TableHead>
                     <TableHead className="w-20"></TableHead>
@@ -558,6 +623,9 @@ export default function ProveedoresImportDetail() {
                           </Select>
                         )}
                       </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {isExpense ? "—" : line.tax_amount > 0 ? formatCLP(line.tax_amount) : "—"}
+                      </TableCell>
                       <TableCell>
                         <Select
                           value={line.classification}
@@ -605,8 +673,8 @@ export default function ProveedoresImportDetail() {
 
             {/* Totals */}
             <Card>
-              <CardContent className="p-4">
-                <div className="grid grid-cols-5 gap-4 text-sm">
+              <CardContent className="p-4 space-y-3">
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Líneas inventario</p>
                     <p className="font-semibold">{inventoryLines.length}</p>
@@ -614,6 +682,10 @@ export default function ProveedoresImportDetail() {
                   <div>
                     <p className="text-xs text-muted-foreground">Neto inventario</p>
                     <p className="font-semibold">{formatCLP(inventoryLines.reduce((s, l) => s + l.units_real * l.cost_unit_net, 0))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Imp. específicos</p>
+                    <p className="font-semibold text-primary">{formatCLP(inventoryLines.reduce((s, l) => s + (l.tax_amount || 0), 0))}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Gastos operacionales</p>
@@ -629,6 +701,22 @@ export default function ProveedoresImportDetail() {
                     <p className={`font-semibold ${reviewLines.length > 0 ? "text-amber-600" : "text-green-600"}`}>{reviewLines.length}</p>
                   </div>
                 </div>
+                {/* Tax breakdown by category */}
+                {inventoryLines.some(l => l.tax_amount > 0) && (
+                  <div className="border-t pt-2 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Desglose impuestos específicos:</p>
+                    {taxCategories.filter((tc: any) => tc.rate_pct > 0).map((tc: any) => {
+                      const catTotal = inventoryLines.filter(l => l.tax_category_id === tc.id).reduce((s, l) => s + (l.tax_amount || 0), 0);
+                      if (catTotal === 0) return null;
+                      return (
+                        <div key={tc.id} className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">{tc.name}</span>
+                          <span className="font-medium">{formatCLP(catTotal)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -656,15 +744,18 @@ export default function ProveedoresImportDetail() {
                   <div className="flex justify-between"><span className="text-muted-foreground">Productos inventariables</span><span className="font-medium">{inventoryLines.length} líneas</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Unidades totales</span><span className="font-medium">{inventoryLines.reduce((s, l) => s + l.units_real, 0)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Neto total inventario</span><span className="font-semibold">{formatCLP(inventoryLines.reduce((s, l) => s + l.units_real * l.cost_unit_net, 0))}</span></div>
-                  {imp.vat_amount && <div className="flex justify-between"><span className="text-muted-foreground">IVA Crédito Fiscal</span><span className="font-medium">{formatCLP(imp.vat_amount)}</span></div>}
-                  {taxes.filter((t: any) => t.tax_type === "specific_tax").length > 0 && (
+                  {inventoryLines.some(l => l.tax_amount > 0) && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Impuestos específicos</span>
-                      <span className="font-medium">{formatCLP(taxes.filter((t: any) => t.tax_type === "specific_tax").reduce((s: number, t: any) => s + t.tax_amount, 0))}</span>
+                      <span className="text-muted-foreground">Impuestos específicos (no afecta CPP)</span>
+                      <span className="font-medium text-primary">{formatCLP(inventoryLines.reduce((s, l) => s + (l.tax_amount || 0), 0))}</span>
                     </div>
                   )}
-                  {lines.filter(l => l.classification !== "inventory").length > 0 && (
-                    <div className="flex justify-between"><span className="text-muted-foreground">Gastos (flete/otros)</span><span className="font-medium">{lines.filter(l => l.classification !== "inventory").length} líneas</span></div>
+                  {imp.vat_amount && <div className="flex justify-between"><span className="text-muted-foreground">IVA Crédito Fiscal</span><span className="font-medium">{formatCLP(imp.vat_amount)}</span></div>}
+                  {expenseLines.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Gastos (flete/otros)</span>
+                      <span className="font-medium">{formatCLP(expensesTotal)} ({expenseLines.length} líneas)</span>
+                    </div>
                   )}
                 </div>
 
