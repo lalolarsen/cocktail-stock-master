@@ -100,7 +100,17 @@ export function FinancePanel() {
   }, []);
 
   const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
-  const noSales = !mtd.loading && !hasAnyData;
+  const noDataAtAll = !mtd.loading && !hasAnyData;
+  const hasSales = mtd.salesGross > 0;
+
+  // When no sales, COGS and margins must be 0 (stock entries are NOT cost of sales)
+  const displayCogs = hasSales ? mtd.cogsTotal : 0;
+  const displayGrossMargin = hasSales ? mtd.grossMargin : 0;
+  const displayMarginPct = hasSales ? mtd.marginPct : 0;
+  const displayMarginPostTax = hasSales ? mtd.marginPostSpecificTax : -mtd.specificTaxTotal;
+  const displayOperationalResult = hasSales
+    ? mtd.operationalResult
+    : -(mtd.specificTaxTotal + mtd.opexTotal);
 
   // Validation checks
   const opexMismatch = Math.abs(mtd.opexDetailSum - mtd.opexTotal) > 1;
@@ -168,7 +178,7 @@ export function FinancePanel() {
           <MetricGridSkeleton />
           <MetricGridSkeleton />
         </div>
-      ) : noSales ? (
+      ) : noDataAtAll ? (
         <Card className="border-dashed">
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <AlertCircle className="w-8 h-8 text-muted-foreground opacity-50" />
@@ -186,11 +196,13 @@ export function FinancePanel() {
                 Estado de Resultados (MTD)
               </h2>
               <Badge variant="secondary" className="text-xs font-medium tabular-nums">
-                Margen {mtd.marginPct.toFixed(1)}%
+                Margen {displayMarginPct.toFixed(1)}%
               </Badge>
-              <Badge variant="secondary" className="text-xs font-medium tabular-nums">
-                OPEX {mtd.opexPct.toFixed(1)}%
-              </Badge>
+              {hasSales && (
+                <Badge variant="secondary" className="text-xs font-medium tabular-nums">
+                  OPEX {mtd.opexPct.toFixed(1)}%
+                </Badge>
+              )}
             </div>
 
             {/* Key metrics cards */}
@@ -198,13 +210,13 @@ export function FinancePanel() {
               <MetricCard label="Ventas brutas" value={formatCLP(mtd.salesGross)} icon={DollarSign} />
               <MetricCard label="IVA Débito Fiscal" value={formatCLP(mtd.ivaDebito)} icon={Scale} />
               <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNet)} icon={DollarSign} />
-              <MetricCard label="COGS (neto)" value={formatCLP(mtd.cogsTotal)} icon={Receipt} />
+              <MetricCard label="COGS (neto)" value={formatCLP(displayCogs)} icon={Receipt} />
               <MetricCard
                 label="Margen Bruto"
-                value={formatCLP(mtd.grossMargin)}
-                sub={`${mtd.marginPct.toFixed(1)}%`}
+                value={formatCLP(displayGrossMargin)}
+                sub={`${displayMarginPct.toFixed(1)}%`}
                 icon={TrendingUp}
-                negative={mtd.grossMargin < 0}
+                negative={displayGrossMargin < 0}
               />
               <MetricCard
                 label="Imp. específicos (ILA/IABA)"
@@ -214,14 +226,14 @@ export function FinancePanel() {
               <MetricCard
                 label="Total OPEX"
                 value={formatCLP(mtd.opexTotal)}
-                sub={`${mtd.opexPct.toFixed(1)}% de ventas`}
+                sub={hasSales ? `${mtd.opexPct.toFixed(1)}% de ventas` : undefined}
                 icon={BarChart3}
               />
               <MetricCard
                 label="Resultado Operacional"
-                value={formatCLP(mtd.operationalResult)}
-                icon={mtd.operationalResult >= 0 ? TrendingUp : TrendingDown}
-                negative={mtd.operationalResult < 0}
+                value={formatCLP(displayOperationalResult)}
+                icon={displayOperationalResult >= 0 ? TrendingUp : TrendingDown}
+                negative={displayOperationalResult < 0}
               />
             </div>
 
@@ -240,8 +252,14 @@ export function FinancePanel() {
                 <div className="border-t my-2" />
 
                 {/* COGS */}
-                <StatementRow label="Costo de ventas (COGS neto)" value={-mtd.cogsTotal} negative />
-                <StatementRow label="Margen bruto" value={mtd.grossMargin} bold negative={mtd.grossMargin < 0} />
+                {!hasSales ? (
+                  <p className="text-sm text-muted-foreground py-1 italic">Sin ventas en el período — COGS y margen no aplican</p>
+                ) : (
+                  <>
+                    <StatementRow label="Costo de ventas (COGS neto)" value={-displayCogs} negative />
+                    <StatementRow label="Margen bruto" value={displayGrossMargin} bold negative={displayGrossMargin < 0} />
+                  </>
+                )}
 
                 <div className="border-t my-2" />
 
@@ -267,7 +285,7 @@ export function FinancePanel() {
                 <StatementRow label="Subtotal desde facturas importadas" value={-mtd.specificTaxFromInvoices} indent negative={mtd.specificTaxFromInvoices > 0} />
                 <StatementRow label="Subtotal desde gastos manuales" value={-mtd.specificTaxFromOpex} indent negative={mtd.specificTaxFromOpex > 0} />
                 <StatementRow label="Total impuestos específicos" value={-mtd.specificTaxTotal} bold negative />
-                <StatementRow label="Margen post impuestos específicos" value={mtd.marginPostSpecificTax} bold negative={mtd.marginPostSpecificTax < 0} />
+                <StatementRow label="Margen post impuestos específicos" value={displayMarginPostTax} bold negative={displayMarginPostTax < 0} />
 
                 <div className="border-t my-2" />
 
@@ -326,7 +344,7 @@ export function FinancePanel() {
                 <div className="border-t my-2" />
 
                 {/* Operating result */}
-                <StatementRow label="Resultado operacional" value={mtd.operationalResult} bold negative={mtd.operationalResult < 0} />
+                <StatementRow label="Resultado operacional" value={displayOperationalResult} bold negative={displayOperationalResult < 0} />
 
                 <div className="border-t border-dashed my-3" />
 
