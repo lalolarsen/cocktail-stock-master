@@ -23,6 +23,7 @@ import Tickets from "./pages/Tickets";
 import Income from "./pages/Income";
 import IncomeStatement from "./pages/IncomeStatement";
 import PurchasesImport from "./pages/PurchasesImport";
+import ProveedoresImportDetail from "./pages/ProveedoresImportDetail";
 import PendingCatalog from "./pages/PendingCatalog";
 import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
 import SystemMonitoring from "./pages/SystemMonitoring";
@@ -122,6 +123,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <PurchasesImport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/proveedores/import/:id"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <ProveedoresImportDetail />
           </ProtectedRoute>
         }
       />

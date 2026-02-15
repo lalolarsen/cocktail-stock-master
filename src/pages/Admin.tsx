@@ -16,6 +16,7 @@ import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
+import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -24,7 +25,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { VenueGuard } from "@/components/VenueGuard";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores";
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -85,6 +86,7 @@ export default function Admin() {
       case "notifications": return "Notificaciones";
       case "tickets": return "Tipos de Entrada";
       case "finance": return "Finanzas";
+      case "proveedores": return "Proveedores";
       default: return "Panel de Administración";
     }
   };
@@ -192,6 +194,12 @@ export default function Admin() {
             {activeView === "finance" && (
               <div className="space-y-6">
                 <FinancePanel />
+              </div>
+            )}
+
+            {activeView === "proveedores" && !isReadOnly && (
+              <div className="space-y-6">
+                <ProveedoresPanel />
               </div>
             )}
           </div>
