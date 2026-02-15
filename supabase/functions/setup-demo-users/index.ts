@@ -111,7 +111,6 @@ Deno.serve(async (req) => {
             email: demoUser.email,
             full_name: demoUser.name,
             rut_code: demoUser.rut,
-            worker_pin: demoUser.pin,
             venue_id: venueId,
             is_active: true,
             internal_email: demoUser.email
@@ -128,7 +127,6 @@ Deno.serve(async (req) => {
           .from("profiles")
           .update({
             rut_code: demoUser.rut,
-            worker_pin: demoUser.pin,
             venue_id: venueId,
             is_active: true,
             full_name: demoUser.name,

@@ -1839,7 +1839,6 @@ export type Database = {
           point_of_sale: string | null
           rut_code: string | null
           venue_id: string | null
-          worker_pin: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1852,7 +1851,6 @@ export type Database = {
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
-          worker_pin?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1865,7 +1863,6 @@ export type Database = {
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
-          worker_pin?: string | null
         }
         Relationships: [
           {

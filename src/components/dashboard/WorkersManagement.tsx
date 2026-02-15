@@ -49,7 +49,6 @@ interface Worker {
   email: string;
   full_name: string | null;
   point_of_sale: string | null;
-  worker_pin: string | null;
   role: string | null;
 }
 
@@ -58,7 +57,6 @@ interface NewWorker {
   password: string;
   full_name: string;
   point_of_sale: string;
-  worker_pin: string;
   role: "admin" | "vendedor" | "gerencia" | "bar";
 }
 
@@ -87,7 +85,6 @@ export function WorkersManagement() {
     password: "",
     full_name: "",
     point_of_sale: "",
-    worker_pin: "",
     role: "vendedor",
   });
 
@@ -99,7 +96,7 @@ export function WorkersManagement() {
     try {
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, point_of_sale, worker_pin");
+        .select("id, email, full_name, point_of_sale");
 
       if (profilesError) throw profilesError;
 
@@ -152,8 +149,7 @@ export function WorkersManagement() {
     setSavingId(workerId);
 
     try {
-      const updates: { worker_pin?: string; point_of_sale?: string } = {};
-      if (newPin?.trim()) updates.worker_pin = newPin;
+      const updates: { point_of_sale?: string } = {};
       if (newPos?.trim()) updates.point_of_sale = newPos;
 
       const { error } = await supabase
@@ -184,8 +180,8 @@ export function WorkersManagement() {
   };
 
   const createWorker = async () => {
-    if (!newWorker.email || !newWorker.password || !newWorker.worker_pin) {
-      toast.error("Email, contraseña y PIN son requeridos");
+    if (!newWorker.email || !newWorker.password) {
+      toast.error("Email y contraseña son requeridos");
       return;
     }
 
@@ -220,7 +216,6 @@ export function WorkersManagement() {
         .update({
           full_name: newWorker.full_name,
           point_of_sale: newWorker.point_of_sale,
-          worker_pin: newWorker.worker_pin,
         })
         .eq("id", authData.user.id);
 
@@ -247,7 +242,6 @@ export function WorkersManagement() {
         password: "",
         full_name: "",
         point_of_sale: "",
-        worker_pin: "",
         role: "vendedor",
       });
       
@@ -421,16 +415,6 @@ export function WorkersManagement() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="new-pin">PIN de Identificación *</Label>
-                <Input
-                  id="new-pin"
-                  type="text"
-                  placeholder="1234"
-                  value={newWorker.worker_pin}
-                  onChange={(e) => setNewWorker({ ...newWorker, worker_pin: e.target.value })}
-                />
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="new-role">Rol *</Label>
@@ -516,13 +500,7 @@ export function WorkersManagement() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Key className="w-4 h-4 text-muted-foreground" />
-                      <Input
-                        type="text"
-                        placeholder={worker.worker_pin ? "••••" : "Sin PIN"}
-                        value={editingPins[worker.id] ?? ""}
-                        onChange={(e) => handlePinChange(worker.id, e.target.value)}
-                        className="w-24"
-                      />
+                      <span className="text-xs text-muted-foreground">PIN gestionado vía Auth</span>
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
