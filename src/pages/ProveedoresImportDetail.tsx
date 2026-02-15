@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, Plus, Trash2, RefreshCw } from "lucide-react";
+import ProductPicker from "@/components/purchase/ProductPicker";
 
 interface ImportLine {
   id: string;
@@ -483,24 +484,16 @@ export default function ProveedoresImportDetail() {
                       <TableCell className="text-xs font-medium">{line.units_real}</TableCell>
                       <TableCell className="text-xs">{formatCLP(line.cost_unit_net)}</TableCell>
                       <TableCell>
-                        {line.classification === "freight" ? (
+                      {line.classification === "freight" ? (
                           <span className="text-xs text-muted-foreground italic">Flete</span>
                         ) : (
-                          <Select
-                            value={line.product_id || ""}
-                            onValueChange={(v) => updateLine(line.id, { product_id: v || null })}
-                          >
-                            <SelectTrigger className="h-7 text-xs">
-                              <SelectValue placeholder="Seleccionar..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {products.map(p => (
-                                <SelectItem key={p.id} value={p.id} className="text-xs">
-                                  {p.name} {p.code ? `(${p.code})` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <ProductPicker
+                            venueId={venue?.id || ""}
+                            value={line.product_id}
+                            displayName={products.find(p => p.id === line.product_id)?.name}
+                            disabled={imp.status === "CONFIRMED"}
+                            onSelect={(pid, pname) => updateLine(line.id, { product_id: pid })}
+                          />
                         )}
                       </TableCell>
                       <TableCell>
