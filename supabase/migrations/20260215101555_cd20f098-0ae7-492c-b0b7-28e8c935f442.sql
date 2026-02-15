@@ -1,0 +1,15 @@
+
+-- Add per-line tax calculation columns to purchase_import_lines
+ALTER TABLE purchase_import_lines
+ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS net_line_amount NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS tax_amount NUMERIC NOT NULL DEFAULT 0;
+
+-- Add specific tax totals to purchase_imports header
+ALTER TABLE purchase_imports
+ADD COLUMN IF NOT EXISTS iaba_10_total NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS iaba_18_total NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS ila_vino_total NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS ila_cerveza_total NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS ila_destilados_total NUMERIC NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS specific_taxes_total NUMERIC NOT NULL DEFAULT 0;
