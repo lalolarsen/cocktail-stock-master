@@ -22,6 +22,7 @@ export interface ProductWithStock {
   unit: string;
   minimum_stock: number;
   cost_per_unit: number;
+  capacity_ml: number | null;
   code: string;
   is_mixer: boolean;
   // Stock data from balances
@@ -172,6 +173,7 @@ export const useStockData = () => {
           unit: product.unit,
           minimum_stock: product.minimum_stock,
           cost_per_unit: product.cost_per_unit || 0,
+          capacity_ml: product.capacity_ml || null,
           code: product.code,
           is_mixer: product.is_mixer || false,
           warehouseStock: breakdown?.warehouseStock || 0,
