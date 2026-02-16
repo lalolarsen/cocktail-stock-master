@@ -1862,6 +1862,7 @@ export type Database = {
       }
       products: {
         Row: {
+          capacity_ml: number | null
           category: Database["public"]["Enums"]["product_category"]
           code: string
           cost_per_unit: number
@@ -1878,6 +1879,7 @@ export type Database = {
           venue_id: string
         }
         Insert: {
+          capacity_ml?: number | null
           category: Database["public"]["Enums"]["product_category"]
           code: string
           cost_per_unit?: number
@@ -1894,6 +1896,7 @@ export type Database = {
           venue_id: string
         }
         Update: {
+          capacity_ml?: number | null
           category?: Database["public"]["Enums"]["product_category"]
           code?: string
           cost_per_unit?: number
