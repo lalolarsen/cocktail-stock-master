@@ -91,23 +91,11 @@ interface CocktailsMenuProps {
   isReadOnly?: boolean;
 }
 
-// Category display config
-const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; order: number }> = {
-  botellas: { label: "Botellas", icon: Wine, order: 1 },
-  espumantes: { label: "Espumantes", icon: Sparkles, order: 2 },
-  destilados: { label: "Destilados", icon: GlassWater, order: 3 },
-  cocteleria: { label: "Coctelería", icon: Wine, order: 4 },
-  shots: { label: "Shots", icon: GlassWater, order: 5 },
-  botellines: { label: "Botellines", icon: Beer, order: 6 },
-  cervezas_shop: { label: "Cervezas Shop", icon: Beer, order: 7 },
-  sin_alcohol: { label: "Sin Alcohol", icon: GlassWater, order: 8 },
-  promociones: { label: "Promociones", icon: Tag, order: 9 },
-  otros: { label: "Otros", icon: Package, order: 10 },
-};
+import { normalizeCategory, getCategoryDef, compareCategoryOrder, CATEGORIES } from "@/lib/categories";
 
 const getCategoryConfig = (category: string) => {
-  const normalized = category.toLowerCase().replace(/\s+/g, '_');
-  return CATEGORY_CONFIG[normalized] || { label: category, icon: Package, order: 99 };
+  const def = getCategoryDef(category);
+  return { label: def.label, icon: def.icon, order: def.order };
 };
 
 export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
@@ -142,24 +130,20 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
     const groups: Record<string, CocktailWithIngredients[]> = {};
     filtered.forEach(cocktail => {
-      const category = cocktail.category.toLowerCase().replace(/\s+/g, '_');
+      const category = normalizeCategory(cocktail.category);
       if (!groups[category]) groups[category] = [];
       groups[category].push(cocktail);
     });
 
     // Sort groups by configured order
     return Object.entries(groups)
-      .sort(([a], [b]) => {
-        const orderA = getCategoryConfig(a).order;
-        const orderB = getCategoryConfig(b).order;
-        return orderA - orderB;
-      });
+      .sort(([a], [b]) => compareCategoryOrder(a, b));
   }, [cocktails, searchTerm]);
 
   // Auto-expand all categories on load
   useEffect(() => {
     if (cocktails.length > 0 && expandedCategories.size === 0) {
-      const allCategories = new Set(cocktails.map(c => c.category.toLowerCase().replace(/\s+/g, '_')));
+      const allCategories = new Set(cocktails.map(c => normalizeCategory(c.category)));
       setExpandedCategories(allCategories);
     }
   }, [cocktails]);
@@ -676,9 +660,9 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
                   <SelectValue placeholder="Seleccionar categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                  {Object.entries(CATEGORIES).map(([key, def]) => (
                     <SelectItem key={key} value={key}>
-                      {config.label}
+                      {def.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -748,9 +732,9 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
                   <SelectValue placeholder="Seleccionar categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                  {Object.entries(CATEGORIES).map(([key, def]) => (
                     <SelectItem key={key} value={key}>
-                      {config.label}
+                      {def.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
