@@ -59,6 +59,8 @@ type POSTerminal = {
   is_active: boolean;
   pos_type: string;
   is_cash_register: boolean;
+  auto_redeem: boolean;
+  bar_location_id: string | null;
 };
 
 // BarLocation removed - bar is determined at redemption time, not at sale
@@ -396,6 +398,13 @@ export default function Sales() {
       return;
     }
 
+    // Block hybrid POS without bar association
+    const activePOS = posTerminals.find(p => p.id === selectedPosId);
+    if (activePOS?.auto_redeem && !activePOS.bar_location_id) {
+      toast.error("Este POS está en modo híbrido, pero no tiene barra asociada. Configúrala en Admin > Puntos de Venta.");
+      return;
+    }
+
     setLoading(true);
     setIssuingDocument(true);
 
@@ -585,6 +594,35 @@ export default function Sales() {
         }
       }
 
+      // AUTO-REDEEM: If POS is in hybrid mode, auto-redeem the token immediately
+      const currentPos = posTerminals.find(p => p.id === selectedPosId);
+      if (currentPos?.auto_redeem && currentPos.bar_location_id) {
+        try {
+          const { data: redeemResult, error: redeemError } = await supabase.rpc(
+            "auto_redeem_sale_token",
+            {
+              p_sale_id: sale.id,
+              p_bar_location_id: currentPos.bar_location_id,
+              p_seller_id: session.session.user.id,
+            }
+          );
+          if (redeemError) {
+            console.warn("Auto-redeem error:", redeemError);
+            toast.warning("Venta registrada pero el auto-canje falló. El QR queda pendiente.");
+          } else {
+            const rdResult = redeemResult as { success: boolean; bar_name?: string; missing_items?: any[] };
+            if (rdResult.success && pickupData) {
+              pickupData.barName = rdResult.bar_name || undefined;
+            }
+            if (rdResult.missing_items && (rdResult.missing_items as any[]).length > 0) {
+              toast.warning("Auto-canje completado con stock insuficiente en algunos ingredientes.");
+            }
+          }
+        } catch (e) {
+          console.warn("Auto-redeem exception:", e);
+        }
+      }
+
       // Show success screen
       setLastSaleData({
         saleNumber,
@@ -756,8 +794,8 @@ export default function Sales() {
       </div>
     );
   }
-
   const selectedPosName = posTerminals.find(p => p.id === selectedPosId)?.name;
+  const selectedPosObj = posTerminals.find(p => p.id === selectedPosId);
 
   // Success Screen after sale
   if (showSuccessScreen && lastSaleData) {
@@ -817,6 +855,16 @@ export default function Sales() {
                 <Store className="w-3.5 h-3.5" />
                 {selectedPosName}
               </span>
+              {selectedPosObj?.auto_redeem && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 font-medium">
+                  Híbrido · Auto-canje
+                </span>
+              )}
+              {!selectedPosObj?.auto_redeem && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">
+                  Normal · QR pendiente
+                </span>
+              )}
               <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={changePosSelection}>
                 Cambiar
               </Button>
