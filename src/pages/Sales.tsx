@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X, Undo2 } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X, Undo2, Gift } from "lucide-react";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
+import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -47,6 +48,8 @@ type CartItem = {
   cocktail: Cocktail;
   quantity: number;
   addons: SelectedAddon[];
+  isCourtesy?: boolean;
+  courtesyCode?: string;
 };
 
 type POSTerminal = {
@@ -84,6 +87,7 @@ export default function Sales() {
   
   // Clear cart confirmation
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showCourtesyRedeem, setShowCourtesyRedeem] = useState(false);
   
   // Success screen state
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
@@ -262,15 +266,31 @@ export default function Sales() {
     }
   };
 
-  const addToCart = (cocktail: Cocktail) => {
-    // Don't add products without price
-    if (!cocktail.price || cocktail.price <= 0) return;
-    setLastRemovedItem(null); // clear undo on new add
-    const existing = cart.find((item) => item.cocktail.id === cocktail.id);
+  const addToCart = (cocktail: Cocktail, opts?: { isCourtesy?: boolean; courtesyCode?: string; overrideQty?: number }) => {
+    // Don't add products without price (unless courtesy)
+    if (!opts?.isCourtesy && (!cocktail.price || cocktail.price <= 0)) return;
+    setLastRemovedItem(null);
+    
+    if (opts?.isCourtesy) {
+      // Courtesy items are always separate entries
+      setCart((prev) => [
+        ...prev,
+        {
+          cocktail: { ...cocktail, price: 0 },
+          quantity: opts.overrideQty || 1,
+          addons: [],
+          isCourtesy: true,
+          courtesyCode: opts.courtesyCode,
+        },
+      ]);
+      return;
+    }
+    
+    const existing = cart.find((item) => item.cocktail.id === cocktail.id && !item.isCourtesy);
     if (existing) {
       setCart(
         cart.map((item) =>
-          item.cocktail.id === cocktail.id
+          item.cocktail.id === cocktail.id && !item.isCourtesy
             ? { ...item, quantity: item.quantity + 1 }
             : item
         )
@@ -278,6 +298,18 @@ export default function Sales() {
     } else {
       setCart([...cart, { cocktail, quantity: 1, addons: [] }]);
     }
+  };
+
+  const handleCourtesyRedeemed = (item: { cocktailId: string; name: string; qty: number }) => {
+    // Find the cocktail in loaded data, or create a minimal one
+    const cocktail = cocktails.find((c) => c.id === item.cocktailId) || {
+      id: item.cocktailId,
+      name: item.name,
+      price: 0,
+      category: "cortesia",
+    };
+    addToCart(cocktail, { isCourtesy: true, overrideQty: item.qty });
+    toast.success(`Cortesía agregada: ${item.name} × ${item.qty}`);
   };
 
   const updateCartItemAddons = (cocktailId: string, addons: SelectedAddon[]) => {
@@ -385,14 +417,17 @@ export default function Sales() {
       if (seqError) throw seqError;
       const saleNumber = saleNumberData as string;
       const totalAmount = calculateTotal();
+      
+      // Determine if this is a courtesy sale
+      const hasCourtesyItems = cart.some((item) => item.isCourtesy);
+      const isFullCourtesy = cart.every((item) => item.isCourtesy);
 
       // Card = external POS handles receipt in hybrid mode, internal in unified mode
       // Cash = always internal receipt
       const isCardPayment = paymentMethod === "card";
-      const shouldIssueInternally = receiptMode === "unified" || !isCardPayment;
-      const receiptSource = (isCardPayment && receiptMode === "hybrid") ? "external" : "internal";
-      // Payment method is now directly compatible with DB enum (cash | card)
-      const dbPaymentMethod = paymentMethod;
+      const shouldIssueInternally = !isFullCourtesy && (receiptMode === "unified" || !isCardPayment);
+      const receiptSource = isFullCourtesy ? "internal" : ((isCardPayment && receiptMode === "hybrid") ? "external" : "internal");
+      const dbPaymentMethod = isFullCourtesy ? "cash" : paymentMethod;
 
       const { data: sale, error: saleError } = await supabase
         .from("sales")
@@ -400,14 +435,16 @@ export default function Sales() {
           sale_number: saleNumber,
           seller_id: session.session.user.id,
           total_amount: totalAmount,
+          net_amount: isFullCourtesy ? 0 : null,
+          iva_debit_amount: isFullCourtesy ? 0 : null,
           point_of_sale: pointOfSale || selectedPos?.name || "POS",
           payment_method: dbPaymentMethod,
           payment_status: "paid",
           pos_id: selectedPosId,
-          bar_location_id: null, // Bar determined at redemption
-          jornada_id: activeJornadaId, // Required: NOT NULL
+          bar_location_id: null,
+          jornada_id: activeJornadaId,
           receipt_source: receiptSource,
-          sale_category: "alcohol", // Alcohol sales module
+          sale_category: isFullCourtesy ? "courtesy" : "alcohol",
           venue_id: venue?.id!,
         })
         .select()
@@ -463,18 +500,53 @@ export default function Sales() {
         }
       }
 
-      // Record gross income entry
-      await supabase
-        .from("gross_income_entries")
-        .insert({
-          venue_id: sale.venue_id || "00000000-0000-0000-0000-000000000000",
-          source_type: "sale",
-          source_id: sale.id,
-          amount: Math.round(totalAmount),
-          description: `Venta ${saleNumber}`,
-          jornada_id: activeJornadaId || null,
-          created_by: session.session.user.id
-        });
+      // Record courtesy redemptions if applicable
+      const courtesyItems = cart.filter((item) => item.isCourtesy && item.courtesyCode);
+      for (const cItem of courtesyItems) {
+        // Update courtesy_qr used_count + status
+        const { data: qr } = await supabase
+          .from("courtesy_qr")
+          .select("id, used_count, max_uses")
+          .eq("code", cItem.courtesyCode!)
+          .maybeSingle();
+        
+        if (qr) {
+          const newUsedCount = (qr.used_count || 0) + 1;
+          const newStatus = newUsedCount >= qr.max_uses ? "redeemed" : "active";
+          await supabase
+            .from("courtesy_qr")
+            .update({ used_count: newUsedCount, status: newStatus })
+            .eq("id", qr.id);
+
+          // Insert redemption record
+          await supabase
+            .from("courtesy_redemptions")
+            .insert({
+              courtesy_id: qr.id,
+              redeemed_by: session.session.user.id,
+              pos_id: selectedPosId,
+              jornada_id: activeJornadaId!,
+              sale_id: sale.id,
+              result: "success",
+              venue_id: venue?.id!,
+            });
+        }
+      }
+
+      // Record gross income entry (only if non-courtesy amount > 0)
+      if (totalAmount > 0) {
+        await supabase
+          .from("gross_income_entries")
+          .insert({
+            venue_id: sale.venue_id || "00000000-0000-0000-0000-000000000000",
+            source_type: "sale",
+            source_id: sale.id,
+            amount: Math.round(totalAmount),
+            description: isFullCourtesy ? `Cortesía ${saleNumber}` : `Venta ${saleNumber}`,
+            jornada_id: activeJornadaId || null,
+            created_by: session.session.user.id
+          });
+      }
 
       // Issue receipt based on config mode:
       // - hybrid: only cash issues receipt internally
@@ -781,7 +853,19 @@ export default function Sales() {
             {/* Cart */}
             <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 p-4 flex flex-col">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold">Carrito</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold">Carrito</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => setShowCourtesyRedeem(true)}
+                    disabled={!hasActiveJornada}
+                  >
+                    <Gift className="w-3 h-3" />
+                    Cortesía
+                  </Button>
+                </div>
                 <div className="flex items-center gap-1">
                   {lastRemovedItem && (
                     <Button
@@ -826,14 +910,19 @@ export default function Sales() {
                           
                           return (
                             <div
-                              key={item.cocktail.id}
-                              className="p-3 bg-muted/50 rounded-lg space-y-2"
+                              key={`${item.cocktail.id}-${item.isCourtesy ? 'c' : 'r'}`}
+                              className={`p-3 rounded-lg space-y-2 ${item.isCourtesy ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-medium truncate">{item.cocktail.name}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-medium truncate">{item.cocktail.name}</p>
+                                    {item.isCourtesy && (
+                                      <span className="text-[10px] font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded">CORTESÍA</span>
+                                    )}
+                                  </div>
                                   <p className="text-sm text-muted-foreground">
-                                    {formatCLP(itemTotal)}
+                                    {item.isCourtesy ? "$0 (cortesía)" : formatCLP(itemTotal)}
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -1064,6 +1153,13 @@ export default function Sales() {
             barName={pickupQRData.barName}
           />
         )}
+
+        {/* Courtesy Redeem Dialog */}
+        <CourtesyRedeemDialog
+          open={showCourtesyRedeem}
+          onClose={() => setShowCourtesyRedeem(false)}
+          onRedeemed={handleCourtesyRedeemed}
+        />
       </>
     </VenueGuard>
   );

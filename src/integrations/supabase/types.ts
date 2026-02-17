@@ -322,6 +322,144 @@ export type Database = {
           },
         ]
       }
+      courtesy_qr: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          max_uses: number
+          note: string | null
+          product_id: string
+          product_name: string
+          qty: number
+          status: string
+          used_count: number
+          venue_id: string
+        }
+        Insert: {
+          code?: string
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          max_uses?: number
+          note?: string | null
+          product_id: string
+          product_name?: string
+          qty?: number
+          status?: string
+          used_count?: number
+          venue_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          max_uses?: number
+          note?: string | null
+          product_id?: string
+          product_name?: string
+          qty?: number
+          status?: string
+          used_count?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courtesy_qr_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courtesy_qr_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courtesy_redemptions: {
+        Row: {
+          courtesy_id: string
+          id: string
+          jornada_id: string
+          pos_id: string | null
+          reason: string | null
+          redeemed_at: string
+          redeemed_by: string
+          result: string
+          sale_id: string | null
+          venue_id: string
+        }
+        Insert: {
+          courtesy_id: string
+          id?: string
+          jornada_id: string
+          pos_id?: string | null
+          reason?: string | null
+          redeemed_at?: string
+          redeemed_by: string
+          result?: string
+          sale_id?: string | null
+          venue_id: string
+        }
+        Update: {
+          courtesy_id?: string
+          id?: string
+          jornada_id?: string
+          pos_id?: string | null
+          reason?: string | null
+          redeemed_at?: string
+          redeemed_by?: string
+          result?: string
+          sale_id?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courtesy_redemptions_courtesy_id_fkey"
+            columns: ["courtesy_id"]
+            isOneToOne: false
+            referencedRelation: "courtesy_qr"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courtesy_redemptions_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courtesy_redemptions_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courtesy_redemptions_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courtesy_redemptions_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       demo_event_logs: {
         Row: {
           created_at: string | null
