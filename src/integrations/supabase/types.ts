@@ -1848,6 +1848,8 @@ export type Database = {
       }
       pos_terminals: {
         Row: {
+          auto_redeem: boolean
+          bar_location_id: string | null
           business_type: string | null
           code: string | null
           created_at: string
@@ -1863,6 +1865,8 @@ export type Database = {
           zone: string | null
         }
         Insert: {
+          auto_redeem?: boolean
+          bar_location_id?: string | null
           business_type?: string | null
           code?: string | null
           created_at?: string
@@ -1878,6 +1882,8 @@ export type Database = {
           zone?: string | null
         }
         Update: {
+          auto_redeem?: boolean
+          bar_location_id?: string | null
           business_type?: string | null
           code?: string | null
           created_at?: string
@@ -1893,6 +1899,13 @@ export type Database = {
           zone?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pos_terminals_bar_location_id_fkey"
+            columns: ["bar_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pos_terminals_location_id_fkey"
             columns: ["location_id"]
@@ -4433,6 +4446,14 @@ export type Database = {
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
+      auto_redeem_sale_token: {
+        Args: {
+          p_bar_location_id: string
+          p_sale_id: string
+          p_seller_id: string
+        }
+        Returns: Json
+      }
       check_jornada_cost_completeness: {
         Args: { p_jornada_id: string }
         Returns: {

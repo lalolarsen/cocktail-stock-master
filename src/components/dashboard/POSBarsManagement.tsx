@@ -56,11 +56,14 @@ interface POSTerminal {
   id: string;
   name: string;
   location_id: string | null;
+  bar_location_id: string | null;
+  auto_redeem: boolean;
   is_active: boolean;
   created_at: string;
   pos_type: POSType;
   is_cash_register: boolean;
   location?: StockLocation | null;
+  bar_location?: StockLocation | null;
 }
 
 type FilterKey = "all" | "active" | "inactive" | "cash" | "no_cash" | "alcohol" | "tickets";
@@ -131,19 +134,31 @@ function TerminalRow({
         if (!tag) onEdit();
       }}
     >
-      {/* Left: icon + name + type */}
+      {/* Left: icon + name + type + hybrid info */}
       <div className="flex items-center gap-3 min-w-0">
         <div className="p-2 rounded-md bg-secondary">
           <Monitor className="w-4 h-4 text-foreground" />
         </div>
         <div className="min-w-0">
           <p className="font-medium text-sm truncate">{terminal.name}</p>
-          <Badge
-            variant="outline"
-            className="text-[10px] mt-0.5 font-normal"
-          >
-            {POS_TYPE_LABELS[terminal.pos_type] ?? terminal.pos_type}
-          </Badge>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <Badge
+              variant="outline"
+              className="text-[10px] font-normal"
+            >
+              {POS_TYPE_LABELS[terminal.pos_type] ?? terminal.pos_type}
+            </Badge>
+            {terminal.auto_redeem && (
+              <Badge variant="outline" className="text-[10px] font-normal border-amber-500/40 text-amber-600 bg-amber-500/10">
+                Híbrido
+              </Badge>
+            )}
+            {terminal.auto_redeem && terminal.bar_location && (
+              <span className="text-[10px] text-muted-foreground">
+                → {terminal.bar_location.name}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -196,11 +211,13 @@ function TerminalDialog({
   editing: POSTerminal | null;
   terminals: POSTerminal[];
   barLocations: StockLocation[];
-  onSave: (data: { name: string; posType: POSType; locationId: string | null; isActive: boolean }) => void;
+  onSave: (data: { name: string; posType: POSType; locationId: string | null; barLocationId: string | null; autoRedeem: boolean; isActive: boolean }) => void;
 }) {
   const [name, setName] = useState("");
   const [posType, setPosType] = useState<POSType>("alcohol_sales");
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [barLocationId, setBarLocationId] = useState<string | null>(null);
+  const [autoRedeem, setAutoRedeem] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [touched, setTouched] = useState(false);
 
@@ -210,11 +227,15 @@ function TerminalDialog({
         setName(editing.name);
         setPosType(editing.pos_type || "alcohol_sales");
         setLocationId(editing.location_id || null);
+        setBarLocationId(editing.bar_location_id || null);
+        setAutoRedeem(editing.auto_redeem || false);
         setIsActive(editing.is_active);
       } else {
         setName("");
         setPosType("alcohol_sales");
         setLocationId(null);
+        setBarLocationId(null);
+        setAutoRedeem(false);
         setIsActive(true);
       }
       setTouched(false);
@@ -231,11 +252,14 @@ function TerminalDialog({
       ? "Ya existe un terminal con ese nombre."
       : null;
 
-  const canSave = name.trim().length >= 3 && posType && !(posType === "bar_redemption" && !locationId);
+  const canSave = name.trim().length >= 3 && posType && !(posType === "bar_redemption" && !locationId) && !(autoRedeem && !barLocationId);
+
+  // Show hybrid section for alcohol_sales and ticket_sales (not bar_redemption)
+  const showHybridSection = posType !== "bar_redemption";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Editar terminal POS" : "Nuevo terminal POS"}</DialogTitle>
         </DialogHeader>
@@ -267,6 +291,7 @@ function TerminalDialog({
                 const val = v as POSType;
                 setPosType(val);
                 if (val !== "bar_redemption") setLocationId(null);
+                if (val === "bar_redemption") { setAutoRedeem(false); setBarLocationId(null); }
               }}
               className="space-y-2"
             >
@@ -304,7 +329,42 @@ function TerminalDialog({
             )}
           </div>
 
-          {/* Section C: Estado */}
+          {/* Section C: Hybrid mode (only for cashier POS) */}
+          {showHybridSection && (
+            <div className="space-y-3">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Modo de operación</Label>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">Modo híbrido (auto-canje al vender)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Descuenta stock automáticamente al confirmar la venta, sin esperar lectura de QR en barra.
+                  </p>
+                </div>
+                <Switch checked={autoRedeem} onCheckedChange={(v) => { setAutoRedeem(v); if (!v) setBarLocationId(null); }} />
+              </div>
+
+              {autoRedeem && (
+                <div className="space-y-1">
+                  <Label>Barra asociada (descuento de stock)</Label>
+                  <Select value={barLocationId || ""} onValueChange={(v) => setBarLocationId(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona una barra" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {barLocations.filter((l) => l?.id && l.is_active).map((loc) => (
+                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-amber-600">
+                    ⚠ Obligatorio en modo híbrido. El stock se descontará de esta barra al cobrar.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section D: Estado */}
           <div className="space-y-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Estado</Label>
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
@@ -321,7 +381,7 @@ function TerminalDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button
             disabled={!canSave}
-            onClick={() => onSave({ name: name.trim(), posType, locationId, isActive })}
+            onClick={() => onSave({ name: name.trim(), posType, locationId, barLocationId, autoRedeem, isActive })}
           >
             {editing ? "Guardar" : "Crear terminal"}
           </Button>
@@ -360,7 +420,7 @@ export function POSBarsManagement() {
     try {
       const [locResult, posResult] = await Promise.all([
         supabase.from("stock_locations").select("*").order("type", { ascending: false }).order("name"),
-        supabase.from("pos_terminals").select("*, location:stock_locations(*)").order("name"),
+        supabase.from("pos_terminals").select("*, location:stock_locations!pos_terminals_location_id_fkey(*), bar_location:stock_locations!pos_terminals_bar_location_id_fkey(*)").order("name"),
       ]);
       if (locResult.error) throw locResult.error;
       if (posResult.error) throw posResult.error;
@@ -398,26 +458,39 @@ export function POSBarsManagement() {
   }, [terminals, search, filter]);
 
   /* ── Handlers ── */
-  const handleSavePOS = async (data: { name: string; posType: POSType; locationId: string | null; isActive: boolean }) => {
+  const handleSavePOS = async (data: { name: string; posType: POSType; locationId: string | null; barLocationId: string | null; autoRedeem: boolean; isActive: boolean }) => {
     if (data.posType === "bar_redemption" && !data.locationId) {
       toast.error("Los lectores de barra requieren una ubicación asociada");
+      return;
+    }
+    if (data.autoRedeem && !data.barLocationId) {
+      toast.error("En modo híbrido debes seleccionar una barra asociada");
       return;
     }
     try {
       const isCashRegister = data.posType !== "bar_redemption";
       const locationId = data.locationId || null;
+      const payload = {
+        name: data.name,
+        location_id: locationId,
+        pos_type: data.posType,
+        is_cash_register: isCashRegister,
+        is_active: data.isActive,
+        auto_redeem: data.autoRedeem,
+        bar_location_id: data.barLocationId || null,
+      };
 
       if (editingPOS) {
         const { error } = await supabase
           .from("pos_terminals")
-          .update({ name: data.name, location_id: locationId, pos_type: data.posType, is_cash_register: isCashRegister, is_active: data.isActive })
+          .update(payload)
           .eq("id", editingPOS.id);
         if (error) throw error;
         toast.success("Cambios guardados");
       } else {
         const { error } = await supabase
           .from("pos_terminals")
-          .insert({ name: data.name, location_id: locationId, pos_type: data.posType, is_cash_register: isCashRegister, is_active: data.isActive });
+          .insert(payload);
         if (error) throw error;
         toast.success("Terminal creado");
       }
