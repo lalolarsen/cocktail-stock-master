@@ -158,27 +158,18 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   // ── Active jornada subscription ──
   const fetchActiveJornada = useCallback(async () => {
     try {
-      // Calculate today in America/Santiago timezone using reliable Intl API
-      const formatter = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Santiago",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
-      const today = formatter.format(new Date()); // Returns YYYY-MM-DD
-
-      console.log("[Jornada] Checking active jornada for date:", today);
+      console.log("[Jornada] Checking active jornada for venue:", DEFAULT_VENUE_ID);
 
       const { data, error } = await supabase
         .from("jornadas")
         .select("id")
+        .eq("venue_id", DEFAULT_VENUE_ID)
         .eq("estado", "activa")
-        .eq("fecha", today)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      console.log("[Jornada] Result:", { data, error, today });
+      console.log("[Jornada] Result:", { data, error });
 
       if (!error) {
         setActiveJornadaId(data?.id || null);

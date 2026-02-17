@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,10 +62,11 @@ export function JornadaStatus() {
 
   const fetchActiveJornada = async () => {
     try {
-      // Get OPEN jornada only (estado = 'activa')
+      // Get OPEN jornada only (estado = 'activa') for the current venue
       const { data, error } = await supabase
         .from("jornadas")
         .select("*")
+        .eq("venue_id", DEFAULT_VENUE_ID)
         .eq("estado", "activa")
         .order("created_at", { ascending: false })
         .limit(1)
