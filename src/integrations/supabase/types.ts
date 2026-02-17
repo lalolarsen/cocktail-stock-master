@@ -4446,14 +4446,24 @@ export type Database = {
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
-      auto_redeem_sale_token: {
-        Args: {
-          p_bar_location_id: string
-          p_sale_id: string
-          p_seller_id: string
-        }
-        Returns: Json
-      }
+      auto_redeem_sale_token:
+        | {
+            Args: {
+              p_bar_location_id: string
+              p_sale_id: string
+              p_seller_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_bar_location_id: string
+              p_mixer_overrides?: Json
+              p_sale_id: string
+              p_seller_id: string
+            }
+            Returns: Json
+          }
       check_jornada_cost_completeness: {
         Args: { p_jornada_id: string }
         Returns: {
@@ -4461,6 +4471,10 @@ export type Database = {
           missing_items: Json
           total_cogs: number
         }[]
+      }
+      check_sale_mixer_requirements: {
+        Args: { p_sale_id: string }
+        Returns: Json
       }
       check_token_mixer_requirements: {
         Args: { p_token: string }
