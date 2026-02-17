@@ -240,3 +240,12 @@
     @apply text-xs text-muted-foreground uppercase tracking-wide;
   }
 }
+
+/* Hide scrollbar for horizontal chip containers */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

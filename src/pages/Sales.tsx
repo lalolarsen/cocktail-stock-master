@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X, Undo2 } from "lucide-react";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { useNavigate } from "react-router-dom";
@@ -63,8 +64,8 @@ export default function Sales() {
   const { activeJornadaId, hasActiveJornada } = useAppSession();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const { venue } = useActiveVenue();
-  const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [lastRemovedItem, setLastRemovedItem] = useState<CartItem | null>(null);
   const [pointOfSale, setPointOfSale] = useState("");
   const [loading, setLoading] = useState(false);
   const [issuingDocument, setIssuingDocument] = useState(false);
@@ -128,7 +129,6 @@ export default function Sales() {
 
   useEffect(() => {
     if (isVerified && !showPosSelection && venue?.id) {
-      fetchCocktails();
       fetchRecentSales();
       fetchUserPointOfSale();
     }
@@ -208,22 +208,25 @@ export default function Sales() {
     }
   };
 
-  const fetchCocktails = async () => {
-    if (!venue?.id) return;
-    
-    const { data, error } = await supabase
-      .from("cocktails")
-      .select("*")
-      .eq("venue_id", venue.id)
-      .order("name");
-
-    if (error) {
-      toast.error("Error al cargar productos");
-      return;
-    }
-
-    setCocktails(data || []);
-  };
+  // Cached cocktails query
+  const { data: cocktails = [] } = useQuery({
+    queryKey: ["cocktails-pos", venue?.id],
+    queryFn: async () => {
+      if (!venue?.id) return [];
+      const { data, error } = await supabase
+        .from("cocktails")
+        .select("*")
+        .eq("venue_id", venue.id)
+        .order("name");
+      if (error) {
+        toast.error("Error al cargar productos");
+        return [];
+      }
+      return (data || []) as Cocktail[];
+    },
+    enabled: !!venue?.id && isVerified && !showPosSelection,
+    staleTime: 5 * 60 * 1000, // 5 min cache
+  });
 
   const fetchRecentSales = async () => {
     const { data: session } = await supabase.auth.getSession();
@@ -260,6 +263,9 @@ export default function Sales() {
   };
 
   const addToCart = (cocktail: Cocktail) => {
+    // Don't add products without price
+    if (!cocktail.price || cocktail.price <= 0) return;
+    setLastRemovedItem(null); // clear undo on new add
     const existing = cart.find((item) => item.cocktail.id === cocktail.id);
     if (existing) {
       setCart(
@@ -290,7 +296,8 @@ export default function Sales() {
           i.cocktail.id === cocktailId ? { ...i, quantity: i.quantity - 1 } : i
         )
       );
-    } else {
+    } else if (item) {
+      setLastRemovedItem(item);
       setCart(cart.filter((i) => i.cocktail.id !== cocktailId));
     }
   };
@@ -305,8 +312,16 @@ export default function Sales() {
     );
   };
 
+  const undoLastRemove = () => {
+    if (lastRemovedItem) {
+      setCart((prev) => [...prev, lastRemovedItem]);
+      setLastRemovedItem(null);
+    }
+  };
+
   const clearCart = () => {
     setCart([]);
+    setLastRemovedItem(null);
     setShowClearConfirm(false);
   };
 
@@ -773,21 +788,39 @@ export default function Sales() {
                     <ShoppingCart className="w-5 h-5" />
                     <h2 className="text-lg font-semibold">Carrito</h2>
                   </div>
-                  {cart.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setShowClearConfirm(true)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {lastRemovedItem && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-primary"
+                        onClick={undoLastRemove}
+                        title="Deshacer"
+                      >
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {cart.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setShowClearConfirm(true)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {cart.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                    Carrito vacío
+                  <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                    <span>Carrito vacío</span>
+                    {lastRemovedItem && (
+                      <Button variant="outline" size="sm" onClick={undoLastRemove}>
+                        <Undo2 className="w-4 h-4 mr-1" /> Deshacer
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -809,23 +842,23 @@ export default function Sales() {
                                     {formatCLP(itemTotal)}
                                   </p>
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                   <Button
                                     size="icon"
                                     variant="outline"
-                                    className="h-8 w-8"
+                                    className="h-11 w-11 min-w-[44px] min-h-[44px]"
                                     onClick={() => decreaseQuantity(item.cocktail.id)}
                                   >
-                                    <Minus className="w-4 h-4" />
+                                    <Minus className="w-5 h-5" />
                                   </Button>
-                                  <span className="w-8 text-center font-bold">{item.quantity}</span>
+                                  <span className="w-8 text-center font-bold text-lg">{item.quantity}</span>
                                   <Button
                                     size="icon"
                                     variant="outline"
-                                    className="h-8 w-8"
+                                    className="h-11 w-11 min-w-[44px] min-h-[44px]"
                                     onClick={() => increaseQuantity(item.cocktail.id)}
                                   >
-                                    <Plus className="w-4 h-4" />
+                                    <Plus className="w-5 h-5" />
                                   </Button>
                                 </div>
                               </div>
@@ -925,7 +958,7 @@ export default function Sales() {
                       {/* Cobrar Button */}
                       <Button
                         onClick={processSale}
-                        disabled={loading}
+                        disabled={loading || !hasActiveJornada}
                         className="w-full text-lg py-6"
                         size="lg"
                       >
