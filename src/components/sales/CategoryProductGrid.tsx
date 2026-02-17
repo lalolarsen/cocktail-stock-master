@@ -1,12 +1,13 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { formatCLP } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { Flame, Search, X, Ban } from "lucide-react";
+import { Flame, Search, X, Ban, PackageOpen } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -32,12 +33,21 @@ interface CategoryProductGridProps {
   jornadaId?: string | null;
 }
 
+const ITEMS_PER_PAGE = 40;
+
 export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: CategoryProductGridProps) {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // "popular" is the default selected category
+  const [selectedCategory, setSelectedCategory] = useState<string>("popular");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const searchRef = useRef<HTMLInputElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
+
+  // Reset visible count when category changes
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [selectedCategory]);
 
   // Debounce search 150ms
   useEffect(() => {
@@ -45,7 +55,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch top selling products for current jornada
+  // Fetch top selling products for current jornada (top 12)
   const { data: topSelling = [] } = useQuery({
     queryKey: ["top-selling-products", jornadaId],
     queryFn: async () => {
@@ -62,7 +72,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
       });
       return Object.entries(agg)
         .sort(([, a], [, b]) => b - a)
-        .slice(0, 6)
+        .slice(0, 12)
         .map(([id, qty]) => ({ cocktailId: id, quantity: qty }));
     },
     enabled: !!jornadaId,
@@ -89,13 +99,12 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
   // Group products by normalized category
   const categorizedProducts = useMemo(() => {
     const groups: Record<string, Cocktail[]> = {};
-    if (popularProducts.length > 0) groups["popular"] = popularProducts;
+    groups["popular"] = popularProducts;
     normalizedCocktails.forEach((cocktail) => {
       const cat = cocktail.category;
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(cocktail);
     });
-    // Sort alphabetically within each group (except popular)
     Object.keys(groups).forEach((cat) => {
       if (cat !== "popular") groups[cat].sort((a, b) => a.name.localeCompare(b.name));
     });
@@ -105,14 +114,13 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
   // Sorted category keys
   const sortedCategories = useMemo(() => {
     return Object.keys(categorizedProducts).sort((a, b) => {
-      // "popular" always first
       if (a === "popular") return -1;
       if (b === "popular") return 1;
       return compareCategoryOrder(a, b);
     });
   }, [categorizedProducts]);
 
-  // Search-filtered products (flat list when searching)
+  // Search-filtered products
   const searchResults = useMemo(() => {
     if (!debouncedSearch) return null;
     const q = debouncedSearch.toLowerCase();
@@ -121,19 +129,21 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
     );
   }, [debouncedSearch, normalizedCocktails]);
 
-  // Products to display
-  const displayProducts = useMemo(() => {
-    if (searchResults) return { resultados: searchResults };
-    if (selectedCategory) return { [selectedCategory]: categorizedProducts[selectedCategory] || [] };
-    return categorizedProducts;
+  // Products to display — only the selected category (lazy)
+  const displayProducts = useMemo((): Cocktail[] => {
+    if (searchResults) return searchResults;
+    return categorizedProducts[selectedCategory] || [];
   }, [searchResults, selectedCategory, categorizedProducts]);
 
-  const getChipColor = (category: string) => {
-    if (category === "popular") return "bg-primary/10 text-primary border-primary/30";
-    return getCategoryDef(category).chipColor;
-  };
+  // Paginated slice
+  const visibleProducts = useMemo(() => {
+    return displayProducts.slice(0, visibleCount);
+  }, [displayProducts, visibleCount]);
+
+  const hasMore = displayProducts.length > visibleCount;
+
   const getLabel = (category: string) => {
-    if (category === "popular") return "🔥 Más Vendidos";
+    if (category === "popular") return "Más vendidos";
     return getCategoryDef(category).label;
   };
 
@@ -152,10 +162,11 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
   );
 
   const isSearching = debouncedSearch.length > 0;
+  const isPopularEmpty = selectedCategory === "popular" && popularProducts.length === 0 && !isSearching;
 
   return (
-    <div className="h-full flex flex-col gap-2">
-      {/* Sticky search bar */}
+    <div className="h-full flex flex-col gap-3">
+      {/* Search bar */}
       <div className="relative shrink-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         <Input
@@ -165,7 +176,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearchKeyDown}
-          className="pl-9 pr-9 h-11"
+          className="pl-9 pr-9 h-12 text-base bg-card border-border/50"
         />
         {searchQuery && (
           <button
@@ -178,43 +189,31 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
         )}
       </div>
 
-      {/* Category chips – horizontal snap scroll */}
+      {/* Category chips */}
       {!isSearching && (
         <div
           ref={chipsRef}
-          className="flex gap-2 overflow-x-auto pb-1 shrink-0 snap-x snap-mandatory scrollbar-none"
+          className="flex gap-1.5 overflow-x-auto pb-1 shrink-0 snap-x snap-mandatory scrollbar-none"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <Badge
-            variant="outline"
-            className={cn(
-              "cursor-pointer shrink-0 px-3 py-2 text-sm font-medium transition-all snap-start min-h-[44px] flex items-center",
-              !selectedCategory
-                ? "bg-primary text-primary-foreground border-primary"
-                : "hover:bg-muted"
-            )}
-            onClick={() => setSelectedCategory(null)}
-          >
-            Todo
-          </Badge>
           {sortedCategories.map((category) => {
             const isSelected = selectedCategory === category;
+            const isPopular = category === "popular";
             return (
-              <Badge
+              <button
                 key={category}
-                variant="outline"
+                type="button"
                 className={cn(
-                  "cursor-pointer shrink-0 px-3 py-2 text-sm font-medium transition-all snap-start min-h-[44px] flex items-center",
+                  "shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-all snap-start min-h-[44px] whitespace-nowrap border",
                   isSelected
                     ? "bg-primary text-primary-foreground border-primary"
-                    : getChipColor(category),
-                  "hover:opacity-80"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
                 )}
-                onClick={() => setSelectedCategory(isSelected ? null : category)}
+                onClick={() => setSelectedCategory(category)}
               >
-                {category === "popular" && <Flame className="w-3 h-3 mr-1" />}
+                {isPopular && <Flame className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />}
                 {getLabel(category)}
-              </Badge>
+              </button>
             );
           })}
         </div>
@@ -222,105 +221,115 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
 
       {/* Products grid */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="space-y-4 pr-1">
-          {Object.entries(displayProducts).map(([category, products]) => {
-            const chipColor = getChipColor(category);
-            const label = getLabel(category);
-            const isPopular = category === "popular";
+        {/* Popular empty state */}
+        {isPopularEmpty && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 px-4">
+            <Flame className="w-10 h-10 text-muted-foreground/30" />
+            <div>
+              <p className="text-muted-foreground font-medium">Aún no hay ventas</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">
+                Esta sección se activará automáticamente con las primeras ventas de la jornada.
+              </p>
+            </div>
+          </div>
+        )}
 
-            return (
-              <div key={category}>
-                {/* Category header */}
-                {!selectedCategory && !isSearching && (
-                  <div className="flex items-center gap-2 mb-2 sticky top-0 bg-card/95 backdrop-blur py-1 z-10">
-                    <Badge variant="outline" className={cn("text-xs", chipColor)}>
-                      {isPopular && <Flame className="w-3 h-3 mr-1" />}
-                      {label}
-                    </Badge>
-                    <div className="h-px flex-1 bg-border/50" />
-                    <span className="text-xs text-muted-foreground">{products.length}</span>
-                  </div>
-                )}
+        {/* Category empty state */}
+        {!isPopularEmpty && displayProducts.length === 0 && !isSearching && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 px-4">
+            <PackageOpen className="w-10 h-10 text-muted-foreground/30" />
+            <div>
+              <p className="text-muted-foreground font-medium">No hay productos en esta categoría</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">
+                Usa el buscador o selecciona otra categoría
+              </p>
+            </div>
+          </div>
+        )}
 
-                <div
-                  className={cn(
-                    "grid gap-2",
-                    isPopular
-                      ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
-                  )}
+        {/* Search no results */}
+        {isSearching && searchResults?.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-2 px-4">
+            <Search className="w-10 h-10 text-muted-foreground/30" />
+            <p className="text-muted-foreground">
+              Sin resultados para "<span className="font-medium text-foreground">{debouncedSearch}</span>"
+            </p>
+          </div>
+        )}
+
+        {/* Product cards */}
+        {visibleProducts.length > 0 && (
+          <div className="space-y-3 pr-1">
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {visibleProducts.map((cocktail) => (
+                <ProductCard
+                  key={cocktail.id}
+                  cocktail={cocktail}
+                  onAddToCart={onAddToCart}
+                />
+              ))}
+            </div>
+
+            {hasMore && (
+              <div className="text-center py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setVisibleCount((p) => p + ITEMS_PER_PAGE)}
                 >
-                  {products.map((cocktail) => {
-                    const hasNoPrice = !cocktail.price || cocktail.price <= 0;
-                    return (
-                      <ProductCard
-                        key={cocktail.id}
-                        cocktail={cocktail}
-                        isPopular={isPopular}
-                        hasNoPrice={hasNoPrice}
-                        onAddToCart={onAddToCart}
-                      />
-                    );
-                  })}
-                </div>
+                  Cargar más ({displayProducts.length - visibleCount} restantes)
+                </Button>
               </div>
-            );
-          })}
+            )}
+          </div>
+        )}
 
-          {normalizedCocktails.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              No hay productos disponibles
+        {/* Global empty: no cocktails at all */}
+        {normalizedCocktails.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 px-4">
+            <PackageOpen className="w-10 h-10 text-muted-foreground/30" />
+            <div>
+              <p className="text-muted-foreground font-medium">No hay productos disponibles</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">
+                No hay categorías configuradas para venta
+              </p>
             </div>
-          )}
-
-          {isSearching && searchResults?.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              Sin resultados para "{debouncedSearch}"
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/** Extracted product card for performance (React.memo) */
-import React from "react";
-
+/** Product card — memoized for performance */
 const ProductCard = React.memo(function ProductCard({
   cocktail,
-  isPopular,
-  hasNoPrice,
   onAddToCart,
 }: {
   cocktail: Cocktail;
-  isPopular: boolean;
-  hasNoPrice: boolean;
   onAddToCart: (c: Cocktail) => void;
 }) {
+  const hasNoPrice = !cocktail.price || cocktail.price <= 0;
+
   if (hasNoPrice) {
     return (
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Card
-              className={cn(
-                "p-3 select-none opacity-50 cursor-not-allowed min-h-[80px] flex items-center justify-center",
-                isPopular && "border-primary/20 bg-primary/5"
-              )}
+            <div
+              className="p-3 select-none opacity-40 cursor-not-allowed min-h-[72px] flex flex-col items-start justify-center rounded-md border border-border/30 bg-card/50"
             >
-              <div className="text-center space-y-0.5">
-                <h3 className="font-semibold text-sm leading-tight line-clamp-2">
-                  {cocktail.name}
-                </h3>
-                <div className="text-xs text-destructive flex items-center justify-center gap-1">
-                  <Ban className="w-3 h-3" /> Sin precio
-                </div>
-              </div>
-            </Card>
+              <span className="text-sm font-medium leading-tight truncate w-full">
+                {cocktail.name}
+              </span>
+              <span className="text-xs text-destructive flex items-center gap-1 mt-1">
+                <Ban className="w-3 h-3" /> Sin precio
+              </span>
+            </div>
           </TooltipTrigger>
           <TooltipContent side="top">
-            <p>Producto sin precio configurado, no se puede vender</p>
+            <p>Producto sin precio configurado</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -328,21 +337,17 @@ const ProductCard = React.memo(function ProductCard({
   }
 
   return (
-    <Card
-      className={cn(
-        "p-3 cursor-pointer transition-all hover:shadow-md hover:border-primary/50 active:scale-[0.97] select-none min-h-[80px] flex items-center justify-center",
-        isPopular && "border-primary/20 bg-primary/5"
-      )}
+    <button
+      type="button"
+      className="p-3 text-left rounded-md border border-border/30 bg-card hover:border-primary/50 active:scale-[0.97] transition-all select-none min-h-[72px] flex flex-col justify-between w-full"
       onClick={() => onAddToCart(cocktail)}
     >
-      <div className="text-center space-y-0.5">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">
-          {cocktail.name}
-        </h3>
-        <div className="text-lg font-bold text-primary">
-          {formatCLP(cocktail.price)}
-        </div>
-      </div>
-    </Card>
+      <span className="text-sm font-medium leading-tight line-clamp-1 text-foreground">
+        {cocktail.name}
+      </span>
+      <span className="text-lg font-bold text-primary mt-1">
+        {formatCLP(cocktail.price)}
+      </span>
+    </button>
   );
 });
