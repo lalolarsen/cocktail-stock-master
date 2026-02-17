@@ -24,6 +24,16 @@ export interface TransferLine {
   product: ReplenishmentProduct;
   quantity: number;
   estimatedCost: number;
+  barId?: string;
+  barName?: string;
+}
+
+export interface BulkRow {
+  id: string;
+  productId: string;
+  quantity: string;
+  barId: string;
+  selected: boolean;
 }
 
 export interface TransferHistoryRow {
