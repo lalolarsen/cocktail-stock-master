@@ -1,6 +1,7 @@
 // XHR polyfill for Deno
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforcePilotVenue } from "../_shared/pilot.ts";
 
 /**
  * MODO ESTABILIZACIÓN - Extracción Bruta
@@ -115,7 +116,7 @@ serve(async (req) => {
       .eq("id", purchase_document_id)
       .single();
 
-    const venueId = docData?.venue_id;
+    const venueId = enforcePilotVenue(docData?.venue_id);
     const providerName = rawExtraction.header.provider_name?.toLowerCase().trim();
 
     // Build lookup maps
