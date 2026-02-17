@@ -135,6 +135,7 @@ export function WasteRegistrationDialog({
     try {
       const { data: session } = await supabase.auth.getSession();
       const userId = session?.session?.user?.id;
+      if (!userId) throw new Error("No user session");
 
       // Get active jornada if any
       const { data: jornada } = await supabase
@@ -144,42 +145,25 @@ export function WasteRegistrationDialog({
         .eq("estado", "abierta")
         .maybeSingle();
 
-      const quantity = isVolumetric ? -calculatedMl : -1;
-
-      const { error } = await supabase.from("stock_movements").insert({
-        product_id: productId,
-        movement_type: "waste" as any,
-        quantity,
-        from_location_id: locationId,
+      // Create a waste REQUEST (pending admin approval) instead of direct deduction
+      const { error } = await supabase.from("waste_requests").insert({
         venue_id: venue.id,
+        product_id: productId,
+        location_id: locationId,
+        requested_by: userId,
+        bottle_type: isVolumetric ? bottleType : "cerrada",
+        percent_visual: isVolumetric && bottleType === "abierta" ? percentVisual : null,
+        calculated_quantity: calculatedMl, // positive value, deduction happens on approval
+        reason,
+        notes: notes || null,
+        estimated_cost: estimatedCost,
+        status: "pending",
         jornada_id: jornada?.id || null,
-        notes: `[${reason}] ${notes}`.trim(),
-        percent_visual: bottleType === "abierta" ? percentVisual : null,
-        unit_cost_snapshot: selectedProduct?.cost_per_unit || null,
-        total_cost_snapshot: estimatedCost || null,
-        source_type: "waste",
       });
 
       if (error) throw error;
 
-      // Update stock_balances
-      const { data: balance } = await supabase
-        .from("stock_balances")
-        .select("id, quantity")
-        .eq("product_id", productId)
-        .eq("location_id", locationId)
-        .eq("venue_id", venue.id)
-        .maybeSingle();
-
-      if (balance) {
-        const newQty = Math.max(0, Number(balance.quantity) + quantity);
-        await supabase
-          .from("stock_balances")
-          .update({ quantity: newQty })
-          .eq("id", balance.id);
-      }
-
-      toast.success("Merma registrada correctamente");
+      toast.success("Solicitud de merma enviada — pendiente de aprobación por admin");
       onWasteRegistered();
       onOpenChange(false);
     } catch (error) {

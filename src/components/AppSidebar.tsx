@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -60,6 +60,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Inventario", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
       { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
+      { title: "Merma", value: "waste", icon: Trash2 },
       { title: "Proveedores", value: "proveedores", icon: Truck },
     ],
   },

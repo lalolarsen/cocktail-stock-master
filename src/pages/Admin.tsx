@@ -18,6 +18,7 @@ import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagem
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
+import { WasteManagement } from "@/components/dashboard/WasteManagement";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -26,7 +27,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -116,6 +117,7 @@ export default function Admin() {
       case "finance": return "Finanzas";
       case "proveedores": return "Proveedores";
       case "courtesy-qr": return "QR de Cortesía";
+      case "waste": return "Merma / Pérdida";
       default: return "Panel de Administración";
     }
   };
@@ -235,6 +237,12 @@ export default function Admin() {
             {activeView === "courtesy-qr" && (
               <div className="space-y-6">
                 <CourtesyQR />
+              </div>
+            )}
+
+            {activeView === "waste" && !isReadOnly && (
+              <div className="space-y-6">
+                <WasteManagement />
               </div>
             )}
           </div>
