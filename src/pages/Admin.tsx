@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { AdminOverview } from "@/components/dashboard/AdminOverview";
@@ -21,11 +21,38 @@ import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { VenueIndicator } from "@/components/VenueIndicator";
 import { VenueGuard } from "@/components/VenueGuard";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
 type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores";
+
+function HeaderGreeting() {
+  const { user } = useAppSession();
+  const [name, setName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.full_name) {
+          setName(data.full_name.split(" ")[0]);
+        }
+      });
+  }, [user?.id]);
+
+  if (!name) return null;
+
+  return (
+    <span className="text-sm text-muted-foreground">
+      Hola, <span className="font-medium text-foreground">{name}</span>
+    </span>
+  );
+}
 
 export default function Admin() {
   const { role, isReadOnly } = useUserRole();
@@ -106,7 +133,7 @@ export default function Admin() {
                   </SidebarTrigger>
                   <h1 className="text-lg font-semibold text-foreground tracking-tight">{getViewTitle()}</h1>
                 </div>
-                <VenueIndicator variant="header" showRole />
+                <HeaderGreeting />
               </div>
             </header>
 
