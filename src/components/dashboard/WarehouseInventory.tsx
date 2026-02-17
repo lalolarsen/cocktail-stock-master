@@ -46,8 +46,9 @@ import {
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
+import { WasteRegistrationDialog } from "./WasteRegistrationDialog";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockLocation {
@@ -67,6 +68,7 @@ interface Product {
   unit: string;
   cost_per_unit: number | null;
   is_mixer: boolean;
+  capacity_ml: number | null;
 }
 
 interface StockBalance {
@@ -136,6 +138,7 @@ export function WarehouseInventory() {
   const [chipFilter, setChipFilter] = useState<FilterChip>("all");
   const [infoBannerOpen, setInfoBannerOpen] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showWasteDialog, setShowWasteDialog] = useState(false);
 
   // Collapsible sections
   const [outOfStockOpen, setOutOfStockOpen] = useState(true);
@@ -371,20 +374,36 @@ export function WarehouseInventory() {
 
       {/* ━━━ STOCK INTAKE ACTION ━━━ */}
       {warehouseLocation && (
-        <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
-          <CardContent className="flex items-start gap-4 p-5">
-            <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
-              <Plus className="h-6 w-6 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-sm">Ingreso manual</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Agrega productos manualmente a Bodega Principal</p>
-              <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
-                Ingresar stock
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
+                <Plus className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm">Ingreso manual</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Agrega productos a Bodega Principal</p>
+                <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
+                  Ingresar stock
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border hover:border-destructive/40 transition-colors cursor-pointer group" onClick={() => setShowWasteDialog(true)}>
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-destructive/10 p-3 group-hover:bg-destructive/20 transition-colors">
+                <Trash2 className="h-6 w-6 text-destructive" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm">Registrar merma</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Botella rota, derrame, producto botado</p>
+                <Button size="sm" variant="destructive" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowWasteDialog(true); }}>
+                  Registrar merma
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* ━━━ LOCATION SELECTOR + KPIs ━━━ */}
@@ -612,6 +631,25 @@ export function WarehouseInventory() {
           onStockUpdated={fetchData}
         />
       )}
+      {/* ━━━ WASTE REGISTRATION DIALOG ━━━ */}
+      {selectedLocationId !== "all_bars" && (
+        <WasteRegistrationDialog
+          open={showWasteDialog}
+          onOpenChange={setShowWasteDialog}
+          locationId={selectedLocationId}
+          locationName={selectedLocationName}
+          onWasteRegistered={fetchData}
+        />
+      )}
+      {selectedLocationId === "all_bars" && showWasteDialog && warehouseLocation && (
+        <WasteRegistrationDialog
+          open={showWasteDialog}
+          onOpenChange={setShowWasteDialog}
+          locationId={warehouseLocation.id}
+          locationName={warehouseLocation.name}
+          onWasteRegistered={fetchData}
+        />
+      )}
     </div>
   );
 }
@@ -724,6 +762,19 @@ function ProductRow({
   onAdjustMin: () => void;
 }) {
   const unitLabel = unit(product.category, product.unit);
+  const isVolumetric = product.unit === "ml" && !!product.capacity_ml && product.capacity_ml > 0;
+  
+  // Bottle calculation for volumetric products
+  const bottleDisplay = useMemo(() => {
+    if (!isVolumetric) return null;
+    const stockMl = product.quantity;
+    const bottleMl = product.capacity_ml!;
+    const fullBottles = Math.floor(stockMl / bottleMl);
+    const openMl = Math.round(stockMl % bottleMl);
+    const openPercent = Math.round((openMl / bottleMl) * 100);
+    return { fullBottles, openMl, openPercent };
+  }, [isVolumetric, product.quantity, product.capacity_ml]);
+
   const pct =
     product.effectiveMinimum > 0
       ? Math.min((product.quantity / (product.effectiveMinimum * 2)) * 100, 100)
@@ -753,20 +804,44 @@ function ProductRow({
             </Badge>
           )}
         </div>
-        {/* Progress bar */}
+        {/* Stock display */}
         <div className="flex items-center gap-3 mt-1.5">
           <Progress value={pct} className="h-1.5 w-20" />
-          <span className="text-[11px] text-muted-foreground">
-            {product.quantity.toLocaleString()} {unitLabel} / Mín: {product.effectiveMinimum} {unitLabel}
-          </span>
+          {bottleDisplay ? (
+            <span className="text-[11px] text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {bottleDisplay.fullBottles} bot.
+                {bottleDisplay.openPercent > 0 && ` + ${bottleDisplay.openPercent}%`}
+              </span>
+              {" "}
+              <span className="text-muted-foreground">({product.quantity.toLocaleString()} ml)</span>
+              {" / Mín: "}
+              {product.effectiveMinimum} {unitLabel}
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              {product.quantity.toLocaleString()} {unitLabel} / Mín: {product.effectiveMinimum} {unitLabel}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Right: Value + Status + Actions */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
-          <p className="text-sm font-bold tabular-nums">{product.quantity.toLocaleString()}</p>
-          <p className="text-[10px] text-muted-foreground">{formatCLP(product.value)}</p>
+          {bottleDisplay ? (
+            <>
+              <p className="text-sm font-bold tabular-nums">
+                {bottleDisplay.fullBottles}{bottleDisplay.openPercent > 0 ? `+${bottleDisplay.openPercent}%` : ""}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{formatCLP(product.value)}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-bold tabular-nums">{product.quantity.toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground">{formatCLP(product.value)}</p>
+            </>
+          )}
         </div>
         {statusBadge}
         <Button
