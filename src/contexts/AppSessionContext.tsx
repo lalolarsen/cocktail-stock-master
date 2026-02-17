@@ -102,60 +102,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setActiveJornadaId(null);
   }, []);
 
-  const initializeSession = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchUserData(session.user.id);
-      }
-    } catch (error) {
-      console.error("Error initializing session:", error);
-      clearState();
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchUserData, clearState]);
-
-  const refreshSession = useCallback(async () => {
-    if (user?.id) {
-      await fetchUserData(user.id);
-    }
-  }, [user?.id, fetchUserData]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
-        if (!isMounted) return;
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        if (newSession?.user) {
-          setTimeout(() => {
-            if (isMounted) fetchUserData(newSession.user.id);
-          }, 0);
-        } else {
-          clearState();
-        }
-      }
-    );
-
-    initializeSession();
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [initializeSession, fetchUserData, clearState]);
-
-  const hasRole = useCallback((checkRole: AppRole) => roles.includes(checkRole), [roles]);
-
-  // Stub: always enabled (flags removed)
-  const isEnabled = useCallback((_key: string): boolean => true, []);
-
-  // ── Active jornada subscription ──
+  // ── Active jornada fetch (declared early so auth effect can reference it) ──
   const fetchActiveJornada = useCallback(async () => {
     try {
       console.log("[Jornada] Checking active jornada for venue:", DEFAULT_VENUE_ID);
@@ -182,10 +129,68 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setJornadaLoading(false);
   }, []);
 
+  const initializeSession = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        await fetchUserData(session.user.id);
+        await fetchActiveJornada();
+      }
+    } catch (error) {
+      console.error("Error initializing session:", error);
+      clearState();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchUserData, clearState, fetchActiveJornada]);
+
+  const refreshSession = useCallback(async () => {
+    if (user?.id) {
+      await fetchUserData(user.id);
+    }
+  }, [user?.id, fetchUserData]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        if (!isMounted) return;
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        if (newSession?.user) {
+          setTimeout(() => {
+            if (isMounted) {
+              fetchUserData(newSession.user.id);
+              // Re-fetch jornada after auth state changes (RLS requires auth)
+              fetchActiveJornada();
+            }
+          }, 0);
+        } else {
+          clearState();
+        }
+      }
+    );
+
+    initializeSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [initializeSession, fetchUserData, clearState, fetchActiveJornada]);
+
+  const hasRole = useCallback((checkRole: AppRole) => roles.includes(checkRole), [roles]);
+
+  // Stub: always enabled (flags removed)
+  const isEnabled = useCallback((_key: string): boolean => true, []);
+
+  // ── Active jornada realtime subscription ──
   useEffect(() => {
     fetchActiveJornada();
 
-    // Realtime subscription
     const channel = supabase
       .channel("global-jornada-status")
       .on(
@@ -196,7 +201,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       .subscribe();
     jornadaChannelRef.current = channel;
 
-    // Fallback polling every 15s
     const poll = setInterval(fetchActiveJornada, 15000);
 
     return () => {
