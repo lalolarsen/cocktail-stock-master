@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -67,6 +67,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Ventas",
     items: [
       { title: "Carta / Recetas", value: "menu", icon: Martini },
+      { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },
@@ -102,6 +103,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Ventas",
     items: [
+      { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },

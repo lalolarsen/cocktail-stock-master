@@ -17,6 +17,7 @@ import { NotificationsManagement } from "@/components/dashboard/NotificationsMan
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
+import CourtesyQR from "@/pages/CourtesyQR";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -25,7 +26,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -60,7 +61,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -114,6 +115,7 @@ export default function Admin() {
       case "tickets": return "Tipos de Entrada";
       case "finance": return "Finanzas";
       case "proveedores": return "Proveedores";
+      case "courtesy-qr": return "QR de Cortesía";
       default: return "Panel de Administración";
     }
   };
@@ -227,6 +229,12 @@ export default function Admin() {
             {activeView === "proveedores" && !isReadOnly && (
               <div className="space-y-6">
                 <ProveedoresPanel />
+              </div>
+            )}
+
+            {activeView === "courtesy-qr" && (
+              <div className="space-y-6">
+                <CourtesyQR />
               </div>
             )}
           </div>
