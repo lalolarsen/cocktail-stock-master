@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforcePilotVenue } from "../_shared/pilot.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,7 +75,8 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: CreateWorkerRequest = await req.json();
-    const { venue_id, rut_code, pin, full_name, role, roles: rolesArray } = body;
+    const { venue_id: rawVenueId, rut_code, pin, full_name, role, roles: rolesArray } = body;
+    const venue_id = enforcePilotVenue(rawVenueId);
 
     // Support both single role (legacy) and multiple roles
     const roles: WorkerRole[] = rolesArray ?? (role ? [role] : []);

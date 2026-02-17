@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { VenueIndicator } from "@/components/VenueIndicator";
+import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
@@ -139,6 +140,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
           )}
         </div>
         {!isCollapsed && <VenueIndicator variant="sidebar" showRole />}
+        {!isCollapsed && <PilotBadge />}
       </SidebarHeader>
 
       <SidebarContent>
