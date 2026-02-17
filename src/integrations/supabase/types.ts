@@ -4393,6 +4393,95 @@ export type Database = {
         }
         Relationships: []
       }
+      waste_requests: {
+        Row: {
+          bottle_type: string
+          calculated_quantity: number
+          created_at: string
+          estimated_cost: number | null
+          id: string
+          jornada_id: string | null
+          location_id: string
+          notes: string | null
+          percent_visual: number | null
+          product_id: string
+          reason: string
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          venue_id: string
+        }
+        Insert: {
+          bottle_type: string
+          calculated_quantity: number
+          created_at?: string
+          estimated_cost?: number | null
+          id?: string
+          jornada_id?: string | null
+          location_id: string
+          notes?: string | null
+          percent_visual?: number | null
+          product_id: string
+          reason: string
+          requested_by: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          venue_id: string
+        }
+        Update: {
+          bottle_type?: string
+          calculated_quantity?: number
+          created_at?: string
+          estimated_cost?: number | null
+          id?: string
+          jornada_id?: string | null
+          location_id?: string
+          notes?: string | null
+          percent_visual?: number | null
+          product_id?: string
+          reason?: string
+          requested_by?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waste_requests_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_requests_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_requests_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worker_roles: {
         Row: {
           created_at: string
