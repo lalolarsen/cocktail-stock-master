@@ -261,7 +261,7 @@ export function CashReconciliationDialog({
   );
 
   const renderArqueo = () => (
-    <ScrollArea className="max-h-[50vh] pr-4">
+    <ScrollArea className="h-[50vh] pr-4">
       <div className="space-y-4">
         {posReconciliations.map((pos) => {
           const difference = calculateDifference(pos);
