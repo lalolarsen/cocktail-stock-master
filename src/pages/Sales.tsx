@@ -8,6 +8,7 @@ import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plu
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
+import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -95,14 +96,20 @@ export default function Sales() {
   // Success screen state
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
   const [lastSaleData, setLastSaleData] = useState<{
+    saleId: string;
     saleNumber: string;
     total: number;
+    sellerId: string;
+    isHybrid: boolean;
+    barLocationId?: string;
+    barName?: string;
     pickupData?: {
       token: string;
       expiresAt: string;
       items: Array<{ name: string; quantity: number; price: number }>;
       barName?: string;
     };
+    cartItems: Array<{ name: string; quantity: number; price: number }>;
   } | null>(null);
   
   // Pickup QR state (for viewing recent sales QR)
@@ -601,44 +608,21 @@ export default function Sales() {
         }
       }
 
-      // AUTO-REDEEM: If POS is in hybrid mode, auto-redeem the token immediately
+      // Determine if this is a hybrid POS
       const currentPos = posTerminals.find(p => p.id === selectedPosId);
-      if (currentPos?.auto_redeem && currentPos.bar_location_id) {
-        try {
-          const { data: redeemResult, error: redeemError } = await supabase.rpc(
-            "auto_redeem_sale_token",
-            {
-              p_sale_id: sale.id,
-              p_bar_location_id: currentPos.bar_location_id,
-              p_seller_id: session.session.user.id,
-            }
-          );
-          if (redeemError) {
-            console.warn("Auto-redeem error:", redeemError);
-            toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual en barra.", { duration: 6000 });
-          } else {
-            const rdResult = redeemResult as { success: boolean; bar_name?: string; error?: string; missing_items?: any[] };
-            if (rdResult.success) {
-              if (pickupData) pickupData.barName = rdResult.bar_name || undefined;
-            } else if (rdResult.error === 'stock_insufficient') {
-              // Stock insufficient: QR stays as 'issued' for manual redemption
-              toast.warning("No se pudo autocanjear: stock insuficiente. Canjear manualmente en barra.", { duration: 8000 });
-              console.warn("Auto-redeem stock insufficient:", rdResult.missing_items);
-            } else {
-              toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual.", { duration: 6000 });
-            }
-          }
-        } catch (e) {
-          console.warn("Auto-redeem exception:", e);
-          toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual en barra.", { duration: 6000 });
-        }
-      }
+      const isHybridPOS = !!(currentPos?.auto_redeem && currentPos.bar_location_id);
 
-      // Show success screen
+      // Show success/wizard screen
       setLastSaleData({
+        saleId: sale.id,
         saleNumber,
         total: totalAmount,
+        sellerId: session.session.user.id,
+        isHybrid: isHybridPOS,
+        barLocationId: currentPos?.bar_location_id || undefined,
+        barName: currentPos?.bar_location?.name || undefined,
         pickupData,
+        cartItems: cartItemsForQR,
       });
       setShowSuccessScreen(true);
       setCart([]);
@@ -833,6 +817,25 @@ export default function Sales() {
 
   // Success Screen after sale
   if (showSuccessScreen && lastSaleData) {
+    // Hybrid POS: show guided wizard (mixer → redeem → deliver)
+    if (lastSaleData.isHybrid && lastSaleData.barLocationId && lastSaleData.barName) {
+      return (
+        <HybridPostSaleWizard
+          saleId={lastSaleData.saleId}
+          saleNumber={lastSaleData.saleNumber}
+          total={lastSaleData.total}
+          items={lastSaleData.cartItems}
+          barLocationId={lastSaleData.barLocationId}
+          barName={lastSaleData.barName}
+          sellerId={lastSaleData.sellerId}
+          pickupToken={lastSaleData.pickupData?.token}
+          pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
+          onComplete={handleNewSale}
+        />
+      );
+    }
+
+    // Normal POS: show classic success screen with QR
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center space-y-6">
