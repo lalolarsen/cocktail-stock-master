@@ -4619,7 +4619,13 @@ export type Database = {
       document_status: "pending" | "issued" | "failed" | "cancelled"
       document_type: "boleta" | "factura"
       location_type: "warehouse" | "bar"
-      movement_type: "entrada" | "salida" | "ajuste" | "compra"
+      movement_type:
+        | "entrada"
+        | "salida"
+        | "ajuste"
+        | "compra"
+        | "transfer_out"
+        | "transfer_in"
       payment_method: "cash" | "debit" | "credit" | "transfer" | "card"
       pickup_token_status:
         | "issued"
@@ -4777,7 +4783,14 @@ export const Constants = {
       document_status: ["pending", "issued", "failed", "cancelled"],
       document_type: ["boleta", "factura"],
       location_type: ["warehouse", "bar"],
-      movement_type: ["entrada", "salida", "ajuste", "compra"],
+      movement_type: [
+        "entrada",
+        "salida",
+        "ajuste",
+        "compra",
+        "transfer_out",
+        "transfer_in",
+      ],
       payment_method: ["cash", "debit", "credit", "transfer", "card"],
       pickup_token_status: [
         "issued",
