@@ -13,6 +13,11 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import {
+  normalizeCategory,
+  getCategoryDef,
+  compareCategoryOrder,
+} from "@/lib/categories";
 
 type Cocktail = {
   id: string;
@@ -25,26 +30,6 @@ interface CategoryProductGridProps {
   cocktails: Cocktail[];
   onAddToCart: (cocktail: Cocktail) => void;
   jornadaId?: string | null;
-}
-
-// Category display config with colors
-const CATEGORY_CONFIG: Record<string, { label: string; color: string; order: number }> = {
-  popular:    { label: "🔥 Más Vendidos", color: "bg-primary/10 text-primary border-primary/30", order: 0 },
-  destilados: { label: "Destilados", color: "bg-amber-500/10 text-amber-700 border-amber-200", order: 1 },
-  shots:      { label: "Shots", color: "bg-red-500/10 text-red-700 border-red-200", order: 2 },
-  cervezas:   { label: "Cervezas", color: "bg-yellow-500/10 text-yellow-700 border-yellow-200", order: 3 },
-  cocktails:  { label: "Cocktails", color: "bg-purple-500/10 text-purple-700 border-purple-200", order: 4 },
-  sin_alcohol:{ label: "Sin Alcohol", color: "bg-green-500/10 text-green-700 border-green-200", order: 5 },
-  bebidas:    { label: "Bebidas", color: "bg-blue-500/10 text-blue-700 border-blue-200", order: 6 },
-  snacks:     { label: "Snacks", color: "bg-orange-500/10 text-orange-700 border-orange-200", order: 7 },
-  otros:      { label: "Otros", color: "bg-muted text-muted-foreground border-border", order: 99 },
-};
-
-/** Normalize category key to avoid duplicates ("Otros", "otros", " Otros ") */
-function normalizeCategory(raw: string | null | undefined): string {
-  if (!raw) return "otros";
-  const key = raw.trim().toLowerCase().replace(/\s+/g, "_");
-  return key || "otros";
 }
 
 export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: CategoryProductGridProps) {
@@ -120,9 +105,10 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
   // Sorted category keys
   const sortedCategories = useMemo(() => {
     return Object.keys(categorizedProducts).sort((a, b) => {
-      const aOrder = CATEGORY_CONFIG[a]?.order ?? 98;
-      const bOrder = CATEGORY_CONFIG[b]?.order ?? 98;
-      return aOrder - bOrder;
+      // "popular" always first
+      if (a === "popular") return -1;
+      if (b === "popular") return 1;
+      return compareCategoryOrder(a, b);
     });
   }, [categorizedProducts]);
 
@@ -142,8 +128,14 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
     return categorizedProducts;
   }, [searchResults, selectedCategory, categorizedProducts]);
 
-  const getCategoryConfig = (category: string) =>
-    CATEGORY_CONFIG[category] || { label: category, color: CATEGORY_CONFIG.otros.color, order: 98 };
+  const getChipColor = (category: string) => {
+    if (category === "popular") return "bg-primary/10 text-primary border-primary/30";
+    return getCategoryDef(category).chipColor;
+  };
+  const getLabel = (category: string) => {
+    if (category === "popular") return "🔥 Más Vendidos";
+    return getCategoryDef(category).label;
+  };
 
   // Enter key in search = add first result
   const handleSearchKeyDown = useCallback(
@@ -203,11 +195,9 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
             )}
             onClick={() => setSelectedCategory(null)}
           >
-            Todo ({normalizedCocktails.length})
+            Todo
           </Badge>
           {sortedCategories.map((category) => {
-            const config = getCategoryConfig(category);
-            const count = categorizedProducts[category]?.length || 0;
             const isSelected = selectedCategory === category;
             return (
               <Badge
@@ -217,13 +207,13 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
                   "cursor-pointer shrink-0 px-3 py-2 text-sm font-medium transition-all snap-start min-h-[44px] flex items-center",
                   isSelected
                     ? "bg-primary text-primary-foreground border-primary"
-                    : config.color,
+                    : getChipColor(category),
                   "hover:opacity-80"
                 )}
                 onClick={() => setSelectedCategory(isSelected ? null : category)}
               >
                 {category === "popular" && <Flame className="w-3 h-3 mr-1" />}
-                {config.label} ({count})
+                {getLabel(category)}
               </Badge>
             );
           })}
@@ -234,7 +224,8 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="space-y-4 pr-1">
           {Object.entries(displayProducts).map(([category, products]) => {
-            const config = getCategoryConfig(category);
+            const chipColor = getChipColor(category);
+            const label = getLabel(category);
             const isPopular = category === "popular";
 
             return (
@@ -242,9 +233,9 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
                 {/* Category header */}
                 {!selectedCategory && !isSearching && (
                   <div className="flex items-center gap-2 mb-2 sticky top-0 bg-card/95 backdrop-blur py-1 z-10">
-                    <Badge variant="outline" className={cn("text-xs", config.color)}>
+                    <Badge variant="outline" className={cn("text-xs", chipColor)}>
                       {isPopular && <Flame className="w-3 h-3 mr-1" />}
-                      {config.label}
+                      {label}
                     </Badge>
                     <div className="h-px flex-1 bg-border/50" />
                     <span className="text-xs text-muted-foreground">{products.length}</span>
