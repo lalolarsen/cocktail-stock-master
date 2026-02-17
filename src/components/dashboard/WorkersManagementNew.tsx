@@ -5,17 +5,27 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { 
-  Loader2, Users, Key, RefreshCw, Search, 
-  UserX, Filter, Grid3X3, List, ChevronDown, ChevronRight
+import {
+  Loader2, Users, Key, RefreshCw, Search,
+  UserX, Filter, Edit2, History, Power, PowerOff, UserPlus
 } from "lucide-react";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,10 +51,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { Worker, LoginRecord, AuditLog, AVAILABLE_ROLES } from "./workers/types";
-import { WorkerCard } from "./workers/WorkerCard";
 import { CreateWorkerDialog } from "./workers/CreateWorkerDialog";
 import { WorkerHistoryDialog } from "./workers/WorkerHistoryDialog";
 import { AppRole } from "@/hooks/useUserRole";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue } = useActiveVenue();
@@ -58,15 +69,19 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showResetPinDialog, setShowResetPinDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Jornada count cache
+  const [jornadaCounts, setJornadaCounts] = useState<Record<string, number>>({});
+  const [lastActivity, setLastActivity] = useState<Record<string, string | null>>({});
+
   // UI State
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<AppRole[]>([]);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [activeTab, setActiveTab] = useState("active");
 
   const [editWorker, setEditWorker] = useState({
     full_name: "",
@@ -98,7 +113,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       const workersWithRoles: Worker[] = (profiles || []).map((profile) => {
         const wr = workerRoles?.filter((r) => r.worker_id === profile.id) || [];
         let roles: AppRole[] = wr.map((r) => r.role as AppRole);
-        
+
         if (roles.length === 0) {
           const ur = userRoles?.filter((r) => r.user_id === profile.id) || [];
           roles = ur.map((r) => r.role as AppRole);
@@ -112,6 +127,26 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       });
 
       setWorkers(workersWithRoles);
+
+      // Fetch jornada counts & last activity per worker
+      const workerIds = workersWithRoles.map((w) => w.id);
+      if (workerIds.length > 0) {
+        const { data: loginData } = await supabase
+          .from("login_history")
+          .select("user_id, login_at")
+          .in("user_id", workerIds)
+          .order("login_at", { ascending: false });
+
+        const lastAct: Record<string, string | null> = {};
+        const jCounts: Record<string, number> = {};
+        for (const w of workerIds) {
+          const logins = loginData?.filter((l) => l.user_id === w) || [];
+          lastAct[w] = logins[0]?.login_at || null;
+          jCounts[w] = logins.length;
+        }
+        setLastActivity(lastAct);
+        setJornadaCounts(jCounts);
+      }
     } catch (error) {
       console.error("Error fetching workers:", error);
       toast.error("Error al cargar trabajadores");
@@ -133,32 +168,27 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     roles: AppRole[];
   }) => {
     const normalizedRut = newWorker.rut_code.replace(/\D/g, "").trim();
-    
+
     if (!/^\d{7,9}$/.test(normalizedRut)) {
       toast.error("RUT inválido. Debe tener entre 7 y 9 dígitos.");
       return;
     }
-
     if (!newWorker.pin || newWorker.pin.length < 4) {
       toast.error("PIN debe tener al menos 4 dígitos");
       return;
     }
-
     if (newWorker.roles.length === 0) {
       toast.error("Selecciona al menos un rol");
       return;
     }
-
     if (!venue?.id) {
       toast.error("No se pudo determinar el venue actual");
       return;
     }
 
     setCreating(true);
-
     try {
       const primaryRole = newWorker.roles[0];
-      
       const response = await supabase.functions.invoke("create-worker-user", {
         body: {
           venue_id: venue.id,
@@ -169,22 +199,13 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         },
       });
 
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      if (!response.data?.success) {
-        throw new Error(response.data?.error || "Error desconocido al crear usuario");
-      }
+      if (response.error) throw new Error(response.error.message);
+      if (!response.data?.success) throw new Error(response.data?.error || "Error desconocido");
 
       const userId = response.data.user_id;
-
       if (newWorker.roles.length > 1) {
         for (const role of newWorker.roles.slice(1)) {
-          await supabase.from("worker_roles").insert({
-            worker_id: userId,
-            role,
-          });
+          await supabase.from("worker_roles").insert({ worker_id: userId, role });
         }
       }
 
@@ -211,20 +232,14 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
   const updateWorker = async () => {
     if (!selectedWorker) return;
-
     if (editWorker.roles.length === 0) {
       toast.error("Selecciona al menos un rol");
       return;
     }
 
     setSaving(true);
-
     try {
-      await supabase
-        .from("profiles")
-        .update({ full_name: editWorker.full_name })
-        .eq("id", selectedWorker.id);
-
+      await supabase.from("profiles").update({ full_name: editWorker.full_name }).eq("id", selectedWorker.id);
       await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
       await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
 
@@ -236,11 +251,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       await supabase.rpc("log_admin_action", {
         p_action: "update_worker",
         p_target_worker_id: selectedWorker.id,
-        p_details: { 
-          full_name: editWorker.full_name, 
-          roles: editWorker.roles,
-          previous_roles: selectedWorker.roles 
-        },
+        p_details: { full_name: editWorker.full_name, roles: editWorker.roles, previous_roles: selectedWorker.roles },
       });
 
       toast.success("Trabajador actualizado");
@@ -254,43 +265,64 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     }
   };
 
-  const deleteWorker = async () => {
+  const toggleWorkerActive = async () => {
     if (!selectedWorker) return;
+    const newStatus = !selectedWorker.is_active;
 
-    setDeleting(true);
+    // If deactivating, check for open jornada
+    if (!newStatus) {
+      const { data: openJornadas } = await supabase
+        .from("login_history")
+        .select("jornada_id")
+        .eq("user_id", selectedWorker.id)
+        .not("jornada_id", "is", null)
+        .limit(1);
 
+      // Check if there's an active jornada right now
+      if (openJornadas && openJornadas.length > 0) {
+        const { data: activeJ } = await supabase
+          .from("jornadas")
+          .select("id")
+          .eq("estado", "abierta")
+          .limit(1);
+
+        if (activeJ && activeJ.length > 0) {
+          // Check if this worker logged in during the active jornada
+          const { data: activeLogin } = await supabase
+            .from("login_history")
+            .select("id")
+            .eq("user_id", selectedWorker.id)
+            .eq("jornada_id", activeJ[0].id)
+            .limit(1);
+
+          if (activeLogin && activeLogin.length > 0) {
+            toast.error("No se puede desactivar: tiene jornada abierta activa");
+            setShowDeactivateDialog(false);
+            return;
+          }
+        }
+      }
+    }
+
+    setTogglingId(selectedWorker.id);
     try {
-      // Delete roles first
-      await supabase.from("worker_roles").delete().eq("worker_id", selectedWorker.id);
-      await supabase.from("user_roles").delete().eq("user_id", selectedWorker.id);
-      
-      // Delete related data
-      await supabase.from("login_history").delete().eq("user_id", selectedWorker.id);
-      await supabase.from("notification_preferences").delete().eq("worker_id", selectedWorker.id);
-      await supabase.from("notification_logs").delete().eq("recipient_worker_id", selectedWorker.id);
-      
-      // Log before delete
+      await supabase.from("profiles").update({ is_active: newStatus }).eq("id", selectedWorker.id);
+
       await supabase.rpc("log_admin_action", {
-        p_action: "delete_worker",
-        p_target_worker_id: null, // Worker will be deleted
-        p_details: { 
-          deleted_worker_name: selectedWorker.full_name,
-          deleted_worker_rut: maskRut(selectedWorker.rut_code)
-        },
+        p_action: newStatus ? "activate_worker" : "deactivate_worker",
+        p_target_worker_id: selectedWorker.id,
+        p_details: {},
       });
 
-      // Delete profile
-      await supabase.from("profiles").delete().eq("id", selectedWorker.id);
-
-      toast.success("Trabajador eliminado");
-      setShowDeleteDialog(false);
+      toast.success(newStatus ? "Trabajador reactivado" : "Trabajador desactivado");
+      setShowDeactivateDialog(false);
       setSelectedWorker(null);
       fetchWorkers();
     } catch (error) {
-      console.error("Error deleting worker:", error);
-      toast.error("Error al eliminar trabajador");
+      console.error("Error toggling worker status:", error);
+      toast.error("Error al cambiar estado");
     } finally {
-      setDeleting(false);
+      setTogglingId(null);
     }
   };
 
@@ -299,17 +331,14 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
       toast.error("PIN debe tener al menos 4 dígitos");
       return;
     }
-
     setSaving(true);
-
     try {
       await supabase.rpc("log_admin_action", {
         p_action: "reset_pin",
         p_target_worker_id: selectedWorker.id,
         p_details: { note: "PIN reset requested" },
       });
-
-      toast.success("PIN actualizado. El trabajador debe usar el nuevo PIN.");
+      toast.success("PIN actualizado.");
       setShowResetPinDialog(false);
       setNewPin("");
     } catch (error) {
@@ -320,34 +349,10 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     }
   };
 
-  const toggleWorkerActive = async (worker: Worker) => {
-    try {
-      const newStatus = !worker.is_active;
-      
-      await supabase
-        .from("profiles")
-        .update({ is_active: newStatus })
-        .eq("id", worker.id);
-
-      await supabase.rpc("log_admin_action", {
-        p_action: newStatus ? "activate_worker" : "deactivate_worker",
-        p_target_worker_id: worker.id,
-        p_details: {},
-      });
-
-      toast.success(newStatus ? "Trabajador activado" : "Trabajador desactivado");
-      fetchWorkers();
-    } catch (error) {
-      console.error("Error toggling worker status:", error);
-      toast.error("Error al cambiar estado");
-    }
-  };
-
-  const fetchHistory = async (worker: Worker) => {
+  const fetchHistoryFor = async (worker: Worker) => {
     setSelectedWorker(worker);
     setLoadingHistory(true);
     setShowHistoryDialog(true);
-
     try {
       const { data: logins } = await supabase
         .from("login_history")
@@ -355,7 +360,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         .eq("user_id", worker.id)
         .order("login_at", { ascending: false })
         .limit(50);
-
       setLoginHistory(logins || []);
 
       const { data: audits } = await supabase
@@ -364,7 +368,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         .eq("target_worker_id", worker.id)
         .order("created_at", { ascending: false })
         .limit(50);
-
       setAuditLogs(audits || []);
     } catch (error) {
       console.error("Error fetching history:", error);
@@ -375,10 +378,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
 
   const openEditDialog = (worker: Worker) => {
     setSelectedWorker(worker);
-    setEditWorker({
-      full_name: worker.full_name || "",
-      roles: [...worker.roles],
-    });
+    setEditWorker({ full_name: worker.full_name || "", roles: [...worker.roles] });
     setShowEditDialog(true);
   };
 
@@ -388,34 +388,142 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
     setShowResetPinDialog(true);
   };
 
-  const openDeleteDialog = (worker: Worker) => {
+  const openDeactivateDialog = (worker: Worker) => {
     setSelectedWorker(worker);
-    setShowDeleteDialog(true);
+    setShowDeactivateDialog(true);
   };
 
-  // State for inactive section
-  const [showInactive, setShowInactive] = useState(false);
-
-  // Filter workers
+  // Filter
   const filteredWorkers = workers.filter((worker) => {
-    const matchesSearch = 
+    const matchesSearch =
       !searchQuery ||
       worker.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       worker.rut_code?.includes(searchQuery);
-    
-    const matchesRole = 
-      roleFilter.length === 0 ||
-      worker.roles.some((r) => roleFilter.includes(r));
-    
+    const matchesRole =
+      roleFilter.length === 0 || worker.roles.some((r) => roleFilter.includes(r));
     return matchesSearch && matchesRole;
   });
 
-  // Separate active and inactive workers
   const activeWorkers = filteredWorkers.filter((w) => w.is_active);
   const inactiveWorkers = filteredWorkers.filter((w) => !w.is_active);
+  const totalActive = workers.filter((w) => w.is_active).length;
+  const totalInactive = workers.filter((w) => !w.is_active).length;
 
-  const activeCount = workers.filter((w) => w.is_active).length;
-  const inactiveCount = workers.filter((w) => !w.is_active).length;
+  const getRoleBadge = (role: AppRole) => {
+    const info = AVAILABLE_ROLES.find((r) => r.value === role);
+    if (!info) return null;
+    const Icon = info.icon;
+    return (
+      <Badge
+        key={role}
+        variant="outline"
+        className={`gap-1 ${info.bgColor} ${info.textColor} border-0 font-medium text-xs`}
+      >
+        <Icon className="h-3 w-3" />
+        {info.label}
+      </Badge>
+    );
+  };
+
+  const renderWorkerRow = (worker: Worker) => (
+    <TableRow key={worker.id} className={!worker.is_active ? "opacity-60" : ""}>
+      <TableCell className="font-medium">{worker.full_name || "Sin nombre"}</TableCell>
+      <TableCell className="font-mono text-muted-foreground text-xs">{maskRut(worker.rut_code)}</TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-1">
+          {worker.roles.map((r) => getRoleBadge(r))}
+          {worker.roles.length === 0 && (
+            <Badge variant="outline" className="text-xs">Sin rol</Badge>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        {worker.is_active ? (
+          <Badge className="bg-emerald-50 text-emerald-700 border-0 text-xs">Activo</Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground text-xs">Inactivo</Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {lastActivity[worker.id]
+          ? format(new Date(lastActivity[worker.id]!), "dd MMM yyyy", { locale: es })
+          : "—"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {worker.created_at
+          ? format(new Date(worker.created_at), "dd MMM yyyy", { locale: es })
+          : "—"}
+      </TableCell>
+      <TableCell className="text-center">
+        <Badge variant="secondary" className="text-xs font-mono">
+          {jornadaCounts[worker.id] || 0}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1 justify-end">
+          {!isReadOnly && (
+            <>
+              <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => openEditDialog(worker)} title="Editar">
+                <Edit2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => openResetPinDialog(worker)} title="Resetear PIN">
+                <Key className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => fetchHistoryFor(worker)} title="Historial">
+            <History className="h-3.5 w-3.5" />
+          </Button>
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-8 px-2 ${worker.is_active ? "hover:bg-amber-50 hover:text-amber-600" : "hover:bg-emerald-50 hover:text-emerald-600"}`}
+              onClick={() => openDeactivateDialog(worker)}
+              title={worker.is_active ? "Desactivar" : "Reactivar"}
+            >
+              {worker.is_active ? (
+                <PowerOff className="h-3.5 w-3.5 text-amber-500" />
+              ) : (
+                <Power className="h-3.5 w-3.5 text-emerald-500" />
+              )}
+            </Button>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
+  const renderTable = (list: Worker[]) => (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nombre</TableHead>
+            <TableHead>RUT</TableHead>
+            <TableHead>Rol</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Última actividad</TableHead>
+            <TableHead>Creación</TableHead>
+            <TableHead className="text-center">Sesiones</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {list.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                <UserX className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                No hay trabajadores en esta categoría
+              </TableCell>
+            </TableRow>
+          ) : (
+            list.map(renderWorkerRow)
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -439,7 +547,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
           <div>
             <h2 className="text-xl font-semibold">Equipo de Trabajo</h2>
             <p className="text-sm text-muted-foreground">
-              {activeCount} activos • {inactiveCount} inactivos
+              {totalActive} activos · {totalInactive} inactivos
             </p>
           </div>
         </div>
@@ -471,7 +579,7 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               className="pl-9"
             />
           </div>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="gap-2">
@@ -506,125 +614,31 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <div className="flex border rounded-md">
-            <Button
-              variant={viewMode === "grid" ? "secondary" : "ghost"}
-              size="icon"
-              className="rounded-r-none"
-              onClick={() => setViewMode("grid")}
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="icon"
-              className="rounded-l-none"
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       </Card>
 
-      {/* Active Workers Grid/List */}
-      {activeWorkers.length === 0 && inactiveWorkers.length === 0 ? (
-        <Card className="p-12">
-          <div className="text-center">
-            <UserX className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-            <h3 className="font-medium mb-1">No se encontraron trabajadores</h3>
-            <p className="text-sm text-muted-foreground">
-              {searchQuery || roleFilter.length > 0
-                ? "Intenta ajustar los filtros de búsqueda"
-                : "Comienza agregando un nuevo trabajador"}
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <>
-          {activeWorkers.length === 0 ? (
-            <Card className="p-8">
-              <div className="text-center text-muted-foreground">
-                <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p>No hay trabajadores activos que coincidan con los filtros</p>
-              </div>
-            </Card>
-          ) : (
-            <div className={
-              viewMode === "grid" 
-                ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
-                : "space-y-3"
-            }>
-              {activeWorkers.map((worker) => (
-                <WorkerCard
-                  key={worker.id}
-                  worker={worker}
-                  isReadOnly={isReadOnly}
-                  onEdit={openEditDialog}
-                  onResetPin={openResetPinDialog}
-                  onToggleActive={toggleWorkerActive}
-                  onViewHistory={fetchHistory}
-                  onDelete={openDeleteDialog}
-                  maskRut={maskRut}
-                />
-              ))}
-            </div>
-          )}
+      {/* Tabs: Active / Inactive */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="active">Activos ({activeWorkers.length})</TabsTrigger>
+          <TabsTrigger value="inactive">Inactivos ({inactiveWorkers.length})</TabsTrigger>
+        </TabsList>
 
-          {/* Inactive Workers Section */}
-          {inactiveWorkers.length > 0 && (
-            <Collapsible open={showInactive} onOpenChange={setShowInactive}>
-              <CollapsibleTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  className="w-full justify-between py-3 px-4 h-auto text-muted-foreground hover:text-foreground"
-                >
-                  <div className="flex items-center gap-2">
-                    <UserX className="h-4 w-4" />
-                    <span>Trabajadores inactivos ({inactiveWorkers.length})</span>
-                  </div>
-                  {showInactive ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-4">
-                <div className={
-                  viewMode === "grid" 
-                    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" 
-                    : "space-y-3"
-                }>
-                  {inactiveWorkers.map((worker) => (
-                    <WorkerCard
-                      key={worker.id}
-                      worker={worker}
-                      isReadOnly={isReadOnly}
-                      onEdit={openEditDialog}
-                      onResetPin={openResetPinDialog}
-                      onToggleActive={toggleWorkerActive}
-                      onViewHistory={fetchHistory}
-                      onDelete={openDeleteDialog}
-                      maskRut={maskRut}
-                    />
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </>
-      )}
+        <TabsContent value="active" className="mt-4">
+          {renderTable(activeWorkers)}
+        </TabsContent>
+
+        <TabsContent value="inactive" className="mt-4">
+          {renderTable(inactiveWorkers)}
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Worker Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Trabajador</DialogTitle>
-            <DialogDescription>
-              Modifica nombre y roles del trabajador
-            </DialogDescription>
+            <DialogDescription>Modifica nombre y roles</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5 py-4">
@@ -646,8 +660,8 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                     <label
                       key={role.value}
                       className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        isChecked 
-                          ? `${role.bgColor} border-transparent ring-2 ring-primary/20` 
+                        isChecked
+                          ? `${role.bgColor} border-transparent ring-2 ring-primary/20`
                           : "border-border hover:border-primary/40 hover:bg-muted/50"
                       }`}
                     >
@@ -657,9 +671,9 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
                           if (checked) {
                             setEditWorker({ ...editWorker, roles: [...editWorker.roles, role.value] });
                           } else {
-                            setEditWorker({ 
-                              ...editWorker, 
-                              roles: editWorker.roles.filter((r) => r !== role.value) 
+                            setEditWorker({
+                              ...editWorker,
+                              roles: editWorker.roles.filter((r) => r !== role.value),
                             });
                           }
                         }}
@@ -697,7 +711,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               Ingresa el nuevo PIN para <strong>{selectedWorker?.full_name || "este trabajador"}</strong>
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <div className="py-4">
             <Input
               type="password"
@@ -709,7 +722,6 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
               className="text-center text-lg tracking-widest"
             />
           </div>
-
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={resetPin} disabled={saving}>
@@ -720,29 +732,50 @@ export function WorkersManagementNew({ isReadOnly = false }: { isReadOnly?: bool
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Worker Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      {/* Deactivate / Reactivate Dialog */}
+      <AlertDialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <UserX className="h-5 w-5" />
-              Eliminar Trabajador
+            <AlertDialogTitle className="flex items-center gap-2">
+              {selectedWorker?.is_active ? (
+                <>
+                  <PowerOff className="h-5 w-5 text-amber-500" />
+                  Desactivar trabajador
+                </>
+              ) : (
+                <>
+                  <Power className="h-5 w-5 text-emerald-500" />
+                  Reactivar trabajador
+                </>
+              )}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de eliminar a <strong>{selectedWorker?.full_name || "este trabajador"}</strong>?
-              Esta acción no se puede deshacer y eliminará todos los datos asociados.
+              {selectedWorker?.is_active ? (
+                <>
+                  El trabajador <strong>{selectedWorker?.full_name}</strong> no podrá iniciar jornada ni operar POS.
+                  <br />
+                  Su historial permanecerá intacto.
+                </>
+              ) : (
+                <>
+                  El trabajador <strong>{selectedWorker?.full_name}</strong> podrá volver a iniciar sesión y operar.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={deleteWorker} 
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <AlertDialogCancel disabled={!!togglingId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={toggleWorkerActive}
+              disabled={!!togglingId}
+              className={
+                selectedWorker?.is_active
+                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                  : "bg-emerald-500 text-white hover:bg-emerald-600"
+              }
             >
-              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Eliminar
+              {togglingId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {selectedWorker?.is_active ? "Confirmar desactivación" : "Confirmar reactivación"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
