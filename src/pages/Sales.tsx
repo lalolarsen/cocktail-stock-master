@@ -735,83 +735,77 @@ export default function Sales() {
   return (
     <VenueGuard>
       <>
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        {/* Compact Header */}
-        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold">Caja</h1>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Store className="w-4 h-4" />
-                  {selectedPosName}
-                </span>
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={changePosSelection}>
-                  Cambiar
-                </Button>
-              </div>
+      <div className="h-screen flex flex-col bg-background overflow-hidden">
+        {/* Compact Header — fixed */}
+        <div className="border-b border-border/50 bg-card shrink-0">
+          <div className="px-4 py-2 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-bold">Caja</h1>
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                <Store className="w-3.5 h-3.5" />
+                {selectedPosName}
+              </span>
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={changePosSelection}>
+                Cambiar
+              </Button>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <VenueIndicator variant="header" />
               <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Salir
+                <LogOut className="w-4 h-4" />
               </Button>
             </div>
           </div>
           {!hasActiveJornada && (
-            <div className="bg-destructive/10 border border-destructive/30 px-4 py-2 text-sm text-destructive font-medium">
+            <div className="bg-destructive/10 border-t border-destructive/30 px-4 py-1.5 text-sm text-destructive font-medium">
               Ventas bloqueadas — No hay jornada activa.
             </div>
           )}
         </div>
 
-        <div className="max-w-7xl mx-auto p-4">
-          <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 h-[calc(100vh-120px)]">
-            {/* Product Grid - 70% */}
-            <div className="lg:col-span-7 overflow-hidden">
-              <Card className="h-full p-4">
-                <CategoryProductGrid 
-                  cocktails={cocktails} 
-                  onAddToCart={addToCart}
-                  jornadaId={activeJornadaId}
-                />
-              </Card>
+        {/* Main content — fills remaining height */}
+        <div className="flex-1 min-h-0 flex">
+          {/* Product Grid — 70% */}
+          <div className="flex-[7] min-w-0 p-3">
+            <div className="h-full rounded-lg border border-border/30 bg-card p-3">
+              <CategoryProductGrid
+                cocktails={cocktails}
+                onAddToCart={addToCart}
+                jornadaId={activeJornadaId}
+              />
             </div>
+          </div>
 
-            {/* Cart Panel - 30% */}
-            <div className="lg:col-span-3 flex flex-col gap-4">
-              {/* Cart */}
-              <Card className="flex-1 p-4 flex flex-col min-h-0">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5" />
-                    <h2 className="text-lg font-semibold">Carrito</h2>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {lastRemovedItem && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-primary"
-                        onClick={undoLastRemove}
-                        title="Deshacer"
-                      >
-                        <Undo2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {cart.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setShowClearConfirm(true)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
+          {/* Cart Panel — 30% */}
+          <div className="flex-[3] min-w-0 p-3 pl-0 flex flex-col gap-3">
+            {/* Cart */}
+            <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 p-4 flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-semibold">Carrito</h2>
+                <div className="flex items-center gap-1">
+                  {lastRemovedItem && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-primary"
+                      onClick={undoLastRemove}
+                      title="Deshacer"
+                    >
+                      <Undo2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {cart.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setShowClearConfirm(true)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
+              </div>
 
                 {cart.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -974,29 +968,27 @@ export default function Sales() {
                     </div>
                   </>
                 )}
-              </Card>
+              </div>
 
               {/* Recent Sales (minimal) */}
               {recentSales.length > 0 && (
-                <Card className="p-4 shrink-0">
-                  <h3 className="text-sm font-semibold text-muted-foreground mb-2">Recientes</h3>
+                <div className="rounded-lg border border-border/30 bg-card/80 p-3 shrink-0">
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-2">Recientes</h3>
                   <div className="space-y-1">
                     {recentSales.slice(0, 5).map((sale) => {
-                      // Determine receipt status
                       const doc = sale.sales_documents?.[0];
                       const isExternal = sale.receipt_source === "external";
-                      const receiptStatus = isExternal 
-                        ? "external" 
+                      const receiptStatus = isExternal
+                        ? "external"
                         : doc?.status || "pending";
-                      
+
                       return (
                         <div
                           key={sale.id}
                           className="flex items-center justify-between text-sm py-1"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium">{sale.sale_number}</span>
-                            {/* Receipt status badge */}
+                            <span className="font-mono font-medium text-xs">{sale.sale_number}</span>
                             {receiptStatus === "external" && (
                               <span className="text-xs text-muted-foreground" title="Comprobante externo">
                                 <CreditCard className="w-3 h-3" />
@@ -1017,7 +1009,7 @@ export default function Sales() {
                                 <AlertCircle className="w-3 h-3" />
                               </span>
                             )}
-                            <span className="text-muted-foreground flex items-center gap-1">
+                            <span className="text-muted-foreground flex items-center gap-1 text-xs">
                               <Clock className="w-3 h-3" />
                               {formatTime(sale.created_at)}
                             </span>
@@ -1034,45 +1026,44 @@ export default function Sales() {
                       );
                     })}
                   </div>
-                </Card>
+                </div>
               )}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Clear Cart Confirmation */}
-      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Limpiar carrito?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se eliminarán todos los items del carrito.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={clearCart}>Limpiar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Clear Cart Confirmation */}
+        <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Limpiar carrito?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se eliminarán todos los items del carrito.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={clearCart}>Limpiar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Pickup QR Dialog (for viewing recent sales) */}
-      {showPickupQR && pickupQRData && (
-        <PickupQRDialog
-          open={showPickupQR}
-          onClose={() => {
-            setShowPickupQR(false);
-            setPickupQRData(null);
-          }}
-          token={pickupQRData.token}
-          saleNumber={pickupQRData.saleNumber}
-          expiresAt={pickupQRData.expiresAt}
-          items={pickupQRData.items}
-          total={pickupQRData.total}
-          barName={pickupQRData.barName}
-        />
-      )}
+        {/* Pickup QR Dialog (for viewing recent sales) */}
+        {showPickupQR && pickupQRData && (
+          <PickupQRDialog
+            open={showPickupQR}
+            onClose={() => {
+              setShowPickupQR(false);
+              setPickupQRData(null);
+            }}
+            token={pickupQRData.token}
+            saleNumber={pickupQRData.saleNumber}
+            expiresAt={pickupQRData.expiresAt}
+            items={pickupQRData.items}
+            total={pickupQRData.total}
+            barName={pickupQRData.barName}
+          />
+        )}
       </>
     </VenueGuard>
   );
