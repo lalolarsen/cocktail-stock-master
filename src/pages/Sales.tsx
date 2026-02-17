@@ -61,6 +61,7 @@ type POSTerminal = {
   is_cash_register: boolean;
   auto_redeem: boolean;
   bar_location_id: string | null;
+  bar_location?: { id: string; name: string } | null;
 };
 
 // BarLocation removed - bar is determined at redemption time, not at sale
@@ -178,9 +179,9 @@ export default function Sales() {
   const fetchPosTerminals = async () => {
     const { data, error } = await supabase
       .from("pos_terminals")
-      .select("*")
+      .select("*, bar_location:stock_locations!pos_terminals_bar_location_id_fkey(id, name)")
       .eq("is_active", true)
-      .eq("pos_type", "alcohol_sales") // Only alcohol sales POS for this module
+      .eq("pos_type", "alcohol_sales")
       .order("name");
     
     if (!error && data) {
@@ -256,6 +257,12 @@ export default function Sales() {
           id,
           status,
           document_type
+        ),
+        pickup_tokens(
+          id,
+          token,
+          status,
+          redeemed_at
         )
       `)
       .eq("seller_id", session.session.user.id)
@@ -608,18 +615,22 @@ export default function Sales() {
           );
           if (redeemError) {
             console.warn("Auto-redeem error:", redeemError);
-            toast.warning("Venta registrada pero el auto-canje falló. El QR queda pendiente.");
+            toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual en barra.", { duration: 6000 });
           } else {
-            const rdResult = redeemResult as { success: boolean; bar_name?: string; missing_items?: any[] };
-            if (rdResult.success && pickupData) {
-              pickupData.barName = rdResult.bar_name || undefined;
-            }
-            if (rdResult.missing_items && (rdResult.missing_items as any[]).length > 0) {
-              toast.warning("Auto-canje completado con stock insuficiente en algunos ingredientes.");
+            const rdResult = redeemResult as { success: boolean; bar_name?: string; error?: string; missing_items?: any[] };
+            if (rdResult.success) {
+              if (pickupData) pickupData.barName = rdResult.bar_name || undefined;
+            } else if (rdResult.error === 'stock_insufficient') {
+              // Stock insufficient: QR stays as 'issued' for manual redemption
+              toast.warning("No se pudo autocanjear: stock insuficiente. Canjear manualmente en barra.", { duration: 8000 });
+              console.warn("Auto-redeem stock insufficient:", rdResult.missing_items);
+            } else {
+              toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual.", { duration: 6000 });
             }
           }
         } catch (e) {
           console.warn("Auto-redeem exception:", e);
+          toast.warning("No se pudo autocanjear. El QR queda pendiente para canje manual en barra.", { duration: 6000 });
         }
       }
 
@@ -762,6 +773,11 @@ export default function Sales() {
                       <div className="text-center">
                         <Store className={`w-8 h-8 mx-auto mb-2 ${selectedPosId === pos.id ? "text-primary" : "text-muted-foreground"}`} />
                         <p className="font-semibold">{pos.name}</p>
+                        {pos.auto_redeem && (
+                          <p className="text-[10px] mt-1 text-amber-600 font-medium">
+                            Híbrido → {pos.bar_location?.name || "Sin barra"}
+                          </p>
+                        )}
                       </div>
                     </Card>
                   ))}
@@ -769,10 +785,25 @@ export default function Sales() {
               )}
             </div>
 
-            <div className="p-4 bg-muted/50 rounded-lg text-center text-sm text-muted-foreground">
-              <MapPin className="w-5 h-5 mx-auto mb-2 text-muted-foreground/70" />
-              <p>La barra de entrega se determina al escanear el QR</p>
-            </div>
+            {/* Show contextual info based on selected POS */}
+            {(() => {
+              const selPos = posTerminals.find(p => p.id === selectedPosId);
+              if (selPos?.auto_redeem) {
+                return (
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-center text-sm text-amber-700">
+                    <MapPin className="w-5 h-5 mx-auto mb-2 text-amber-600" />
+                    <p className="font-medium">Modo Híbrido (auto-canje)</p>
+                    <p className="text-xs mt-1">Stock se descuenta automáticamente desde <strong>{selPos.bar_location?.name || "barra asociada"}</strong></p>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-4 bg-muted/50 rounded-lg text-center text-sm text-muted-foreground">
+                  <MapPin className="w-5 h-5 mx-auto mb-2 text-muted-foreground/70" />
+                  <p>La barra de entrega se determina al escanear el QR</p>
+                </div>
+              );
+            })()}
 
             <Button
               onClick={confirmPosSelection}
@@ -796,6 +827,9 @@ export default function Sales() {
   }
   const selectedPosName = posTerminals.find(p => p.id === selectedPosId)?.name;
   const selectedPosObj = posTerminals.find(p => p.id === selectedPosId);
+  
+  // Resolve bar name for hybrid POS header display
+  const barNameForHeader = selectedPosObj?.bar_location?.name || "";
 
   // Success Screen after sale
   if (showSuccessScreen && lastSaleData) {
@@ -855,12 +889,18 @@ export default function Sales() {
                 <Store className="w-3.5 h-3.5" />
                 {selectedPosName}
               </span>
-              {selectedPosObj?.auto_redeem && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 font-medium">
-                  Híbrido · Auto-canje
-                </span>
-              )}
-              {!selectedPosObj?.auto_redeem && (
+              {selectedPosObj?.auto_redeem ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 font-medium">
+                    Híbrido · Auto-canje
+                  </span>
+                  {selectedPosObj.bar_location_id && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Descuenta desde: <span className="font-medium text-foreground">{barNameForHeader}</span>
+                    </span>
+                  )}
+                </div>
+              ) : (
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">
                   Normal · QR pendiente
                 </span>
@@ -1118,6 +1158,8 @@ export default function Sales() {
                       const receiptStatus = isExternal
                         ? "external"
                         : doc?.status || "pending";
+                      const pickupToken = sale.pickup_tokens?.[0];
+                      const tokenStatus = pickupToken?.status;
 
                       return (
                         <div
@@ -1154,10 +1196,17 @@ export default function Sales() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2"
+                            className="h-7 px-2 gap-1"
                             onClick={() => viewSaleQR(sale)}
+                            title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
                           >
-                            <QrCode className="w-4 h-4" />
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span className="text-[10px]">
+                              {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
+                            </span>
+                            {tokenStatus === 'redeemed' && (
+                              <Check className="w-3 h-3 text-green-600" />
+                            )}
                           </Button>
                         </div>
                       );
