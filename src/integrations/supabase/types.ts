@@ -3742,6 +3742,7 @@ export type Database = {
           jornada_id: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes: string | null
+          percent_visual: number | null
           pickup_token_id: string | null
           product_id: string | null
           quantity: number
@@ -3763,6 +3764,7 @@ export type Database = {
           jornada_id?: string | null
           movement_type: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
+          percent_visual?: number | null
           pickup_token_id?: string | null
           product_id?: string | null
           quantity: number
@@ -3784,6 +3786,7 @@ export type Database = {
           jornada_id?: string | null
           movement_type?: Database["public"]["Enums"]["movement_type"]
           notes?: string | null
+          percent_visual?: number | null
           pickup_token_id?: string | null
           product_id?: string | null
           quantity?: number
@@ -4799,6 +4802,7 @@ export type Database = {
         | "compra"
         | "transfer_out"
         | "transfer_in"
+        | "waste"
       payment_method: "cash" | "debit" | "credit" | "transfer" | "card"
       pickup_token_status:
         | "issued"
@@ -4963,6 +4967,7 @@ export const Constants = {
         "compra",
         "transfer_out",
         "transfer_in",
+        "waste",
       ],
       payment_method: ["cash", "debit", "credit", "transfer", "card"],
       pickup_token_status: [
