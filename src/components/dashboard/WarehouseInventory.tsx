@@ -636,8 +636,8 @@ export function WarehouseInventory() {
         <WasteRegistrationDialog
           open={showWasteDialog}
           onOpenChange={setShowWasteDialog}
-          locationId={selectedLocationId}
-          locationName={selectedLocationName}
+          lockedLocationId={selectedLocationId}
+          lockedLocationName={selectedLocationName}
           onWasteRegistered={fetchData}
         />
       )}
@@ -645,8 +645,8 @@ export function WarehouseInventory() {
         <WasteRegistrationDialog
           open={showWasteDialog}
           onOpenChange={setShowWasteDialog}
-          locationId={warehouseLocation.id}
-          locationName={warehouseLocation.name}
+          lockedLocationId={warehouseLocation.id}
+          lockedLocationName={warehouseLocation.name}
           onWasteRegistered={fetchData}
         />
       )}

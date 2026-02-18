@@ -16,6 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
+import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 
 type MissingItem = {
   product_name: string;
@@ -207,6 +208,9 @@ export default function Bar() {
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
   const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showBarSelection, setShowBarSelection] = useState(true);
+  
+  // Waste request dialog
+  const [showWasteDialog, setShowWasteDialog] = useState(false);
   
   // Reader mode - persisted per device
   const [readerMode, setReaderMode] = useState<ReaderMode>(() => {
@@ -1304,6 +1308,18 @@ export default function Bar() {
               <Keyboard className="w-4 h-4" />
               <span className="hidden sm:inline">Manual</span>
             </Button>
+
+            {/* Waste request button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowWasteDialog(true)}
+              className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
+              title="Solicitar merma"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Merma</span>
+            </Button>
           </div>
         </div>
 
@@ -1502,6 +1518,19 @@ export default function Bar() {
           )}
         </div>
       </div>
+
+      {/* Waste Registration Dialog — location locked to current bar */}
+      {showWasteDialog && selectedBarId && (
+        <WasteRegistrationDialog
+          open={showWasteDialog}
+          onOpenChange={setShowWasteDialog}
+          lockedLocationId={selectedBarId}
+          lockedLocationName={selectedBarName}
+          onWasteRegistered={() => {
+            setShowWasteDialog(false);
+          }}
+        />
+      )}
       </>
     </VenueGuard>
   );
