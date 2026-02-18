@@ -95,7 +95,8 @@ export function useOpenBottles(venueId: string, locationId: string | null) {
   );
 
   /**
-   * Abre una nueva botella en la ubicación actual
+   * Abre una nueva botella en la ubicación actual.
+   * Valida que exista al menos 1 unidad en stock_balances antes de registrar.
    */
   const openBottle = useCallback(
     async (params: {
@@ -106,6 +107,19 @@ export function useOpenBottles(venueId: string, locationId: string | null) {
       actorUserId: string;
     }) => {
       if (!venueId || !locationId) throw new Error("Venue o ubicación no definidos");
+
+      // Validar stock disponible (≥ 1 unidad) antes de abrir
+      const { data: balance } = await supabase
+        .from("stock_balances")
+        .select("quantity")
+        .eq("location_id", locationId)
+        .eq("product_id", params.productId)
+        .maybeSingle();
+
+      const availableUnits = Number(balance?.quantity ?? 0);
+      if (availableUnits < 1) {
+        throw new Error("Sin stock para abrir esta botella. Reponer primero.");
+      }
 
       const { data: bottle, error } = await (supabase as any)
         .from("open_bottles")
