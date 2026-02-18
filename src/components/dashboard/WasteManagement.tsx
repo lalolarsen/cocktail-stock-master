@@ -239,7 +239,16 @@ export function WasteManagement({ isReadOnly = false }: { isReadOnly?: boolean }
           return;
         }
 
-        // 2. Create stock movement
+        // 2. Get product CPP cost for the snapshot
+        const { data: productData } = await supabase
+          .from("products")
+          .select("cost_per_unit")
+          .eq("id", reviewRequest.product_id)
+          .maybeSingle();
+        const unitCostCpp = Number(productData?.cost_per_unit ?? 0);
+        const totalWasteCost = unitCostCpp * Math.abs(reviewRequest.quantity);
+
+        // 3. Create stock movement with cost snapshot
         const { error: movError } = await supabase.from("stock_movements").insert({
           product_id: reviewRequest.product_id,
           movement_type: "waste" as any,
@@ -249,6 +258,8 @@ export function WasteManagement({ isReadOnly = false }: { isReadOnly?: boolean }
           jornada_id: reviewRequest.jornada_id || null,
           notes: `[MERMA APROBADA] [${reviewRequest.reason}]${reviewRequest.notes ? ` ${reviewRequest.notes}` : ""}`.trim(),
           source_type: "waste",
+          unit_cost_snapshot: unitCostCpp,
+          total_cost_snapshot: totalWasteCost,
         });
         if (movError) throw movError;
 

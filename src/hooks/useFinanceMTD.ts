@@ -27,6 +27,14 @@ export interface SpecificTaxBreakdown {
   ila_destilados: number;
 }
 
+export interface WasteBreakdownItem {
+  product_name: string;
+  quantity: number;
+  unit_type: string;
+  cost: number;
+  reason: string;
+}
+
 export interface FinanceMTD {
   // Sales
   salesGross: number;
@@ -35,6 +43,10 @@ export interface FinanceMTD {
   salesBruto: number;
   salesNeto: number;
   cogsTotal: number;
+
+  // Waste (merma aprobada)
+  wasteTotal: number;
+  wasteItems: WasteBreakdownItem[];
 
   // Specific taxes (ILA/IABA) — separate block
   specificTaxTotal: number;
@@ -96,6 +108,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const [salesNet, setSalesNet] = useState(0);
   const [ivaDebitoState, setIvaDebitoState] = useState(0);
   const [cogsTotal, setCogsTotal] = useState(0);
+  const [wasteTotal, setWasteTotal] = useState(0);
+  const [wasteItems, setWasteItems] = useState<WasteBreakdownItem[]>([]);
   const [opexByCategory, setOpexByCategory] = useState<OpexCategoryBreakdown[]>([]);
   const [ivaCreditoFacturas, setIvaCreditoFacturas] = useState(0);
   const [ivaCreditoFromImports, setIvaCreditoFromImports] = useState(0);
@@ -261,6 +275,55 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       }
 
       setOpexByCategory(Array.from(categoryMap.values()).sort((a, b) => b.total - a.total));
+
+      // ── Waste (merma aprobada) — valorada al CPP del producto ──
+      const { data: wasteMovements } = await supabase
+        .from("stock_movements")
+        .select("quantity, unit_cost_snapshot, total_cost_snapshot, product_id, products:product_id(name, cost_per_unit), source_type")
+        .eq("venue_id", venueId)
+        .eq("movement_type", "waste" as any)
+        .eq("source_type", "waste")
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO);
+
+      const wasteRows = (wasteMovements || []) as any[];
+      let wasteTotalCalc = 0;
+      const wasteItemsCalc: WasteBreakdownItem[] = [];
+
+      // Aggregate by product
+      const wasteByProduct = new Map<string, WasteBreakdownItem>();
+      for (const row of wasteRows) {
+        const productId = row.product_id as string;
+        const productName = (row.products as any)?.name ?? "Producto";
+        const cpp = Math.abs(Number(row.unit_cost_snapshot ?? (row.products as any)?.cost_per_unit ?? 0));
+        const qty = Math.abs(Number(row.quantity));
+        const rowCost = row.total_cost_snapshot != null
+          ? Math.abs(Number(row.total_cost_snapshot))
+          : cpp * qty;
+        wasteTotalCalc += rowCost;
+
+        const existing = wasteByProduct.get(productId);
+        if (existing) {
+          existing.quantity += qty;
+          existing.cost += rowCost;
+        } else {
+          const notes = (row.notes as string) ?? "";
+          const reasonMatch = notes.match(/\[MERMA APROBADA\] \[([^\]]+)\]/);
+          wasteByProduct.set(productId, {
+            product_name: productName,
+            quantity: qty,
+            unit_type: "ml",
+            cost: rowCost,
+            reason: reasonMatch?.[1] ?? "merma",
+          });
+        }
+      }
+      for (const item of wasteByProduct.values()) {
+        wasteItemsCalc.push(item);
+      }
+
+      setWasteTotal(wasteTotalCalc);
+      setWasteItems(wasteItemsCalc);
     } catch (err) {
       console.error("Error fetching finance MTD:", err);
     } finally {
@@ -317,6 +380,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     salesNeto,
     ivaDebito,
     cogsTotal,
+    wasteTotal,
+    wasteItems,
     specificTaxTotal,
     specificTaxFromInvoices,
     specificTaxFromOpex,
