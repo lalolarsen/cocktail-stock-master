@@ -17,6 +17,9 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
+import { OpenBottleDialog } from "@/components/bar/OpenBottleDialog";
+import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 
 type MissingItem = {
   product_name: string;
@@ -72,7 +75,7 @@ type ScanHistoryEntry = {
 // Reader modes
 type ReaderMode = "USB_SCANNER" | "CAMERA";
 
-type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection" | "bottle_check";
 
 // Max history entries to keep
 const MAX_HISTORY_ENTRIES = 20;
@@ -202,13 +205,19 @@ export default function Bar() {
   // Mixer selection state
   const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
   const [pendingToken, setPendingToken] = useState<string>("");
+  const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
   const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
   
   // Bar selection
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
   const [selectedBarId, setSelectedBarId] = useState<string>("");
   const [showBarSelection, setShowBarSelection] = useState(true);
-  
+
+  // Open bottles state
+  const [bottleChecks, setBottleChecks] = useState<BottleCheckResult[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const openBottlesHook = useOpenBottles(DEFAULT_VENUE_ID, selectedBarId || null);
+
   // Waste request dialog
   const [showWasteDialog, setShowWasteDialog] = useState(false);
   
@@ -270,6 +279,7 @@ export default function Bar() {
     const fetchUserInfo = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        setCurrentUserId(user.id);
         const { data: profile } = await supabase
           .from("profiles")
           .select("full_name")
@@ -623,7 +633,12 @@ export default function Bar() {
         return;
       }
 
-      // Step 3: No mixer selection needed, redeem directly
+      // Step 3: Check ml ingredients requiring open bottles (if bar selected)
+      if (selectedBarId) {
+        await checkAndProceedWithBottles(token, null);
+        return;
+      }
+      // Step 4: Redeem directly
       await redeemToken(token, null);
     } catch (error: any) {
       console.error("Check mixer error:", error);
@@ -638,7 +653,92 @@ export default function Bar() {
     }
   }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken]);
 
-  // Handle mixer selection confirmation
+  const checkAndProceedWithBottles = useCallback(async (
+    token: string,
+    mixerOverrides: { slot_index: number; product_id: string }[] | null
+  ) => {
+    try {
+      const { data: tokenData } = await supabase
+        .from("pickup_tokens")
+        .select("id, sale_id, sales:sale_id(sale_items(quantity, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))))")
+        .eq("token", token)
+        .maybeSingle();
+
+      if (!tokenData) { await redeemToken(token, mixerOverrides); return; }
+
+      const mlIngredients = new Map<string, { product_id: string; product_name: string; required_ml: number }>();
+      for (const si of ((tokenData as any)?.sales?.sale_items || [])) {
+        const qty = si.quantity || 1;
+        for (const ing of (si.cocktails?.cocktail_ingredients || [])) {
+          const p = ing.products;
+          if (!p?.capacity_ml || p.capacity_ml <= 0) continue;
+          const ingQty = (ing.quantity || 0) * qty;
+          if (ingQty <= 0) continue;
+          const ex = mlIngredients.get(p.id);
+          if (ex) { ex.required_ml += ingQty; }
+          else { mlIngredients.set(p.id, { product_id: p.id, product_name: p.name, required_ml: ingQty }); }
+        }
+      }
+
+      if (mlIngredients.size === 0) { await redeemToken(token, mixerOverrides); return; }
+
+      const checks = openBottlesHook.checkBottlesForIngredients(Array.from(mlIngredients.values()));
+      setPendingToken(token);
+      setPendingMixerOverrides(mixerOverrides);
+      setBottleChecks(checks);
+
+      if (checks.every(c => c.sufficient)) {
+        await redeemWithBottleDeduction(token, mixerOverrides, checks);
+      } else {
+        setScanState("bottle_check");
+      }
+    } catch (err) {
+      console.error("[Bar] Bottle check non-blocking:", err);
+      await redeemToken(token, mixerOverrides);
+    }
+  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
+
+  const redeemWithBottleDeduction = useCallback(async (
+    token: string,
+    mixerOverrides: { slot_index: number; product_id: string }[] | null,
+    checks: BottleCheckResult[]
+  ) => {
+    await redeemToken(token, mixerOverrides);
+    for (const check of checks) {
+      if (check.required_ml <= 0) continue;
+      try {
+        await openBottlesHook.deductMl({ productId: check.product_id, mlToDeduct: check.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
+      } catch (e) { console.error("[Bar] Bottle deduction non-blocking:", e); }
+    }
+  }, [redeemToken, openBottlesHook, currentUserId]);
+
+  const handleBottleCheckContinue = useCallback(async () => {
+    const token = pendingToken; const overrides = pendingMixerOverrides; const checks = bottleChecks;
+    setBottleChecks([]); setPendingToken(""); setPendingMixerOverrides(null);
+    setScanState("processing");
+    await redeemWithBottleDeduction(token, overrides, checks);
+  }, [pendingToken, pendingMixerOverrides, bottleChecks, redeemWithBottleDeduction]);
+
+  const handleBottleCheckCancel = useCallback(() => {
+    setBottleChecks([]); setPendingToken(""); setPendingMixerOverrides(null);
+    isProcessingRef.current = false; setScannerFrozen(false); setScanState("idle");
+    if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
+    else focusScannerInput();
+  }, [readerMode, focusScannerInput]);
+
+  const handleOpenBottleFromDialog = useCallback(async (productId: string, labelCode?: string) => {
+    if (!currentUserId) throw new Error("Sin usuario activo");
+    const { data: pd } = await supabase.from("products").select("capacity_ml, name").eq("id", productId).single();
+    const cap = Number(pd?.capacity_ml || 0);
+    if (!cap) throw new Error("El producto no tiene capacidad en ml definida");
+    await openBottlesHook.openBottle({ productId, initialMl: cap, labelCode, actorUserId: currentUserId });
+    await openBottlesHook.fetchBottles();
+    const updated = openBottlesHook.checkBottlesForIngredients(bottleChecks.map(c => ({ product_id: c.product_id, product_name: c.product_name, required_ml: c.required_ml })));
+    setBottleChecks(updated);
+    toast.success(`Botella de ${pd?.name || "producto"} abierta`);
+  }, [currentUserId, bottleChecks, openBottlesHook]);
+
+
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
     setIsRedeemingWithMixer(true);
     try {
