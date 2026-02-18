@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  Scale, Landmark,
+  Scale, Landmark, Trash2,
 } from "lucide-react";
 
 const MONTHS = [
@@ -99,18 +99,18 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0;
+  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0 || mtd.wasteTotal > 0;
   const noDataAtAll = !mtd.loading && !hasAnyData;
   const hasSales = mtd.salesGross > 0;
 
   // When no sales, COGS and margins must be 0 (stock entries are NOT cost of sales)
   const displayCogs = hasSales ? mtd.cogsTotal : 0;
-  const displayGrossMargin = hasSales ? mtd.grossMargin : 0;
-  const displayMarginPct = hasSales ? mtd.marginPct : 0;
-  const displayMarginPostTax = hasSales ? mtd.marginPostSpecificTax : -mtd.specificTaxTotal;
-  const displayOperationalResult = hasSales
-    ? mtd.operationalResult
-    : -(mtd.specificTaxTotal + mtd.opexTotal);
+  const displayWaste = mtd.wasteTotal;
+  // Gross margin accounts for both COGS and waste cost
+  const displayGrossMargin = hasSales ? (mtd.salesNet - mtd.cogsTotal - displayWaste) : -displayWaste;
+  const displayMarginPct = mtd.salesNet > 0 ? (displayGrossMargin / mtd.salesNet) * 100 : 0;
+  const displayMarginPostTax = displayGrossMargin - mtd.specificTaxTotal;
+  const displayOperationalResult = displayMarginPostTax - mtd.opexTotal;
 
   // Validation checks
   const opexMismatch = Math.abs(mtd.opexDetailSum - mtd.opexTotal) > 1;
@@ -211,6 +211,15 @@ export function FinancePanel() {
               <MetricCard label="IVA Débito Fiscal" value={formatCLP(mtd.ivaDebito)} icon={Scale} />
               <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNet)} icon={DollarSign} />
               <MetricCard label="COGS (neto)" value={formatCLP(displayCogs)} icon={Receipt} />
+              {displayWaste > 0 && (
+                <MetricCard
+                  label="Merma (pérdida inventario)"
+                  value={formatCLP(displayWaste)}
+                  sub={`${mtd.wasteItems.length} producto${mtd.wasteItems.length !== 1 ? "s" : ""}`}
+                  icon={Trash2}
+                  negative
+                />
+              )}
               <MetricCard
                 label="Margen Bruto"
                 value={formatCLP(displayGrossMargin)}
@@ -226,7 +235,7 @@ export function FinancePanel() {
               <MetricCard
                 label="Total OPEX"
                 value={formatCLP(mtd.opexTotal)}
-                sub={hasSales ? `${mtd.opexPct.toFixed(1)}% de ventas` : undefined}
+                sub={mtd.salesNet > 0 ? `${mtd.opexPct.toFixed(1)}% de ventas` : undefined}
                 icon={BarChart3}
               />
               <MetricCard
@@ -257,8 +266,37 @@ export function FinancePanel() {
                 ) : (
                   <>
                     <StatementRow label="Costo de ventas (COGS neto)" value={-displayCogs} negative />
-                    <StatementRow label="Margen bruto" value={displayGrossMargin} bold negative={displayGrossMargin < 0} />
                   </>
+                )}
+
+                {/* Waste — always shown if > 0 */}
+                {displayWaste > 0 && (
+                  <>
+                    <div className="flex justify-between items-center py-1 pl-4 text-sm">
+                      <span className="text-destructive flex items-center gap-1.5">
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Merma (pérdida inventario)
+                      </span>
+                      <span className="tabular-nums text-destructive font-medium">{formatCLP(-displayWaste)}</span>
+                    </div>
+                    {mtd.wasteItems.length > 0 && (
+                      <div className="pl-8 space-y-0.5 mb-1">
+                        {mtd.wasteItems.map((item, i) => (
+                          <div key={i} className="flex justify-between text-xs text-muted-foreground">
+                            <span className="truncate mr-2">{item.product_name} — {item.reason}</span>
+                            <span className="tabular-nums shrink-0 text-destructive/70">{formatCLP(-item.cost)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {hasSales && (
+                  <StatementRow label="Margen bruto" value={displayGrossMargin} bold negative={displayGrossMargin < 0} />
+                )}
+                {!hasSales && displayWaste > 0 && (
+                  <StatementRow label="Pérdida bruta (sin ventas)" value={-displayWaste} bold negative />
                 )}
 
                 <div className="border-t my-2" />
