@@ -437,7 +437,7 @@ export default function Bar() {
   const resetToReady = resumeScanning;
 
   // Redeem token (called after mixer selection or directly if no mixer needed)
-  const redeemToken = useCallback(async (token: string, mixerOverrides: { slot_index: number; product_id: string }[] | null) => {
+  const redeemToken = useCallback(async (token: string, mixerOverrides: { slot_index: number; product_id: string }[] | null): Promise<RedemptionResult | undefined> => {
     abortControllerRef.current = new AbortController();
 
     // Processing timeout
@@ -467,7 +467,7 @@ export default function Bar() {
 
       if (abortControllerRef.current?.signal.aborted) {
         isProcessingRef.current = false;
-        return;
+        return undefined;
       }
 
       if (processingTimeoutRef.current) {
@@ -487,7 +487,7 @@ export default function Bar() {
         isProcessingRef.current = false;
         setScannerFrozen(false);
         setScanState("idle");
-        return;
+        return undefined;
       }
       
       setResult(resultData);
@@ -517,10 +517,12 @@ export default function Bar() {
 
       // HARD STOP: Transition to waiting_resume after showing result
       transitionToWaitingResume(readerMode);
+
+      return resultData;
     } catch (error: any) {
       if (abortControllerRef.current?.signal.aborted) {
         isProcessingRef.current = false;
-        return;
+        return undefined;
       }
       
       if (processingTimeoutRef.current) {
@@ -551,6 +553,8 @@ export default function Bar() {
       
       // HARD STOP: Transition to waiting_resume
       transitionToWaitingResume(readerMode);
+
+      return errorResult;
     }
   }, [transitionToWaitingResume, selectedBarId, readerMode]);
 
@@ -658,7 +662,11 @@ export default function Bar() {
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
     checks: BottleCheckResult[]
   ) => {
-    await redeemToken(token, mixerOverrides);
+    const redeemResult = await redeemToken(token, mixerOverrides);
+
+    // Solo descontar ml si el canje fue exitoso
+    if (redeemResult?.success !== true) return;
+
     for (const check of checks) {
       if (check.required_ml <= 0) continue;
       try {
