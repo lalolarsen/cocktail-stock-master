@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -61,6 +61,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Productos", value: "products", icon: Package },
       { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
       { title: "Merma", value: "waste", icon: Trash2 },
+      { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
     ],
   },
@@ -99,6 +100,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario", value: "inventory", icon: Warehouse },
+      { title: "Botellas Abiertas", value: "botellas", icon: Wine },
     ],
   },
   {
