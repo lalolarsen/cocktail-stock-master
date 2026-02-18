@@ -1620,6 +1620,129 @@ export type Database = {
           },
         ]
       }
+      open_bottle_events: {
+        Row: {
+          actor_user_id: string
+          after_ml: number
+          before_ml: number
+          created_at: string
+          delta_ml: number
+          event_type: string
+          id: string
+          open_bottle_id: string
+          reason: string | null
+          related_token_id: string | null
+        }
+        Insert: {
+          actor_user_id: string
+          after_ml: number
+          before_ml: number
+          created_at?: string
+          delta_ml: number
+          event_type: string
+          id?: string
+          open_bottle_id: string
+          reason?: string | null
+          related_token_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string
+          after_ml?: number
+          before_ml?: number
+          created_at?: string
+          delta_ml?: number
+          event_type?: string
+          id?: string
+          open_bottle_id?: string
+          reason?: string | null
+          related_token_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_bottle_events_open_bottle_id_fkey"
+            columns: ["open_bottle_id"]
+            isOneToOne: false
+            referencedRelation: "open_bottles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      open_bottles: {
+        Row: {
+          created_at: string
+          id: string
+          initial_ml: number
+          label_code: string | null
+          last_counted_at: string | null
+          last_counted_ml: number | null
+          location_id: string
+          notes: string | null
+          opened_at: string
+          opened_by_user_id: string
+          product_id: string
+          remaining_ml: number
+          status: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          initial_ml: number
+          label_code?: string | null
+          last_counted_at?: string | null
+          last_counted_ml?: number | null
+          location_id: string
+          notes?: string | null
+          opened_at?: string
+          opened_by_user_id: string
+          product_id: string
+          remaining_ml: number
+          status?: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          initial_ml?: number
+          label_code?: string | null
+          last_counted_at?: string | null
+          last_counted_ml?: number | null
+          location_id?: string
+          notes?: string | null
+          opened_at?: string
+          opened_by_user_id?: string
+          product_id?: string
+          remaining_ml?: number
+          status?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_bottles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_bottles_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_bottles_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operational_expenses: {
         Row: {
           amount: number
@@ -4612,6 +4735,18 @@ export type Database = {
           p_payment_method?: string
           p_pos_id?: string
           p_venue_id?: string
+        }
+        Returns: Json
+      }
+      deduct_open_bottles: {
+        Args: {
+          p_actor_user_id: string
+          p_location_id: string
+          p_ml_to_deduct: number
+          p_product_id: string
+          p_reason?: string
+          p_token_id?: string
+          p_venue_id: string
         }
         Returns: Json
       }
