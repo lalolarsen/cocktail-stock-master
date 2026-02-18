@@ -4395,60 +4395,66 @@ export type Database = {
       }
       waste_requests: {
         Row: {
-          bottle_type: string
-          calculated_quantity: number
+          approved_at: string | null
+          approved_by_user_id: string | null
+          bottle_type: string | null
           created_at: string
           estimated_cost: number | null
+          evidence_url: string | null
           id: string
           jornada_id: string | null
           location_id: string
           notes: string | null
           percent_visual: number | null
           product_id: string
+          quantity: number
           reason: string
-          requested_by: string
-          review_notes: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
+          rejection_reason: string | null
+          requested_by_user_id: string
           status: string
+          unit_type: string
           venue_id: string
         }
         Insert: {
-          bottle_type: string
-          calculated_quantity: number
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          bottle_type?: string | null
           created_at?: string
           estimated_cost?: number | null
+          evidence_url?: string | null
           id?: string
           jornada_id?: string | null
           location_id: string
           notes?: string | null
           percent_visual?: number | null
           product_id: string
+          quantity: number
           reason: string
-          requested_by: string
-          review_notes?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
+          rejection_reason?: string | null
+          requested_by_user_id: string
           status?: string
+          unit_type?: string
           venue_id: string
         }
         Update: {
-          bottle_type?: string
-          calculated_quantity?: number
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          bottle_type?: string | null
           created_at?: string
           estimated_cost?: number | null
+          evidence_url?: string | null
           id?: string
           jornada_id?: string | null
           location_id?: string
           notes?: string | null
           percent_visual?: number | null
           product_id?: string
+          quantity?: number
           reason?: string
-          requested_by?: string
-          review_notes?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
+          rejection_reason?: string | null
+          requested_by_user_id?: string
           status?: string
+          unit_type?: string
           venue_id?: string
         }
         Relationships: [
