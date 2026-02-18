@@ -653,6 +653,20 @@ export default function Bar() {
     }
   }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken]);
 
+  const redeemWithBottleDeduction = useCallback(async (
+    token: string,
+    mixerOverrides: { slot_index: number; product_id: string }[] | null,
+    checks: BottleCheckResult[]
+  ) => {
+    await redeemToken(token, mixerOverrides);
+    for (const check of checks) {
+      if (check.required_ml <= 0) continue;
+      try {
+        await openBottlesHook.deductMl({ productId: check.product_id, mlToDeduct: check.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
+      } catch (e) { console.error("[Bar] Bottle deduction non-blocking:", e); }
+    }
+  }, [redeemToken, openBottlesHook, currentUserId]);
+
   const checkAndProceedWithBottles = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null
@@ -697,20 +711,6 @@ export default function Bar() {
       await redeemToken(token, mixerOverrides);
     }
   }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
-
-  const redeemWithBottleDeduction = useCallback(async (
-    token: string,
-    mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    checks: BottleCheckResult[]
-  ) => {
-    await redeemToken(token, mixerOverrides);
-    for (const check of checks) {
-      if (check.required_ml <= 0) continue;
-      try {
-        await openBottlesHook.deductMl({ productId: check.product_id, mlToDeduct: check.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-      } catch (e) { console.error("[Bar] Bottle deduction non-blocking:", e); }
-    }
-  }, [redeemToken, openBottlesHook, currentUserId]);
 
   const handleBottleCheckContinue = useCallback(async () => {
     const token = pendingToken; const overrides = pendingMixerOverrides; const checks = bottleChecks;
