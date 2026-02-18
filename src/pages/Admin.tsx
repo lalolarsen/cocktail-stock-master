@@ -19,6 +19,7 @@ import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
+import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -27,7 +28,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -62,7 +63,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -118,6 +119,7 @@ export default function Admin() {
       case "proveedores": return "Proveedores";
       case "courtesy-qr": return "QR de Cortesía";
       case "waste": return "Merma / Pérdida";
+      case "botellas": return "Botellas Abiertas";
       default: return "Panel de Administración";
     }
   };
@@ -243,6 +245,12 @@ export default function Admin() {
             {activeView === "waste" && !isReadOnly && (
               <div className="space-y-6">
                 <WasteManagement />
+              </div>
+            )}
+
+            {activeView === "botellas" && (
+              <div className="space-y-6">
+                <OpenBottlesMonitor />
               </div>
             )}
           </div>
