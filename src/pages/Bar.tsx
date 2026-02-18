@@ -721,6 +721,11 @@ export default function Bar() {
   }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
 
   const handleBottleCheckContinue = useCallback(async () => {
+    // Guard: nunca canjear si aún faltan ml en alguna botella
+    if (bottleChecks.some(c => !c.sufficient)) {
+      console.warn("[Bar] handleBottleCheckContinue bloqueado: faltan ml en botellas");
+      return;
+    }
     const token = pendingToken; const overrides = pendingMixerOverrides; const checks = bottleChecks;
     setBottleChecks([]); setPendingToken(""); setPendingMixerOverrides(null);
     setScanState("processing");
