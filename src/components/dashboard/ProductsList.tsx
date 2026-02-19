@@ -90,7 +90,8 @@ const getSubcategoryConfig = (subcategory: string | null) => {
 // ──────────────────────────────────────────────
 type InventoryFilter = "all" | "volumetrico" | "unitario";
 
-const isVolumetric = (p: ProductWithStock) => p.category === "ml";
+// Source of truth: isBottle based on capacity_ml (not unit/category string)
+const isVolumetric = (p: ProductWithStock) => !!(p.capacity_ml && p.capacity_ml > 0);
 
 const getStockDisplay = (p: ProductWithStock) => {
   if (isVolumetric(p)) {

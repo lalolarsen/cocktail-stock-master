@@ -127,7 +127,8 @@ export function WasteRegistrationDialog({
     [products, productId]
   );
 
-  const isVolumetric = selectedProduct?.unit === "ml" && !!selectedProduct.capacity_ml;
+  // Source of truth: capacity_ml (not unit string)
+  const isVolumetric = !!(selectedProduct?.capacity_ml && selectedProduct.capacity_ml > 0);
   const unitType = isVolumetric ? "ml" : "unit";
 
   const selectedLocation = useMemo(
