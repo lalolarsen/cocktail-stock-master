@@ -384,14 +384,18 @@ export function BulkStockIntakeGrid({
 
         if (productData) {
           const currentStock = productData.current_stock || 0; // always in ml or units
-          // calculateCPP expects:
-          //   oldCostPerUnit = cost_per_unit (per bottle for bottles, per unit for units)
-          //   newCostPerUnit = net (per bottle or per unit)
-          //   currentStock / addedQty in natural units (ml or units)
+          const oldCostPerUnit = productData.cost_per_unit || 0;
+
+          // Si cost_per_unit previo es 0 (producto sin costo base), el CPP debe ser
+          // directamente el costo del nuevo ingreso — ignorar el stock previo para
+          // evitar dilución incorrecta del costo hacia cero.
+          const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : net;
+          const effectiveOldStock = oldCostPerUnit > 0 ? currentStock : 0;
+
           const newCostPerUnit = calculateCPP({
             product: productData,
-            currentStock,
-            oldCostPerUnit: productData.cost_per_unit || 0,
+            currentStock: effectiveOldStock,
+            oldCostPerUnit: effectiveOldCost,
             addedQty: qtyStored,
             newCostPerUnit: net, // per bottle for bottles, per unit for units
           });

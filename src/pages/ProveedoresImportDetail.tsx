@@ -347,11 +347,17 @@ export default function ProveedoresImportDetail() {
         // For stock operations, convert to base unit (ml for bottles)
         const qtyToAdd = bottle && cap && cap > 0 ? line.units_real * cap : line.units_real;
 
+        const oldCostPerUnit = product.cost_per_unit || 0;
+        // Si cost_per_unit previo es 0 (producto sin costo base, ej: importado via Excel),
+        // ignorar el stock previo para evitar dilución del CPP hacia cero.
+        const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : line.cost_unit_net;
+        const effectiveOldStock = oldCostPerUnit > 0 ? currentStock : 0;
+
         // CPP using the utility (handles ml ↔ bottle equivalents internally)
         const newCPP = calculateCPP({
           product,
-          currentStock,                         // ml for bottles
-          oldCostPerUnit: product.cost_per_unit || 0, // per bottle
+          currentStock: effectiveOldStock,
+          oldCostPerUnit: effectiveOldCost,
           addedQty: qtyToAdd,                   // ml for bottles
           newCostPerUnit: line.cost_unit_net,   // per bottle
         });
