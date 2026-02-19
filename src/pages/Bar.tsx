@@ -3,16 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard, Camera, RefreshCw, MapPin, Package, Clock, Trash2, RotateCcw, ScanLine, History, Usb } from "lucide-react";
+import {
+  Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard,
+  RefreshCw, MapPin, Package, Trash2, History, QrCode, Bluetooth,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import { Html5Qrcode } from "html5-qrcode";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { logAuditEvent } from "@/lib/monitoring";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
@@ -20,7 +21,7 @@ import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistratio
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
-type MissingItem = { product_name: string; required_qty: number; unit: string };
+// ── Types ──────────────────────────────────────────────────────────────────────
 type DeliverItem = { name: string; quantity: number; addons?: string[] };
 type DeliverInfo = {
   type: "cover" | "menu_items";
@@ -28,21 +29,13 @@ type DeliverInfo = {
   quantity?: number;
   items?: DeliverItem[];
   source: "sale" | "ticket";
-  sale_number?: string;
-  ticket_number?: string;
 };
 type RedemptionResult = {
   success: boolean;
   error_code?: string;
   message: string;
   deliver?: DeliverInfo;
-  sale_number?: string;
-  total_amount?: number;
-  redeemed_at?: string;
-  previously_redeemed_at?: string;
   bar_location?: { id: string; name: string };
-  bar_name?: string;
-  missing?: MissingItem[];
 };
 type BarLocation = { id: string; name: string; type: string };
 type ScanHistoryEntry = {
@@ -52,41 +45,34 @@ type ScanHistoryEntry = {
   label: string;
   tokenShort: string;
 };
-type ReaderMode = "USB_SCANNER" | "CAMERA";
-type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection";
 
+// ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_HISTORY_ENTRIES = 20;
 const DEDUPE_WINDOW_MS = 5000;
-const RESULT_DISPLAY_MS = 2000;
-const PROCESSING_TIMEOUT_MS = 8000;
-const USB_AUTO_RESET_MS = 2500;
-const READER_MODE_KEY = "bartender_reader_mode";
+const AUTO_RESET_MS = 2500;
 const WATCHDOG_MS = 10000;
 
-function parseQRToken(raw: string): { valid: boolean; token: string; error?: string } {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function parseQRToken(raw: string): { valid: boolean; token: string } {
   const trimmed = raw.trim();
   let token = "";
   if (trimmed.includes("token=")) {
-    const match = trimmed.match(/[?&]token=([a-f0-9]+)/i);
-    if (match) token = match[1];
+    const m = trimmed.match(/[?&]token=([a-f0-9]+)/i); if (m) token = m[1];
   } else if (trimmed.includes("/r/")) {
-    const match = trimmed.match(/\/r\/([a-f0-9]+)/i);
-    if (match) token = match[1];
+    const m = trimmed.match(/\/r\/([a-f0-9]+)/i); if (m) token = m[1];
   } else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
     token = trimmed.substring(7);
   } else {
-    const match = trimmed.match(/[a-f0-9]{12,64}/i);
-    if (match) token = match[0];
+    const m = trimmed.match(/[a-f0-9]{12,64}/i); if (m) token = m[0];
   }
   token = token.toLowerCase();
-  if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token)) {
-    return { valid: true, token };
-  }
-  return { valid: false, token: "", error: "QR_INVALID" };
+  if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token)) return { valid: true, token };
+  return { valid: false, token: "" };
 }
 
-function getErrorTitle(errorCode?: string): string {
-  switch (errorCode) {
+function getErrorTitle(code?: string): string {
+  switch (code) {
     case "ALREADY_REDEEMED": return "YA CANJEADO";
     case "TOKEN_EXPIRED": return "EXPIRADO";
     case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
@@ -94,449 +80,247 @@ function getErrorTitle(errorCode?: string): string {
     case "QR_INVALID": return "QR INVÁLIDO";
     case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
     case "TIMEOUT": return "TIEMPO AGOTADO";
-    case "SYSTEM_ERROR": return "ERROR DE SISTEMA";
     case "WRONG_BAR": return "BARRA INCORRECTA";
     case "INSUFFICIENT_BAR_STOCK": return "SIN STOCK EN ESTA BARRA";
     default: return "ERROR";
   }
 }
 
-function getSourceLabel(source: string): string {
-  return source === "ticket" ? "Cover" : "Caja";
-}
+function getSourceLabel(s: string) { return s === "ticket" ? "Cover" : "Caja"; }
 
-function getDeliveryDisplay(deliver?: DeliverInfo): { name: string; quantity: number } {
+function getDelivery(deliver?: DeliverInfo): { name: string; quantity: number } {
   if (!deliver) return { name: "Pedido", quantity: 1 };
   if (deliver.type === "cover" && deliver.name) return { name: deliver.name, quantity: deliver.quantity || 1 };
-  if (deliver.type === "menu_items" && deliver.items && deliver.items.length > 0) {
+  if (deliver.type === "menu_items" && deliver.items?.length) {
     if (deliver.items.length === 1) return { name: deliver.items[0].name, quantity: deliver.items[0].quantity };
-    const totalQty = deliver.items.reduce((sum, item) => sum + item.quantity, 0);
-    return { name: deliver.items[0].name, quantity: totalQty };
+    return { name: deliver.items[0].name, quantity: deliver.items.reduce((s, i) => s + i.quantity, 0) };
   }
   return { name: "Pedido", quantity: 1 };
 }
 
-function mapErrorCodeToStatus(errorCode?: string): ScanHistoryEntry["status"] {
-  switch (errorCode) {
+function mapStatus(code?: string): ScanHistoryEntry["status"] {
+  switch (code) {
     case "ALREADY_REDEEMED": return "ALREADY_REDEEMED";
     case "TOKEN_EXPIRED": return "EXPIRED";
-    case "QR_INVALID":
-    case "TOKEN_NOT_FOUND": return "INVALID";
+    case "QR_INVALID": case "TOKEN_NOT_FOUND": return "INVALID";
     case "SALE_CANCELLED": return "CANCELLED";
-    case "INSUFFICIENT_BAR_STOCK":
-    case "INSUFFICIENT_STOCK": return "INSUFFICIENT_STOCK";
+    case "INSUFFICIENT_BAR_STOCK": case "INSUFFICIENT_STOCK": return "INSUFFICIENT_STOCK";
     default: return "ERROR";
   }
 }
 
-function generateHistoryLabel(result: RedemptionResult): string {
-  if (result.success) {
-    const delivery = getDeliveryDisplay(result.deliver);
-    return `ENTREGAR: ${delivery.name} x${delivery.quantity}`;
-  }
-  switch (result.error_code) {
+function historyLabel(r: RedemptionResult): string {
+  if (r.success) { const d = getDelivery(r.deliver); return `ENTREGAR: ${d.name} x${d.quantity}`; }
+  switch (r.error_code) {
     case "ALREADY_REDEEMED": return "YA CANJEADO";
     case "TOKEN_EXPIRED": return "VENCIDO";
     case "QR_INVALID": return "QR INVÁLIDO";
     case "TOKEN_NOT_FOUND": return "NO ENCONTRADO";
     case "SALE_CANCELLED": return "CANCELADO";
-    case "INSUFFICIENT_BAR_STOCK":
-    case "INSUFFICIENT_STOCK": return "SIN STOCK";
+    case "INSUFFICIENT_BAR_STOCK": case "INSUFFICIENT_STOCK": return "SIN STOCK";
     case "TIMEOUT": return "TIMEOUT";
-    default: return result.message || "ERROR";
+    default: return r.message || "ERROR";
   }
 }
 
+// ── Component ──────────────────────────────────────────────────────────────────
 export default function Bar() {
-  const isMobile = useIsMobile();
+  const navigate = useNavigate();
+
+  // Session
   const [isVerified, setIsVerified] = useState(true);
-  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
   const [showPinDialog, setShowPinDialog] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
+  const { venue } = useAppSession();
+  const currentVenueId = venue?.id ?? "";
+
+  // Scanner
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
-  const [userName, setUserName] = useState<string>("");
+  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+  const [scannerFrozen, setScannerFrozen] = useState(false);
+  const [processingHint, setProcessingHint] = useState(false);
 
-  // Mixer selection state
+  // Mixer
   const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
-  const [pendingToken, setPendingToken] = useState<string>("");
+  const [pendingToken, setPendingToken] = useState("");
   const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
   const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
 
   // Bar selection
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
-  const [selectedBarId, setSelectedBarId] = useState<string>("");
+  const [selectedBarId, setSelectedBarId] = useState("");
   const [showBarSelection, setShowBarSelection] = useState(true);
 
-  // Open bottles state
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  const { venue } = useAppSession();
-  const currentVenueId = venue?.id ?? "";
+  // Bottles
   const openBottlesHook = useOpenBottles(currentVenueId, selectedBarId || null);
 
+  // UI
   const [showWasteDialog, setShowWasteDialog] = useState(false);
-
-  const [readerMode, setReaderMode] = useState<ReaderMode>(() => {
-    const saved = localStorage.getItem(READER_MODE_KEY);
-    return (saved === "CAMERA" || saved === "USB_SCANNER") ? saved : "USB_SCANNER";
-  });
-
-  const [scannerFrozen, setScannerFrozen] = useState(false);
-  const [cameraAvailable, setCameraAvailable] = useState(true);
-  const [scannerSessionId, setScannerSessionId] = useState(0);
-  const [scannerReady, setScannerReady] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualToken, setManualToken] = useState("");
 
-  // Debug mode
+  // Debug
   const [debugMode, setDebugMode] = useState(false);
   const [lastParsedToken, setLastParsedToken] = useState("");
-  const [debugStep, setDebugStep] = useState<string>("idle");
-  const debugTapCountRef = useRef(0);
+  const [debugStep, setDebugStep] = useState("idle");
+  const debugTapRef = useRef(0);
   const debugTapTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Refs
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const scanBufferRef = useRef("");
-  const lastDecodedValueRef = useRef<string>("");
-  const lastDecodedTimeRef = useRef<number>(0);
+  const lastTokenRef = useRef("");
+  const lastTimeRef = useRef(0);
   const isProcessingRef = useRef(false);
   const redeemInFlightRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const cameraRef = useRef<Html5Qrcode | null>(null);
-  // Stable ref to break circular dependency between processToken and checkAndProceedWithBottles
-  const checkAndProceedWithBottlesRef = useRef<((token: string, overrides: { slot_index: number; product_id: string }[] | null) => Promise<void>) | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const checkBottlesRef = useRef<((t: string, o: { slot_index: number; product_id: string }[] | null) => Promise<void>) | null>(null);
+  const dismissRef = useRef<NodeJS.Timeout | null>(null);
+  const watchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const hintRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Timers
-  const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const navigate = useNavigate();
-
+  // ── Init ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetchBarLocations();
-    const savedBarId = localStorage.getItem("bartenderBarId");
-    if (savedBarId) setSelectedBarId(savedBarId);
-  }, []);
-
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
-        if (profile) setUserName(profile.full_name || "");
-      }
-    };
-    fetchUserInfo();
-  }, []);
-
-  useEffect(() => {
-    if (selectedBarId) localStorage.setItem("bartenderBarId", selectedBarId);
-  }, [selectedBarId]);
-
-  useEffect(() => {
-    if (isVerified && !showBarSelection && scanState === "idle" && readerMode === "USB_SCANNER") {
-      focusScannerInput();
-    }
-  }, [isVerified, showBarSelection, scanState, readerMode]);
-
-  useEffect(() => {
-    const handleWindowFocus = () => {
-      if (scanState === "idle" && !showManualEntry && readerMode === "USB_SCANNER") focusScannerInput();
-    };
-    window.addEventListener("focus", handleWindowFocus);
-    return () => window.removeEventListener("focus", handleWindowFocus);
-  }, [scanState, showManualEntry, readerMode]);
-
-  // Check URL for debug mode
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("debug") === "1") setDebugMode(true);
-  }, []);
-
-  const focusScannerInput = useCallback(() => {
-    setTimeout(() => {
-      if (scannerInputRef.current && !showManualEntry && readerMode === "USB_SCANNER") {
-        scannerInputRef.current.focus();
-      }
-    }, 50);
-  }, [showManualEntry, readerMode]);
-
-  const fetchBarLocations = async () => {
-    const { data, error } = await supabase.from("stock_locations").select("*").eq("type", "bar").eq("is_active", true).order("name");
-    if (!error && data) {
+    supabase.from("stock_locations").select("*").eq("type", "bar").eq("is_active", true).order("name").then(({ data }) => {
+      if (!data) return;
       setBarLocations(data);
-      if (data.length === 1) { setSelectedBarId(data[0].id); setShowBarSelection(false); }
-      const savedBarId = localStorage.getItem("bartenderBarId");
-      if (savedBarId && data.some(b => b.id === savedBarId)) setSelectedBarId(savedBarId);
-    }
-  };
-
-  const clearAllTimers = useCallback(() => {
-    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
-    if (processingTimeoutRef.current) { clearTimeout(processingTimeoutRef.current); processingTimeoutRef.current = null; }
-    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
+      const saved = localStorage.getItem("bartenderBarId");
+      if (saved && data.some((b: BarLocation) => b.id === saved)) { setSelectedBarId(saved); setShowBarSelection(false); }
+      else if (data.length === 1) { setSelectedBarId(data[0].id); setShowBarSelection(false); }
+    });
   }, []);
 
-  const transitionToWaitingResume = useCallback((currentMode: ReaderMode) => {
-    clearAllTimers();
-    if (currentMode === "CAMERA") {
-      setScannerFrozen(true);
-      if (cameraRef.current) { cameraRef.current.stop().catch(() => {}); cameraRef.current = null; setScannerReady(false); }
-      dismissTimerRef.current = setTimeout(() => setScanState("waiting_resume"), RESULT_DISPLAY_MS);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      setCurrentUserId(user.id);
+      supabase.from("profiles").select("full_name").eq("id", user.id).single().then(({ data }) => {
+        if (data) setUserName(data.full_name || "");
+      });
+    });
+  }, []);
+
+  useEffect(() => { if (selectedBarId) localStorage.setItem("bartenderBarId", selectedBarId); }, [selectedBarId]);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("debug") === "1") setDebugMode(true); }, []);
+
+  // Processing hint after 2s
+  useEffect(() => {
+    if (scanState === "processing") {
+      hintRef.current = setTimeout(() => setProcessingHint(true), 2000);
     } else {
-      dismissTimerRef.current = setTimeout(() => {
-        redeemInFlightRef.current = false;
-        isProcessingRef.current = false;
-        setScannerFrozen(false);
-        setResult(null);
-        setScanState("idle");
-        setDebugStep("idle");
-        scanBufferRef.current = "";
-        if (scannerInputRef.current) scannerInputRef.current.value = "";
-        focusScannerInput();
-      }, USB_AUTO_RESET_MS);
+      if (hintRef.current) { clearTimeout(hintRef.current); hintRef.current = null; }
+      setProcessingHint(false);
     }
-  }, [clearAllTimers, focusScannerInput]);
+    return () => { if (hintRef.current) { clearTimeout(hintRef.current); hintRef.current = null; } };
+  }, [scanState]);
+
+  // ── Focus ──────────────────────────────────────────────────────────────────
+  const focusInput = useCallback(() => {
+    setTimeout(() => {
+      if (!showManualEntry && !showBarSelection && !showWasteDialog) {
+        scannerInputRef.current?.focus();
+      }
+    }, 80);
+  }, [showManualEntry, showBarSelection, showWasteDialog]);
+
+  useEffect(() => {
+    if (!showBarSelection && !showManualEntry && !showWasteDialog && scanState === "idle") focusInput();
+  }, [showBarSelection, showManualEntry, showWasteDialog, scanState, focusInput]);
+
+  // ── Lock helpers ───────────────────────────────────────────────────────────
+  const clearTimers = useCallback(() => {
+    [dismissRef, watchdogRef, hintRef].forEach(r => { if (r.current) { clearTimeout(r.current); r.current = null; } });
+  }, []);
+
+  const releaseLocks = useCallback((to: ScanState = "idle") => {
+    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+    isProcessingRef.current = false;
+    redeemInFlightRef.current = false;
+    setScannerFrozen(false);
+    setScanState(to);
+  }, []);
 
   const resumeScanning = useCallback(() => {
-    clearAllTimers();
-    if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; }
+    clearTimers();
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     redeemInFlightRef.current = false;
     isProcessingRef.current = false;
     setScannerFrozen(false);
-    lastDecodedValueRef.current = "";
-    lastDecodedTimeRef.current = 0;
+    lastTokenRef.current = "";
+    lastTimeRef.current = 0;
     setResult(null);
     setDebugStep("idle");
     setScanState("idle");
     scanBufferRef.current = "";
-    if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
-    if (readerMode === "USB_SCANNER") focusScannerInput();
-  }, [clearAllTimers, focusScannerInput, readerMode]);
+    setTimeout(focusInput, 100);
+  }, [clearTimers, focusInput]);
 
-  const resetToReady = resumeScanning;
+  const scheduleAutoReset = useCallback(() => {
+    clearTimers();
+    dismissRef.current = setTimeout(() => {
+      redeemInFlightRef.current = false;
+      isProcessingRef.current = false;
+      setScannerFrozen(false);
+      setResult(null);
+      setScanState("idle");
+      setDebugStep("idle");
+      scanBufferRef.current = "";
+      if (scannerInputRef.current) scannerInputRef.current.value = "";
+      focusInput();
+    }, AUTO_RESET_MS);
+  }, [clearTimers, focusInput]);
 
-  // ─── RELEASE LOCKS ──────────────────────────────────────────────────────────
-  // Always call this when the pipeline ends (success, error, cancel, timeout)
-  const releaseLocks = useCallback((toState: ScanState = "idle") => {
-    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
-    isProcessingRef.current = false;
-    redeemInFlightRef.current = false;
-    setScannerFrozen(false);
-    setScanState(toState);
-  }, []);
-
-  // ─── REDEEM TOKEN ───────────────────────────────────────────────────────────
+  // ── Redeem token ───────────────────────────────────────────────────────────
   const redeemToken = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null
   ): Promise<RedemptionResult | undefined> => {
-    abortControllerRef.current = new AbortController();
+    abortRef.current = new AbortController();
     setDebugStep("redeem");
-    console.log("[Bar][redeem] Calling redeem_pickup_token RPC", { token: token.slice(-8), bar: selectedBarId });
-
     try {
       redeemInFlightRef.current = true;
-
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
         p_mixer_overrides: mixerOverrides ? JSON.stringify(mixerOverrides) : null,
       });
-
-      if (abortControllerRef.current?.signal.aborted) { console.log("[Bar][redeem] Aborted"); return undefined; }
-      if (error) { console.error("[Bar][redeem] RPC error:", error); throw error; }
-
-      const resultData = data as RedemptionResult;
-
-      if (resultData.error_code === "TOO_FAST") {
-        console.log("[Bar][redeem] TOO_FAST - ignoring");
-        releaseLocks("idle");
-        setDebugStep("idle");
-        return undefined;
-      }
-
-      console.log("[Bar][redeem] Result:", { success: resultData.success, error_code: resultData.error_code });
-      setDebugStep(resultData.success ? "done-success" : "done-error");
-      setResult(resultData);
-
-      logAuditEvent({
-        action: "redeem_pickup_token",
-        status: resultData.success ? "success" : "fail",
-        metadata: { token: token.substring(0, 8) + "...", error_code: resultData.error_code, bar_id: selectedBarId },
-      });
-
-      const historyEntry: ScanHistoryEntry = {
-        id: crypto.randomUUID(),
-        time: new Date(),
-        status: resultData.success ? "SUCCESS" : mapErrorCodeToStatus(resultData.error_code),
-        label: generateHistoryLabel(resultData),
-        tokenShort: token.slice(-6),
-      };
-      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-
-      // Set final state — setScanState called here so the UI renders BEFORE transitionToWaitingResume
-      releaseLocks(resultData.success ? "success" : "error");
-      transitionToWaitingResume(readerMode);
-      return resultData;
-
+      if (abortRef.current?.signal.aborted) return undefined;
+      if (error) throw error;
+      const r = data as RedemptionResult;
+      if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
+      setDebugStep(r.success ? "done-success" : "done-error");
+      setResult(r);
+      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: r.success ? "SUCCESS" : mapStatus(r.error_code), label: historyLabel(r), tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks(r.success ? "success" : "error");
+      scheduleAutoReset();
+      return r;
     } catch (err: any) {
-      if (abortControllerRef.current?.signal.aborted) return undefined;
-      console.error("[Bar][redeem] Catch:", { token: token.slice(-8), err });
-      const errMsg = err?.message || "Error al procesar el canje";
-      const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: errMsg };
-      setDebugStep("done-error");
-      setResult(errorResult);
-
-      const historyEntry: ScanHistoryEntry = {
-        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
-        label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
-      };
-      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("error");
-      transitionToWaitingResume(readerMode);
-      return errorResult;
+      if (abortRef.current?.signal.aborted) return undefined;
+      const msg = err?.message || "Error al procesar el canje";
+      const er: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: msg };
+      setDebugStep("done-error"); setResult(er);
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + msg.slice(0, 40), tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error"); scheduleAutoReset(); return er;
     }
-    // NOTE: No finally here — releaseLocks() is called explicitly in every path above
-    // to avoid releasing locks when transitioning to mixer_selection or bottle_check
-  }, [transitionToWaitingResume, selectedBarId, readerMode, releaseLocks]);
+  }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
-  // ─── PROCESS TOKEN (entry point) ────────────────────────────────────────────
-  const processToken = useCallback(async (token: string) => {
-    const now = Date.now();
-
-    if (isProcessingRef.current) { console.log("[Bar][process] Lock active, ignoring"); return; }
-    if (token === lastDecodedValueRef.current && now - lastDecodedTimeRef.current < DEDUPE_WINDOW_MS) { console.log("[Bar][process] Dedupe, ignoring"); return; }
-    if (redeemInFlightRef.current) { console.log("[Bar][process] In flight, ignoring"); return; }
-    if (scannerFrozen) { console.log("[Bar][process] Frozen, ignoring"); return; }
-
-    // Acquire locks
-    isProcessingRef.current = true;
-    lastDecodedValueRef.current = token;
-    lastDecodedTimeRef.current = now;
-    setLastParsedToken(token);
-    setScanState("processing");
-    setScannerFrozen(true);
-    setResult(null);
-    setDebugStep("start");
-    console.log("[Bar][process] START token:", token.slice(-8));
-
-    if (cameraRef.current) { cameraRef.current.stop().catch(() => {}); cameraRef.current = null; setScannerReady(false); }
-
-    // ─── WATCHDOG 10s ───
-    // Only fires if we're still in "processing" (not mixer_selection / bottle_check)
-    watchdogTimerRef.current = setTimeout(() => {
-      if (!isProcessingRef.current) return;
-      console.error("[Bar][watchdog] TIMEOUT after 10s, state still processing");
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      const timeoutResult: RedemptionResult = {
-        success: false, error_code: "TIMEOUT",
-        message: "El canje se quedó esperando. Reintenta o revisa conexión."
-      };
-      setDebugStep("done-error");
-      setResult(timeoutResult);
-      const historyEntry: ScanHistoryEntry = {
-        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
-        label: "TIMEOUT", tokenShort: token.slice(-6),
-      };
-      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("error");
-      transitionToWaitingResume(readerMode);
-    }, WATCHDOG_MS);
-
-    try {
-      // ── STEP 1: validate token + check mixer requirements ──
-      setDebugStep("fetch-token");
-      console.log("[Bar][process] Step 1: check_token_mixer_requirements");
-      const { data: mixerCheck, error: mixerError } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
-      if (mixerError) { console.error("[Bar][process] mixer check error:", mixerError); throw mixerError; }
-
-      const mixerResult = mixerCheck as unknown as {
-        success: boolean;
-        requires_mixer_selection: boolean;
-        mixer_slots?: MixerSlot[];
-        error?: string;
-      };
-      console.log("[Bar][process] mixer check result:", JSON.stringify(mixerResult));
-
-      if (!mixerResult.success) {
-        const errCode = mixerResult.error || "TOKEN_NOT_FOUND";
-        console.warn("[Bar][process] mixer check not success:", errCode);
-        setDebugStep("done-error");
-        setResult({ success: false, error_code: errCode, message: "Token no encontrado o ya procesado" });
-        const historyEntry: ScanHistoryEntry = {
-          id: crypto.randomUUID(), time: new Date(), status: mapErrorCodeToStatus(errCode),
-          label: getErrorTitle(errCode), tokenShort: token.slice(-6),
-        };
-        setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-        releaseLocks("error");
-        transitionToWaitingResume(readerMode);
-        return;
-      }
-
-      // ── STEP 2: Mixer selection? ──
-      if (mixerResult.requires_mixer_selection && mixerResult.mixer_slots && mixerResult.mixer_slots.length > 0) {
-        console.log("[Bar][process] Step 2: mixer_selection required, slots:", mixerResult.mixer_slots.length);
-        setDebugStep("mixer-needed");
-        setMixerSlots(mixerResult.mixer_slots);
-        setPendingToken(token);
-        // Keep scannerFrozen=true and isProcessingRef=true while user picks mixer
-        // releaseLocks NOT called here — will be called by handleMixerConfirm / handleMixerCancel
-        if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
-        setScanState("mixer_selection");
-        return;
-      }
-
-      // ── STEP 3: Bottle check (if bar selected) ──
-      if (selectedBarId) {
-        setDebugStep("bottle-check");
-        console.log("[Bar][process] Step 3: bottle check via ref");
-        await checkAndProceedWithBottlesRef.current?.(token, null);
-        return;
-      }
-
-      // ── STEP 4: Direct redeem (no bar context) ──
-      setDebugStep("redeem");
-      console.log("[Bar][process] Step 4: direct redeem (no bar)");
-      await redeemToken(token, null);
-
-    } catch (err: any) {
-      if (abortControllerRef.current?.signal.aborted) return;
-      const errMsg = err?.message || "Error al procesar el código";
-      console.error("[Bar][process] Catch:", { token: token.slice(-8), err });
-      setDebugStep("done-error");
-      setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
-      const historyEntry: ScanHistoryEntry = {
-        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
-        label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
-      };
-      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("error");
-      transitionToWaitingResume(readerMode);
-    }
-    // NOTE: No finally — locks are released explicitly in every branch above.
-    // This prevents accidentally releasing locks when waiting for mixer or bottle dialogs.
-  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken, releaseLocks]);
-
+  // ── Best-effort bottle deduction ───────────────────────────────────────────
   const redeemWithBottleDeduction = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
     checks: BottleCheckResult[]
   ) => {
-    // redeemToken handles lock release internally
-    const redeemResult = await redeemToken(token, mixerOverrides);
-    if (redeemResult?.success !== true) return;
-    // Best-effort bottle deduction — never blocks canje
-    for (const check of checks) {
-      if (check.required_ml <= 0) continue;
+    const r = await redeemToken(token, mixerOverrides);
+    if (r?.success !== true) return;
+    for (const c of checks) {
+      if (c.required_ml <= 0) continue;
       try {
-        await openBottlesHook.deductMl({
-          productId: check.product_id,
-          mlToDeduct: check.required_ml,
-          actorUserId: currentUserId,
-          reason: `Canje QR ${token.slice(-6)}`
-        });
+        await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
       } catch (e) {
         console.error("[Bar] Bottle deduction non-blocking:", e);
         toast.warning("Canje OK, pero no se pudo registrar consumo de botella (revisar).");
@@ -544,291 +328,219 @@ export default function Bar() {
     }
   }, [redeemToken, openBottlesHook, currentUserId]);
 
+  // ── Check & auto-open bottles ──────────────────────────────────────────────
   const checkAndProceedWithBottles = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null
   ) => {
     setDebugStep("bottle-check");
     try {
-      if (!selectedBarId) {
-        console.warn("[Bar][bottles] No bar selected — redeeming directly");
-        await redeemToken(token, mixerOverrides);
-        return;
-      }
+      if (!selectedBarId) { await redeemToken(token, mixerOverrides); return; }
 
-      // Fetch sale_id from token
-      const { data: tokenData, error: tokenErr } = await supabase
-        .from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
-      if (tokenErr) throw tokenErr;
+      const { data: td, error: te } = await supabase.from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
+      if (te) throw te;
+      if (!td?.sale_id) { await redeemToken(token, mixerOverrides); return; }
 
-      if (!tokenData?.sale_id) {
-        console.log("[Bar][bottles] No sale_id — redeeming directly");
-        await redeemToken(token, mixerOverrides);
-        return;
-      }
-
-      // Fetch sale items + cocktail ingredients with capacity_ml
-      const { data: saleItems, error: siErr } = await supabase
-        .from("sale_items")
+      const { data: si, error: se } = await supabase.from("sale_items")
         .select("quantity, cocktail_id, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))")
-        .eq("sale_id", tokenData.sale_id);
-      if (siErr) throw siErr;
+        .eq("sale_id", td.sale_id);
+      if (se) throw se;
 
-      // Aggregate ml per product
       const mlMap = new Map<string, { product_id: string; product_name: string; required_ml: number; capacity_ml: number }>();
-      for (const si of (saleItems || [])) {
-        const qty = (si as any).quantity || 1;
-        for (const ing of ((si as any).cocktails?.cocktail_ingredients || [])) {
+      for (const item of (si || [])) {
+        const qty = (item as any).quantity || 1;
+        for (const ing of ((item as any).cocktails?.cocktail_ingredients || [])) {
           const p = ing.products;
           if (!p?.capacity_ml || p.capacity_ml <= 0) continue;
           const ingQty = (ing.quantity || 0) * qty;
           if (ingQty <= 0) continue;
           const ex = mlMap.get(p.id);
-          if (ex) { ex.required_ml += ingQty; }
-          else { mlMap.set(p.id, { product_id: p.id, product_name: p.name, required_ml: ingQty, capacity_ml: p.capacity_ml }); }
+          if (ex) ex.required_ml += ingQty;
+          else mlMap.set(p.id, { product_id: p.id, product_name: p.name, required_ml: ingQty, capacity_ml: p.capacity_ml });
         }
       }
 
-      if (mlMap.size === 0) {
-        console.log("[Bar][bottles] No ml ingredients — redeeming directly");
-        await redeemToken(token, mixerOverrides);
-        return;
-      }
+      if (mlMap.size === 0) { await redeemToken(token, mixerOverrides); return; }
 
-      const ingredientsList = Array.from(mlMap.values());
-      const checks = openBottlesHook.checkBottlesForIngredients(
-        ingredientsList.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml }))
-      );
+      const ingredients = Array.from(mlMap.values());
+      const checks = openBottlesHook.checkBottlesForIngredients(ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml })));
+      const insufficient = checks.filter(c => !c.sufficient);
 
-      // ── AUTO-OPEN bottles for any product with insufficient ml ──
-      const insufficientChecks = checks.filter(c => !c.sufficient);
-      if (insufficientChecks.length > 0) {
+      if (insufficient.length > 0) {
         setDebugStep("auto-open");
         if (!currentUserId) throw new Error("Sin usuario activo para abrir botellas");
         if (!currentVenueId) throw new Error("Venue no identificado");
-
-        for (const check of insufficientChecks) {
-          const ingData = mlMap.get(check.product_id);
-          if (!ingData) continue;
-          const { capacity_ml } = ingData;
-          if (!capacity_ml || capacity_ml <= 0) {
-            throw new Error(`${check.product_name} no tiene capacidad ml definida. No se puede abrir automáticamente.`);
-          }
-          const missing_ml = check.required_ml - check.available_ml;
-          const bottlesNeeded = Math.ceil(missing_ml / capacity_ml);
-          console.log(`[Bar][auto-open] ${check.product_name} x${bottlesNeeded} (faltaban ${missing_ml}ml)`);
-          toast.info(`Auto-open: ${check.product_name} x${bottlesNeeded} botella${bottlesNeeded > 1 ? "s" : ""} (faltaban ${missing_ml}ml)`);
-
-          for (let i = 0; i < bottlesNeeded; i++) {
-            const { data: newBottle, error: insertErr } = await (supabase as any)
-              .from("open_bottles")
-              .insert({
-                venue_id: currentVenueId,
-                location_id: selectedBarId,
-                product_id: check.product_id,
-                status: "OPEN",
-                opened_by_user_id: currentUserId,
-                initial_ml: capacity_ml,
-                remaining_ml: capacity_ml,
-                notes: `Auto-abierta por canje ${token.slice(-6)}`,
-              })
-              .select()
-              .single();
-            if (insertErr) throw insertErr;
-
+        for (const check of insufficient) {
+          const ing = mlMap.get(check.product_id);
+          if (!ing) continue;
+          const { capacity_ml } = ing;
+          if (!capacity_ml || capacity_ml <= 0) throw new Error(`${check.product_name} no tiene capacidad ml definida.`);
+          const missing = check.required_ml - check.available_ml;
+          const count = Math.ceil(missing / capacity_ml);
+          console.log(`[Bar][auto-open] ${check.product_name} x${count} (faltaban ${missing}ml)`);
+          toast.info(`Auto-open: ${check.product_name} ×${count} botella${count > 1 ? "s" : ""} (faltaban ${missing}ml)`);
+          for (let i = 0; i < count; i++) {
+            const { data: nb, error: ie } = await (supabase as any).from("open_bottles").insert({
+              venue_id: currentVenueId, location_id: selectedBarId, product_id: check.product_id,
+              status: "OPEN", opened_by_user_id: currentUserId,
+              initial_ml: capacity_ml, remaining_ml: capacity_ml,
+              notes: `Auto-abierta por canje ${token.slice(-6)}`,
+            }).select().single();
+            if (ie) throw ie;
             await (supabase as any).from("open_bottle_events").insert({
-              open_bottle_id: newBottle.id,
-              event_type: "OPENED",
-              delta_ml: capacity_ml,
-              before_ml: 0,
-              after_ml: capacity_ml,
-              actor_user_id: currentUserId,
-              reason: "Auto-open por canje",
+              open_bottle_id: nb.id, event_type: "OPENED", delta_ml: capacity_ml,
+              before_ml: 0, after_ml: capacity_ml, actor_user_id: currentUserId, reason: "Auto-open por canje",
             });
           }
         }
-        // Refresh after auto-open
         await openBottlesHook.fetchBottles();
       }
 
-      // Proceed to redeem with best-effort bottle deduction
       setDebugStep("redeem");
-      const checksForDeduction: BottleCheckResult[] = ingredientsList.map(i => ({
-        product_id: i.product_id,
-        product_name: i.product_name,
-        required_ml: i.required_ml,
-        available_ml: i.required_ml,
-        sufficient: true,
-        open_bottles: [],
-      }));
-      await redeemWithBottleDeduction(token, mixerOverrides, checksForDeduction);
-
+      const forDeduction: BottleCheckResult[] = ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml, available_ml: i.required_ml, sufficient: true, open_bottles: [] }));
+      await redeemWithBottleDeduction(token, mixerOverrides, forDeduction);
     } catch (err: any) {
-      console.error("[Bar][bottles] Error:", { token: token.slice(-8), err });
-      const errMsg = err?.message || "Error al verificar botellas";
-      setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
-      const historyEntry: ScanHistoryEntry = {
-        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
-        label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
-      };
-      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("error");
-      transitionToWaitingResume(readerMode);
+      const msg = err?.message || "Error al verificar botellas";
+      console.error("[Bar][bottles]", err);
+      setResult({ success: false, error_code: "SYSTEM_ERROR", message: msg });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + msg.slice(0, 40), tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error"); scheduleAutoReset();
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, selectedBarId, currentVenueId, currentUserId, readerMode, transitionToWaitingResume, releaseLocks]);
+  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, selectedBarId, currentVenueId, currentUserId, releaseLocks, scheduleAutoReset]);
 
-  // ─── MIXER CONFIRM ──────────────────────────────────────────────────────────
+  checkBottlesRef.current = checkAndProceedWithBottles;
+
+  // ── Process token (entry point) ────────────────────────────────────────────
+  const processToken = useCallback(async (token: string) => {
+    const now = Date.now();
+    if (isProcessingRef.current || redeemInFlightRef.current || scannerFrozen) return;
+    if (token === lastTokenRef.current && now - lastTimeRef.current < DEDUPE_WINDOW_MS) return;
+
+    isProcessingRef.current = true;
+    lastTokenRef.current = token;
+    lastTimeRef.current = now;
+    setLastParsedToken(token);
+    setScanState("processing");
+    setScannerFrozen(true);
+    setResult(null);
+    setDebugStep("start");
+
+    watchdogRef.current = setTimeout(() => {
+      if (!isProcessingRef.current) return;
+      if (abortRef.current) abortRef.current.abort();
+      const r: RedemptionResult = { success: false, error_code: "TIMEOUT", message: "El canje se quedó esperando. Reintenta o revisa conexión." };
+      setDebugStep("done-error"); setResult(r);
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "TIMEOUT", tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error"); scheduleAutoReset();
+    }, WATCHDOG_MS);
+
+    try {
+      setDebugStep("fetch-token");
+      const { data: mc, error: me } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
+      if (me) throw me;
+      const mr = mc as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
+
+      if (!mr.success) {
+        const code = mr.error || "TOKEN_NOT_FOUND";
+        setDebugStep("done-error");
+        setResult({ success: false, error_code: code, message: "Token no encontrado o ya procesado" });
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: mapStatus(code), label: getErrorTitle(code), tokenShort: token.slice(-6) };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset(); return;
+      }
+
+      if (mr.requires_mixer_selection && mr.mixer_slots?.length) {
+        setDebugStep("mixer-needed");
+        setMixerSlots(mr.mixer_slots);
+        setPendingToken(token);
+        if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+        setScanState("mixer_selection"); return;
+      }
+
+      if (selectedBarId) { await checkBottlesRef.current?.(token, null); return; }
+      await redeemToken(token, null);
+    } catch (err: any) {
+      if (abortRef.current?.signal.aborted) return;
+      const msg = err?.message || "Error al procesar el código";
+      setDebugStep("done-error");
+      setResult({ success: false, error_code: "SYSTEM_ERROR", message: msg });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + msg.slice(0, 40), tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error"); scheduleAutoReset();
+    }
+  }, [selectedBarId, scannerFrozen, redeemToken, releaseLocks, scheduleAutoReset]);
+
+  // ── Mixer handlers ─────────────────────────────────────────────────────────
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
     setIsRedeemingWithMixer(true);
-    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
+    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
     const token = pendingToken;
     setPendingToken("");
     try {
-      if (selectedBarId) {
-        setPendingMixerOverrides(selections);
-        await checkAndProceedWithBottles(token, selections);
-      } else {
-        await redeemToken(token, selections);
-      }
+      if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
+      else await redeemToken(token, selections);
     } catch (err: any) {
-      console.error("[Bar] Mixer confirm error:", err);
-      const errMsg = err?.message || "Error al canjear con mixer";
-      setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
-      releaseLocks("error");
-      transitionToWaitingResume(readerMode);
-    } finally {
-      setIsRedeemingWithMixer(false);
-    }
-  }, [pendingToken, redeemToken, selectedBarId, checkAndProceedWithBottles, transitionToWaitingResume, readerMode, releaseLocks]);
+      setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
+      releaseLocks("error"); scheduleAutoReset();
+    } finally { setIsRedeemingWithMixer(false); }
+  }, [pendingToken, selectedBarId, checkAndProceedWithBottles, redeemToken, releaseLocks, scheduleAutoReset]);
 
   const handleMixerCancel = useCallback(() => {
-    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
-    setPendingToken("");
-    setMixerSlots([]);
-    setDebugStep("idle");
-    releaseLocks("idle");
-    if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
-    else focusScannerInput();
-  }, [readerMode, focusScannerInput, releaseLocks]);
+    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+    setPendingToken(""); setMixerSlots([]);
+    setDebugStep("idle"); releaseLocks("idle"); focusInput();
+  }, [releaseLocks, focusInput]);
 
-  // ─── USB SCANNER INPUT ──────────────────────────────────────────────────────
-  const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+  // ── Bluetooth HID keyboard input ───────────────────────────────────────────
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      const rawValue = scanBufferRef.current.trim();
+      const raw = scanBufferRef.current.trim();
       scanBufferRef.current = "";
       if (scannerInputRef.current) scannerInputRef.current.value = "";
-
-      if (!rawValue) return;
-      if (scanState !== "idle") {
-        console.log("[Bar][USB] Ignoring scan - not idle, state:", scanState);
-        return;
-      }
-
-      const parsed = parseQRToken(rawValue);
+      if (!raw || scanState !== "idle") return;
+      const parsed = parseQRToken(raw);
       if (!parsed.valid) {
-        const historyEntry: ScanHistoryEntry = {
-          id: crypto.randomUUID(), time: new Date(), status: "INVALID",
-          label: "QR INVÁLIDO", tokenShort: rawValue.slice(-6) || "??????",
-        };
-        setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-        transitionToWaitingResume("USB_SCANNER");
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "INVALID", label: "QR INVÁLIDO", tokenShort: raw.slice(-6) || "??????" };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         return;
       }
-
       processToken(parsed.token);
     } else {
       scanBufferRef.current += e.key;
     }
-  }, [scanState, transitionToWaitingResume, processToken]);
+  }, [scanState, processToken]);
 
-  // ─── CAMERA SCANNER ─────────────────────────────────────────────────────────
-  const startCamera = useCallback(async (sessionId: number) => {
-    const elementId = `qr-reader-${sessionId}`;
-    let html5QrCode: Html5Qrcode | null = null;
-
-    try {
-      const devices = await Html5Qrcode.getCameras();
-      if (!devices || devices.length === 0) { setCameraAvailable(false); return; }
-
-      const el = document.getElementById(elementId);
-      if (!el) return;
-
-      html5QrCode = new Html5Qrcode(elementId);
-      cameraRef.current = html5QrCode;
-
-      await html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          if (scannerFrozen || scanState !== "idle") return;
-          const parsed = parseQRToken(decodedText);
-          if (!parsed.valid) {
-            const historyEntry: ScanHistoryEntry = {
-              id: crypto.randomUUID(), time: new Date(), status: "INVALID",
-              label: "QR INVÁLIDO", tokenShort: decodedText.slice(-6) || "??????",
-            };
-            setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-            transitionToWaitingResume("CAMERA");
-            return;
-          }
-          processToken(parsed.token);
-        },
-        () => {}
-      );
-      setScannerReady(true);
-    } catch (err: any) {
-      console.error("[Bar] Camera error:", err);
-      setCameraAvailable(false);
-      if (html5QrCode) { html5QrCode.stop().catch(() => {}); cameraRef.current = null; }
-    }
-  }, [scannerFrozen, scanState, transitionToWaitingResume, processToken]);
-
-  useEffect(() => {
-    if (readerMode !== "CAMERA" || showBarSelection || !isVerified || scannerFrozen) return;
-    startCamera(scannerSessionId);
-    return () => {
-      if (cameraRef.current) { cameraRef.current.stop().catch(() => {}); cameraRef.current = null; setScannerReady(false); }
-    };
-  }, [readerMode, scannerSessionId, showBarSelection, isVerified, scannerFrozen]);
-
-  // ─── MANUAL TOKEN ENTRY ──────────────────────────────────────────────────────
+  // ── Manual submit ──────────────────────────────────────────────────────────
   const handleManualSubmit = useCallback(() => {
     const raw = manualToken.trim();
     if (!raw) return;
     const parsed = parseQRToken(raw);
-    if (!parsed.valid) {
-      toast.error("Token inválido");
-      return;
-    }
-    setShowManualEntry(false);
-    setManualToken("");
+    if (!parsed.valid) { toast.error("Token inválido"); return; }
+    setShowManualEntry(false); setManualToken("");
     processToken(parsed.token);
   }, [manualToken, processToken]);
 
-  // Debug tap handler
   const handleDebugTap = useCallback(() => {
-    debugTapCountRef.current += 1;
+    debugTapRef.current += 1;
     if (debugTapTimerRef.current) clearTimeout(debugTapTimerRef.current);
-    debugTapTimerRef.current = setTimeout(() => { debugTapCountRef.current = 0; }, 2000);
-    if (debugTapCountRef.current >= 5) { setDebugMode(prev => !prev); debugTapCountRef.current = 0; }
+    debugTapTimerRef.current = setTimeout(() => { debugTapRef.current = 0; }, 2000);
+    if (debugTapRef.current >= 5) { setDebugMode(p => !p); debugTapRef.current = 0; }
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/auth");
-  };
+  const handleLogout = async () => { await supabase.auth.signOut(); navigate("/auth"); };
 
-  // ─── UI ──────────────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const delivery = getDelivery(result?.deliver);
+  const barName = barLocations.find(b => b.id === selectedBarId)?.name;
+
+  // ── Render: PIN ────────────────────────────────────────────────────────────
   if (showPinDialog) {
-    return (
-      <WorkerPinDialog
-        open={showPinDialog}
-        onVerified={() => { setShowPinDialog(false); setIsVerified(true); }}
-        onCancel={() => navigate("/")}
-      />
-    );
+    return <WorkerPinDialog open={showPinDialog} onVerified={() => { setShowPinDialog(false); setIsVerified(true); }} onCancel={() => navigate("/")} />;
   }
 
+  // ── Render: Bar selection ──────────────────────────────────────────────────
   if (showBarSelection && barLocations.length > 1) {
     return (
       <VenueGuard>
@@ -841,278 +553,218 @@ export default function Bar() {
             </div>
             <div className="space-y-2">
               {barLocations.map(bar => (
-                <Button key={bar.id} variant="outline" className="w-full justify-start" onClick={() => { setSelectedBarId(bar.id); setShowBarSelection(false); }}>
-                  <MapPin className="w-4 h-4 mr-2" />
-                  {bar.name}
+                <Button key={bar.id} variant="outline" className="w-full justify-start h-14 text-base" onClick={() => { setSelectedBarId(bar.id); setShowBarSelection(false); }}>
+                  <MapPin className="w-5 h-5 mr-3" />{bar.name}
                 </Button>
               ))}
             </div>
-            <Button variant="ghost" className="w-full text-sm" onClick={() => setShowBarSelection(false)}>
-              Continuar sin seleccionar barra
-            </Button>
+            <Button variant="ghost" className="w-full text-sm" onClick={() => setShowBarSelection(false)}>Continuar sin barra</Button>
           </Card>
         </div>
       </VenueGuard>
     );
   }
 
-  const delivery = getDeliveryDisplay(result?.deliver);
+  // ── Status badge config ────────────────────────────────────────────────────
+  const badgeCfg: Record<ScanState, { ring: string; dot: string; label: string; pulse: boolean }> = {
+    idle:            { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",       pulse: true  },
+    processing:      { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",            pulse: true  },
+    mixer_selection: { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",        pulse: false },
+    success:         { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",           pulse: false },
+    error:           { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
+  };
+  const badge = badgeCfg[scanState];
 
+  // ── Render: Main ───────────────────────────────────────────────────────────
   return (
     <VenueGuard>
-      <div className="min-h-screen bg-background flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b bg-card">
-          <div className="flex items-center gap-2" onClick={handleDebugTap}>
-            <ScanLine className="w-5 h-5 text-primary" />
+      <div className="min-h-screen bg-background flex flex-col select-none" onClick={focusInput}>
+
+        {/* Always-focused BT input */}
+        <input
+          ref={scannerInputRef}
+          className="fixed -left-[9999px] w-px h-px opacity-0 pointer-events-none"
+          onKeyDown={handleKeyDown}
+          onChange={e => { scanBufferRef.current = e.target.value; }}
+          onBlur={() => {
+            setTimeout(() => {
+              if (document.activeElement === document.body || document.activeElement === null) {
+                scannerInputRef.current?.focus();
+              }
+            }, 200);
+          }}
+          autoFocus
+          autoComplete="off"
+          inputMode="none"
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+
+        {/* ── Header ── */}
+        <header className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-card/80 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-3" onClick={handleDebugTap}>
+            <Bluetooth className="w-4 h-4 text-primary" />
             <span className="font-semibold text-sm">Lector QR Bar</span>
-            {selectedBarId && (
-              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                {barLocations.find(b => b.id === selectedBarId)?.name || "Barra"}
-              </span>
-            )}
+            {barName && <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{barName}</span>}
           </div>
           <div className="flex items-center gap-2">
             <VenueIndicator />
             {userName && <span className="text-xs text-muted-foreground hidden sm:block">{userName}</span>}
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8">
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
-        </div>
+        </header>
 
-        {/* Debug overlay */}
-        {debugMode && (
-          <div className="fixed bottom-2 left-2 z-50 bg-black/80 text-green-400 text-xs font-mono p-2 rounded max-w-xs">
-            <div>state: <span className="text-yellow-300">{scanState}</span></div>
-            <div>step: <span className="text-cyan-300">{debugStep}</span></div>
-            <div>token: <span className="text-white">{lastParsedToken.slice(-10) || "—"}</span></div>
-            <div>frozen: <span className="text-orange-300">{scannerFrozen ? "YES" : "no"}</span></div>
-            <div>processing: <span className="text-red-300">{isProcessingRef.current ? "YES" : "no"}</span></div>
+        {/* ── Main ── */}
+        <main className="flex-1 flex flex-col items-center justify-center gap-8 p-6">
+
+          {/* State icon */}
+          <div className="relative">
+            {scanState === "idle" && (
+              <div className="relative">
+                <QrCode className="w-28 h-28 text-primary/60" />
+                <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary flex items-center justify-center shadow-lg">
+                  <Bluetooth className="w-4 h-4 text-primary-foreground" />
+                </div>
+              </div>
+            )}
+            {scanState === "processing" && <Loader2 className="w-28 h-28 animate-spin text-primary" />}
+            {scanState === "success" && <CheckCircle2 className="w-28 h-28 text-primary" />}
+            {scanState === "error" && (result?.error_code === "ALREADY_REDEEMED"
+              ? <AlertCircle className="w-28 h-28 text-yellow-500" />
+              : <XCircle className="w-28 h-28 text-destructive" />)}
+            {scanState === "mixer_selection" && <Package className="w-28 h-28 text-primary" />}
           </div>
-        )}
 
-        {/* Reader mode selector */}
-        <div className="flex justify-center pt-3 pb-1">
-          <ToggleGroup type="single" value={readerMode} onValueChange={(v) => { if (v) { setReaderMode(v as ReaderMode); localStorage.setItem(READER_MODE_KEY, v); resumeScanning(); } }}>
-            <ToggleGroupItem value="USB_SCANNER" className="gap-1.5 text-xs">
-              <Usb className="w-3.5 h-3.5" /> Scanner USB
-            </ToggleGroupItem>
-            <ToggleGroupItem value="CAMERA" className="gap-1.5 text-xs">
-              <Camera className="w-3.5 h-3.5" /> Cámara
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-
-        {/* Main content */}
-        <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-
-          {/* IDLE state - USB */}
-          {scanState === "idle" && readerMode === "USB_SCANNER" && (
-            <div className="w-full max-w-sm space-y-4 text-center">
-              <div className="border-2 border-dashed border-primary/30 rounded-xl p-8">
-                <Usb className="w-12 h-12 text-primary/50 mx-auto mb-3" />
-                <p className="text-muted-foreground text-sm">Listo para escanear</p>
-                <p className="text-xs text-muted-foreground mt-1">Apunta el lector al código QR</p>
-              </div>
-              <input
-                ref={scannerInputRef}
-                className="opacity-0 absolute -left-full"
-                onKeyDown={handleScannerKeyDown}
-                onChange={(e) => { scanBufferRef.current = e.target.value; }}
-                autoComplete="off"
-                tabIndex={-1}
-                aria-hidden
-              />
-              <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowManualEntry(true)}>
-                <Keyboard className="w-4 h-4" /> Ingresar manualmente
-              </Button>
-            </div>
-          )}
-
-          {/* IDLE state - CAMERA */}
-          {scanState === "idle" && readerMode === "CAMERA" && (
-            <div className="w-full max-w-sm space-y-3">
-              <div id={`qr-reader-${scannerSessionId}`} className="rounded-xl overflow-hidden border" />
-              {!scannerReady && (
-                <div className="text-center py-4">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Iniciando cámara...</p>
-                </div>
-              )}
-              {!cameraAvailable && (
-                <div className="text-center py-4">
-                  <XCircle className="w-6 h-6 text-destructive mx-auto mb-2" />
-                  <p className="text-sm text-destructive">Cámara no disponible</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* PROCESSING state */}
-          {scanState === "processing" && (
-            <div className="text-center space-y-4">
-              <Loader2 className="w-16 h-16 animate-spin text-primary mx-auto" />
-              <div>
-                <p className="text-lg font-semibold">Validando...</p>
-                {debugMode && <p className="text-xs text-muted-foreground mt-1">paso: {debugStep}</p>}
-              </div>
-            </div>
-          )}
-
-          {/* SUCCESS state */}
-          {scanState === "success" && result?.success && (
-            <div className="w-full max-w-sm text-center space-y-4">
-              <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto" />
-              <div>
-                <p className="text-3xl font-black text-green-500">ENTREGAR</p>
-                <p className="text-2xl font-bold mt-2">{delivery.name}</p>
-                <p className="text-4xl font-black text-primary">x{delivery.quantity}</p>
-                {result.deliver?.source && (
-                  <p className="text-sm text-muted-foreground mt-1">{getSourceLabel(result.deliver.source)}</p>
+          {/* State text */}
+          <div className="text-center space-y-3 max-w-xs w-full">
+            {scanState === "idle" && (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight">Listo para escanear</h1>
+                <p className="text-muted-foreground text-base leading-relaxed">Escanea un código QR con el lector Bluetooth</p>
+              </>
+            )}
+            {scanState === "processing" && (
+              <>
+                <h1 className="text-2xl font-bold">Validando...</h1>
+                {processingHint && <p className="text-sm text-muted-foreground animate-in fade-in duration-300">Si no avanzó, usa el ingreso manual</p>}
+              </>
+            )}
+            {scanState === "success" && result?.success && (
+              <>
+                <p className="text-sm uppercase tracking-widest font-semibold text-primary">Entregar</p>
+                <h1 className="text-3xl font-black leading-tight">{delivery.name}</h1>
+                <p className="text-6xl font-black text-primary leading-none">×{delivery.quantity}</p>
+                {result.deliver?.source && <p className="text-sm text-muted-foreground">{getSourceLabel(result.deliver.source)}</p>}
+                {result.deliver?.type === "menu_items" && result.deliver.items && result.deliver.items.length > 1 && (
+                  <div className="bg-muted rounded-xl p-3 text-left space-y-2 mt-2">
+                    {result.deliver.items.map((item, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span>{item.name}</span><span className="font-bold">×{item.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </div>
-              {result.deliver?.type === "menu_items" && result.deliver.items && result.deliver.items.length > 1 && (
-                <div className="bg-muted rounded-lg p-3 text-left space-y-1">
-                  {result.deliver.items.map((item, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span>{item.name}</span>
-                      <span className="font-bold">x{item.quantity}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ERROR state */}
-          {scanState === "error" && (
-            <div className="w-full max-w-sm text-center space-y-4">
-              {result?.error_code === "ALREADY_REDEEMED" ? (
-                <AlertCircle className="w-20 h-20 text-yellow-500 mx-auto" />
-              ) : (
-                <XCircle className="w-20 h-20 text-destructive mx-auto" />
-              )}
-              <div>
-                <p className="text-2xl font-black text-destructive">{getErrorTitle(result?.error_code)}</p>
-                {result?.message && <p className="text-sm text-muted-foreground mt-2 break-words">{result.message}</p>}
-              </div>
-              <Button variant="outline" onClick={resumeScanning} className="gap-2">
-                <RefreshCw className="w-4 h-4" /> Reintentar
-              </Button>
-            </div>
-          )}
-
-          {/* WAITING_RESUME state */}
-          {scanState === "waiting_resume" && (
-            <div className="text-center space-y-4">
-              {result?.success ? (
-                <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto" />
-              ) : (
-                <XCircle className="w-16 h-16 text-destructive mx-auto" />
-              )}
-              <Button onClick={resumeScanning} className="gap-2">
-                <ScanLine className="w-4 h-4" /> Escanear siguiente
-              </Button>
-            </div>
-          )}
-
-          {/* MIXER_SELECTION state */}
-          {scanState === "mixer_selection" && (
-            <div className="text-center space-y-3">
-              <Package className="w-12 h-12 text-primary mx-auto" />
-              <p className="font-semibold">Seleccionando mixer...</p>
-            </div>
-          )}
-
-
-
-
-          {/* Manual entry */}
-          {showManualEntry && (
-            <div className="w-full max-w-sm space-y-3">
-              <Input
-                placeholder="Ingresa el token o URL del QR"
-                value={manualToken}
-                onChange={(e) => setManualToken(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleManualSubmit()}
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => { setShowManualEntry(false); setManualToken(""); }}>
-                  Cancelar
+              </>
+            )}
+            {scanState === "error" && (
+              <>
+                <h1 className="text-2xl font-black text-destructive">{getErrorTitle(result?.error_code)}</h1>
+                {result?.message && <p className="text-sm text-muted-foreground leading-relaxed break-words">{result.message}</p>}
+                <Button variant="outline" size="lg" onClick={e => { e.stopPropagation(); resumeScanning(); }} className="mt-2 gap-2 h-12 px-6">
+                  <RefreshCw className="w-4 h-4" />Reintentar
                 </Button>
-                <Button className="flex-1" onClick={handleManualSubmit}>
-                  Canjear
-                </Button>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+            {scanState === "mixer_selection" && (
+              <>
+                <h1 className="text-xl font-semibold">Seleccionando mixer</h1>
+                <p className="text-muted-foreground text-sm">Elige el tipo de mixer para continuar</p>
+              </>
+            )}
+          </div>
 
-          {/* Bar change button */}
-          {barLocations.length > 1 && (
-            <Button variant="ghost" size="sm" className="text-xs gap-1.5 mt-2" onClick={() => setShowBarSelection(true)}>
-              <MapPin className="w-3.5 h-3.5" />
-              Cambiar barra
-            </Button>
-          )}
+          {/* Status badge */}
+          <div className={`flex items-center gap-2.5 px-4 py-2 rounded-full border text-sm font-medium ${badge.ring}`}>
+            <span className={`w-2 h-2 rounded-full ${badge.dot} ${badge.pulse ? "animate-pulse" : ""}`} />
+            {badge.label}
+          </div>
 
-          {/* Scan history */}
-          {scanHistory.length > 0 && (
-            <div className="w-full max-w-sm mt-4">
+          {/* History — only when idle */}
+          {scanHistory.length > 0 && scanState === "idle" && (
+            <div className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 mb-2">
-                <History className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground font-medium">Historial reciente</span>
+                <History className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-medium">Últimos canjes</span>
               </div>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {scanHistory.map(entry => (
-                  <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded-lg px-3 py-2">
+              <div className="space-y-1 max-h-36 overflow-y-auto">
+                {scanHistory.slice(0, 6).map(e => (
+                  <div key={e.id} className="flex items-center justify-between text-xs bg-muted/40 rounded-lg px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {entry.status === "SUCCESS" ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                      ) : entry.status === "ALREADY_REDEEMED" ? (
-                        <AlertCircle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
-                      )}
-                      <span className="truncate font-medium">{entry.label}</span>
+                      {e.status === "SUCCESS" ? <CheckCircle2 className="w-3 h-3 text-primary shrink-0" /> : e.status === "ALREADY_REDEEMED" ? <AlertCircle className="w-3 h-3 text-yellow-500 shrink-0" /> : <XCircle className="w-3 h-3 text-destructive shrink-0" />}
+                      <span className="truncate">{e.label}</span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                      <span className="text-muted-foreground">{entry.tokenShort}</span>
-                      <span className="text-muted-foreground">
-                        {format(entry.time, "HH:mm", { locale: es })}
-                      </span>
-                    </div>
+                    <span className="text-muted-foreground shrink-0 ml-2">{format(e.time, "HH:mm", { locale: es })}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
+        </main>
 
-          {/* Waste button */}
-          <Button variant="ghost" size="sm" className="text-xs gap-1.5 text-muted-foreground" onClick={() => setShowWasteDialog(true)}>
-            <Trash2 className="w-3.5 h-3.5" /> Registrar merma
+        {/* ── Footer: secondary controls ── */}
+        <footer className="flex items-center justify-center gap-1 px-4 py-3 border-t border-border/50" onClick={e => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowManualEntry(true)}>
+            <Keyboard className="w-3.5 h-3.5" />Ingreso manual
           </Button>
-        </div>
+          {barLocations.length > 1 && (
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowBarSelection(true)}>
+              <MapPin className="w-3.5 h-3.5" />Cambiar barra
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowWasteDialog(true)}>
+            <Trash2 className="w-3.5 h-3.5" />Registrar merma
+          </Button>
+        </footer>
 
-        {/* Dialogs */}
-        {scanState === "mixer_selection" && (
-          <MixerSelectionDialog
-            mixerSlots={mixerSlots}
-            isLoading={isRedeemingWithMixer}
-            onConfirm={handleMixerConfirm}
-            onCancel={handleMixerCancel}
-          />
+        {/* ── Debug overlay ── */}
+        {debugMode && (
+          <div className="fixed bottom-16 left-2 z-50 bg-card border rounded-lg p-3 text-xs font-mono space-y-1 shadow-xl">
+            <div className="text-muted-foreground font-bold mb-1 text-[10px] uppercase tracking-wider">Debug</div>
+            <div>state: <span className="text-yellow-400">{scanState}</span></div>
+            <div>step: <span className="text-cyan-400">{debugStep}</span></div>
+            <div>token: <span className="text-foreground">{lastParsedToken.slice(-10) || "—"}</span></div>
+            <div>frozen: <span className="text-orange-400">{scannerFrozen ? "YES" : "no"}</span></div>
+            <div>proc: <span className="text-red-400">{isProcessingRef.current ? "YES" : "no"}</span></div>
+            <div>venue: <span className="text-primary">…{currentVenueId.slice(-8) || "?"}</span></div>
+          </div>
         )}
 
+        {/* ── Mixer dialog ── */}
+        {scanState === "mixer_selection" && (
+          <MixerSelectionDialog mixerSlots={mixerSlots} isLoading={isRedeemingWithMixer} onConfirm={handleMixerConfirm} onCancel={handleMixerCancel} />
+        )}
 
+        {/* ── Manual entry dialog ── */}
+        <Dialog open={showManualEntry} onOpenChange={open => { setShowManualEntry(open); if (!open) { setManualToken(""); setTimeout(focusInput, 200); } }}>
+          <DialogContent className="max-w-sm" onClick={e => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Keyboard className="w-4 h-4" />Ingreso manual</DialogTitle>
+              <DialogDescription>Ingresa el token o URL del código QR</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <Input placeholder="Pega o escribe el token o URL" value={manualToken} onChange={e => setManualToken(e.target.value)} onKeyDown={e => e.key === "Enter" && handleManualSubmit()} autoFocus className="h-12 text-base" />
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 h-12" onClick={() => { setShowManualEntry(false); setManualToken(""); }}>Cancelar</Button>
+                <Button className="flex-1 h-12" onClick={handleManualSubmit}>Canjear</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
-
-        <WasteRegistrationDialog
-          open={showWasteDialog}
-          onOpenChange={setShowWasteDialog}
-          onWasteRegistered={() => setShowWasteDialog(false)}
-        />
+        {/* ── Waste dialog ── */}
+        <WasteRegistrationDialog open={showWasteDialog} onOpenChange={setShowWasteDialog} onWasteRegistered={() => setShowWasteDialog(false)} />
       </div>
     </VenueGuard>
   );
