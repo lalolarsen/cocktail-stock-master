@@ -284,7 +284,7 @@ export default function Bar() {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
-        p_mixer_overrides: mixerOverrides ? JSON.stringify(mixerOverrides) : null,
+        p_mixer_overrides: mixerOverrides || null,
       });
       if (abortRef.current?.signal.aborted) return undefined;
       if (error) throw error;
