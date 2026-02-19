@@ -86,7 +86,7 @@ export function JornadaStatus() {
     
     const { count, error } = await supabase
       .from("sales_documents")
-      .select("*, sales!inner(jornada_id)", { count: "exact", head: true })
+      .select("*, sales!sales_documents_sale_id_fkey!inner(jornada_id)", { count: "exact", head: true })
       .eq("sales.jornada_id", activeJornada.id)
       .in("status", ["pending", "failed"]);
 
