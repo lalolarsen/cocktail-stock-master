@@ -202,6 +202,8 @@ export default function Bar() {
   const redeemInFlightRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cameraRef = useRef<Html5Qrcode | null>(null);
+  // Stable ref to break circular dependency between processToken and checkAndProceedWithBottles
+  const checkAndProceedWithBottlesRef = useRef<((token: string, overrides: { slot_index: number; product_id: string }[] | null) => Promise<void>) | null>(null);
 
   // Timers
   const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -315,8 +317,21 @@ export default function Bar() {
 
   const resetToReady = resumeScanning;
 
+  // ─── RELEASE LOCKS ──────────────────────────────────────────────────────────
+  // Always call this when the pipeline ends (success, error, cancel, timeout)
+  const releaseLocks = useCallback((toState: ScanState = "idle") => {
+    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
+    isProcessingRef.current = false;
+    redeemInFlightRef.current = false;
+    setScannerFrozen(false);
+    setScanState(toState);
+  }, []);
+
   // ─── REDEEM TOKEN ───────────────────────────────────────────────────────────
-  const redeemToken = useCallback(async (token: string, mixerOverrides: { slot_index: number; product_id: string }[] | null): Promise<RedemptionResult | undefined> => {
+  const redeemToken = useCallback(async (
+    token: string,
+    mixerOverrides: { slot_index: number; product_id: string }[] | null
+  ): Promise<RedemptionResult | undefined> => {
     abortControllerRef.current = new AbortController();
     setDebugStep("redeem");
     console.log("[Bar][redeem] Calling redeem_pickup_token RPC", { token: token.slice(-8), bar: selectedBarId });
@@ -337,9 +352,7 @@ export default function Bar() {
 
       if (resultData.error_code === "TOO_FAST") {
         console.log("[Bar][redeem] TOO_FAST - ignoring");
-        isProcessingRef.current = false;
-        setScannerFrozen(false);
-        setScanState("idle");
+        releaseLocks("idle");
         setDebugStep("idle");
         return undefined;
       }
@@ -347,7 +360,6 @@ export default function Bar() {
       console.log("[Bar][redeem] Result:", { success: resultData.success, error_code: resultData.error_code });
       setDebugStep(resultData.success ? "done-success" : "done-error");
       setResult(resultData);
-      setScanState(resultData.success ? "success" : "error");
 
       logAuditEvent({
         action: "redeem_pickup_token",
@@ -364,30 +376,31 @@ export default function Bar() {
       };
       setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
 
+      // Set final state — setScanState called here so the UI renders BEFORE transitionToWaitingResume
+      releaseLocks(resultData.success ? "success" : "error");
       transitionToWaitingResume(readerMode);
       return resultData;
 
-    } catch (error: any) {
+    } catch (err: any) {
       if (abortControllerRef.current?.signal.aborted) return undefined;
-      console.error("[Bar][redeem] Catch:", { token: token.slice(-8), error });
-      const errMsg = error?.message || "Error al procesar el canje";
+      console.error("[Bar][redeem] Catch:", { token: token.slice(-8), err });
+      const errMsg = err?.message || "Error al procesar el canje";
       const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: errMsg };
       setDebugStep("done-error");
       setResult(errorResult);
-      setScanState("error");
 
       const historyEntry: ScanHistoryEntry = {
         id: crypto.randomUUID(), time: new Date(), status: "ERROR",
         label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
       };
       setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error");
       transitionToWaitingResume(readerMode);
       return errorResult;
-    } finally {
-      redeemInFlightRef.current = false;
-      if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
     }
-  }, [transitionToWaitingResume, selectedBarId, readerMode]);
+    // NOTE: No finally here — releaseLocks() is called explicitly in every path above
+    // to avoid releasing locks when transitioning to mixer_selection or bottle_check
+  }, [transitionToWaitingResume, selectedBarId, readerMode, releaseLocks]);
 
   // ─── PROCESS TOKEN (entry point) ────────────────────────────────────────────
   const processToken = useCallback(async (token: string) => {
@@ -398,41 +411,53 @@ export default function Bar() {
     if (redeemInFlightRef.current) { console.log("[Bar][process] In flight, ignoring"); return; }
     if (scannerFrozen) { console.log("[Bar][process] Frozen, ignoring"); return; }
 
+    // Acquire locks
     isProcessingRef.current = true;
     lastDecodedValueRef.current = token;
     lastDecodedTimeRef.current = now;
     setLastParsedToken(token);
     setScanState("processing");
+    setScannerFrozen(true);
     setResult(null);
     setDebugStep("start");
     console.log("[Bar][process] START token:", token.slice(-8));
 
-    setScannerFrozen(true);
     if (cameraRef.current) { cameraRef.current.stop().catch(() => {}); cameraRef.current = null; setScannerReady(false); }
 
     // ─── WATCHDOG 10s ───
+    // Only fires if we're still in "processing" (not mixer_selection / bottle_check)
     watchdogTimerRef.current = setTimeout(() => {
       if (!isProcessingRef.current) return;
-      console.error("[Bar][watchdog] TIMEOUT after 10s");
+      console.error("[Bar][watchdog] TIMEOUT after 10s, state still processing");
       if (abortControllerRef.current) abortControllerRef.current.abort();
-      const timeoutResult: RedemptionResult = { success: false, error_code: "TIMEOUT", message: "El canje se quedó esperando. Reintenta o revisa conexión." };
+      const timeoutResult: RedemptionResult = {
+        success: false, error_code: "TIMEOUT",
+        message: "El canje se quedó esperando. Reintenta o revisa conexión."
+      };
       setDebugStep("done-error");
       setResult(timeoutResult);
-      setScanState("error");
-      isProcessingRef.current = false;
-      redeemInFlightRef.current = false;
-      setScannerFrozen(false);
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
+        label: "TIMEOUT", tokenShort: token.slice(-6),
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error");
       transitionToWaitingResume(readerMode);
     }, WATCHDOG_MS);
 
     try {
-      // Step 1: Check mixer requirements
-      setDebugStep("check-mixer");
+      // ── STEP 1: validate token + check mixer requirements ──
+      setDebugStep("fetch-token");
       console.log("[Bar][process] Step 1: check_token_mixer_requirements");
       const { data: mixerCheck, error: mixerError } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
       if (mixerError) { console.error("[Bar][process] mixer check error:", mixerError); throw mixerError; }
 
-      const mixerResult = mixerCheck as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
+      const mixerResult = mixerCheck as unknown as {
+        success: boolean;
+        requires_mixer_selection: boolean;
+        mixer_slots?: MixerSlot[];
+        error?: string;
+      };
       console.log("[Bar][process] mixer check result:", JSON.stringify(mixerResult));
 
       if (!mixerResult.success) {
@@ -440,61 +465,82 @@ export default function Bar() {
         console.warn("[Bar][process] mixer check not success:", errCode);
         setDebugStep("done-error");
         setResult({ success: false, error_code: errCode, message: "Token no encontrado o ya procesado" });
-        setScanState("error");
+        const historyEntry: ScanHistoryEntry = {
+          id: crypto.randomUUID(), time: new Date(), status: mapErrorCodeToStatus(errCode),
+          label: getErrorTitle(errCode), tokenShort: token.slice(-6),
+        };
+        setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error");
         transitionToWaitingResume(readerMode);
         return;
       }
 
-      // Step 2: Mixer selection?
+      // ── STEP 2: Mixer selection? ──
       if (mixerResult.requires_mixer_selection && mixerResult.mixer_slots && mixerResult.mixer_slots.length > 0) {
         console.log("[Bar][process] Step 2: mixer_selection required, slots:", mixerResult.mixer_slots.length);
         setDebugStep("mixer-needed");
         setMixerSlots(mixerResult.mixer_slots);
         setPendingToken(token);
+        // Keep scannerFrozen=true and isProcessingRef=true while user picks mixer
+        // releaseLocks NOT called here — will be called by handleMixerConfirm / handleMixerCancel
+        if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
         setScanState("mixer_selection");
-        // watchdog cleared when mixer confirmed/cancelled
         return;
       }
 
-      // Step 3: Bottle check or direct redeem
+      // ── STEP 3: Bottle check (if bar selected) ──
       if (selectedBarId) {
         setDebugStep("bottle-check");
-        console.log("[Bar][process] Step 3: bottle check");
-        await checkAndProceedWithBottles(token, null);
+        console.log("[Bar][process] Step 3: bottle check via ref");
+        await checkAndProceedWithBottlesRef.current?.(token, null);
         return;
       }
 
-      // Step 4: Direct redeem
+      // ── STEP 4: Direct redeem (no bar context) ──
       setDebugStep("redeem");
-      console.log("[Bar][process] Step 4: direct redeem");
+      console.log("[Bar][process] Step 4: direct redeem (no bar)");
       await redeemToken(token, null);
 
-    } catch (error: any) {
+    } catch (err: any) {
       if (abortControllerRef.current?.signal.aborted) return;
-      console.error("[Bar][process] Catch:", { step: debugStep, token: token.slice(-8), error });
-      const errMsg = error?.message || "Error al procesar el código";
+      const errMsg = err?.message || "Error al procesar el código";
+      console.error("[Bar][process] Catch:", { token: token.slice(-8), err });
       setDebugStep("done-error");
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
-      setScanState("error");
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
+        label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error");
       transitionToWaitingResume(readerMode);
-    } finally {
-      isProcessingRef.current = false;
-      if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
     }
-  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken, debugStep]);
+    // NOTE: No finally — locks are released explicitly in every branch above.
+    // This prevents accidentally releasing locks when waiting for mixer or bottle dialogs.
+  }, [transitionToWaitingResume, selectedBarId, scannerFrozen, readerMode, redeemToken, releaseLocks]);
 
   const redeemWithBottleDeduction = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
     checks: BottleCheckResult[]
   ) => {
+    // redeemToken handles lock release internally
     const redeemResult = await redeemToken(token, mixerOverrides);
     if (redeemResult?.success !== true) return;
+    // Best-effort bottle deduction — never blocks canje
     for (const check of checks) {
       if (check.required_ml <= 0) continue;
       try {
-        await openBottlesHook.deductMl({ productId: check.product_id, mlToDeduct: check.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-      } catch (e) { console.error("[Bar] Bottle deduction non-blocking:", e); }
+        await openBottlesHook.deductMl({
+          productId: check.product_id,
+          mlToDeduct: check.required_ml,
+          actorUserId: currentUserId,
+          reason: `Canje QR ${token.slice(-6)}`
+        });
+      } catch (e) {
+        console.error("[Bar] Bottle deduction non-blocking:", e);
+        toast.warning("Canje OK, pero no se pudo registrar consumo de botella (revisar).");
+      }
     }
   }, [redeemToken, openBottlesHook, currentUserId]);
 
@@ -502,14 +548,15 @@ export default function Bar() {
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null
   ) => {
+    setDebugStep("bottle-check");
     try {
-      // Simple query without nested FK ambiguity
+      // Two simple queries to avoid PostgREST FK ambiguity
       const { data: tokenData, error: tokenErr } = await supabase
         .from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
       if (tokenErr) throw tokenErr;
 
       if (!tokenData?.sale_id) {
-        console.log("[Bar][bottles] No sale_id, redeeming directly");
+        console.log("[Bar][bottles] No sale_id — redeeming directly");
         await redeemToken(token, mixerOverrides);
         return;
       }
@@ -520,6 +567,7 @@ export default function Bar() {
         .eq("sale_id", tokenData.sale_id);
       if (siErr) throw siErr;
 
+      // Aggregate ml per product
       const mlIngredients = new Map<string, { product_id: string; product_name: string; required_ml: number }>();
       for (const si of (saleItems || [])) {
         const qty = (si as any).quantity || 1;
@@ -535,7 +583,7 @@ export default function Bar() {
       }
 
       if (mlIngredients.size === 0) {
-        console.log("[Bar][bottles] No ml ingredients, redeeming directly");
+        console.log("[Bar][bottles] No ml ingredients — redeeming directly");
         await redeemToken(token, mixerOverrides);
         return;
       }
@@ -546,16 +594,25 @@ export default function Bar() {
       setBottleChecks(checks);
 
       if (checks.every(c => c.sufficient)) {
+        // Enough stock — proceed immediately
+        console.log("[Bar][bottles] All bottles sufficient — redeeming with deduction");
         await redeemWithBottleDeduction(token, mixerOverrides, checks);
       } else {
+        // Need user to open bottles first
+        console.log("[Bar][bottles] Insufficient bottles — waiting for user");
+        // Keep isProcessingRef=true and scannerFrozen=true while dialog is shown
+        if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
         setScanState("bottle_check");
       }
     } catch (err: any) {
-      console.error("[Bar][bottles] Error:", { token: token.slice(-8), err });
-      console.warn("[Bar][bottles] Falling back to direct redemption");
+      console.error("[Bar][bottles] Error — falling back to direct redemption:", { token: token.slice(-8), err });
+      // Non-fatal: fall back to direct redeem so the user is never stuck
       await redeemToken(token, mixerOverrides);
     }
   }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
+
+  // Assign ref after declaration to break circular dep with processToken
+  checkAndProceedWithBottlesRef.current = checkAndProceedWithBottles;
 
   // ─── BOTTLE CHECK HANDLERS ──────────────────────────────────────────────────
   const handleBottleCheckContinue = useCallback(async () => {
@@ -563,19 +620,28 @@ export default function Bar() {
       console.warn("[Bar] handleBottleCheckContinue bloqueado: faltan ml en botellas");
       return;
     }
-    const token = pendingToken; const overrides = pendingMixerOverrides; const checks = bottleChecks;
-    setBottleChecks([]); setPendingToken(""); setPendingMixerOverrides(null);
+    const token = pendingToken;
+    const overrides = pendingMixerOverrides;
+    const checks = bottleChecks;
+    // Clear dialog state
+    setBottleChecks([]);
+    setPendingToken("");
+    setPendingMixerOverrides(null);
     setScanState("processing");
+    isProcessingRef.current = true; // re-acquire for redeemToken
+    setScannerFrozen(true);
     await redeemWithBottleDeduction(token, overrides, checks);
   }, [pendingToken, pendingMixerOverrides, bottleChecks, redeemWithBottleDeduction]);
 
   const handleBottleCheckCancel = useCallback(() => {
-    setBottleChecks([]); setPendingToken(""); setPendingMixerOverrides(null);
-    isProcessingRef.current = false; setScannerFrozen(false); setScanState("idle"); setDebugStep("idle");
-    if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
+    setBottleChecks([]);
+    setPendingToken("");
+    setPendingMixerOverrides(null);
+    setDebugStep("idle");
+    releaseLocks("idle");
     if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
     else focusScannerInput();
-  }, [readerMode, focusScannerInput]);
+  }, [readerMode, focusScannerInput, releaseLocks]);
 
   const handleOpenBottleFromDialog = useCallback(async (productId: string, labelCode?: string) => {
     if (!currentUserId) throw new Error("Sin usuario activo");
@@ -584,7 +650,9 @@ export default function Bar() {
     if (!cap) throw new Error("El producto no tiene capacidad en ml definida");
     await openBottlesHook.openBottle({ productId, initialMl: cap, labelCode, actorUserId: currentUserId });
     await openBottlesHook.fetchBottles();
-    const updated = openBottlesHook.checkBottlesForIngredients(bottleChecks.map(c => ({ product_id: c.product_id, product_name: c.product_name, required_ml: c.required_ml })));
+    const updated = openBottlesHook.checkBottlesForIngredients(
+      bottleChecks.map(c => ({ product_id: c.product_id, product_name: c.product_name, required_ml: c.required_ml }))
+    );
     setBottleChecks(updated);
   }, [currentUserId, openBottlesHook, bottleChecks]);
 
@@ -592,37 +660,35 @@ export default function Bar() {
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
     setIsRedeemingWithMixer(true);
     if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
+    const token = pendingToken;
+    setPendingToken("");
     try {
-      const token = pendingToken;
       if (selectedBarId) {
         setPendingMixerOverrides(selections);
         await checkAndProceedWithBottles(token, selections);
       } else {
         await redeemToken(token, selections);
       }
-    } catch (error: any) {
-      console.error("[Bar] Mixer confirm error:", error);
-      const errMsg = error?.message || "Error al canjear con mixer";
+    } catch (err: any) {
+      console.error("[Bar] Mixer confirm error:", err);
+      const errMsg = err?.message || "Error al canjear con mixer";
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
-      setScanState("error");
+      releaseLocks("error");
       transitionToWaitingResume(readerMode);
     } finally {
       setIsRedeemingWithMixer(false);
-      setPendingToken("");
     }
-  }, [pendingToken, redeemToken, selectedBarId, checkAndProceedWithBottles, transitionToWaitingResume, readerMode]);
+  }, [pendingToken, redeemToken, selectedBarId, checkAndProceedWithBottles, transitionToWaitingResume, readerMode, releaseLocks]);
 
   const handleMixerCancel = useCallback(() => {
     if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
     setPendingToken("");
     setMixerSlots([]);
-    isProcessingRef.current = false;
-    setScannerFrozen(false);
-    setScanState("idle");
     setDebugStep("idle");
+    releaseLocks("idle");
     if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
     else focusScannerInput();
-  }, [readerMode, focusScannerInput]);
+  }, [readerMode, focusScannerInput, releaseLocks]);
 
   // ─── USB SCANNER INPUT ──────────────────────────────────────────────────────
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
