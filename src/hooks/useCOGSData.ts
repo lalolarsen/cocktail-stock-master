@@ -131,12 +131,17 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
 
       movements.forEach((m: any) => {
         const qty = Math.abs(Number(m.quantity));
+        const capacityMl = Number(m.products?.capacity_ml) || 0;
         const unitCost = Number(m.unit_cost) || 0;
 
-        // unit_cost en stock_movements siempre es costo por unidad de medida almacenada:
-        //   - BOTELLAS: cost_per_ml (quantity en ml → qty * unit_cost_per_ml = COGS correcto)
-        //   - UNITARIOS: cost_per_unit (quantity en unidades → qty * unit_cost = COGS correcto)
-        const cost = qty * unitCost;
+        // Para productos tipo BOTELLA (capacity_ml > 0):
+        //   quantity está en ml, unit_cost es costo por botella completa
+        //   COGS = (qty_ml / capacity_ml) * cost_per_bottle
+        // Para productos UNITARIOS:
+        //   COGS = qty * unit_cost
+        const cost = capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
 
         totalCogs += cost;
         totalItems++;
@@ -146,15 +151,11 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
         const productName = m.products?.name || "Unknown";
         const category = m.products?.category || "otros";
         const subcategory = m.products?.subcategory || null;
-        const capacityMl = Number(m.products?.capacity_ml) || 0;
         const unit = m.products?.unit || "u";
 
-        // Para botellas: mostrar en botellas equivalentes (qty_ml / capacity_ml)
+        // Aggregate by product
+        // Para botellas: expresar quantity en botellas equivalentes para la UI
         const displayQty = capacityMl > 0 ? qty / capacityMl : qty;
-        const displayUnit = capacityMl > 0 ? "bot." : unit;
-        // unit_cost para mostrar: si botella, convertir cost_per_ml → cost_per_bottle
-        const displayUnitCost = capacityMl > 0 ? unitCost * capacityMl : unitCost;
-
         const existing = productMap.get(m.product_id);
         if (existing) {
           existing.total_quantity += displayQty;
@@ -166,8 +167,8 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
             category,
             subcategory,
             total_quantity: displayQty,
-            unit: displayUnit,
-            unit_cost: displayUnitCost,
+            unit: capacityMl > 0 ? "bot." : unit,
+            unit_cost: unitCost,
             total_cost: cost,
           });
         }

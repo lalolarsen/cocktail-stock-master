@@ -4715,36 +4715,20 @@ export type Database = {
         Args: { p_items: Json; p_purchase_document_id: string }
         Returns: Json
       }
-      consume_stock_fefo:
-        | {
-            Args: {
-              p_allow_expired?: boolean
-              p_jornada_id?: string
-              p_location_id: string
-              p_notes?: string
-              p_pickup_token_id?: string
-              p_product_id: string
-              p_quantity: number
-              p_source_type?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_allow_expired?: boolean
-              p_bartender_id?: string
-              p_jornada_id?: string
-              p_location_id: string
-              p_pickup_token_id?: string
-              p_product_id: string
-              p_quantity: number
-              p_reference_id?: string
-              p_source_type?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
+      consume_stock_fefo: {
+        Args: {
+          p_allow_expired?: boolean
+          p_jornada_id?: string
+          p_location_id: string
+          p_notes?: string
+          p_pickup_token_id?: string
+          p_product_id: string
+          p_quantity: number
+          p_source_type?: string
+          p_venue_id?: string
+        }
+        Returns: Json
+      }
       create_ticket_sale_with_covers: {
         Args: {
           p_items: Json
