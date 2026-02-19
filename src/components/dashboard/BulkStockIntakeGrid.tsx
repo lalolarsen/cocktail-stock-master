@@ -376,21 +376,27 @@ export function BulkStockIntakeGrid({
         }
 
         // Update product CPP + current_stock
-        const { data: productData } = await supabase
-          .from("products")
-          .select("current_stock, cost_per_unit, capacity_ml")
-          .eq("id", r.product_id)
-          .single();
+        // SOURCE OF TRUTH: use stock_balances sum (not products.current_stock which can drift)
+        const [productDataRes, balancesRes] = await Promise.all([
+          supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", r.product_id).single(),
+          supabase.from("stock_balances").select("quantity").eq("product_id", r.product_id),
+        ]);
 
-        if (productData) {
-          const currentStock = productData.current_stock || 0; // always in ml or units
+        if (productDataRes.data) {
+          const productData = productDataRes.data;
+          // Real stock = sum of all location balances (source of truth)
+          const currentStock = (balancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+          // After we've already inserted the new balance above, the sum includes qtyStored.
+          // We need the BEFORE state for CPP, so subtract qtyStored.
+          const stockBefore = Math.max(0, currentStock - qtyStored);
+
           const oldCostPerUnit = productData.cost_per_unit || 0;
 
           // Si cost_per_unit previo es 0 (producto sin costo base), el CPP debe ser
           // directamente el costo del nuevo ingreso — ignorar el stock previo para
           // evitar dilución incorrecta del costo hacia cero.
           const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : net;
-          const effectiveOldStock = oldCostPerUnit > 0 ? currentStock : 0;
+          const effectiveOldStock = oldCostPerUnit > 0 ? stockBefore : 0;
 
           const newCostPerUnit = calculateCPP({
             product: productData,
@@ -400,8 +406,9 @@ export function BulkStockIntakeGrid({
             newCostPerUnit: net, // per bottle for bottles, per unit for units
           });
 
+          // Sync current_stock to real balance sum (including new intake)
           await supabase.from("products").update({
-            current_stock: currentStock + qtyStored,
+            current_stock: currentStock,
             cost_per_unit: Math.round(newCostPerUnit),
           }).eq("id", r.product_id);
         }

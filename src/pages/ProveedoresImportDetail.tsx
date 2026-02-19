@@ -331,14 +331,18 @@ export default function ProveedoresImportDetail() {
 
       // Update stock for each inventory line (CPP) — bottle-aware
       for (const line of invLines) {
-        const { data: product } = await supabase
-          .from("products")
-          .select("current_stock, cost_per_unit, capacity_ml")
-          .eq("id", line.product_id!)
-          .single();
-        if (!product) continue;
+        // SOURCE OF TRUTH: fetch product + all balances in parallel
+        const [productRes, allBalancesRes, warehouseBalanceRes] = await Promise.all([
+          supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", line.product_id!).single(),
+          supabase.from("stock_balances").select("quantity").eq("product_id", line.product_id!),
+          supabase.from("stock_balances").select("id, quantity")
+            .eq("product_id", line.product_id!)
+            .eq("location_id", imp.location_id)
+            .maybeSingle(),
+        ]);
 
-        const currentStock = product.current_stock || 0; // ml for bottles, units otherwise
+        if (!productRes.data) continue;
+        const product = productRes.data;
         const bottle = isBottle(product);
         const cap = product.capacity_ml;
 
@@ -347,11 +351,14 @@ export default function ProveedoresImportDetail() {
         // For stock operations, convert to base unit (ml for bottles)
         const qtyToAdd = bottle && cap && cap > 0 ? line.units_real * cap : line.units_real;
 
+        // Real stock = sum of ALL location balances (source of truth, avoids drift)
+        const realStock = (allBalancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+
         const oldCostPerUnit = product.cost_per_unit || 0;
-        // Si cost_per_unit previo es 0 (producto sin costo base, ej: importado via Excel),
-        // ignorar el stock previo para evitar dilución del CPP hacia cero.
+        // Si cost_per_unit previo es 0 (producto sin costo base), ignorar stock previo
+        // para evitar dilución del CPP hacia cero.
         const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : line.cost_unit_net;
-        const effectiveOldStock = oldCostPerUnit > 0 ? currentStock : 0;
+        const effectiveOldStock = oldCostPerUnit > 0 ? realStock : 0;
 
         // CPP using the utility (handles ml ↔ bottle equivalents internally)
         const newCPP = calculateCPP({
@@ -362,19 +369,15 @@ export default function ProveedoresImportDetail() {
           newCostPerUnit: line.cost_unit_net,   // per bottle
         });
 
+        // Sync products.current_stock to real balance sum + new intake
         await supabase.from("products").update({
-          current_stock: currentStock + qtyToAdd,
+          current_stock: realStock + qtyToAdd,
           cost_per_unit: Math.round(newCPP),
           updated_at: new Date().toISOString(),
         }).eq("id", line.product_id!);
 
         // Update stock_balances (always in base unit)
-        const { data: balance } = await supabase.from("stock_balances")
-          .select("id, quantity")
-          .eq("product_id", line.product_id!)
-          .eq("location_id", imp.location_id)
-          .single();
-
+        const balance = warehouseBalanceRes.data;
         if (balance) {
           await supabase.from("stock_balances").update({
             quantity: (balance.quantity || 0) + qtyToAdd,
