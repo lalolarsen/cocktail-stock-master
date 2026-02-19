@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
+import { calculateCPP } from "@/lib/product-type";
 import {
   Plus,
   Copy,
@@ -90,9 +91,10 @@ const createEmptyRow = (): IntakeRow => ({
   errors: {},
 });
 
+// Source of truth: capacity_ml (not unit string). See src/lib/product-type.ts
 function isVolumetric(product: Product | undefined): boolean {
   if (!product) return false;
-  return product.unit === "ml" || (!!product.capacity_ml && product.capacity_ml > 0);
+  return typeof product.capacity_ml === "number" && product.capacity_ml > 0;
 }
 
 function computeRow(row: IntakeRow, taxCategories: TaxCategory[], products: Product[]): IntakeRow {
@@ -380,7 +382,7 @@ export function BulkStockIntakeGrid({
           });
         }
 
-        // Update product current_stock + CPP (Costo Promedio Ponderado)
+        // Update product current_stock + CPP via centralized calculateCPP utility
         const { data: productData } = await supabase
           .from("products")
           .select("current_stock, cost_per_unit, capacity_ml")
@@ -389,32 +391,13 @@ export function BulkStockIntakeGrid({
 
         if (productData) {
           const currentStock = productData.current_stock || 0;
-          const oldCostPerUnit = productData.cost_per_unit || 0;  // per bottle for ml, per unit for ud
-          const pCapacityMl = productData.capacity_ml || 1;
-
-          let newCostPerUnit: number;
-
-          if (vol && pCapacityMl > 0) {
-            // CPP in bottle equivalents
-            // old_bottles = currentStock_ml / capacity_ml
-            // new_bottles = qty_ml / capacity_ml
-            const oldBottles = currentStock / pCapacityMl;
-            const newBottles = qty / pCapacityMl;
-            const totalBottles = oldBottles + newBottles;
-
-            if (totalBottles > 0) {
-              newCostPerUnit = (oldCostPerUnit * oldBottles + net * newBottles) / totalBottles;
-            } else {
-              newCostPerUnit = net;
-            }
-          } else {
-            // Standard CPP for unit products
-            if (currentStock + qty > 0 && net > 0) {
-              newCostPerUnit = (oldCostPerUnit * currentStock + net * qty) / (currentStock + qty);
-            } else {
-              newCostPerUnit = net > 0 ? net : oldCostPerUnit;
-            }
-          }
+          const newCostPerUnit = calculateCPP({
+            product: productData,
+            currentStock,
+            oldCostPerUnit: productData.cost_per_unit || 0,
+            addedQty: qty,
+            newCostPerUnit: net,
+          });
 
           await supabase.from("products").update({
             current_stock: currentStock + qty,

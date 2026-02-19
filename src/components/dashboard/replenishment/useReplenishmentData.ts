@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PILOT_VENUE_ID } from "@/lib/venue";
+import { isBottle } from "@/lib/product-type";
 import type { StockLocation, ReplenishmentProduct, TransferHistoryRow } from "./types";
 
 export function useReplenishmentData() {
@@ -84,12 +85,12 @@ export function useReplenishmentData() {
     if (!warehouse) return [];
     return rawProducts.map(p => {
       const wStock = getBalance(p.id, warehouse.id);
-      const isVolumetric = p.unit === "ml" && !!p.capacity_ml;
+      // Source of truth: isBottle based on capacity_ml (not unit string)
+      const bottle = isBottle(p);
       const costPerUnit = Number(p.cost_per_unit) || 0;
-      // For volumetric: cost_per_unit = bottle cost, unitCost = cost per ml
-      // For unitario: cost_per_unit = per unit
-      const unitCost = isVolumetric && p.capacity_ml > 0
-        ? costPerUnit / p.capacity_ml
+      // unitCost = cost per unit-of-measure: cost/ml for bottles, cost/unit for units
+      const unitCost = bottle && (p.capacity_ml ?? 0) > 0
+        ? costPerUnit / p.capacity_ml!
         : costPerUnit;
 
       return {
@@ -103,7 +104,7 @@ export function useReplenishmentData() {
         warehouseStock: wStock,
         barStock: 0, // set per bar when needed
         unitCost,
-        isVolumetric,
+        isVolumetric: bottle,
       };
     });
   }, [rawProducts, warehouse, getBalance]);

@@ -762,7 +762,7 @@ function ProductRow({
   onAdjustMin: () => void;
 }) {
   const unitLabel = unit(product.category, product.unit);
-  const isVolumetric = product.unit === "ml" && !!product.capacity_ml && product.capacity_ml > 0;
+  const isVolumetric = !!(product.capacity_ml && product.capacity_ml > 0); // source of truth: capacity_ml
   
   // Bottle calculation for volumetric products
   const bottleDisplay = useMemo(() => {
