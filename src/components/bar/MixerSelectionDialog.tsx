@@ -1,13 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Loader2, GlassWater, Zap, AlertCircle } from "lucide-react";
+import { Check, X, Loader2, GlassWater, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
-import { useAppSession } from "@/contexts/AppSessionContext";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
 export interface MixerSlot {
   slot_index: number;
   label: string;
@@ -18,12 +15,6 @@ export interface MixerSlot {
   available_options: { id: string; name: string; subcategory?: string }[];
 }
 
-interface MixerProduct {
-  id: string;
-  name: string;
-  subcategory: "MIXER_TRADICIONAL" | "REDBULL";
-}
-
 interface MixerSelectionDialogProps {
   mixerSlots: MixerSlot[];
   onConfirm: (selections: { slot_index: number; product_id: string }[]) => void;
@@ -32,14 +23,8 @@ interface MixerSelectionDialogProps {
   cocktailName?: string;
 }
 
-type TabCategory = "MIXER_TRADICIONAL" | "REDBULL";
+type TabCategory = "latas" | "redbull";
 
-const TAB_CONFIG: Record<TabCategory, { label: string; icon: typeof GlassWater; activeClass: string }> = {
-  MIXER_TRADICIONAL: { label: "Mixers tradicionales", icon: GlassWater, activeClass: "bg-primary text-primary-foreground" },
-  REDBULL:           { label: "Redbull",              icon: Zap,         activeClass: "bg-destructive text-destructive-foreground" },
-};
-
-// ── Component ─────────────────────────────────────────────────────────────────
 export function MixerSelectionDialog({
   mixerSlots,
   onConfirm,
@@ -47,60 +32,19 @@ export function MixerSelectionDialog({
   isLoading = false,
   cocktailName,
 }: MixerSelectionDialogProps) {
-  const { venue } = useAppSession();
-
-  // ── Dynamic mixer products from DB ──────────────────────────────────────────
-  const [mixerProducts, setMixerProducts] = useState<MixerProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchMixers = async () => {
-      setLoadingProducts(true);
-      setLoadError(null);
-      try {
-        let query = supabase
-          .from("products")
-          .select("id, name, subcategory")
-          .eq("is_mixer", true)
-          .eq("is_active_in_sales", true)
-          .in("subcategory", ["MIXER_TRADICIONAL", "REDBULL"])
-          .order("name");
-
-        if (venue?.id) {
-          query = query.eq("venue_id", venue.id);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        setMixerProducts((data || []) as MixerProduct[]);
-      } catch (err: any) {
-        setLoadError("No se pudieron cargar los mixers");
-        console.error("[MixerSelectionDialog] fetch error:", err);
-      } finally {
-        setLoadingProducts(false);
-      }
-    };
-    fetchMixers();
-  }, [venue?.id]);
-
-  // ── Tab state ────────────────────────────────────────────────────────────────
-  const hasTradicional = mixerProducts.some(p => p.subcategory === "MIXER_TRADICIONAL");
-  const hasRedbull = mixerProducts.some(p => p.subcategory === "REDBULL");
-  const availableTabs = (["MIXER_TRADICIONAL", "REDBULL"] as TabCategory[]).filter(t =>
-    t === "MIXER_TRADICIONAL" ? hasTradicional : hasRedbull
+  // Group options across all slots by category
+  const hasLatas = mixerSlots.some(
+    (s) => s.mixer_category === "latas" || s.available_options.some((o) => o.subcategory === "mixers_tradicionales")
+  );
+  const hasRedbull = mixerSlots.some(
+    (s) => s.mixer_category === "redbull" || s.available_options.some((o) => o.subcategory === "mixers_redbull")
   );
 
-  const [activeTab, setActiveTab] = useState<TabCategory>("MIXER_TRADICIONAL");
+  const defaultTab: TabCategory =
+    mixerSlots[0]?.mixer_category === "redbull" ? "redbull" : "latas";
+  const [activeTab, setActiveTab] = useState<TabCategory>(defaultTab);
 
-  // Auto-select first available tab
-  useEffect(() => {
-    if (availableTabs.length > 0 && !availableTabs.includes(activeTab)) {
-      setActiveTab(availableTabs[0]);
-    }
-  }, [availableTabs.join(",")]);
-
-  // ── Selections per slot ───────────────────────────────────────────────────────
+  // Selections: slot_index -> product_id
   const [selections, setSelections] = useState<Record<number, string>>(() => {
     const initial: Record<number, string> = {};
     mixerSlots.forEach((slot) => {
@@ -123,19 +67,48 @@ export function MixerSelectionDialog({
 
   const allSelected = mixerSlots.every((slot) => selections[slot.slot_index]);
 
-  // Products for current tab (dynamic, from DB)
-  const productsForTab = mixerProducts.filter(p => p.subcategory === activeTab);
+  // Filter slots for current tab
+  const slotsForTab = mixerSlots.filter((slot) => {
+    if (activeTab === "redbull") {
+      return slot.mixer_category === "redbull" ||
+        slot.available_options.some((o) => o.subcategory === "mixers_redbull");
+    }
+    return slot.mixer_category === "latas" ||
+      slot.available_options.some((o) => o.subcategory !== "mixers_redbull") ||
+      (!slot.mixer_category || slot.mixer_category === "latas");
+  });
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // If slot has mixed options, filter options by tab
+  const getOptionsForTab = (slot: MixerSlot): { id: string; name: string; subcategory?: string }[] => {
+    if (slot.available_options.some((o) => o.subcategory)) {
+      return slot.available_options.filter((o) =>
+        activeTab === "redbull"
+          ? o.subcategory === "mixers_redbull"
+          : o.subcategory === "mixers_tradicionales"
+      );
+    }
+    return slot.available_options;
+  };
+
+  // When tab changes, if selections are from wrong category, clear them
+  const handleTabChange = (tab: TabCategory) => {
+    setActiveTab(tab);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "hsl(var(--background))" }}>
       {/* ── Header ── */}
-      <div className="flex items-center gap-4 p-5 border-b border-border/60" style={{ background: "hsl(var(--card))" }}>
+      <div
+        className="flex items-center gap-4 p-5 border-b border-border/60"
+        style={{ background: "hsl(var(--card))" }}
+      >
         <div className="p-3 rounded-xl bg-primary/15 border border-primary/30">
           <GlassWater className="w-7 h-7 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Selecciona Mixer</h1>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">
+            Selecciona Mixer
+          </h1>
           <p className="text-sm text-muted-foreground mt-0.5 truncate">
             {cocktailName
               ? `${cocktailName} · elige una bebida para continuar`
@@ -155,54 +128,50 @@ export function MixerSelectionDialog({
 
       {/* ── Category Tabs ── */}
       <div className="px-4 pt-4 pb-0">
-        <div className="flex gap-2 p-1.5 rounded-xl border border-border/60" style={{ background: "hsl(var(--muted) / 0.5)" }}>
-          {availableTabs.map((tab) => {
-            const cfg = TAB_CONFIG[tab];
-            const Icon = cfg.icon;
-            const isActive = activeTab === tab;
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                disabled={isLoading}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all duration-150",
-                  isActive ? cfg.activeClass + " shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {cfg.label}
-              </button>
-            );
-          })}
+        <div
+          className="flex gap-2 p-1.5 rounded-xl border border-border/60"
+          style={{ background: "hsl(var(--muted) / 0.5)" }}
+        >
+          {hasLatas && (
+            <button
+              onClick={() => handleTabChange("latas")}
+              disabled={isLoading}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all duration-150",
+                activeTab === "latas"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <GlassWater className="w-4 h-4" />
+              Bebidas en lata
+            </button>
+          )}
+          {hasRedbull && (
+            <button
+              onClick={() => handleTabChange("redbull")}
+              disabled={isLoading}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all duration-150",
+                activeTab === "redbull"
+                  ? "bg-destructive text-destructive-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <Zap className="w-4 h-4" />
+              Red Bull
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── Product List ── */}
       <ScrollArea className="flex-1 px-4 pt-4">
         <div className="space-y-6 pb-6">
-          {/* Loading state */}
-          {loadingProducts && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
-              <p className="text-sm text-muted-foreground">Cargando mixers...</p>
-            </div>
-          )}
+          {mixerSlots.map((slot) => {
+            const options = getOptionsForTab(slot);
+            if (options.length === 0) return null;
 
-          {/* Error state */}
-          {!loadingProducts && loadError && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <AlertCircle className="w-10 h-10 text-destructive/60 mb-3" />
-              <p className="text-sm text-destructive">{loadError}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={() => setLoadError(null)}>
-                Reintentar
-              </Button>
-            </div>
-          )}
-
-          {/* Products */}
-          {!loadingProducts && !loadError && mixerSlots.map((slot) => {
-            if (productsForTab.length === 0) return null;
             return (
               <div key={slot.slot_index}>
                 {mixerSlots.length > 1 && (
@@ -215,34 +184,43 @@ export function MixerSelectionDialog({
                     </Badge>
                   </div>
                 )}
+
                 <div className="grid grid-cols-2 gap-2.5">
-                  {productsForTab.map((product) => {
-                    const isSelected = selections[slot.slot_index] === product.id;
-                    const isRb = product.subcategory === "REDBULL";
+                  {options.map((option) => {
+                    const isSelected = selections[slot.slot_index] === option.id;
+                    const isRedbullItem = option.subcategory === "mixers_redbull";
+
                     return (
                       <button
-                        key={product.id}
-                        onClick={() => handleSelect(slot.slot_index, product.id)}
+                        key={option.id}
+                        onClick={() => handleSelect(slot.slot_index, option.id)}
                         disabled={isLoading}
                         className={cn(
                           "relative flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all duration-150 min-h-[60px]",
                           isSelected
-                            ? isRb
+                            ? isRedbullItem
                               ? "border-destructive bg-destructive/10 ring-2 ring-destructive/50"
                               : "border-primary bg-primary/10 ring-2 ring-primary/50"
                             : "border-border/60 bg-card hover:border-primary/40 hover:bg-muted/50 active:scale-[0.98]"
                         )}
                       >
                         {isSelected && (
-                          <div className={cn("absolute top-2.5 right-2.5 rounded-full p-0.5", isRb ? "bg-destructive" : "bg-primary")}>
+                          <div
+                            className={cn(
+                              "absolute top-2.5 right-2.5 rounded-full p-0.5",
+                              isRedbullItem ? "bg-destructive" : "bg-primary"
+                            )}
+                          >
                             <Check className="w-3 h-3 text-white" />
                           </div>
                         )}
-                        <span className={cn(
-                          "text-sm leading-snug pr-6",
-                          isSelected ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                        )}>
-                          {product.name}
+                        <span
+                          className={cn(
+                            "text-sm leading-snug pr-6",
+                            isSelected ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                          )}
+                        >
+                          {option.name}
                         </span>
                       </button>
                     );
@@ -252,15 +230,11 @@ export function MixerSelectionDialog({
             );
           })}
 
-          {/* Empty state */}
-          {!loadingProducts && !loadError && productsForTab.length === 0 && (
+          {slotsForTab.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <GlassWater className="w-10 h-10 text-muted-foreground/40 mb-3" />
               <p className="text-sm text-muted-foreground">
-                No hay productos mixer en esta categoría
-              </p>
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                Activa productos en el catálogo con tipo "{TAB_CONFIG[activeTab].label}"
+                No hay productos disponibles en esta categoría
               </p>
             </div>
           )}
@@ -268,7 +242,10 @@ export function MixerSelectionDialog({
       </ScrollArea>
 
       {/* ── Footer ── */}
-      <div className="p-4 border-t border-border/60 flex gap-3" style={{ background: "hsl(var(--card))" }}>
+      <div
+        className="p-4 border-t border-border/60 flex gap-3"
+        style={{ background: "hsl(var(--card))" }}
+      >
         <Button
           variant="outline"
           onClick={onCancel}
@@ -280,7 +257,7 @@ export function MixerSelectionDialog({
         </Button>
         <Button
           onClick={handleConfirm}
-          disabled={!allSelected || isLoading || loadingProducts}
+          disabled={!allSelected || isLoading}
           className="flex-1 h-14 text-base rounded-xl font-semibold"
         >
           {isLoading ? (
