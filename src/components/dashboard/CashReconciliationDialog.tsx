@@ -91,10 +91,11 @@ export function CashReconciliationDialog({
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Parallel fetches
-      const [posResult, openingsResult, salesResult, expensesResult] = await Promise.all([
-        supabase.from("pos_terminals").select("id, name, location:stock_locations(name)")
+      // Parallel fetches — pos query WITHOUT join (no FK exists for location_id)
+      const [posResult, locationsResult, openingsResult, salesResult, expensesResult] = await Promise.all([
+        supabase.from("pos_terminals").select("id, name, location_id")
           .eq("is_active", true).eq("is_cash_register", true),
+        supabase.from("stock_locations").select("id, name"),
         supabase.from("jornada_cash_openings").select("pos_id, opening_cash_amount")
           .eq("jornada_id", jornadaId),
         supabase.from("sales").select("pos_id, total_amount, payment_method, is_cancelled")
@@ -105,6 +106,10 @@ export function CashReconciliationDialog({
 
       if (posResult.error) throw posResult.error;
       if (salesResult.error) throw salesResult.error;
+
+      // Build location name lookup
+      const locationMap: Record<string, string> = {};
+      (locationsResult.data || []).forEach((loc: any) => { locationMap[loc.id] = loc.name; });
 
       const allSales = salesResult.data || [];
       const activeSales = allSales.filter((s: any) => !s.is_cancelled);
@@ -151,7 +156,7 @@ export function CashReconciliationDialog({
         return {
           posId: pos.id,
           posName: pos.name,
-          locationName: pos.location?.name || "Sin ubicación",
+          locationName: locationMap[pos.location_id] || "Sin ubicación",
           openingCash,
           cashSalesTotal: posCashSales,
           cashExpenses: posCashExpenses,
