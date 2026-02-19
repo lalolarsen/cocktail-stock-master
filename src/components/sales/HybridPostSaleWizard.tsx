@@ -111,7 +111,7 @@ export function HybridPostSaleWizard({
         p_sale_id: saleId,
         p_bar_location_id: barLocationId,
         p_seller_id: sellerId,
-        p_mixer_overrides: overrides ? JSON.stringify(overrides) : null,
+        p_mixer_overrides: overrides || null,
       });
 
       if (error) throw error;
