@@ -5068,7 +5068,13 @@ export type Database = {
         | "expired"
         | "cancelled"
         | "pending"
-      product_category: "ml" | "gramos" | "unidades"
+      product_category:
+        | "ml"
+        | "gramos"
+        | "unidades"
+        | "mixers_tradicionales"
+        | "redbull"
+        | "mixers_redbull"
       redemption_result:
         | "success"
         | "already_redeemed"
@@ -5235,7 +5241,14 @@ export const Constants = {
         "cancelled",
         "pending",
       ],
-      product_category: ["ml", "gramos", "unidades"],
+      product_category: [
+        "ml",
+        "gramos",
+        "unidades",
+        "mixers_tradicionales",
+        "redbull",
+        "mixers_redbull",
+      ],
       redemption_result: [
         "success",
         "already_redeemed",
