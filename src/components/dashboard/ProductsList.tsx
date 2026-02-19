@@ -51,40 +51,33 @@ import {
 import { formatCLP } from "@/lib/currency";
 
 // ──────────────────────────────────────────────
-// Taxonomía DiStock — subcategorías y capacidades
+// Agrupación por categoría (fuente de verdad: products.category)
 // ──────────────────────────────────────────────
-const SUBCATEGORY_CONFIG: Record<string, { 
-  label: string; 
-  icon: typeof Wine; 
+const CATEGORY_CONFIG: Record<string, {
+  label: string;
+  icon: typeof Wine;
   order: number;
   description: string;
   stockType: 'volumetrico' | 'unitario';
-  defaultCapacity?: number;
 }> = {
-  botellas_1500: { label: "Botellas 1500ml", icon: Wine, order: 1, description: "Ingrediente exclusivo. Control volumétrico.", stockType: 'volumetrico', defaultCapacity: 1500 },
-  botellas_1000: { label: "Botellas 1000ml", icon: Wine, order: 2, description: "Destilados, coctelería, shots.", stockType: 'volumetrico', defaultCapacity: 1000 },
-  botellas_750:  { label: "Botellas 750ml",  icon: Wine, order: 3, description: "Venta unitaria o coctelería.", stockType: 'volumetrico', defaultCapacity: 750 },
-  botellas_700:  { label: "Botellas 700ml",  icon: Wine, order: 4, description: "Venta unitaria o coctelería.", stockType: 'volumetrico', defaultCapacity: 700 },
-  botellines:            { label: "Botellines (Unitario)", icon: Wine,    order: 5, description: "Cervezas y similares. Control por unidad.", stockType: 'unitario' },
-  mixers_tradicionales:  { label: "Mixers Tradicionales",  icon: Droplet, order: 6, description: "CocaCola, Ginger Ale, Sprite y similares.", stockType: 'unitario' },
-  mixers_redbull:        { label: "Red Bull (250ml)",       icon: Droplet, order: 7, description: "Red Bull variedades.", stockType: 'unitario' },
-  sin_categoria:         { label: "Sin Categoría",          icon: Package, order: 99, description: "Pendientes de clasificación.", stockType: 'unitario' },
+  ml:                    { label: "Volumétrico (ml)",      icon: Wine,    order: 1,  description: "Botellas y destilados. Control por mililitros.", stockType: 'volumetrico' },
+  mixers_tradicionales:  { label: "Mixers Tradicionales",  icon: Droplet, order: 2,  description: "Coca-Cola, Ginger Ale, Sprite y similares.", stockType: 'unitario' },
+  redbull:               { label: "Red Bull",              icon: Droplet, order: 3,  description: "Red Bull variedades.", stockType: 'unitario' },
+  mixers_redbull:        { label: "Red Bull",              icon: Droplet, order: 3,  description: "Red Bull variedades.", stockType: 'unitario' },
+  unidades:              { label: "Unitario (ud)",         icon: Package, order: 4,  description: "Cervezas, botellines y similares.", stockType: 'unitario' },
+  sin_categoria:         { label: "Sin Categoría",         icon: Package, order: 99, description: "Pendientes de clasificación.", stockType: 'unitario' },
 };
 
-const MEASUREMENT_OPTIONS = [
-  { value: "ml", label: "Mililitros (ml)" },
-  { value: "unidades", label: "Unidades" },
-  { value: "gramos", label: "Gramos (g)" },
+const CATEGORY_OPTIONS = [
+  { value: "ml",                   label: "Volumétrico (ml)" },
+  { value: "unidades",             label: "Unitario (ud)" },
+  { value: "mixers_tradicionales", label: "Mixer Tradicional (Coca-Cola, Sprite…)" },
+  { value: "redbull",              label: "Mixer Red Bull" },
 ];
 
-const SUBCATEGORY_OPTIONS = Object.entries(SUBCATEGORY_CONFIG).map(([value, config]) => ({
-  value,
-  label: config.label,
-}));
-
-const getSubcategoryConfig = (subcategory: string | null) => {
-  if (!subcategory) return SUBCATEGORY_CONFIG.sin_categoria;
-  return SUBCATEGORY_CONFIG[subcategory] || SUBCATEGORY_CONFIG.sin_categoria;
+const getCategoryConfig = (category: string | null) => {
+  if (!category) return CATEGORY_CONFIG.sin_categoria;
+  return CATEGORY_CONFIG[category.toLowerCase()] || CATEGORY_CONFIG.sin_categoria;
 };
 
 // ──────────────────────────────────────────────
@@ -92,25 +85,15 @@ const getSubcategoryConfig = (subcategory: string | null) => {
 // ──────────────────────────────────────────────
 type InventoryFilter = "all" | "volumetrico" | "unitario";
 
-// Source of truth: isBottle based on capacity_ml (not unit/category string)
 const isVolumetric = (p: ProductWithStock) => !!(p.capacity_ml && p.capacity_ml > 0);
 
 const getStockDisplay = (p: ProductWithStock) => {
-  if (isVolumetric(p)) {
-    return `${Number(p.totalStock).toLocaleString("es-CL")} ml`;
-  }
+  if (isVolumetric(p)) return `${Number(p.totalStock).toLocaleString("es-CL")} ml`;
   return `${Number(p.totalStock).toLocaleString("es-CL")} uds`;
 };
 
-/**
- * WAC convention:
- * - cost_per_unit for volumétrico = cost per bottle (capacity_ml).
- *   Derive cost_per_ml = cost_per_unit / capacity_ml.
- * - cost_per_unit for unitario = cost per 1 unit.
- */
 const getCostDisplay = (p: ProductWithStock) => {
   if (!p.cost_per_unit || p.cost_per_unit === 0) return null;
-
   if (isVolumetric(p)) {
     if (!p.capacity_ml) return { perBottle: formatCLP(p.cost_per_unit), perMl: null, missingCapacity: true };
     const costPerMl = p.cost_per_unit / p.capacity_ml;
@@ -133,7 +116,6 @@ interface ProductsListProps {
 interface EditingState {
   name: string;
   category: string;
-  subcategory: string;
 }
 
 export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
@@ -142,23 +124,19 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
-  const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "" });
+  const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "" });
   const [costCalcMl, setCostCalcMl] = useState<Record<string, number>>({});
   const [showNewProductWizard, setShowNewProductWizard] = useState(false);
 
-  // Counters
   const volCount = useMemo(() => products.filter(isVolumetric).length, [products]);
   const unitCount = useMemo(() => products.filter(p => !isVolumetric(p)).length, [products]);
 
-  // Grouped & filtered products
   const groupedProducts = useMemo(() => {
     let filtered = products;
 
-    // Inventory type filter
     if (inventoryFilter === "volumetrico") filtered = filtered.filter(isVolumetric);
     else if (inventoryFilter === "unitario") filtered = filtered.filter(p => !isVolumetric(p));
 
-    // Search filter
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(p =>
@@ -168,27 +146,25 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
     const groups: Record<string, ProductWithStock[]> = {};
     filtered.forEach(product => {
-      const subcategory = product.subcategory || "sin_categoria";
-      if (!groups[subcategory]) groups[subcategory] = [];
-      groups[subcategory].push(product);
+      const key = (product.category || "sin_categoria").toLowerCase();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(product);
     });
 
     Object.keys(groups).forEach(key => {
       groups[key].sort((a, b) => a.name.localeCompare(b.name));
     });
 
-    return Object.entries(groups)
-      .sort(([a], [b]) => {
-        const orderA = getSubcategoryConfig(a).order;
-        const orderB = getSubcategoryConfig(b).order;
-        return orderA - orderB;
-      });
+    return Object.entries(groups).sort(([a], [b]) => {
+      const orderA = getCategoryConfig(a).order;
+      const orderB = getCategoryConfig(b).order;
+      return orderA - orderB;
+    });
   }, [products, searchTerm, inventoryFilter]);
 
-  // Auto-expand
   useMemo(() => {
     if (products.length > 0 && expandedCategories.size === 0) {
-      setExpandedCategories(new Set(products.map(p => p.subcategory || "sin_categoria")));
+      setExpandedCategories(new Set(products.map(p => (p.category || "sin_categoria").toLowerCase())));
     }
   }, [products]);
 
@@ -198,47 +174,24 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
     setExpandedCategories(s);
   };
 
-  // ── Edit handlers ──
   const handleEditProduct = (product: ProductWithStock) => {
     setEditingProduct(product.id);
-    setEditingState({ name: product.name, category: product.category, subcategory: product.subcategory || "sin_categoria" });
+    setEditingState({ name: product.name, category: product.category || "" });
   };
 
   const handleSaveProduct = async (productId: string) => {
     try {
       if (!editingState.name.trim()) { toast.error("El nombre no puede estar vacío"); return; }
 
-      const subConfig = getSubcategoryConfig(editingState.subcategory);
-      const newCapacity = subConfig.defaultCapacity ?? null;
-
-      // ── Mixer categories: source of truth is `category` column, not `subcategory` ──
-      // When the user picks "Mixers Tradicionales" or "Red Bull" subcategory, we:
-      //   1. Write the mixer category name into `category` (the real DB column the hook reads)
-      //   2. Write subcategory = NULL (avoids the check constraint entirely)
-      const MIXER_SUBCAT_TO_CATEGORY: Record<string, string> = {
-        mixers_tradicionales: "mixers_tradicionales",
-        mixers_redbull:       "redbull",
-      };
-      const isMixerSubcat = editingState.subcategory in MIXER_SUBCAT_TO_CATEGORY;
-      const dbCategory = isMixerSubcat
-        ? MIXER_SUBCAT_TO_CATEGORY[editingState.subcategory]
-        : editingState.category;
-      const safeSubcategory = isMixerSubcat
-        ? null
-        : editingState.subcategory === "sin_categoria"
-        ? null
-        : editingState.subcategory;
-
-      const newUnit = subConfig.stockType === "volumetrico" ? "ml" : "unidad";
+      const catConfig = getCategoryConfig(editingState.category);
+      const newUnit = catConfig.stockType === "volumetrico" ? "ml" : "unidad";
 
       const { error } = await supabase
         .from("products")
         .update({
           name: editingState.name.trim(),
-          category: dbCategory as any,
-          subcategory: safeSubcategory,
+          category: editingState.category as any,
           unit: newUnit,
-          capacity_ml: newCapacity,
         })
         .eq("id", productId);
 
@@ -250,14 +203,14 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       setEditingProduct(null);
       refetch();
     } catch (error: any) {
-      console.error("Error updating product full:", error?.message, error?.code, error?.details, error?.hint);
+      console.error("Error updating product:", error?.message, error?.code, error?.details, error?.hint);
       toast.error(`Error al actualizar: ${error?.message || "desconocido"}`);
     }
   };
 
   const handleCancelEdit = () => {
     setEditingProduct(null);
-    setEditingState({ name: "", category: "", subcategory: "" });
+    setEditingState({ name: "", category: "" });
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -286,14 +239,13 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   return (
     <div className="space-y-6">
 
-      {/* ── Aviso de proceso: crear antes de ingresar ── */}
+      {/* ── Aviso proceso ── */}
       <Alert className="border-primary/30 bg-primary/5">
         <Info className="h-4 w-4 text-primary" />
         <AlertDescription className="text-xs leading-relaxed">
           <span className="font-semibold text-foreground">Para ingresar stock a un producto, este debe existir en el catálogo primero.</span>
           {" "}Usa el botón <span className="font-semibold text-foreground">"Nuevo producto"</span> para crearlo con su tipo (botella o unitario) y capacidad en ml.
           Una vez creado, ve a <span className="font-semibold text-foreground">Inventario → Ingreso manual</span> para registrar el stock.
-          Los ingresos desde facturas también requieren que el producto esté tipificado previamente.
         </AlertDescription>
       </Alert>
 
@@ -323,7 +275,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       <div className="flex flex-wrap gap-2">
         {([
           { key: "all" as const, label: "Todos", desc: `${products.length}` },
-          { key: "volumetrico" as const, label: "Volumétrico (ml)", desc: `${volCount} — control por ml (botellas 1500/1000/750/700)` },
+          { key: "volumetrico" as const, label: "Volumétrico (ml)", desc: `${volCount} — control por ml` },
           { key: "unitario" as const, label: "Unitario (ud)", desc: `${unitCount} — control por unidad` },
         ]).map(f => (
           <Button
@@ -353,14 +305,14 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
       {/* ── Category groups ── */}
       <div className="space-y-4">
-        {groupedProducts.map(([subcategory, items]) => {
-          const config = getSubcategoryConfig(subcategory);
+        {groupedProducts.map(([category, items]) => {
+          const config = getCategoryConfig(category);
           const Icon = config.icon;
-          const isExpanded = expandedCategories.has(subcategory);
+          const isExpanded = expandedCategories.has(category);
           const isVol = config.stockType === 'volumetrico';
 
           return (
-            <Collapsible key={subcategory} open={isExpanded} onOpenChange={() => toggleCategory(subcategory)}>
+            <Collapsible key={category} open={isExpanded} onOpenChange={() => toggleCategory(category)}>
               <Card className={isVol ? 'border-l-4 border-l-amber-500' : 'border-l-4 border-l-blue-500'}>
                 <CollapsibleTrigger asChild>
                   <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
@@ -419,7 +371,6 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         </Card>
       )}
 
-      {/* ── New Product Wizard ── */}
       {showNewProductWizard && (
         <NewProductWizard
           open={showNewProductWizard}
@@ -440,7 +391,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 };
 
 // ──────────────────────────────────────────────
-// ProductRow — individual product in the list
+// ProductRow
 // ──────────────────────────────────────────────
 interface ProductRowProps {
   product: ProductWithStock;
@@ -471,25 +422,14 @@ const ProductRow = ({
           <label className="text-xs text-muted-foreground mb-1 block">Nombre</label>
           <Input value={editingState.name} onChange={(e) => setEditingState(prev => ({ ...prev, name: e.target.value }))} className="h-9" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Tipo de Medición</label>
-            <Select value={editingState.category} onValueChange={(val) => setEditingState(prev => ({ ...prev, category: val }))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {MEASUREMENT_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
-            <Select value={editingState.subcategory} onValueChange={(val) => setEditingState(prev => ({ ...prev, subcategory: val }))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {SUBCATEGORY_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
+          <Select value={editingState.category} onValueChange={(val) => setEditingState(prev => ({ ...prev, category: val }))}>
+            <SelectTrigger className="h-9"><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button size="sm" variant="ghost" onClick={onCancel}><X className="h-4 w-4 mr-1" /> Cancelar</Button>
@@ -501,7 +441,6 @@ const ProductRow = ({
 
   return (
     <div className="p-4 hover:bg-muted/30 transition-colors space-y-1">
-      {/* Main row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -512,12 +451,10 @@ const ProductRow = ({
             </Badge>
           </div>
 
-          {/* Stock */}
           <p className="text-sm text-muted-foreground mt-0.5">
             Stock: {getStockDisplay(product)}
           </p>
 
-          {/* Cost display */}
           {costInfo ? (
             <div className="mt-1 text-xs space-y-0.5">
               {vol ? (
@@ -550,7 +487,6 @@ const ProductRow = ({
             <p className="text-xs text-muted-foreground/60 mt-1 italic">Sin costo registrado</p>
           )}
 
-          {/* WAC mini-calculator for volumetric */}
           {vol && costInfo && !costInfo.missingCapacity && product.capacity_ml && product.cost_per_unit > 0 && (
             <div className="mt-2">
               {!showCalc ? (
@@ -579,7 +515,6 @@ const ProductRow = ({
           )}
         </div>
 
-        {/* Actions */}
         {!isReadOnly && (
           <div className="flex items-center gap-1 shrink-0 mt-0.5">
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onEdit} title="Editar producto">
