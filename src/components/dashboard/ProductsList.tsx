@@ -17,8 +17,10 @@ import {
   X,
   Trash2,
   AlertTriangle,
-  Calculator
+  Calculator,
+  Plus
 } from "lucide-react";
+import { NewProductWizard } from "@/components/dashboard/NewProductWizard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -139,6 +141,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "" });
   const [costCalcMl, setCostCalcMl] = useState<Record<string, number>>({});
+  const [showNewProductWizard, setShowNewProductWizard] = useState(false);
 
   // Counters
   const volCount = useMemo(() => products.filter(isVolumetric).length, [products]);
@@ -268,9 +271,17 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
             {volCount} productos volumétricos (ml) • {unitCount} productos unitarios (ud)
           </p>
         </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar producto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Buscar producto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+          </div>
+          {!isReadOnly && (
+            <Button onClick={() => setShowNewProductWizard(true)} className="gap-2 shrink-0">
+              <Plus className="h-4 w-4" />
+              Nuevo producto
+            </Button>
+          )}
         </div>
       </div>
 
@@ -369,9 +380,26 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
             {searchTerm ? "No se encontraron productos" : "No hay productos"}
           </h3>
           <p className="text-muted-foreground text-sm">
-            {searchTerm ? "Intenta con otro término de búsqueda" : "Los productos se crean desde el módulo de Inventario"}
+            {searchTerm ? "Intenta con otro término de búsqueda" : "Crea tu primer producto con el botón \"Nuevo producto\""}
           </p>
         </Card>
+      )}
+
+      {/* ── New Product Wizard ── */}
+      {showNewProductWizard && (
+        <NewProductWizard
+          open={showNewProductWizard}
+          onOpenChange={setShowNewProductWizard}
+          rawName=""
+          existingProducts={products.map(p => ({ id: p.id, name: p.name, code: p.code || "", category: p.category }))}
+          onProductCreated={(_id, name) => {
+            toast.success(`Producto "${name}" creado`);
+            refetch();
+          }}
+          onLinkToExisting={() => {
+            setShowNewProductWizard(false);
+          }}
+        />
       )}
     </div>
   );
