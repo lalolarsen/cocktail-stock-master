@@ -331,10 +331,10 @@ export default function ProveedoresImportDetail() {
 
       // Update stock for each inventory line (CPP) — bottle-aware
       for (const line of invLines) {
-        // SOURCE OF TRUTH: fetch product + all balances in parallel
-        const [productRes, allBalancesRes, warehouseBalanceRes] = await Promise.all([
-          supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", line.product_id!).single(),
-          supabase.from("stock_balances").select("quantity").eq("product_id", line.product_id!),
+        // CRITICAL ORDER: fetch current state BEFORE modifying stock_balances
+        // to get the correct "before" stock for CPP calculation.
+        const [productRes, warehouseBalanceRes] = await Promise.all([
+          supabase.from("products").select("cost_per_unit, capacity_ml, current_stock").eq("id", line.product_id!).single(),
           supabase.from("stock_balances").select("id, quantity")
             .eq("product_id", line.product_id!)
             .eq("location_id", imp.location_id)
@@ -351,36 +351,39 @@ export default function ProveedoresImportDetail() {
         // For stock operations, convert to base unit (ml for bottles)
         const qtyToAdd = bottle && cap && cap > 0 ? line.units_real * cap : line.units_real;
 
-        // Real stock = sum of ALL location balances (source of truth, avoids drift)
-        const realStock = (allBalancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+        // BEFORE stock = sync from actual balances sum BEFORE this intake
+        // We fetch all balances separately to get the real total
+        const allBalancesRes = await supabase
+          .from("stock_balances")
+          .select("quantity")
+          .eq("product_id", line.product_id!);
+        const stockBefore = (allBalancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
 
-        const oldCostPerUnit = product.cost_per_unit || 0;
-        // Si cost_per_unit previo es 0 (producto sin costo base), ignorar stock previo
-        // para evitar dilución del CPP hacia cero.
+        const oldCostPerUnit = Number(product.cost_per_unit) || 0;
+
+        // If existing cost is 0 (product with no cost base yet), treat as first intake:
+        // set old stock to 0 so new cost becomes the CPP directly (no zero dilution).
+        const effectiveOldStock = oldCostPerUnit > 0 ? stockBefore : 0;
         const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : line.cost_unit_net;
-        const effectiveOldStock = oldCostPerUnit > 0 ? realStock : 0;
 
-        // CPP using the utility (handles ml ↔ bottle equivalents internally)
-        const newCPP = calculateCPP({
+        // CPP calculation (handles ml ↔ bottle equivalents internally)
+        const rawCPP = calculateCPP({
           product,
           currentStock: effectiveOldStock,
           oldCostPerUnit: effectiveOldCost,
-          addedQty: qtyToAdd,                   // ml for bottles
-          newCostPerUnit: line.cost_unit_net,   // per bottle
+          addedQty: qtyToAdd,                  // ml for bottles, units for units
+          newCostPerUnit: line.cost_unit_net,  // per bottle cost (or per unit)
         });
 
-        // Sync products.current_stock to real balance sum + new intake
-        await supabase.from("products").update({
-          current_stock: realStock + qtyToAdd,
-          cost_per_unit: Math.round(newCPP),
-          updated_at: new Date().toISOString(),
-        }).eq("id", line.product_id!);
+        // CLP has no decimal places — always round to nearest integer
+        const newCPP = Math.round(rawCPP);
+        const newTotalStock = stockBefore + qtyToAdd;
 
-        // Update stock_balances (always in base unit)
+        // 1. Update stock_balances FIRST
         const balance = warehouseBalanceRes.data;
         if (balance) {
           await supabase.from("stock_balances").update({
-            quantity: (balance.quantity || 0) + qtyToAdd,
+            quantity: (Number(balance.quantity) || 0) + qtyToAdd,
             updated_at: new Date().toISOString(),
           }).eq("id", balance.id);
         } else {
@@ -388,9 +391,16 @@ export default function ProveedoresImportDetail() {
             product_id: line.product_id!,
             location_id: imp.location_id,
             venue_id: venue.id,
-            quantity: qtyToAdd, // ml for bottles, units otherwise
+            quantity: qtyToAdd,
           });
         }
+
+        // 2. Update product CPP + current_stock AFTER stock_balances
+        await supabase.from("products").update({
+          current_stock: newTotalStock,
+          cost_per_unit: newCPP,
+          updated_at: new Date().toISOString(),
+        }).eq("id", line.product_id!);
       }
 
       // Learning: upsert product mappings
