@@ -680,18 +680,33 @@ export default function Bar() {
     mixerOverrides: { slot_index: number; product_id: string }[] | null
   ) => {
     try {
-      const { data: tokenData } = await supabase
+      // Step 1: Get the token's sale_id
+      const { data: tokenData, error: tokenErr } = await supabase
         .from("pickup_tokens")
-        .select("id, sale_id, sales!pickup_tokens_sale_id_fkey(sale_items!sale_items_sale_id_fkey(quantity, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))))")
+        .select("id, sale_id")
         .eq("token", token)
         .maybeSingle();
 
-      if (!tokenData) { await redeemToken(token, mixerOverrides); return; }
+      if (tokenErr) throw tokenErr;
+
+      // If no sale_id (ticket-based token), skip bottle check and redeem directly
+      if (!tokenData?.sale_id) {
+        await redeemToken(token, mixerOverrides);
+        return;
+      }
+
+      // Step 2: Get sale items with cocktail ingredients (separate query to avoid FK ambiguity)
+      const { data: saleItems, error: siErr } = await supabase
+        .from("sale_items")
+        .select("quantity, cocktail_id, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))")
+        .eq("sale_id", tokenData.sale_id);
+
+      if (siErr) throw siErr;
 
       const mlIngredients = new Map<string, { product_id: string; product_name: string; required_ml: number }>();
-      for (const si of ((tokenData as any)?.sales?.sale_items || [])) {
-        const qty = si.quantity || 1;
-        for (const ing of (si.cocktails?.cocktail_ingredients || [])) {
+      for (const si of (saleItems || [])) {
+        const qty = (si as any).quantity || 1;
+        for (const ing of ((si as any).cocktails?.cocktail_ingredients || [])) {
           const p = ing.products;
           if (!p?.capacity_ml || p.capacity_ml <= 0) continue;
           const ingQty = (ing.quantity || 0) * qty;
@@ -702,7 +717,11 @@ export default function Bar() {
         }
       }
 
-      if (mlIngredients.size === 0) { await redeemToken(token, mixerOverrides); return; }
+      // No ml ingredients? Redeem directly
+      if (mlIngredients.size === 0) {
+        await redeemToken(token, mixerOverrides);
+        return;
+      }
 
       const checks = openBottlesHook.checkBottlesForIngredients(Array.from(mlIngredients.values()));
       setPendingToken(token);
@@ -716,17 +735,11 @@ export default function Bar() {
       }
     } catch (err: any) {
       console.error("[Bar] Bottle check error:", err);
-      // Si el error viene de la query ambigua u otro, mostrar error en vez de fallar silenciosamente
-      const errMsg = err?.message || "Error al verificar stock de botellas";
-      setResult({
-        success: false,
-        error_code: "SYSTEM_ERROR",
-        message: errMsg,
-      });
-      setScanState("error");
-      transitionToWaitingResume(readerMode);
+      // Fallback: proceed with redemption directly rather than blocking
+      console.warn("[Bar] Bottle check failed, proceeding with direct redemption");
+      await redeemToken(token, mixerOverrides);
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, transitionToWaitingResume, readerMode]);
+  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
 
   const handleBottleCheckContinue = useCallback(async () => {
     // Guard: nunca canjear si aún faltan ml en alguna botella
