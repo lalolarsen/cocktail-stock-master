@@ -4965,6 +4965,17 @@ export type Database = {
         Returns: Json
       }
       reset_venue_flags: { Args: { p_venue_id: string }; Returns: undefined }
+      safe_log_pickup_redemption: {
+        Args: {
+          p_bartender_id: string
+          p_metadata?: Json
+          p_pickup_token_id: string
+          p_pos_id: string
+          p_result: string
+          p_sale_id: string
+        }
+        Returns: undefined
+      }
       seed_demo_data: { Args: never; Returns: Json }
       set_venue_flag: {
         Args: { p_enabled: boolean; p_flag_key: string; p_venue_id: string }
