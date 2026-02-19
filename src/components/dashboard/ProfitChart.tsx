@@ -89,7 +89,15 @@ export const ProfitChart = () => {
         let saleCost = 0;
         sale.sale_items?.forEach((item: any) => {
           item.cocktails?.cocktail_ingredients?.forEach((ingredient: any) => {
-            const ingredientCost = (ingredient.quantity * (ingredient.products?.cost_per_unit || 0)) * item.quantity;
+            const product = ingredient.products;
+            const costPerUnit = product?.cost_per_unit || 0;
+            const capacityMl = product?.capacity_ml;
+            // isBottle: capacity_ml > 0 → cost is per full bottle, quantity is in ml
+            // isUnit: cost is per unit, quantity is in units
+            const costPerBase = capacityMl && capacityMl > 0
+              ? costPerUnit / capacityMl   // cost per ml
+              : costPerUnit;               // cost per unit
+            const ingredientCost = ingredient.quantity * costPerBase * item.quantity;
             saleCost += ingredientCost;
           });
         });
