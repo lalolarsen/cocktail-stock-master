@@ -23,7 +23,7 @@ import {
   FileSpreadsheet
 } from "lucide-react";
 import { MenuImportDialog } from "./MenuImportDialog";
-import { CategoryRecipeEditor } from "./CategoryRecipeEditor";
+import { CategoryRecipeEditor, type IngredientEntry } from "./CategoryRecipeEditor";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -85,6 +85,7 @@ interface Product {
   name: string;
   category: string;
   unit: string;
+  capacity_ml?: number | null;
 }
 
 interface CocktailsMenuProps {
@@ -116,7 +117,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     description: "",
     price: 0,
     category: "otros",
-    ingredients: [] as { product_id: string; quantity: number }[],
+    ingredients: [] as IngredientEntry[],
   });
 
   // Group cocktails by category
@@ -172,7 +173,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   const fetchProducts = async () => {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, category, unit")
+      .select("id, name, category, unit, capacity_ml")
       .order("name");
 
     if (error) {
@@ -259,6 +260,17 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     setExpandedCategories(newExpanded);
   };
 
+  /**
+   * Map DB mixer_category ('latas'|'redbull'|'MIXER_TRADICIONAL'|'REDBULL')
+   * to the canonical UI values used by CategoryRecipeEditor.
+   */
+  const toUIMixerCategory = (raw: string | null | undefined): "MIXER_TRADICIONAL" | "REDBULL" | undefined => {
+    if (!raw) return "MIXER_TRADICIONAL";
+    const n = raw.toUpperCase();
+    if (n === "REDBULL" || n.includes("REDBULL")) return "REDBULL";
+    return "MIXER_TRADICIONAL";
+  };
+
   const handleEditClick = (cocktail: CocktailWithIngredients) => {
     setSelectedCocktail(cocktail);
     setEditForm({
@@ -270,10 +282,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         product_id: ing.product_id || "",
         quantity: ing.quantity,
         is_mixer_slot: ing.is_mixer_slot || false,
-        // Needed so the recipe editor can re-select the correct virtual mixer option
-        // (Mixer Latas vs Mixer Red Bull) when reopening the edit dialog.
-        mixer_category: ing.mixer_category ?? undefined,
-      })),
+        mixer_category: ing.is_mixer_slot ? toUIMixerCategory(ing.mixer_category) : undefined,
+      })) as IngredientEntry[],
     });
     setEditDialogOpen(true);
   };
@@ -319,14 +329,24 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     }
   };
 
+  /** Map UI mixer_category → DB string expected by cocktail_ingredients */
+  const toDBMixerCategory = (cat: string | undefined): string => {
+    if (cat === "REDBULL") return "redbull";
+    return "latas";
+  };
+
   const handleSave = async () => {
     if (!selectedCocktail) return;
+
+    // Validate: only name + price required
+    if (!editForm.name.trim()) { toast.error("El nombre es obligatorio"); return; }
+    if (!editForm.price || editForm.price <= 0) { toast.error("El precio debe ser mayor a 0"); return; }
 
     try {
       const { error: cocktailError } = await supabase
         .from("cocktails")
         .update({
-          name: editForm.name,
+          name: editForm.name.trim(),
           description: editForm.description,
           price: editForm.price,
           category: editForm.category,
@@ -335,41 +355,31 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
       if (cocktailError) throw cocktailError;
 
+      // Delete existing ingredients
       await supabase
         .from("cocktail_ingredients")
         .delete()
         .eq("cocktail_id", selectedCocktail.id);
 
-      if (editForm.ingredients.length > 0 && venue?.id) {
-        // Filter: mixer slots without product_id are still saved, non-mixer slots need product_id
-        const validIngredients = editForm.ingredients.filter(ing => {
-          const isMixer = (ing as any).is_mixer_slot || false;
-          // Mixer slots are always valid (product chosen at redemption)
-          // Non-mixer slots need a valid product_id
-          return isMixer || (ing.product_id && ing.product_id.trim() !== "");
-        });
+      // Insert new ingredients (mixer slots need product_id=null, others need a real id)
+      const validIngredients = editForm.ingredients.filter(ing =>
+        ing.is_mixer_slot || (ing.product_id && ing.product_id.trim() !== "")
+      );
 
-        if (validIngredients.length > 0) {
-          const { error: ingredientsError } = await supabase
-            .from("cocktail_ingredients")
-            .insert(
-              validIngredients.map(ing => {
-                const isMixer = (ing as any).is_mixer_slot || false;
-                const mixerCategory = (ing as any).mixer_category || null;
-                return {
-                  cocktail_id: selectedCocktail.id,
-                  // For mixer slots, product_id is null (selected at redemption)
-                  product_id: isMixer ? null : ing.product_id,
-                  quantity: ing.quantity,
-                  venue_id: venue.id,
-                  is_mixer_slot: isMixer,
-                  mixer_category: isMixer ? mixerCategory : null,
-                };
-              })
-            );
-
-          if (ingredientsError) throw ingredientsError;
-        }
+      if (validIngredients.length > 0 && venue?.id) {
+        const { error: ingredientsError } = await supabase
+          .from("cocktail_ingredients")
+          .insert(
+            validIngredients.map(ing => ({
+              cocktail_id: selectedCocktail.id,
+              product_id: ing.is_mixer_slot ? null : ing.product_id,
+              quantity: ing.quantity,
+              venue_id: venue.id,
+              is_mixer_slot: ing.is_mixer_slot ?? false,
+              mixer_category: ing.is_mixer_slot ? toDBMixerCategory(ing.mixer_category) : null,
+            }))
+          );
+        if (ingredientsError) throw ingredientsError;
       }
 
       toast.success("Producto actualizado correctamente");
@@ -382,16 +392,17 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
   };
 
   const handleAdd = async () => {
-    if (!venue?.id) {
-      toast.error("No se pudo determinar el venue activo");
-      return;
-    }
-    
+    if (!venue?.id) { toast.error("No se pudo determinar el venue activo"); return; }
+
+    // Validate: only name + price required
+    if (!editForm.name.trim()) { toast.error("El nombre es obligatorio"); return; }
+    if (!editForm.price || editForm.price <= 0) { toast.error("El precio debe ser mayor a 0"); return; }
+
     try {
       const { data: cocktailData, error: cocktailError } = await supabase
         .from("cocktails")
         .insert({
-          name: editForm.name,
+          name: editForm.name.trim(),
           description: editForm.description,
           price: editForm.price,
           category: editForm.category,
@@ -402,33 +413,24 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
 
       if (cocktailError) throw cocktailError;
 
-      if (editForm.ingredients.length > 0) {
-        // Filter: mixer slots without product_id are still saved, non-mixer slots need product_id
-        const validIngredients = editForm.ingredients.filter(ing => {
-          const isMixer = (ing as any).is_mixer_slot || false;
-          return isMixer || (ing.product_id && ing.product_id.trim() !== "");
-        });
+      const validIngredients = editForm.ingredients.filter(ing =>
+        ing.is_mixer_slot || (ing.product_id && ing.product_id.trim() !== "")
+      );
 
-        if (validIngredients.length > 0) {
-          const { error: ingredientsError } = await supabase
-            .from("cocktail_ingredients")
-            .insert(
-              validIngredients.map(ing => {
-                const isMixer = (ing as any).is_mixer_slot || false;
-                const mixerCategory = (ing as any).mixer_category || null;
-                return {
-                  cocktail_id: cocktailData.id,
-                  product_id: isMixer ? null : ing.product_id,
-                  quantity: ing.quantity,
-                  venue_id: venue.id,
-                  is_mixer_slot: isMixer,
-                  mixer_category: isMixer ? mixerCategory : null,
-                };
-              })
-            );
-
-          if (ingredientsError) throw ingredientsError;
-        }
+      if (validIngredients.length > 0) {
+        const { error: ingredientsError } = await supabase
+          .from("cocktail_ingredients")
+          .insert(
+            validIngredients.map(ing => ({
+              cocktail_id: cocktailData.id,
+              product_id: ing.is_mixer_slot ? null : ing.product_id,
+              quantity: ing.quantity,
+              venue_id: venue.id,
+              is_mixer_slot: ing.is_mixer_slot ?? false,
+              mixer_category: ing.is_mixer_slot ? toDBMixerCategory(ing.mixer_category) : null,
+            }))
+          );
+        if (ingredientsError) throw ingredientsError;
       }
 
       toast.success("Producto agregado correctamente");

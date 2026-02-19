@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,139 +12,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Zap, AlertCircle, GlassWater } from "lucide-react";
+import { Plus, Trash2, GlassWater, Zap, FlaskConical } from "lucide-react";
+import { normalizeCategory } from "@/lib/categories";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Product {
   id: string;
   name: string;
   category: string;
   unit: string;
+  capacity_ml?: number | null;
 }
 
-interface IngredientEntry {
+export interface IngredientEntry {
   product_id: string;
   quantity: number;
   is_mixer_slot?: boolean;
-  mixer_category?: "latas" | "redbull"; // For identifying mixer type at redemption
+  /** 'MIXER_TRADICIONAL' | 'REDBULL' — only set when is_mixer_slot = true */
+  mixer_category?: "MIXER_TRADICIONAL" | "REDBULL";
 }
-
-// Virtual mixer IDs for the ingredient selector
-const MIXER_LATAS_ID = "__MIXER_LATAS__";
-const MIXER_REDBULL_ID = "__MIXER_REDBULL__";
-
-// Category-specific recipe templates
-const CATEGORY_TEMPLATES: Record<string, {
-  label: string;
-  description: string;
-  slots: {
-    label: string;
-    filterCategory?: string; // Filter products by category (ml, g, units)
-    filterKeywords?: string[]; // Filter by name keywords
-    mixerCategory?: "latas" | "redbull"; // For mixer selection at bar
-    defaultQuantity: number;
-    quantityLabel: string;
-    required: boolean;
-    isMixerSlot?: boolean; // When true, bartender can select alternative at redemption
-  }[];
-}> = {
-  destilados: {
-    label: "Destilados",
-    description: "90ml de destilado + mixer (elegido en barra)",
-    slots: [
-      {
-        label: "Destilado",
-        filterCategory: "ml",
-        defaultQuantity: 90,
-        quantityLabel: "ml",
-        required: true,
-        isMixerSlot: false,
-      },
-      {
-        label: "Mixer Latas",
-        mixerCategory: "latas", // Coca-Cola, Sprite, Fanta, etc. (220ml/350ml)
-        defaultQuantity: 1,
-        quantityLabel: "unidad",
-        required: true,
-        isMixerSlot: true,
-      },
-    ],
-  },
-  shots: {
-    label: "Shots",
-    description: "Cantidad específica de destilado",
-    slots: [
-      {
-        label: "Destilado/Licor",
-        filterCategory: "ml",
-        defaultQuantity: 45,
-        quantityLabel: "ml",
-        required: true,
-      },
-    ],
-  },
-  cocteleria: {
-    label: "Coctelería",
-    description: "Receta con múltiples ingredientes",
-    slots: [], // Free-form, no predefined slots
-  },
-  botellas: {
-    label: "Botellas",
-    description: "Botella completa de inventario",
-    slots: [
-      {
-        label: "Botella",
-        filterCategory: "ml",
-        defaultQuantity: 750,
-        quantityLabel: "ml",
-        required: true,
-      },
-    ],
-  },
-  espumantes: {
-    label: "Espumantes",
-    description: "Botella de espumante",
-    slots: [
-      {
-        label: "Espumante",
-        filterCategory: "ml",
-        defaultQuantity: 750,
-        quantityLabel: "ml",
-        required: true,
-      },
-    ],
-  },
-  botellines: {
-    label: "Botellines",
-    description: "Botellín o lata individual",
-    slots: [
-      {
-        label: "Producto",
-        filterCategory: "units",
-        defaultQuantity: 1,
-        quantityLabel: "unidad",
-        required: true,
-      },
-    ],
-  },
-  cervezas_shop: {
-    label: "Cervezas Shop",
-    description: "Cerveza individual",
-    slots: [
-      {
-        label: "Cerveza",
-        filterCategory: "units",
-        defaultQuantity: 1,
-        quantityLabel: "unidad",
-        required: true,
-      },
-    ],
-  },
-  sin_alcohol: {
-    label: "Sin Alcohol",
-    description: "Bebida sin alcohol (selecciona producto o mixer variable)",
-    slots: [], // Free-form to allow mixer selection
-  },
-};
 
 interface CategoryRecipeEditorProps {
   category: string;
@@ -152,428 +40,393 @@ interface CategoryRecipeEditorProps {
   onChange: (ingredients: IngredientEntry[]) => void;
 }
 
+// ── Category normalisation helpers ────────────────────────────────────────────
+
+const MIXER_TRAD_CATS = new Set([
+  "mixers_tradicionales",
+  "mixer_tradicional",
+  "mixers tradicionales",
+]);
+
+const MIXER_REDBULL_CATS = new Set([
+  "redbull",
+  "mixers_redbull",
+  "red bull",
+]);
+
+function isMixerTradicional(cat: string) {
+  return MIXER_TRAD_CATS.has(normalizeCategory(cat));
+}
+
+function isMixerRedbull(cat: string) {
+  return MIXER_REDBULL_CATS.has(normalizeCategory(cat));
+}
+
+function isBottleProduct(p: Product) {
+  return typeof p.capacity_ml === "number" && p.capacity_ml > 0;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  subtitle,
+  accent,
+}: {
+  icon: React.ElementType;
+  title: string;
+  subtitle?: string;
+  accent?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-2 pb-1 border-b ${accent ?? ""}`}>
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      <span className="text-sm font-semibold">{title}</span>
+      {subtitle && (
+        <span className="text-xs text-muted-foreground ml-1">{subtitle}</span>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export const CategoryRecipeEditor = ({
   category,
   ingredients,
   products,
   onChange,
 }: CategoryRecipeEditorProps) => {
-  const normalizedCategory = category.toLowerCase().replace(/\s+/g, "_");
-  const template = CATEGORY_TEMPLATES[normalizedCategory];
-  const hasTemplate = template && template.slots.length > 0;
+  // Fetch mixer products live from DB (category-driven)
+  const [mixerTrad, setMixerTrad] = useState<Product[]>([]);
+  const [mixerRedbull, setMixerRedbull] = useState<Product[]>([]);
 
-  // Filter products for a given slot
-  const getFilteredProducts = (slot: typeof template.slots[0]) => {
-    let filtered = products;
-    
-    if (slot.filterCategory) {
-      filtered = filtered.filter(p => 
-        p.category.toLowerCase() === slot.filterCategory ||
-        p.unit.toLowerCase() === slot.filterCategory
-      );
-    }
-    
-    if (slot.filterKeywords && slot.filterKeywords.length > 0) {
-      filtered = filtered.filter(p =>
-        slot.filterKeywords!.some(kw => 
-          p.name.toLowerCase().includes(kw.toLowerCase())
-        )
-      );
-    }
-    
-    return filtered;
-  };
-
-  // Initialize ingredients based on template when category changes
   useEffect(() => {
-    if (hasTemplate && ingredients.length === 0) {
-      // Pre-fill with template slots including mixer slot flag
-      const initial = template.slots.map(slot => ({
-        product_id: "",
-        quantity: slot.defaultQuantity,
-        is_mixer_slot: slot.isMixerSlot || false,
-        mixer_category: slot.isMixerSlot ? slot.mixerCategory : undefined,
-      }));
-      onChange(initial);
-    }
-  }, [normalizedCategory]);
+    // Derive from already-fetched products prop (no extra query needed)
+    setMixerTrad(products.filter((p) => isMixerTradicional(p.category)));
+    setMixerRedbull(products.filter((p) => isMixerRedbull(p.category)));
+  }, [products]);
 
-  // Apply template with default quantities
-  const applyTemplate = () => {
-    if (!template) return;
-    const initial = template.slots.map(slot => ({
-      product_id: "",
-      quantity: slot.defaultQuantity,
-      is_mixer_slot: slot.isMixerSlot || false,
-      mixer_category: slot.isMixerSlot ? slot.mixerCategory : undefined,
-    }));
-    onChange(initial);
-  };
+  // ── Derived lists ──────────────────────────────────────────────────────────
 
-  // Add free-form ingredient (for cocteleria or extras)
-  const addIngredient = () => {
-    onChange([...ingredients, { product_id: "", quantity: 0 }]);
-  };
+  // Bottle ingredients (capacity_ml > 0)
+  const mlIngredients = ingredients.filter(
+    (ing) => !ing.is_mixer_slot && isBottleProduct(products.find((p) => p.id === ing.product_id) ?? {} as Product)
+  );
 
-  const removeIngredient = (index: number) => {
-    onChange(ingredients.filter((_, i) => i !== index));
-  };
+  // Unit ingredients (not bottle, not mixer)
+  const udIngredients = ingredients.filter(
+    (ing) =>
+      !ing.is_mixer_slot &&
+      !isBottleProduct(products.find((p) => p.id === ing.product_id) ?? {} as Product)
+  );
 
-  const updateIngredient = (
-    index: number,
-    field: "product_id" | "quantity",
-    value: string | number
-  ) => {
+  // Mixer slots
+  const mixerIngredients = ingredients.filter((ing) => ing.is_mixer_slot);
+
+  // Products available per section
+  const bottleProducts = products.filter(
+    (p) => isBottleProduct(p) && !isMixerTradicional(p.category) && !isMixerRedbull(p.category)
+  );
+
+  const unitProducts = products.filter(
+    (p) =>
+      !isBottleProduct(p) &&
+      !isMixerTradicional(p.category) &&
+      !isMixerRedbull(p.category)
+  );
+
+  // ── Helpers to mutate ingredient list ─────────────────────────────────────
+
+  /** Replace ingredients at their original indices */
+  const updateEntry = (index: number, partial: Partial<IngredientEntry>) => {
     const updated = [...ingredients];
-    
-    // Handle mixer virtual IDs
-    if (field === "product_id") {
-      const currentQuantity = updated[index]?.quantity || 1;
-      if (value === MIXER_LATAS_ID) {
-        updated[index] = { 
-          product_id: "", 
-          quantity: currentQuantity,
-          is_mixer_slot: true, 
-          mixer_category: "latas"
-        };
-      } else if (value === MIXER_REDBULL_ID) {
-        updated[index] = { 
-          product_id: "", 
-          quantity: currentQuantity,
-          is_mixer_slot: true, 
-          mixer_category: "redbull"
-        };
-      } else {
-        // Regular product - clear mixer flags
-        updated[index] = { 
-          product_id: value as string, 
-          quantity: currentQuantity,
-          is_mixer_slot: false, 
-          mixer_category: undefined 
-        };
-      }
-      onChange(updated);
-      return;
-    }
-    
-    if (field === "quantity") {
-      updated[index] = { ...updated[index], quantity: value as number };
-    } else {
-      updated[index] = { ...updated[index], product_id: value as string };
-    }
+    updated[index] = { ...updated[index], ...partial };
     onChange(updated);
   };
 
-  // Get display value for ingredient selector
-  const getIngredientDisplayValue = (ing: IngredientEntry) => {
-    // If it's a mixer slot but the category wasn't stored (legacy data), default to latas
-    // so it doesn't render as "Seleccionar producto".
-    if (ing.is_mixer_slot && ing.mixer_category === "redbull") return MIXER_REDBULL_ID;
-    if (ing.is_mixer_slot) return MIXER_LATAS_ID;
-    return ing.product_id || "placeholder";
+  const removeEntry = (index: number) => {
+    onChange(ingredients.filter((_, i) => i !== index));
   };
 
-  // Get product name by id
-  const getProductName = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    return product?.name || "";
+  // ── Add helpers ────────────────────────────────────────────────────────────
+
+  const addMlIngredient = () => {
+    onChange([...ingredients, { product_id: "", quantity: 0, is_mixer_slot: false }]);
   };
 
-  // Calculate cost if products have cost
-  const estimatedIngredients = useMemo(() => {
-    return ingredients.map((ing, index) => {
-      const product = products.find(p => p.id === ing.product_id);
-      return {
-        ...ing,
-        product,
-        slotLabel: hasTemplate && template.slots[index] 
-          ? template.slots[index].label 
-          : `Ingrediente ${index + 1}`,
-      };
-    });
-  }, [ingredients, products, hasTemplate, template]);
+  const addUdIngredient = () => {
+    onChange([...ingredients, { product_id: "", quantity: 1, is_mixer_slot: false }]);
+  };
 
-  // Render template-based editor
-  if (hasTemplate) {
-    return (
-      <div className="space-y-4">
-        {/* Template Info */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {template.label}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {template.description}
-            </span>
-          </div>
-          <Button 
-            type="button" 
-            variant="ghost" 
-            size="sm"
-            onClick={applyTemplate}
-            className="text-xs"
+  const addMixerTrad = () => {
+    onChange([
+      ...ingredients,
+      { product_id: "", quantity: 1, is_mixer_slot: true, mixer_category: "MIXER_TRADICIONAL" },
+    ]);
+  };
+
+  const addMixerRedbull = () => {
+    onChange([
+      ...ingredients,
+      { product_id: "", quantity: 1, is_mixer_slot: true, mixer_category: "REDBULL" },
+    ]);
+  };
+
+  // ── Render rows for a given section ───────────────────────────────────────
+
+  const renderMlRows = () => {
+    const idxList = ingredients
+      .map((ing, i) => ({ ing, i }))
+      .filter(
+        ({ ing }) =>
+          !ing.is_mixer_slot &&
+          isBottleProduct(products.find((p) => p.id === ing.product_id) ?? ({} as Product))
+      );
+
+    return idxList.map(({ ing, i }) => (
+      <div key={i} className="flex gap-2 items-center">
+        <Select
+          value={ing.product_id || "__placeholder__"}
+          onValueChange={(v) =>
+            updateEntry(i, { product_id: v === "__placeholder__" ? "" : v, is_mixer_slot: false })
+          }
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder="Seleccionar botella" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__placeholder__" disabled>
+              Seleccionar botella
+            </SelectItem>
+            {bottleProducts.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}{" "}
+                <span className="text-muted-foreground text-xs">
+                  ({p.capacity_ml}ml)
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          className="w-24"
+          placeholder="ml"
+          value={ing.quantity || ""}
+          onChange={(e) => updateEntry(i, { quantity: Number(e.target.value) })}
+        />
+        <span className="text-xs text-muted-foreground w-5">ml</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => removeEntry(i)}
+          className="h-9 w-9 text-destructive"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    ));
+  };
+
+  const renderUdRows = () => {
+    const idxList = ingredients
+      .map((ing, i) => ({ ing, i }))
+      .filter(
+        ({ ing }) =>
+          !ing.is_mixer_slot &&
+          !isBottleProduct(products.find((p) => p.id === ing.product_id) ?? ({} as Product))
+      );
+
+    return idxList.map(({ ing, i }) => (
+      <div key={i} className="flex gap-2 items-center">
+        <Select
+          value={ing.product_id || "__placeholder__"}
+          onValueChange={(v) =>
+            updateEntry(i, { product_id: v === "__placeholder__" ? "" : v, is_mixer_slot: false })
+          }
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder="Seleccionar producto" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__placeholder__" disabled>
+              Seleccionar producto
+            </SelectItem>
+            {unitProducts.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}{" "}
+                <span className="text-muted-foreground text-xs">({p.unit})</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          className="w-24"
+          placeholder="ud"
+          value={ing.quantity || ""}
+          onChange={(e) => updateEntry(i, { quantity: Number(e.target.value) })}
+        />
+        <span className="text-xs text-muted-foreground w-5">ud</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => removeEntry(i)}
+          className="h-9 w-9 text-destructive"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    ));
+  };
+
+  const renderMixerRows = () => {
+    const idxList = ingredients
+      .map((ing, i) => ({ ing, i }))
+      .filter(({ ing }) => ing.is_mixer_slot);
+
+    return idxList.map(({ ing, i }) => {
+      const isTrad = ing.mixer_category !== "REDBULL";
+      const availableProducts = isTrad ? mixerTrad : mixerRedbull;
+      const accentClass = isTrad
+        ? "border-blue-200 bg-blue-50/50"
+        : "border-yellow-200 bg-yellow-50/50";
+
+      return (
+        <div key={i} className={`flex gap-2 items-center p-2 rounded-lg border ${accentClass}`}>
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            {isTrad ? "🥤 Trad." : "⚡ RB"}
+          </Badge>
+          <Select
+            value={ing.product_id || "__any__"}
+            onValueChange={(v) =>
+              updateEntry(i, { product_id: v === "__any__" ? "" : v })
+            }
           >
-            <Zap className="w-3 h-3 mr-1" />
-            Resetear Plantilla
+            <SelectTrigger className="flex-1 bg-background">
+              <SelectValue placeholder="Cualquiera (variable)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__any__">
+                Cualquiera (elegido en barra)
+              </SelectItem>
+              {availableProducts.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            type="number"
+            className="w-20 bg-background"
+            placeholder="ud"
+            value={ing.quantity || ""}
+            onChange={(e) => updateEntry(i, { quantity: Number(e.target.value) })}
+          />
+          <span className="text-xs text-muted-foreground w-5">ud</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => removeEntry(i)}
+            className="h-9 w-9 text-destructive"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
         </div>
+      );
+    });
+  };
 
-        {/* Template Slots */}
-        <div className="space-y-3">
-          {template.slots.map((slot, index) => {
-            const filteredProducts = getFilteredProducts(slot);
-            const currentValue = ingredients[index] || { product_id: "", quantity: slot.defaultQuantity, is_mixer_slot: slot.isMixerSlot };
-            
-            // Mixer slots don't require product selection - it's chosen at redemption
-            if (slot.isMixerSlot) {
-              const mixerLabel = slot.mixerCategory === "redbull" 
-                ? "Red Bull (variedad elegida en barra)" 
-                : "Bebida en Lata (elegida en barra)";
-              
-              return (
-                <Card key={index} className="p-3 border-dashed border-primary/50 bg-primary/5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">
-                        {slot.label} <Badge variant="secondary" className="ml-2 text-[10px]">Variable</Badge>
-                      </Label>
-                      <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50 text-muted-foreground text-sm">
-                        <GlassWater className="w-4 h-4" />
-                        <span>{mixerLabel}</span>
-                      </div>
-                    </div>
-                    <div className="w-28">
-                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">
-                        Cantidad ({slot.quantityLabel})
-                      </Label>
-                      <Input
-                        type="number"
-                        value={currentValue.quantity || ""}
-                        onChange={(e) => {
-                          const updated = [...ingredients];
-                          if (!updated[index]) {
-                            updated[index] = { product_id: "", quantity: 0, is_mixer_slot: true };
-                          }
-                          updated[index].quantity = Number(e.target.value);
-                          updated[index].is_mixer_slot = true;
-                          updated[index].mixer_category = slot.mixerCategory;
-                          onChange(updated);
-                        }}
-                      />
-                    </div>
-                  </div>
-                </Card>
-              );
-            }
-            
-            return (
-              <Card key={index} className="p-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <Label className="text-xs font-medium text-muted-foreground mb-1 block">
-                      {slot.label} {slot.required && <span className="text-destructive">*</span>}
-                    </Label>
-                    <Select
-                      value={currentValue.product_id || "placeholder"}
-                      onValueChange={(value) => {
-                        const updated = [...ingredients];
-                        if (!updated[index]) {
-                          updated[index] = { product_id: "", quantity: slot.defaultQuantity };
-                        }
-                        updated[index].product_id = value === "placeholder" ? "" : value;
-                        onChange(updated);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={`Seleccionar ${slot.label.toLowerCase()}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="placeholder" disabled>
-                          Seleccionar {slot.label.toLowerCase()}
-                        </SelectItem>
-                        {filteredProducts.length > 0 ? (
-                          filteredProducts.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          // If no filtered products, show all
-                          products.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-28">
-                    <Label className="text-xs font-medium text-muted-foreground mb-1 block">
-                      Cantidad ({slot.quantityLabel})
-                    </Label>
-                    <Input
-                      type="number"
-                      value={currentValue.quantity || ""}
-                      onChange={(e) => {
-                        const updated = [...ingredients];
-                        if (!updated[index]) {
-                          updated[index] = { product_id: "", quantity: 0 };
-                        }
-                        updated[index].quantity = Number(e.target.value);
-                        onChange(updated);
-                      }}
-                    />
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-        {/* Extra Ingredients */}
-        {ingredients.length > template.slots.length && (
-          <div className="space-y-2 pt-2 border-t">
-            <Label className="text-xs text-muted-foreground">Ingredientes Adicionales</Label>
-            {ingredients.slice(template.slots.length).map((ing, idx) => {
-              const actualIndex = template.slots.length + idx;
-              return (
-                <div key={actualIndex} className="flex gap-2 items-center">
-                  <Select
-                    value={ing.product_id || "placeholder"}
-                    onValueChange={(value) => 
-                      updateIngredient(actualIndex, "product_id", value === "placeholder" ? "" : value)
-                    }
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Seleccionar producto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
-                      {products.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
-                    className="w-24"
-                    placeholder="Cantidad"
-                    value={ing.quantity || ""}
-                    onChange={(e) => updateIngredient(actualIndex, "quantity", Number(e.target.value))}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeIngredient(actualIndex)}
-                    className="h-9 w-9 text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
-          <Plus className="w-3 h-3 mr-1" />
-          Agregar Ingrediente Extra
-        </Button>
-      </div>
-    );
-  }
-
-  // Render free-form editor (cocteleria and others without template)
   return (
-    <div className="space-y-4">
-      {/* Info for cocteleria */}
-      {normalizedCategory === "cocteleria" && (
-        <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg">
-          <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
-          <div className="text-xs text-muted-foreground">
-            <strong>Coctelería:</strong> Agrega todos los ingredientes necesarios para la receta del cóctel.
-            Cada ingrediente se descontará del inventario al canjear.
-          </div>
+    <div className="space-y-5">
+      {/* ── SECTION 1: ML (Botellas) ─────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <SectionHeader
+          icon={FlaskConical}
+          title="Ingredientes (Botellas — ML)"
+          subtitle="opcional"
+        />
+        <div className="space-y-2">
+          {renderMlRows()}
+          {mlIngredients.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              Sin ingredientes ML. Agrega botellas si la receta lo requiere.
+            </p>
+          )}
         </div>
-      )}
-
-      <div className="flex justify-between items-center">
-        <Label>Ingredientes de la Receta</Label>
-        <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
+        <Button type="button" variant="outline" size="sm" onClick={addMlIngredient}>
           <Plus className="w-3 h-3 mr-1" />
-          Agregar
+          Agregar botella (ML)
         </Button>
       </div>
 
-      {ingredients.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-2">
-          Sin receta definida. Agrega ingredientes para habilitar el descuento de stock.
-        </p>
-      ) : (
+      {/* ── SECTION 2: UD (Botellines / Unidades) ───────────────────────────── */}
+      <div className="space-y-2">
+        <SectionHeader
+          icon={GlassWater}
+          title="Ingredientes (Unidades — UD)"
+          subtitle="opcional"
+        />
         <div className="space-y-2">
-          {ingredients.map((ing, index) => {
-            const displayValue = getIngredientDisplayValue(ing);
-            const isMixer = ing.is_mixer_slot;
-            
-            return (
-              <div key={index} className="flex gap-2 items-center">
-                <Select
-                  value={displayValue}
-                  onValueChange={(value) => 
-                    updateIngredient(index, "product_id", value === "placeholder" ? "" : value)
-                  }
-                >
-                  <SelectTrigger className={`flex-1 ${isMixer ? "border-primary/50 bg-primary/5" : ""}`}>
-                    <SelectValue placeholder="Seleccionar producto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="placeholder" disabled>Seleccionar producto</SelectItem>
-                    
-                    {/* Mixer options - always at top */}
-                    <SelectItem value={MIXER_LATAS_ID} className="font-medium text-primary">
-                      🥤 Mixer Latas (Coca-Cola, Sprite, etc.)
-                    </SelectItem>
-                    <SelectItem value={MIXER_REDBULL_ID} className="font-medium text-primary">
-                      ⚡ Mixer Red Bull (todas las variedades)
-                    </SelectItem>
-                    
-                    {/* Separator */}
-                    <div className="h-px bg-border my-1" />
-                    
-                    {/* Regular products */}
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name} <span className="text-muted-foreground">({p.unit})</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  className="w-24"
-                  placeholder="Cantidad"
-                  value={ing.quantity || ""}
-                  onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value))}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeIngredient(index)}
-                  className="h-9 w-9 text-destructive"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            );
-          })}
+          {renderUdRows()}
+          {udIngredients.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              Sin ingredientes por unidad.
+            </p>
+          )}
         </div>
-      )}
+        <Button type="button" variant="outline" size="sm" onClick={addUdIngredient}>
+          <Plus className="w-3 h-3 mr-1" />
+          Agregar unidad (UD)
+        </Button>
+      </div>
+
+      {/* ── SECTION 3: Mixers (opcional) ─────────────────────────────────────── */}
+      <div className="space-y-2">
+        <SectionHeader
+          icon={Zap}
+          title="Mixers (Opcional)"
+          subtitle="se descuentan de categoría /Productos"
+        />
+        <div className="space-y-2">
+          {renderMixerRows()}
+          {mixerIngredients.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              Sin mixers. La receta no pedirá selección de mixer en barra.
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button type="button" variant="outline" size="sm" onClick={addMixerTrad}>
+            <Plus className="w-3 h-3 mr-1" />
+            🥤 Mixer Tradicional
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={addMixerRedbull}>
+            <Plus className="w-3 h-3 mr-1" />
+            ⚡ Red Bull
+          </Button>
+        </div>
+        {(mixerTrad.length === 0 || mixerRedbull.length === 0) && (
+          <p className="text-[11px] text-muted-foreground">
+            {mixerTrad.length === 0 && (
+              <span>
+                No hay productos en "Mixers tradicionales" en /Productos.{" "}
+              </span>
+            )}
+            {mixerRedbull.length === 0 && (
+              <span>No hay productos en "Redbull" en /Productos.</span>
+            )}
+          </p>
+        )}
+      </div>
     </div>
   );
 };
