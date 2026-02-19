@@ -207,20 +207,36 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const handleSaveProduct = async (productId: string) => {
     try {
       if (!editingState.name.trim()) { toast.error("El nombre no puede estar vacío"); return; }
-      let newUnit = "ml";
-      if (editingState.category === "gramos") newUnit = "g";
-      if (editingState.category === "unidades") newUnit = "unidad";
 
-      // Derive capacity_ml from subcategory
       const subConfig = getSubcategoryConfig(editingState.subcategory);
       const newCapacity = subConfig.defaultCapacity ?? null;
+
+      // ── Mixer categories: source of truth is `category` column, not `subcategory` ──
+      // When the user picks "Mixers Tradicionales" or "Red Bull" subcategory, we:
+      //   1. Write the mixer category name into `category` (the real DB column the hook reads)
+      //   2. Write subcategory = NULL (avoids the check constraint entirely)
+      const MIXER_SUBCAT_TO_CATEGORY: Record<string, string> = {
+        mixers_tradicionales: "mixers_tradicionales",
+        mixers_redbull:       "redbull",
+      };
+      const isMixerSubcat = editingState.subcategory in MIXER_SUBCAT_TO_CATEGORY;
+      const dbCategory = isMixerSubcat
+        ? MIXER_SUBCAT_TO_CATEGORY[editingState.subcategory]
+        : editingState.category;
+      const safeSubcategory = isMixerSubcat
+        ? null
+        : editingState.subcategory === "sin_categoria"
+        ? null
+        : editingState.subcategory;
+
+      const newUnit = subConfig.stockType === "volumetrico" ? "ml" : "unidad";
 
       const { error } = await supabase
         .from("products")
         .update({
           name: editingState.name.trim(),
-          category: editingState.category as any,
-          subcategory: editingState.subcategory === "sin_categoria" ? null : editingState.subcategory,
+          category: dbCategory as any,
+          subcategory: safeSubcategory,
           unit: newUnit,
           capacity_ml: newCapacity,
         })
