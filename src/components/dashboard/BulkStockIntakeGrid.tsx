@@ -24,9 +24,11 @@ import {
   Info,
   AlertCircle,
   FlaskConical,
+  PackageOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -47,22 +49,30 @@ interface TaxCategory {
   rate_pct: number;
 }
 
+/**
+ * IntakeRow.quantity:
+ *   - isBottle product → number of BOTTLES (decimal allowed, e.g. 2.5)
+ *   - unit product     → number of units
+ *
+ * IntakeRow.net_unit_cost:
+ *   - isBottle → costo neto por BOTELLA COMPLETA
+ *   - unit     → costo neto por UNIDAD
+ */
 interface IntakeRow {
   id: string;
   product_id: string;
-  quantity: string;          // For ml products: quantity in ml. For unit products: units.
-  net_unit_cost: string;     // For ml products: costo neto por BOTELLA. For unit: costo por unidad.
+  quantity: string;
+  net_unit_cost: string;
   tax_category_id: string;
   other_tax_unit: string;
   notes: string;
   // computed
-  iva_unit: number;          // IVA per bottle (ml) or per unit (ud)
+  iva_unit: number;
   specific_tax_unit: number;
-  total_unit: number;        // total acquisition cost per bottle or unit
-  total_line: number;        // total_unit * qty (or bottles_equiv for ml)
-  bottles_equiv: number;     // only for ml products
-  cost_per_ml: number;       // only for ml products
-  // validation
+  total_unit: number;
+  total_line: number;
+  qty_ml: number;       // for bottle products: qty_bottles * capacity_ml
+  cost_per_ml: number;  // net_unit_cost / capacity_ml (display only)
   errors: Record<string, boolean>;
 }
 
@@ -86,52 +96,50 @@ const createEmptyRow = (): IntakeRow => ({
   specific_tax_unit: 0,
   total_unit: 0,
   total_line: 0,
-  bottles_equiv: 0,
+  qty_ml: 0,
   cost_per_ml: 0,
   errors: {},
 });
 
-// Source of truth: capacity_ml (not unit string). See src/lib/product-type.ts
-function isVolumetric(product: Product | undefined): boolean {
+/**
+ * Source of truth: isBottle = capacity_ml IS NOT NULL AND capacity_ml > 0.
+ * products.unit is only a visual label.
+ */
+function isBottle(product: Product | undefined): boolean {
   if (!product) return false;
   return typeof product.capacity_ml === "number" && product.capacity_ml > 0;
 }
 
 function computeRow(row: IntakeRow, taxCategories: TaxCategory[], products: Product[]): IntakeRow {
   const product = products.find(p => p.id === row.product_id);
-  const volumetric = isVolumetric(product);
-  const capacityMl = product?.capacity_ml || 0;
+  const bottle = isBottle(product);
+  const capacityMl = product?.capacity_ml ?? 0;
 
-  const net = parseFloat(row.net_unit_cost) || 0;  // always "per bottle" for ml, "per unit" for ud
-  const qty = parseFloat(row.quantity) || 0;        // ml for volumetric, units for ud
+  // For bottles: quantity = # bottles. For units: quantity = # units.
+  const qtyInput = parseFloat(row.quantity) || 0;
+  const net = parseFloat(row.net_unit_cost) || 0; // per bottle or per unit
   const other = parseFloat(row.other_tax_unit) || 0;
 
   const iva_unit = Math.round(net * VAT_PCT / 100);
-
   const taxCat = taxCategories.find((t) => t.id === row.tax_category_id);
   const specific_tax_unit = taxCat ? Math.round(net * taxCat.rate_pct / 100) : 0;
+  const total_unit = net + iva_unit + specific_tax_unit + other; // per bottle or unit
 
-  const total_unit = net + iva_unit + specific_tax_unit + other;  // per bottle or unit
-
-  let total_line = 0;
-  let bottles_equiv = 0;
-  let cost_per_ml = 0;
-
-  if (volumetric && capacityMl > 0) {
-    bottles_equiv = qty / capacityMl;
-    cost_per_ml = net / capacityMl;
-    total_line = bottles_equiv * net;  // only net cost for inventory valuation
-  } else {
-    total_line = total_unit * qty;
-  }
+  const qty_ml = bottle && capacityMl > 0 ? qtyInput * capacityMl : 0;
+  const cost_per_ml = bottle && capacityMl > 0 ? net / capacityMl : 0;
+  const total_line = qtyInput * net; // net cost only (no tax in inventory valuation)
 
   const errors: Record<string, boolean> = {};
   if (!row.product_id) errors.product_id = true;
-  if (!row.quantity || qty <= 0) errors.quantity = true;
+  if (!row.quantity || qtyInput <= 0) errors.quantity = true;
   if (!row.net_unit_cost || net <= 0) errors.net_unit_cost = true;
   if (!row.tax_category_id) errors.tax_category_id = true;
+  // Hard block: capacity_ml=0/null cannot enter as bottle
+  if (product && !bottle && row.quantity && qtyInput > 0) {
+    // unit product — ok
+  }
 
-  return { ...row, iva_unit, specific_tax_unit, total_unit, total_line, bottles_equiv, cost_per_ml, errors };
+  return { ...row, iva_unit, specific_tax_unit, total_unit, total_line, qty_ml, cost_per_ml, errors };
 }
 
 export function BulkStockIntakeGrid({
@@ -146,7 +154,6 @@ export function BulkStockIntakeGrid({
   const [showValidation, setShowValidation] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  // Fetch tax categories
   useEffect(() => {
     const fetchMeta = async () => {
       const { data } = await supabase
@@ -167,31 +174,18 @@ export function BulkStockIntakeGrid({
   const summary = useMemo(() => {
     const s = { net: 0, vat: 0, specificTax: 0, otherTax: 0, total: 0 };
     computedRows.forEach((r) => {
-      const product = products.find(p => p.id === r.product_id);
-      const vol = isVolumetric(product);
-      const qty = parseFloat(r.quantity) || 0;
+      const qtyInput = parseFloat(r.quantity) || 0;
       const net = parseFloat(r.net_unit_cost) || 0;
-      const capacityMl = product?.capacity_ml || 1;
-
-      if (vol && capacityMl > 0) {
-        const bottles = qty / capacityMl;
-        s.net += net * bottles;
-        s.vat += r.iva_unit * bottles;
-        s.specificTax += r.specific_tax_unit * bottles;
-        s.otherTax += (parseFloat(r.other_tax_unit) || 0) * bottles;
-        s.total += r.total_unit * bottles;
-      } else {
-        s.net += net * qty;
-        s.vat += r.iva_unit * qty;
-        s.specificTax += r.specific_tax_unit * qty;
-        s.otherTax += (parseFloat(r.other_tax_unit) || 0) * qty;
-        s.total += r.total_line;
-      }
+      s.net += net * qtyInput;
+      s.vat += r.iva_unit * qtyInput;
+      s.specificTax += r.specific_tax_unit * qtyInput;
+      s.otherTax += (parseFloat(r.other_tax_unit) || 0) * qtyInput;
+      s.total += r.total_unit * qtyInput;
     });
     return s;
-  }, [computedRows, products]);
+  }, [computedRows]);
 
-  // Auto-fill cost from product's current cost_per_unit when product changes
+  // When product changes: pre-fill cost and clear quantity
   const handleProductChange = useCallback((rowId: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     setRows(prev => prev.map(r => {
@@ -199,7 +193,7 @@ export function BulkStockIntakeGrid({
       const defaultCost = product?.cost_per_unit && product.cost_per_unit > 0
         ? String(Math.round(product.cost_per_unit))
         : "";
-      return { ...r, product_id: productId, net_unit_cost: defaultCost };
+      return { ...r, product_id: productId, net_unit_cost: defaultCost, quantity: "" };
     }));
   }, [products]);
 
@@ -220,8 +214,7 @@ export function BulkStockIntakeGrid({
     setRows((prev) => {
       const toDuplicate = prev.filter((r) => selectedRows.has(r.id));
       const source = toDuplicate.length > 0 ? toDuplicate : [prev[prev.length - 1]];
-      const newRows = source.map((r) => ({ ...r, id: crypto.randomUUID() }));
-      return [...prev, ...newRows];
+      return [...prev, ...source.map((r) => ({ ...r, id: crypto.randomUUID() }))];
     });
   }, [selectedRows]);
 
@@ -281,7 +274,7 @@ export function BulkStockIntakeGrid({
       const venueId = profile?.venue_id;
       if (!venueId) throw new Error("No venue");
 
-      // Create batch — all items go to warehouseId
+      // Create batch
       const { data: batch, error: batchErr } = await supabase
         .from("stock_intake_batches")
         .insert({
@@ -300,66 +293,66 @@ export function BulkStockIntakeGrid({
 
       if (batchErr || !batch) throw batchErr || new Error("Failed to create batch");
 
-      // Insert items — location_id always = warehouseId
+      // Insert items
       const items = computedRows.map((r) => {
         const product = products.find(p => p.id === r.product_id);
-        const vol = isVolumetric(product);
-        const capacityMl = product?.capacity_ml || 1;
-        const qty = parseFloat(r.quantity);
-        const net = parseFloat(r.net_unit_cost);
-        // For volumetric: net_unit_cost is per-bottle, so per-item for DB is per-bottle
-        // The quantity in ml is stored as-is
+        const bottle = isBottle(product);
+        const capacityMl = product?.capacity_ml ?? 1;
+        const qtyInput = parseFloat(r.quantity); // bottles or units
+        const net = parseFloat(r.net_unit_cost);  // per bottle or per unit
+
+        // DB stores quantity in ml for bottle products, units for unit products
+        const qtyStored = bottle ? qtyInput * capacityMl : qtyInput;
+        // DB stores net_unit_cost per ml for bottles (consistent with stock_movements.unit_cost)
+        const netPerUom = bottle ? net / capacityMl : net;
+
         return {
           batch_id: batch.id,
           product_id: r.product_id,
           location_id: warehouseId,
-          quantity: qty,
-          net_unit_cost: vol && capacityMl > 0 ? net / capacityMl : net, // store per-ml for volumetric
-          vat_unit: vol && capacityMl > 0 ? r.iva_unit / capacityMl : r.iva_unit,
-          specific_tax_unit: vol && capacityMl > 0 ? r.specific_tax_unit / capacityMl : r.specific_tax_unit,
-          other_tax_unit: (parseFloat(r.other_tax_unit) || 0),
-          total_unit: vol && capacityMl > 0 ? r.total_unit / capacityMl : r.total_unit,
+          quantity: qtyStored,
+          net_unit_cost: netPerUom,
+          vat_unit: bottle ? r.iva_unit / capacityMl : r.iva_unit,
+          specific_tax_unit: bottle ? r.specific_tax_unit / capacityMl : r.specific_tax_unit,
+          other_tax_unit: parseFloat(r.other_tax_unit) || 0,
+          total_unit: bottle ? r.total_unit / capacityMl : r.total_unit,
           total_line: r.total_line,
           tax_category_id: r.tax_category_id,
           venue_id: venueId,
         };
       });
 
-      const { error: itemsErr } = await supabase
-        .from("stock_intake_items")
-        .insert(items);
+      const { error: itemsErr } = await supabase.from("stock_intake_items").insert(items);
       if (itemsErr) throw itemsErr;
 
-      // Create stock movements and update balances — all to warehouseId
+      // Create stock movements + update balances
       for (const r of computedRows) {
         const product = products.find(p => p.id === r.product_id);
-        const vol = isVolumetric(product);
-        const capacityMl = product?.capacity_ml || 1;
-        const qty = parseFloat(r.quantity);  // ml for volumetric, units for ud
+        const bottle = isBottle(product);
+        const capacityMl = product?.capacity_ml ?? 1;
+        const qtyInput = parseFloat(r.quantity); // bottles or units
         const net = parseFloat(r.net_unit_cost);  // per bottle or per unit
 
-        // For stock movements, unit_cost should always be per-unit-of-measure
-        // For ml: per ml. For ud: per unit.
-        const unitCostForMovement = vol && capacityMl > 0 ? net / capacityMl : net;
-        const bottlesEquiv = vol && capacityMl > 0 ? qty / capacityMl : qty;
-        const totalNetCost = vol && capacityMl > 0 ? bottlesEquiv * net : net * qty;
+        // Stock is always stored in natural unit (ml or units)
+        const qtyStored = bottle ? qtyInput * capacityMl : qtyInput;
+        // unit_cost in movements = per-unit-of-measure (per ml or per unit)
+        const unitCostUom = bottle ? net / capacityMl : net;
 
         await supabase.from("stock_movements").insert({
           product_id: r.product_id,
-          quantity: qty,
+          quantity: qtyStored,
           movement_type: "entrada",
           to_location_id: warehouseId,
-          unit_cost: unitCostForMovement,
-          // unit_cost_snapshot for traceability (per ml or per unit)
-          unit_cost_snapshot: unitCostForMovement,
-          vat_amount: vol && capacityMl > 0 ? (r.iva_unit / capacityMl) * qty : r.iva_unit * qty,
-          specific_tax_amount: vol && capacityMl > 0 ? (r.specific_tax_unit / capacityMl) * qty : r.specific_tax_unit * qty,
+          unit_cost: unitCostUom,
+          unit_cost_snapshot: unitCostUom,
+          vat_amount: bottle ? (r.iva_unit / capacityMl) * qtyStored : r.iva_unit * qtyStored,
+          specific_tax_amount: bottle ? (r.specific_tax_unit / capacityMl) * qtyStored : r.specific_tax_unit * qtyStored,
           source_type: "manual_batch",
-          notes: r.notes || "Ingreso masivo a Bodega Principal",
+          notes: r.notes || `Ingreso masivo a Bodega Principal${bottle ? ` (${qtyInput} bot. × ${capacityMl}ml)` : ""}`,
           venue_id: venueId,
         });
 
-        // Update stock balance in warehouse
+        // Update stock_balances
         const { data: existing } = await supabase
           .from("stock_balances")
           .select("quantity")
@@ -370,19 +363,19 @@ export function BulkStockIntakeGrid({
         if (existing) {
           await supabase
             .from("stock_balances")
-            .update({ quantity: existing.quantity + qty, updated_at: new Date().toISOString() })
+            .update({ quantity: existing.quantity + qtyStored, updated_at: new Date().toISOString() })
             .eq("location_id", warehouseId)
             .eq("product_id", r.product_id);
         } else {
           await supabase.from("stock_balances").insert({
             location_id: warehouseId,
             product_id: r.product_id,
-            quantity: qty,
+            quantity: qtyStored,
             venue_id: venueId,
           });
         }
 
-        // Update product current_stock + CPP via centralized calculateCPP utility
+        // Update product CPP + current_stock
         const { data: productData } = await supabase
           .from("products")
           .select("current_stock, cost_per_unit, capacity_ml")
@@ -390,17 +383,21 @@ export function BulkStockIntakeGrid({
           .single();
 
         if (productData) {
-          const currentStock = productData.current_stock || 0;
+          const currentStock = productData.current_stock || 0; // always in ml or units
+          // calculateCPP expects:
+          //   oldCostPerUnit = cost_per_unit (per bottle for bottles, per unit for units)
+          //   newCostPerUnit = net (per bottle or per unit)
+          //   currentStock / addedQty in natural units (ml or units)
           const newCostPerUnit = calculateCPP({
             product: productData,
             currentStock,
             oldCostPerUnit: productData.cost_per_unit || 0,
-            addedQty: qty,
-            newCostPerUnit: net,
+            addedQty: qtyStored,
+            newCostPerUnit: net, // per bottle for bottles, per unit for units
           });
 
           await supabase.from("products").update({
-            current_stock: currentStock + qty,
+            current_stock: currentStock + qtyStored,
             cost_per_unit: Math.round(newCostPerUnit),
           }).eq("id", r.product_id);
         }
@@ -449,18 +446,40 @@ export function BulkStockIntakeGrid({
           Ingreso manual masivo
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          IVA (19%) e impuesto específico se calculan automáticamente según categoría.
-          Para botellas: ingrese cantidad en ml y costo por botella.
+          Solo productos existentes del catálogo. IVA (19%) e impuesto específico se calculan automáticamente.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+
+        {/* ── Requisito previo: producto debe existir ── */}
+        <Alert className="border-primary/30 bg-primary/5">
+          <PackageOpen className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs leading-relaxed">
+            <span className="font-semibold text-foreground">Los productos deben estar creados en el catálogo antes de ingresar stock.</span>
+            {" "}Si el producto no aparece en la lista, créalo primero desde el módulo{" "}
+            <span className="font-semibold text-foreground">Productos → Nuevo producto</span>{" "}
+            (definiendo su tipo y capacidad), y luego regresa aquí para registrar el ingreso.
+          </AlertDescription>
+        </Alert>
+
+        {/* ── Reglas de ingreso ── */}
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40">
+            <FlaskConical className="h-3.5 w-3.5 text-primary" />
+            <span><span className="font-medium">Botella</span> (capacity_ml &gt; 0): cantidad en <span className="font-medium">botellas</span> · costo por <span className="font-medium">botella</span></span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40">
+            <PackageOpen className="h-3.5 w-3.5 text-muted-foreground" />
+            <span><span className="font-medium">Unitario</span>: cantidad en <span className="font-medium">unidades</span> · costo por <span className="font-medium">unidad</span></span>
+          </div>
+        </div>
+
         {/* ── Info banner ── */}
         <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-4 py-3">
           <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground leading-relaxed">
             Todo ingreso se registra en <span className="font-semibold text-foreground">Bodega Principal</span>.
-            La distribución a barras se realiza desde el módulo <span className="font-semibold text-foreground">Reposición</span>.
-            Para productos en <span className="font-semibold text-foreground">ml (botellas)</span>: el campo "Neto unit." corresponde al <span className="font-semibold text-foreground">costo neto por botella completa</span>.
+            La distribución a barras se realiza desde <span className="font-semibold text-foreground">Reposición</span>.
           </p>
         </div>
 
@@ -489,17 +508,27 @@ export function BulkStockIntakeGrid({
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="w-8 text-center">#</TableHead>
-                <TableHead className="min-w-[180px]">Producto *</TableHead>
-                <TableHead className="w-16 text-center">Tipo</TableHead>
-                <TableHead className="w-[100px]">Cantidad *</TableHead>
+                <TableHead className="min-w-[200px]">Producto *</TableHead>
+                <TableHead className="w-20 text-center">Tipo</TableHead>
                 <TableHead className="w-[110px]">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help underline decoration-dotted">Cantidad *</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Botellas → número de botellas (no ml)</p>
+                      <p>Unitario → número de unidades</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="w-[120px]">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help underline decoration-dotted">Neto unit. *</span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Para botellas (ml): costo neto por botella completa.</p>
-                      <p>Para unitarios (ud): costo neto por unidad.</p>
+                      <p>Botellas → costo neto por botella completa</p>
+                      <p>Unitario → costo neto por unidad</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
@@ -507,15 +536,17 @@ export function BulkStockIntakeGrid({
                 <TableHead className="w-[80px] text-right">IVA unit.</TableHead>
                 <TableHead className="w-[80px] text-right">Imp. Esp.</TableHead>
                 <TableHead className="w-[90px]">Otros imp.</TableHead>
-                <TableHead className="w-[120px] text-right">Info botella</TableHead>
-                <TableHead className="w-[110px] text-right">Costo total neto</TableHead>
+                <TableHead className="w-[130px] text-right">Detalle</TableHead>
+                <TableHead className="w-[110px] text-right">Costo neto total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {computedRows.map((row) => {
                 const product = products.find(p => p.id === row.product_id);
-                const vol = isVolumetric(product);
-                const capacityMl = product?.capacity_ml || 0;
+                const bottle = isBottle(product);
+                const capacityMl = product?.capacity_ml ?? 0;
+                const qtyInput = parseFloat(row.quantity) || 0;
+                const netInput = parseFloat(row.net_unit_cost) || 0;
 
                 return (
                   <TableRow
@@ -531,7 +562,7 @@ export function BulkStockIntakeGrid({
                       />
                     </TableCell>
 
-                    {/* Product */}
+                    {/* Product — select only from existing catalog */}
                     <TableCell className="p-1">
                       <select
                         value={row.product_id}
@@ -540,10 +571,10 @@ export function BulkStockIntakeGrid({
                           hasErrors(row, "product_id") ? "border-destructive" : "border-input"
                         }`}
                       >
-                        <option value="">Seleccionar...</option>
+                        <option value="">— Seleccionar producto existente —</option>
                         {sortedProducts.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} ({p.code})
+                            {p.name} ({p.code}){p.capacity_ml ? ` · ${p.capacity_ml}ml/bot.` : ""}
                           </option>
                         ))}
                       </select>
@@ -552,64 +583,67 @@ export function BulkStockIntakeGrid({
                     {/* Type badge */}
                     <TableCell className="text-center p-1">
                       {product ? (
-                        vol
-                          ? <Badge variant="secondary" className="text-[10px] gap-1"><FlaskConical className="h-2.5 w-2.5" />ml</Badge>
-                          : <Badge variant="outline" className="text-[10px]">ud</Badge>
+                        bottle ? (
+                          <Badge variant="secondary" className="text-[10px] gap-1">
+                            <FlaskConical className="h-2.5 w-2.5" />
+                            botella
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">unitario</Badge>
+                        )
                       ) : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
 
                     {/* Quantity */}
                     <TableCell className="p-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="relative">
-                            <Input
-                              type="number"
-                              min="0.01"
-                              step={vol ? "1" : "0.01"}
-                              value={row.quantity}
-                              onChange={(e) => updateRow(row.id, "quantity", e.target.value)}
-                              className={`h-8 text-xs pr-7 ${hasErrors(row, "quantity") ? "border-destructive" : ""}`}
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none">
-                              {product ? (vol ? "ml" : "ud") : ""}
-                            </span>
-                          </div>
-                        </TooltipTrigger>
-                        {vol && capacityMl > 0 && (
-                          <TooltipContent>
-                            <p>Cap. botella: {capacityMl} ml</p>
-                            {parseFloat(row.quantity) > 0 && (
-                              <p>≈ {(parseFloat(row.quantity) / capacityMl).toFixed(2)} botellas</p>
+                      <div className="space-y-0.5">
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={row.quantity}
+                            onChange={(e) => updateRow(row.id, "quantity", e.target.value)}
+                            placeholder={bottle ? "# botellas" : "# unidades"}
+                            className={`h-8 text-xs pr-8 ${hasErrors(row, "quantity") ? "border-destructive" : ""}`}
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none">
+                            {bottle ? "bot." : product ? "ud" : ""}
+                          </span>
+                        </div>
+                        {/* Helper: 1 botella = X ml */}
+                        {bottle && capacityMl > 0 && (
+                          <p className="text-[9px] text-muted-foreground px-0.5">
+                            1 bot. = {capacityMl} ml
+                            {qtyInput > 0 && (
+                              <span className="font-medium text-foreground"> · Total: {(qtyInput * capacityMl).toLocaleString()} ml</span>
                             )}
-                          </TooltipContent>
+                          </p>
                         )}
-                      </Tooltip>
+                      </div>
                     </TableCell>
 
                     {/* Net unit cost */}
                     <TableCell className="p-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="relative">
-                            <Input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={row.net_unit_cost}
-                              onChange={(e) => updateRow(row.id, "net_unit_cost", e.target.value)}
-                              placeholder={vol ? "$/botella" : "$/ud"}
-                              className={`h-8 text-xs ${hasErrors(row, "net_unit_cost") ? "border-destructive" : ""}`}
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {vol
-                            ? <p>Costo neto por botella completa ({capacityMl} ml)</p>
-                            : <p>Costo neto por unidad</p>
-                          }
-                        </TooltipContent>
-                      </Tooltip>
+                      <div className="space-y-0.5">
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={row.net_unit_cost}
+                            onChange={(e) => updateRow(row.id, "net_unit_cost", e.target.value)}
+                            placeholder={bottle ? "$/botella" : "$/ud"}
+                            className={`h-8 text-xs ${hasErrors(row, "net_unit_cost") ? "border-destructive" : ""}`}
+                          />
+                        </div>
+                        {/* Helper: costo por ml estimado */}
+                        {bottle && capacityMl > 0 && netInput > 0 && (
+                          <p className="text-[9px] text-muted-foreground px-0.5">
+                            ≈ <span className="font-medium text-primary">{formatCLP(netInput / capacityMl)}/ml</span>
+                          </p>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Tax category */}
@@ -633,13 +667,13 @@ export function BulkStockIntakeGrid({
                     {/* IVA unit (readonly) */}
                     <TableCell className="text-right text-xs text-muted-foreground p-1">
                       {formatCLP(row.iva_unit)}
-                      {vol && <div className="text-[9px] text-muted-foreground/70">/botella</div>}
+                      {bottle && <div className="text-[9px] text-muted-foreground/70">/botella</div>}
                     </TableCell>
 
                     {/* Specific tax (readonly) */}
                     <TableCell className="text-right text-xs text-muted-foreground p-1">
                       {formatCLP(row.specific_tax_unit)}
-                      {vol && <div className="text-[9px] text-muted-foreground/70">/botella</div>}
+                      {bottle && <div className="text-[9px] text-muted-foreground/70">/botella</div>}
                     </TableCell>
 
                     {/* Other taxes */}
@@ -655,17 +689,23 @@ export function BulkStockIntakeGrid({
                       />
                     </TableCell>
 
-                    {/* Bottle info (volumetric only) */}
+                    {/* Detail column: bottles → show qty_ml; units → show qty */}
                     <TableCell className="text-right p-1">
-                      {vol && capacityMl > 0 && parseFloat(row.quantity) > 0 && parseFloat(row.net_unit_cost) > 0 ? (
-                        <div className="space-y-0.5">
+                      {product && qtyInput > 0 && netInput > 0 ? (
+                        bottle ? (
+                          <div className="space-y-0.5">
+                            <div className="text-[10px] text-muted-foreground">
+                              {(qtyInput * capacityMl).toLocaleString()} ml total
+                            </div>
+                            <div className="text-[10px] font-medium text-primary">
+                              {formatCLP(row.cost_per_ml)}/ml
+                            </div>
+                          </div>
+                        ) : (
                           <div className="text-[10px] text-muted-foreground">
-                            {row.bottles_equiv.toFixed(2)} bot.
+                            {qtyInput} {product.unit || "ud"}
                           </div>
-                          <div className="text-[10px] font-medium text-primary">
-                            {formatCLP(row.cost_per_ml)}/ml
-                          </div>
-                        </div>
+                        )
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
@@ -673,8 +713,8 @@ export function BulkStockIntakeGrid({
 
                     {/* Total net cost */}
                     <TableCell className="text-right text-xs font-bold p-1">
-                      {parseFloat(row.quantity) > 0 && parseFloat(row.net_unit_cost) > 0
-                        ? formatCLP(vol ? row.bottles_equiv * parseFloat(row.net_unit_cost) : parseFloat(row.net_unit_cost) * parseFloat(row.quantity))
+                      {qtyInput > 0 && netInput > 0
+                        ? formatCLP(row.total_line)
                         : "—"
                       }
                     </TableCell>

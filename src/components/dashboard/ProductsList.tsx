@@ -18,8 +18,10 @@ import {
   Trash2,
   AlertTriangle,
   Calculator,
-  Plus
+  Plus,
+  Info,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { NewProductWizard } from "@/components/dashboard/NewProductWizard";
 import {
   AlertDialog,
@@ -264,6 +266,18 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Aviso de proceso: crear antes de ingresar ── */}
+      <Alert className="border-primary/30 bg-primary/5">
+        <Info className="h-4 w-4 text-primary" />
+        <AlertDescription className="text-xs leading-relaxed">
+          <span className="font-semibold text-foreground">Para ingresar stock a un producto, este debe existir en el catálogo primero.</span>
+          {" "}Usa el botón <span className="font-semibold text-foreground">"Nuevo producto"</span> para crearlo con su tipo (botella o unitario) y capacidad en ml.
+          Una vez creado, ve a <span className="font-semibold text-foreground">Inventario → Ingreso manual</span> para registrar el stock.
+          Los ingresos desde facturas también requieren que el producto esté tipificado previamente.
+        </AlertDescription>
+      </Alert>
+
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
