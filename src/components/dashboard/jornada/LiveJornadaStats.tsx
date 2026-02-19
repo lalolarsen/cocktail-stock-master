@@ -122,7 +122,7 @@ export function LiveJornadaStats({ jornadaId }: LiveJornadaStatsProps) {
           cocktail_id,
           quantity,
           subtotal,
-          sales!inner(jornada_id, is_cancelled)
+          sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled)
         `)
         .eq("sales.jornada_id", jornadaId)
         .eq("sales.is_cancelled", false);

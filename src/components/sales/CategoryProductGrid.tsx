@@ -62,7 +62,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
       if (!jornadaId) return [];
       const { data, error } = await supabase
         .from("sale_items")
-        .select(`cocktail_id, quantity, sales!inner(jornada_id, is_cancelled)`)
+        .select(`cocktail_id, quantity, sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled)`)
         .eq("sales.jornada_id", jornadaId)
         .eq("sales.is_cancelled", false);
       if (error) return [];
