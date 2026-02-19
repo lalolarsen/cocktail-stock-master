@@ -4739,6 +4739,7 @@ export type Database = {
               p_product_id: string
               p_quantity: number
               p_source_type?: string
+              p_venue_id?: string
             }
             Returns: Json
           }
