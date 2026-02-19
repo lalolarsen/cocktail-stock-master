@@ -84,7 +84,8 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
             name,
             category,
             subcategory,
-            unit
+            unit,
+            capacity_ml
           )
         `)
         .eq("movement_type", "salida")
@@ -129,7 +130,19 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
       const categoryMap = new Map<string, { total_cost: number; products: Set<string>; items: number }>();
 
       movements.forEach((m: any) => {
-        const cost = Math.abs(Number(m.quantity)) * (Number(m.unit_cost) || 0);
+        const qty = Math.abs(Number(m.quantity));
+        const capacityMl = Number(m.products?.capacity_ml) || 0;
+        const unitCost = Number(m.unit_cost) || 0;
+
+        // Para productos tipo BOTELLA (capacity_ml > 0):
+        //   quantity está en ml, unit_cost es costo por botella completa
+        //   COGS = (qty_ml / capacity_ml) * cost_per_bottle
+        // Para productos UNITARIOS:
+        //   COGS = qty * unit_cost
+        const cost = capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
+
         totalCogs += cost;
         totalItems++;
         uniqueProducts.add(m.product_id);
@@ -141,9 +154,11 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
         const unit = m.products?.unit || "u";
 
         // Aggregate by product
+        // Para botellas: expresar quantity en botellas equivalentes para la UI
+        const displayQty = capacityMl > 0 ? qty / capacityMl : qty;
         const existing = productMap.get(m.product_id);
         if (existing) {
-          existing.total_quantity += Math.abs(Number(m.quantity));
+          existing.total_quantity += displayQty;
           existing.total_cost += cost;
         } else {
           productMap.set(m.product_id, {
@@ -151,12 +166,13 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
             product_name: productName,
             category,
             subcategory,
-            total_quantity: Math.abs(Number(m.quantity)),
-            unit,
-            unit_cost: Number(m.unit_cost) || 0,
+            total_quantity: displayQty,
+            unit: capacityMl > 0 ? "bot." : unit,
+            unit_cost: unitCost,
             total_cost: cost,
           });
         }
+
 
         // Aggregate by category
         const catData = categoryMap.get(category);
