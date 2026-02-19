@@ -145,6 +145,7 @@ export default function Bar() {
   // Mixer
   const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
   const [pendingToken, setPendingToken] = useState("");
+  const [pendingCocktailName, setPendingCocktailName] = useState<string | undefined>(undefined);
   const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
   const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
 
@@ -440,9 +441,9 @@ export default function Bar() {
       setDebugStep("fetch-token");
       const { data: mc, error: me } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
       if (me) throw me;
-      const mr = mc as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
+      const mr = mc as unknown as { success?: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; cocktail_id?: string; error?: string };
 
-      if (!mr.success) {
+      if (mr.success === false || mr.error) {
         const code = mr.error || "TOKEN_NOT_FOUND";
         setDebugStep("done-error");
         setResult({ success: false, error_code: code, message: "Token no encontrado o ya procesado" });
@@ -455,6 +456,11 @@ export default function Bar() {
         setDebugStep("mixer-needed");
         setMixerSlots(mr.mixer_slots);
         setPendingToken(token);
+        // Get cocktail name for display if available
+        if (mr.cocktail_id) {
+          supabase.from("cocktails").select("name").eq("id", mr.cocktail_id).single()
+            .then(({ data }) => { if (data) setPendingCocktailName(data.name); });
+        }
         if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
         setScanState("mixer_selection"); return;
       }
@@ -489,7 +495,7 @@ export default function Bar() {
 
   const handleMixerCancel = useCallback(() => {
     if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-    setPendingToken(""); setMixerSlots([]);
+    setPendingToken(""); setMixerSlots([]); setPendingCocktailName(undefined);
     setDebugStep("idle"); releaseLocks("idle"); focusInput();
   }, [releaseLocks, focusInput]);
 
@@ -743,7 +749,13 @@ export default function Bar() {
 
         {/* ── Mixer dialog ── */}
         {scanState === "mixer_selection" && (
-          <MixerSelectionDialog mixerSlots={mixerSlots} isLoading={isRedeemingWithMixer} onConfirm={handleMixerConfirm} onCancel={handleMixerCancel} />
+          <MixerSelectionDialog
+            mixerSlots={mixerSlots}
+            isLoading={isRedeemingWithMixer}
+            onConfirm={handleMixerConfirm}
+            onCancel={handleMixerCancel}
+            cocktailName={pendingCocktailName}
+          />
         )}
 
         {/* ── Manual entry dialog ── */}
