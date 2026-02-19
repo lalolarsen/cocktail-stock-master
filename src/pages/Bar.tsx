@@ -17,9 +17,8 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
-import { OpenBottleDialog } from "@/components/bar/OpenBottleDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
-import { DEFAULT_VENUE_ID } from "@/lib/venue";
+import { useAppSession } from "@/contexts/AppSessionContext";
 
 type MissingItem = { product_name: string; required_qty: number; unit: string };
 type DeliverItem = { name: string; quantity: number; addons?: string[] };
@@ -54,7 +53,7 @@ type ScanHistoryEntry = {
   tokenShort: string;
 };
 type ReaderMode = "USB_SCANNER" | "CAMERA";
-type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection" | "bottle_check";
+type ScanState = "idle" | "processing" | "success" | "error" | "waiting_resume" | "mixer_selection";
 
 const MAX_HISTORY_ENTRIES = 20;
 const DEDUPE_WINDOW_MS = 5000;
@@ -169,9 +168,10 @@ export default function Bar() {
   const [showBarSelection, setShowBarSelection] = useState(true);
 
   // Open bottles state
-  const [bottleChecks, setBottleChecks] = useState<BottleCheckResult[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const openBottlesHook = useOpenBottles(DEFAULT_VENUE_ID, selectedBarId || null);
+  const { venue } = useAppSession();
+  const currentVenueId = venue?.id ?? "";
+  const openBottlesHook = useOpenBottles(currentVenueId, selectedBarId || null);
 
   const [showWasteDialog, setShowWasteDialog] = useState(false);
 
@@ -550,7 +550,13 @@ export default function Bar() {
   ) => {
     setDebugStep("bottle-check");
     try {
-      // Two simple queries to avoid PostgREST FK ambiguity
+      if (!selectedBarId) {
+        console.warn("[Bar][bottles] No bar selected — redeeming directly");
+        await redeemToken(token, mixerOverrides);
+        return;
+      }
+
+      // Fetch sale_id from token
       const { data: tokenData, error: tokenErr } = await supabase
         .from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
       if (tokenErr) throw tokenErr;
@@ -561,6 +567,7 @@ export default function Bar() {
         return;
       }
 
+      // Fetch sale items + cocktail ingredients with capacity_ml
       const { data: saleItems, error: siErr } = await supabase
         .from("sale_items")
         .select("quantity, cocktail_id, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))")
@@ -568,7 +575,7 @@ export default function Bar() {
       if (siErr) throw siErr;
 
       // Aggregate ml per product
-      const mlIngredients = new Map<string, { product_id: string; product_name: string; required_ml: number }>();
+      const mlMap = new Map<string, { product_id: string; product_name: string; required_ml: number; capacity_ml: number }>();
       for (const si of (saleItems || [])) {
         const qty = (si as any).quantity || 1;
         for (const ing of ((si as any).cocktails?.cocktail_ingredients || [])) {
@@ -576,85 +583,99 @@ export default function Bar() {
           if (!p?.capacity_ml || p.capacity_ml <= 0) continue;
           const ingQty = (ing.quantity || 0) * qty;
           if (ingQty <= 0) continue;
-          const ex = mlIngredients.get(p.id);
+          const ex = mlMap.get(p.id);
           if (ex) { ex.required_ml += ingQty; }
-          else { mlIngredients.set(p.id, { product_id: p.id, product_name: p.name, required_ml: ingQty }); }
+          else { mlMap.set(p.id, { product_id: p.id, product_name: p.name, required_ml: ingQty, capacity_ml: p.capacity_ml }); }
         }
       }
 
-      if (mlIngredients.size === 0) {
+      if (mlMap.size === 0) {
         console.log("[Bar][bottles] No ml ingredients — redeeming directly");
         await redeemToken(token, mixerOverrides);
         return;
       }
 
-      const checks = openBottlesHook.checkBottlesForIngredients(Array.from(mlIngredients.values()));
-      setPendingToken(token);
-      setPendingMixerOverrides(mixerOverrides);
-      setBottleChecks(checks);
+      const ingredientsList = Array.from(mlMap.values());
+      const checks = openBottlesHook.checkBottlesForIngredients(
+        ingredientsList.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml }))
+      );
 
-      if (checks.every(c => c.sufficient)) {
-        // Enough stock — proceed immediately
-        console.log("[Bar][bottles] All bottles sufficient — redeeming with deduction");
-        await redeemWithBottleDeduction(token, mixerOverrides, checks);
-      } else {
-        // Need user to open bottles first
-        console.log("[Bar][bottles] Insufficient bottles — waiting for user");
-        // Keep isProcessingRef=true and scannerFrozen=true while dialog is shown
-        if (watchdogTimerRef.current) { clearTimeout(watchdogTimerRef.current); watchdogTimerRef.current = null; }
-        setScanState("bottle_check");
+      // ── AUTO-OPEN bottles for any product with insufficient ml ──
+      const insufficientChecks = checks.filter(c => !c.sufficient);
+      if (insufficientChecks.length > 0) {
+        setDebugStep("auto-open");
+        if (!currentUserId) throw new Error("Sin usuario activo para abrir botellas");
+        if (!currentVenueId) throw new Error("Venue no identificado");
+
+        for (const check of insufficientChecks) {
+          const ingData = mlMap.get(check.product_id);
+          if (!ingData) continue;
+          const { capacity_ml } = ingData;
+          if (!capacity_ml || capacity_ml <= 0) {
+            throw new Error(`${check.product_name} no tiene capacidad ml definida. No se puede abrir automáticamente.`);
+          }
+          const missing_ml = check.required_ml - check.available_ml;
+          const bottlesNeeded = Math.ceil(missing_ml / capacity_ml);
+          console.log(`[Bar][auto-open] ${check.product_name} x${bottlesNeeded} (faltaban ${missing_ml}ml)`);
+          toast.info(`Auto-open: ${check.product_name} x${bottlesNeeded} botella${bottlesNeeded > 1 ? "s" : ""} (faltaban ${missing_ml}ml)`);
+
+          for (let i = 0; i < bottlesNeeded; i++) {
+            const { data: newBottle, error: insertErr } = await (supabase as any)
+              .from("open_bottles")
+              .insert({
+                venue_id: currentVenueId,
+                location_id: selectedBarId,
+                product_id: check.product_id,
+                status: "OPEN",
+                opened_by_user_id: currentUserId,
+                initial_ml: capacity_ml,
+                remaining_ml: capacity_ml,
+                notes: `Auto-abierta por canje ${token.slice(-6)}`,
+              })
+              .select()
+              .single();
+            if (insertErr) throw insertErr;
+
+            await (supabase as any).from("open_bottle_events").insert({
+              open_bottle_id: newBottle.id,
+              event_type: "OPENED",
+              delta_ml: capacity_ml,
+              before_ml: 0,
+              after_ml: capacity_ml,
+              actor_user_id: currentUserId,
+              reason: "Auto-open por canje",
+            });
+          }
+        }
+        // Refresh after auto-open
+        await openBottlesHook.fetchBottles();
       }
+
+      // Proceed to redeem with best-effort bottle deduction
+      setDebugStep("redeem");
+      const checksForDeduction: BottleCheckResult[] = ingredientsList.map(i => ({
+        product_id: i.product_id,
+        product_name: i.product_name,
+        required_ml: i.required_ml,
+        available_ml: i.required_ml,
+        sufficient: true,
+        open_bottles: [],
+      }));
+      await redeemWithBottleDeduction(token, mixerOverrides, checksForDeduction);
+
     } catch (err: any) {
-      console.error("[Bar][bottles] Error — falling back to direct redemption:", { token: token.slice(-8), err });
-      // Non-fatal: fall back to direct redeem so the user is never stuck
-      await redeemToken(token, mixerOverrides);
+      console.error("[Bar][bottles] Error:", { token: token.slice(-8), err });
+      const errMsg = err?.message || "Error al verificar botellas";
+      setResult({ success: false, error_code: "SYSTEM_ERROR", message: errMsg });
+      const historyEntry: ScanHistoryEntry = {
+        id: crypto.randomUUID(), time: new Date(), status: "ERROR",
+        label: "ERROR: " + errMsg.slice(0, 40), tokenShort: token.slice(-6),
+      };
+      setScanHistory(prev => [historyEntry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error");
+      transitionToWaitingResume(readerMode);
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
-
-  // Assign ref after declaration to break circular dep with processToken
-  checkAndProceedWithBottlesRef.current = checkAndProceedWithBottles;
-
-  // ─── BOTTLE CHECK HANDLERS ──────────────────────────────────────────────────
-  const handleBottleCheckContinue = useCallback(async () => {
-    if (bottleChecks.some(c => !c.sufficient)) {
-      console.warn("[Bar] handleBottleCheckContinue bloqueado: faltan ml en botellas");
-      return;
-    }
-    const token = pendingToken;
-    const overrides = pendingMixerOverrides;
-    const checks = bottleChecks;
-    // Clear dialog state
-    setBottleChecks([]);
-    setPendingToken("");
-    setPendingMixerOverrides(null);
-    setScanState("processing");
-    isProcessingRef.current = true; // re-acquire for redeemToken
-    setScannerFrozen(true);
-    await redeemWithBottleDeduction(token, overrides, checks);
-  }, [pendingToken, pendingMixerOverrides, bottleChecks, redeemWithBottleDeduction]);
-
-  const handleBottleCheckCancel = useCallback(() => {
-    setBottleChecks([]);
-    setPendingToken("");
-    setPendingMixerOverrides(null);
-    setDebugStep("idle");
-    releaseLocks("idle");
-    if (readerMode === "CAMERA") setScannerSessionId(prev => prev + 1);
-    else focusScannerInput();
-  }, [readerMode, focusScannerInput, releaseLocks]);
-
-  const handleOpenBottleFromDialog = useCallback(async (productId: string, labelCode?: string) => {
-    if (!currentUserId) throw new Error("Sin usuario activo");
-    const { data: pd } = await supabase.from("products").select("capacity_ml, name").eq("id", productId).single();
-    const cap = Number(pd?.capacity_ml || 0);
-    if (!cap) throw new Error("El producto no tiene capacidad en ml definida");
-    await openBottlesHook.openBottle({ productId, initialMl: cap, labelCode, actorUserId: currentUserId });
-    await openBottlesHook.fetchBottles();
-    const updated = openBottlesHook.checkBottlesForIngredients(
-      bottleChecks.map(c => ({ product_id: c.product_id, product_name: c.product_name, required_ml: c.required_ml }))
-    );
-    setBottleChecks(updated);
-  }, [currentUserId, openBottlesHook, bottleChecks]);
+  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, selectedBarId, currentVenueId, currentUserId, readerMode, transitionToWaitingResume, releaseLocks]);
 
   // ─── MIXER CONFIRM ──────────────────────────────────────────────────────────
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
@@ -1004,13 +1025,8 @@ export default function Bar() {
             </div>
           )}
 
-          {/* BOTTLE_CHECK state */}
-          {scanState === "bottle_check" && (
-            <div className="text-center space-y-3">
-              <Package className="w-12 h-12 text-orange-500 mx-auto" />
-              <p className="font-semibold">Verificando botellas abiertas...</p>
-            </div>
-          )}
+
+
 
           {/* Manual entry */}
           {showManualEntry && (
@@ -1089,13 +1105,8 @@ export default function Bar() {
           />
         )}
 
-        <OpenBottleDialog
-          open={scanState === "bottle_check"}
-          bottleChecks={bottleChecks}
-          onOpenBottle={handleOpenBottleFromDialog}
-          onContinue={handleBottleCheckContinue}
-          onCancel={handleBottleCheckCancel}
-        />
+
+
 
         <WasteRegistrationDialog
           open={showWasteDialog}
