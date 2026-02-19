@@ -255,17 +255,17 @@ export default function Sales() {
         total_amount,
         payment_method,
         receipt_source,
-        sale_items(
+        sale_items!sale_items_sale_id_fkey(
           quantity,
           unit_price,
           cocktails(name)
         ),
-        sales_documents(
+        sales_documents!sales_documents_sale_id_fkey(
           id,
           status,
           document_type
         ),
-        pickup_tokens(
+        pickup_tokens!pickup_tokens_sale_id_fkey(
           id,
           token,
           status,
