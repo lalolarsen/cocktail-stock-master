@@ -226,13 +226,16 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
         })
         .eq("id", productId);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase error updating product:", JSON.stringify(error));
+        throw error;
+      }
       toast.success("Producto actualizado");
       setEditingProduct(null);
       refetch();
-    } catch (error) {
-      console.error("Error updating product:", error);
-      toast.error("Error al actualizar producto");
+    } catch (error: any) {
+      console.error("Error updating product full:", error?.message, error?.code, error?.details, error?.hint);
+      toast.error(`Error al actualizar: ${error?.message || "desconocido"}`);
     }
   };
 
