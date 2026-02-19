@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 export interface MixerSlot {
   slot_index: number;
   label: string;
+  mixer_category?: string;
   default_product_id: string;
   default_product_name: string;
   quantity: number;
@@ -108,6 +109,10 @@ export function MixerSelectionDialog({
 }: MixerSelectionDialogProps) {
   const { tradicionales, redbull, loading } = useMixerCatalog(locationId, venueId);
 
+  // Detect if all slots are redbull type to default to that tab
+  const allRedbull = mixerSlots.length > 0 && mixerSlots.every(s => s.mixer_category === "redbull");
+  const defaultTab = allRedbull ? "redbull" : "tradicionales";
+
   // One selection per slot — we use slot_index 0 for the mixer (unified)
   const [selectedId, setSelectedId] = useState<string>("");
 
@@ -145,7 +150,7 @@ export function MixerSelectionDialog({
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <Tabs defaultValue="tradicionales" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs defaultValue={defaultTab} className="flex-1 flex flex-col overflow-hidden">
             {/* Tab triggers */}
             <div className="shrink-0 px-4 pt-4">
               <TabsList className="w-full h-14 grid grid-cols-2 text-base">
