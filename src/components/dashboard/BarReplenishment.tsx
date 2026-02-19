@@ -102,6 +102,19 @@ export function BarReplenishment() {
             venue_id: PILOT_VENUE_ID,
           });
         }
+
+        // 5. Sync products.current_stock to real balance total
+        // Transfers don't change total stock, but we keep current_stock in sync
+        // to avoid drift that would corrupt CPP calculations on next intake.
+        const { data: allBalances } = await supabase
+          .from("stock_balances")
+          .select("quantity")
+          .eq("product_id", product.id);
+        const realTotal = (allBalances || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+        await supabase
+          .from("products")
+          .update({ current_stock: realTotal })
+          .eq("id", product.id);
       }
 
       const barNames = [...new Set(confirmLines.map(l => l.barName))].join(", ");
