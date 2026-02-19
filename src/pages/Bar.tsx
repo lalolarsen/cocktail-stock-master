@@ -735,7 +735,8 @@ export default function Bar() {
   if (showPinDialog) {
     return (
       <WorkerPinDialog
-        onSuccess={() => { setShowPinDialog(false); setIsVerified(true); }}
+        open={showPinDialog}
+        onVerified={() => { setShowPinDialog(false); setIsVerified(true); }}
         onCancel={() => navigate("/")}
       />
     );
@@ -1013,13 +1014,14 @@ export default function Bar() {
         </div>
 
         {/* Dialogs */}
-        <MixerSelectionDialog
-          open={scanState === "mixer_selection"}
-          slots={mixerSlots}
-          isLoading={isRedeemingWithMixer}
-          onConfirm={handleMixerConfirm}
-          onCancel={handleMixerCancel}
-        />
+        {scanState === "mixer_selection" && (
+          <MixerSelectionDialog
+            mixerSlots={mixerSlots}
+            isLoading={isRedeemingWithMixer}
+            onConfirm={handleMixerConfirm}
+            onCancel={handleMixerCancel}
+          />
+        )}
 
         <OpenBottleDialog
           open={scanState === "bottle_check"}
@@ -1032,7 +1034,7 @@ export default function Bar() {
         <WasteRegistrationDialog
           open={showWasteDialog}
           onOpenChange={setShowWasteDialog}
-          venueId={DEFAULT_VENUE_ID}
+          onWasteRegistered={() => setShowWasteDialog(false)}
         />
       </div>
     </VenueGuard>
