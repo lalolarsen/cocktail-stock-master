@@ -682,7 +682,7 @@ export default function Bar() {
     try {
       const { data: tokenData } = await supabase
         .from("pickup_tokens")
-        .select("id, sale_id, sales:sale_id(sale_items(quantity, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))))")
+        .select("id, sale_id, sales!pickup_tokens_sale_id_fkey(sale_items!sale_items_sale_id_fkey(quantity, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))))")
         .eq("token", token)
         .maybeSingle();
 
@@ -714,11 +714,19 @@ export default function Bar() {
       } else {
         setScanState("bottle_check");
       }
-    } catch (err) {
-      console.error("[Bar] Bottle check non-blocking:", err);
-      await redeemToken(token, mixerOverrides);
+    } catch (err: any) {
+      console.error("[Bar] Bottle check error:", err);
+      // Si el error viene de la query ambigua u otro, mostrar error en vez de fallar silenciosamente
+      const errMsg = err?.message || "Error al verificar stock de botellas";
+      setResult({
+        success: false,
+        error_code: "SYSTEM_ERROR",
+        message: errMsg,
+      });
+      setScanState("error");
+      transitionToWaitingResume(readerMode);
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction]);
+  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, transitionToWaitingResume, readerMode]);
 
   const handleBottleCheckContinue = useCallback(async () => {
     // Guard: nunca canjear si aún faltan ml en alguna botella
