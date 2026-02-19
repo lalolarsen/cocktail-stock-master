@@ -214,7 +214,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             products (
               name,
               category,
-              unit
+              unit,
+              capacity_ml
             )
           `)
           .eq("cocktail_id", cocktail.id);
@@ -223,8 +224,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           const isMixer = ing.is_mixer_slot || false;
           let displayName = ing.products?.name || "";
           if (isMixer) {
-            displayName = ing.mixer_category === "redbull" 
-              ? "Mixer Red Bull (variable)" 
+            displayName = ing.mixer_category === "redbull"
+              ? "Mixer Red Bull (variable)"
               : "Mixer Latas (variable)";
           }
           return {
@@ -236,6 +237,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             product_name: displayName,
             product_category: ing.products?.category || "",
             product_unit: ing.products?.unit || "",
+            product_capacity_ml: ing.products?.capacity_ml ?? null,
           };
         });
 
@@ -278,12 +280,25 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       description: cocktail.description || "",
       price: cocktail.price,
       category: cocktail.category,
-      ingredients: cocktail.ingredients.map((ing: any) => ({
-        product_id: ing.product_id || "",
-        quantity: ing.quantity,
-        is_mixer_slot: ing.is_mixer_slot || false,
-        mixer_category: ing.is_mixer_slot ? toUIMixerCategory(ing.mixer_category) : undefined,
-      })) as IngredientEntry[],
+      ingredients: cocktail.ingredients.map((ing: any) => {
+        const isMixer = ing.is_mixer_slot || false;
+        // Determine ingredient_type explicitly from DB data
+        let ingredient_type: "ML" | "UD" | "MIXER" = "UD";
+        if (isMixer) {
+          ingredient_type = "MIXER";
+        } else if ((ing.product_capacity_ml ?? 0) > 0) {
+          ingredient_type = "ML";
+        } else if (ing.product_unit === "ml" || (ing.product_category ?? "").toLowerCase().includes("botella")) {
+          ingredient_type = "ML";
+        }
+        return {
+          product_id: ing.product_id || "",
+          quantity: ing.quantity,
+          ingredient_type,
+          is_mixer_slot: isMixer,
+          mixer_category: isMixer ? toUIMixerCategory(ing.mixer_category) : undefined,
+        } as IngredientEntry;
+      }),
     });
     setEditDialogOpen(true);
   };
