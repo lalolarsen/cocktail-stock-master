@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface MixerProduct {
   id: string;
   name: string;
-  subcategory: string;
+  category: string;
   unit: string;
   stock: number; // stock in locationId, or -1 if unknown
 }
@@ -17,10 +17,11 @@ export interface MixerCatalog {
 }
 
 /**
- * Fetches mixer products based on subcategory, live from DB.
- * Source of truth: products.subcategory (case-insensitive match).
- *   - "Mixers tradicionales": subcategory ILIKE 'MIXER_TRADICIONAL' OR 'mixers_tradicionales'
- *   - "Redbull":              subcategory ILIKE 'REDBULL'
+ * Fetches mixer products based on CATEGORY (source of truth), live from DB.
+ *
+ * Source of truth: products.category (case-insensitive match).
+ *   - "Mixers tradicionales": category ILIKE 'mixers_tradicionales' | 'mixers tradicionales'
+ *   - "Redbull":              category ILIKE 'redbull' | 'mixers_redbull'
  *
  * Stock is pulled from stock_balances for the given locationId.
  * If locationId is empty, stock is shown as -1 (unknown).
@@ -36,16 +37,14 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
 
     let cancelled = false;
 
-    async function fetch() {
+    async function load() {
       setLoading(true);
       setError(null);
       try {
-        // Fetch all mixer products (tradicionales + redbull) in one query
+        // Fetch ALL products from mixer categories (case-insensitive done client-side)
         const { data: products, error: prodErr } = await supabase
           .from("products")
-          .select("id, name, subcategory, unit")
-          .eq("category", "unidades")
-          .not("subcategory", "is", null)
+          .select("id, name, category, subcategory, unit")
           .order("name");
 
         if (prodErr) throw prodErr;
@@ -53,21 +52,19 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
 
         const allProducts = products || [];
 
-        // Filter by subcategory (case-insensitive)
-        const tradicionalSubcats = ["mixer_tradicional", "mixers_tradicionales"];
-        const redbullSubcats = ["redbull"];
+        // ── Category matching (source of truth) ──────────────────────────────
+        const normalise = (s: string | null | undefined) =>
+          (s ?? "").trim().toLowerCase().replace(/\s+/g, "_");
 
-        const tradIds = allProducts
-          .filter(p => tradicionalSubcats.includes((p.subcategory ?? "").toLowerCase()))
-          .map(p => p.id);
+        const TRAD_CATS  = new Set(["mixers_tradicionales", "mixer_tradicional"]);
+        const RBULL_CATS = new Set(["redbull", "mixers_redbull"]);
 
-        const redbullIds = allProducts
-          .filter(p => redbullSubcats.includes((p.subcategory ?? "").toLowerCase()))
-          .map(p => p.id);
+        const tradProducts  = allProducts.filter(p => TRAD_CATS.has(normalise(p.category)));
+        const redbullProducts = allProducts.filter(p => RBULL_CATS.has(normalise(p.category)));
 
-        const allIds = [...tradIds, ...redbullIds];
+        const allIds = [...tradProducts, ...redbullProducts].map(p => p.id);
 
-        // Fetch stock_balances for these products in the selected location
+        // ── Stock balances for selected location ──────────────────────────────
         let stockMap = new Map<string, number>();
         if (locationId && allIds.length > 0) {
           const { data: balances } = await supabase
@@ -89,21 +86,13 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
         const toMixerProduct = (p: typeof allProducts[number]): MixerProduct => ({
           id: p.id,
           name: p.name,
-          subcategory: p.subcategory ?? "",
+          category: p.category ?? "",
           unit: p.unit ?? "unidad",
           stock: locationId ? (stockMap.get(p.id) ?? 0) : -1,
         });
 
-        setTradicionales(
-          allProducts
-            .filter(p => tradicionalSubcats.includes((p.subcategory ?? "").toLowerCase()))
-            .map(toMixerProduct)
-        );
-        setRedbull(
-          allProducts
-            .filter(p => redbullSubcats.includes((p.subcategory ?? "").toLowerCase()))
-            .map(toMixerProduct)
-        );
+        setTradicionales(tradProducts.map(toMixerProduct));
+        setRedbull(redbullProducts.map(toMixerProduct));
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? "Error cargando mixers");
       } finally {
@@ -111,7 +100,7 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
       }
     }
 
-    fetch();
+    load();
     return () => { cancelled = true; };
   }, [locationId, venueId]);
 
