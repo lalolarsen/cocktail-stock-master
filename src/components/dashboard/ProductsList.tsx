@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { 
   Wine, 
   Droplet, 
@@ -20,6 +21,7 @@ import {
   Calculator,
   Plus,
   Info,
+  Blend,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { NewProductWizard } from "@/components/dashboard/NewProductWizard";
@@ -130,10 +132,18 @@ interface ProductsListProps {
   isReadOnly?: boolean;
 }
 
+// Mixer category options for the is_mixer selector
+const MIXER_SUBCATEGORY_OPTIONS = [
+  { value: "MIXER_TRADICIONAL", label: "Mixers tradicionales" },
+  { value: "REDBULL", label: "Redbull" },
+];
+
 interface EditingState {
   name: string;
   category: string;
   subcategory: string;
+  is_mixer: boolean;
+  mixer_subcategory: string; // MIXER_TRADICIONAL | REDBULL when is_mixer=true
 }
 
 export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
@@ -142,7 +152,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
-  const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "" });
+  const [editingState, setEditingState] = useState<EditingState>({ name: "", category: "", subcategory: "", is_mixer: false, mixer_subcategory: "" });
   const [costCalcMl, setCostCalcMl] = useState<Record<string, number>>({});
   const [showNewProductWizard, setShowNewProductWizard] = useState(false);
 
@@ -201,28 +211,52 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
   // ── Edit handlers ──
   const handleEditProduct = (product: ProductWithStock) => {
     setEditingProduct(product.id);
-    setEditingState({ name: product.name, category: product.category, subcategory: product.subcategory || "sin_categoria" });
+    const isMixer = !!(product as any).is_mixer;
+    // Determine mixer_subcategory from the product's current subcategory
+    const mixerSub = isMixer && ["MIXER_TRADICIONAL","REDBULL"].includes(product.subcategory || "")
+      ? product.subcategory || ""
+      : "";
+    setEditingState({
+      name: product.name,
+      category: product.category,
+      subcategory: product.subcategory || "sin_categoria",
+      is_mixer: isMixer,
+      mixer_subcategory: mixerSub,
+    });
   };
 
   const handleSaveProduct = async (productId: string) => {
     try {
       if (!editingState.name.trim()) { toast.error("El nombre no puede estar vacío"); return; }
+
+      // Mixer validation
+      if (editingState.is_mixer && !editingState.mixer_subcategory) {
+        toast.error("Selecciona el tipo de mixer (Tradicional o Redbull)");
+        return;
+      }
+
       let newUnit = "ml";
       if (editingState.category === "gramos") newUnit = "g";
       if (editingState.category === "unidades") newUnit = "unidad";
 
-      // Derive capacity_ml from subcategory
-      const subConfig = getSubcategoryConfig(editingState.subcategory);
-      const newCapacity = subConfig.defaultCapacity ?? null;
+      // When is_mixer=true, subcategory comes from mixer_subcategory
+      const finalSubcategory = editingState.is_mixer
+        ? editingState.mixer_subcategory
+        : (editingState.subcategory === "sin_categoria" ? null : editingState.subcategory);
+
+      // Derive capacity_ml from subcategory (only if not a mixer)
+      const subConfig = editingState.is_mixer ? null : getSubcategoryConfig(editingState.subcategory);
+      const newCapacity = subConfig?.defaultCapacity ?? null;
 
       const { error } = await supabase
         .from("products")
         .update({
           name: editingState.name.trim(),
           category: editingState.category as any,
-          subcategory: editingState.subcategory === "sin_categoria" ? null : editingState.subcategory,
+          subcategory: finalSubcategory,
           unit: newUnit,
           capacity_ml: newCapacity,
+          is_mixer: editingState.is_mixer,
         })
         .eq("id", productId);
 
@@ -238,7 +272,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
 
   const handleCancelEdit = () => {
     setEditingProduct(null);
-    setEditingState({ name: "", category: "", subcategory: "" });
+    setEditingState({ name: "", category: "", subcategory: "", is_mixer: false, mixer_subcategory: "" });
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -462,16 +496,60 @@ const ProductRow = ({
               </SelectContent>
             </Select>
           </div>
+          {!editingState.is_mixer && (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
+              <Select value={editingState.subcategory} onValueChange={(val) => setEditingState(prev => ({ ...prev, subcategory: val }))}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SUBCATEGORY_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        {/* ── Mixer toggle ── */}
+        <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2.5 bg-card">
+          <div className="flex items-center gap-2">
+            <Blend className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium">Es Mixer</p>
+              <p className="text-xs text-muted-foreground">Bebida que acompaña un cóctel</p>
+            </div>
+          </div>
+          <Switch
+            checked={editingState.is_mixer}
+            onCheckedChange={(v) => setEditingState(prev => ({
+              ...prev,
+              is_mixer: v,
+              mixer_subcategory: v ? prev.mixer_subcategory : "",
+            }))}
+          />
+        </div>
+
+        {/* ── Mixer type selector (only when is_mixer=true) ── */}
+        {editingState.is_mixer && (
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
-            <Select value={editingState.subcategory} onValueChange={(val) => setEditingState(prev => ({ ...prev, subcategory: val }))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+            <label className="text-xs text-muted-foreground mb-1 block">
+              Tipo de Mixer <span className="text-destructive">*</span>
+            </label>
+            <Select
+              value={editingState.mixer_subcategory}
+              onValueChange={(val) => setEditingState(prev => ({ ...prev, mixer_subcategory: val }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecciona el tipo..." />
+              </SelectTrigger>
               <SelectContent>
-                {SUBCATEGORY_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                {MIXER_SUBCATEGORY_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-        </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-1">
           <Button size="sm" variant="ghost" onClick={onCancel}><X className="h-4 w-4 mr-1" /> Cancelar</Button>
           <Button size="sm" onClick={onSave}><Check className="h-4 w-4 mr-1" /> Guardar</Button>

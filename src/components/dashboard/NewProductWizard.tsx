@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, AlertTriangle, Check, Package } from "lucide-react";
+import { Loader2, AlertTriangle, Check, Package, Blend } from "lucide-react";
 
 interface Product {
   id: string;
@@ -81,6 +82,8 @@ export function NewProductWizard({
   const [productCost, setProductCost] = useState(suggestedUnitCost?.toString() || "");
   const [minStock, setMinStock] = useState("10");
   const [confirmNotDuplicate, setConfirmNotDuplicate] = useState(false);
+  const [isMixer, setIsMixer] = useState(false);
+  const [mixerSubcategory, setMixerSubcategory] = useState<"MIXER_TRADICIONAL" | "REDBULL" | "">("");
 
   // Find similar products
   const similarProducts = useMemo(() => {
@@ -115,6 +118,12 @@ export function NewProductWizard({
       return;
     }
 
+    // Mixer validation
+    if (isMixer && !mixerSubcategory) {
+      toast.error("Selecciona el tipo de mixer (Tradicional o Redbull)");
+      return;
+    }
+
     // Ley de Costos ESTRICTA: costo >= $1 obligatorio
     const costValue = parseFloat(productCost);
     if (!productCost || isNaN(costValue) || costValue < 1) {
@@ -144,11 +153,13 @@ export function NewProductWizard({
           code: codeData || `P${Date.now()}`,
           category: productCategory as "ml" | "gramos" | "unidades",
           unit: productCategory === "ml" ? "ml" : productCategory === "gramos" ? "g" : "un",
-          cost_per_unit: parseFloat(productCost), // Required by Cost Law
+          cost_per_unit: parseFloat(productCost),
           minimum_stock: minStock ? parseFloat(minStock) : 10,
           current_stock: 0,
-          is_active_in_sales: false, // NOT active until approved
+          is_active_in_sales: false,
           venue_id: venue.id,
+          is_mixer: isMixer,
+          subcategory: isMixer ? mixerSubcategory : null,
         })
         .select()
         .single();
@@ -174,6 +185,8 @@ export function NewProductWizard({
     setProductCost("");
     setMinStock("10");
     setConfirmNotDuplicate(false);
+    setIsMixer(false);
+    setMixerSubcategory("");
   };
 
   const getSimilarityBadge = (similarity: number) => {
@@ -302,7 +315,40 @@ export function NewProductWizard({
                 />
               </div>
 
-              <div className="p-3 bg-blue-500/10 rounded-lg text-sm text-blue-700">
+              {/* ── Mixer toggle ── */}
+              <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Blend className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Es Mixer</p>
+                    <p className="text-xs text-muted-foreground">Bebida que acompaña un cóctel</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={isMixer}
+                  onCheckedChange={(v) => { setIsMixer(v); if (!v) setMixerSubcategory(""); }}
+                />
+              </div>
+
+              {/* ── Mixer type (only when is_mixer=true) ── */}
+              {isMixer && (
+                <div className="space-y-2">
+                  <Label>
+                    Tipo de Mixer <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={mixerSubcategory} onValueChange={(v) => setMixerSubcategory(v as "MIXER_TRADICIONAL" | "REDBULL")}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona el tipo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MIXER_TRADICIONAL">Mixers tradicionales</SelectItem>
+                      <SelectItem value="REDBULL">Redbull</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm text-foreground/80">
                 ℹ️ El producto se creará como <strong>inactivo para ventas</strong> hasta que un admin lo apruebe en el catálogo.
               </div>
 
