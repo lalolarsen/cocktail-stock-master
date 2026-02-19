@@ -110,26 +110,31 @@ export function useReplenishmentData() {
   }, [rawProducts, warehouse, getBalance]);
 
   // Metrics: stock distribution
+  // For bottle products: stock_balances.quantity is in ml, cost_per_unit is per bottle.
+  // Value = (qty_ml / capacity_ml) * cost_per_unit = qty_ml * cost_per_ml = qty_ml * unitCost
+  // For unit products: value = qty * cost_per_unit (unitCost = cost_per_unit)
   const metrics = useMemo(() => {
     let warehouseCost = 0;
     let barsCost = 0;
-    let warehouseQty = 0;
-    let barsQty = 0;
 
     for (const p of rawProducts) {
       const costPerUnit = Number(p.cost_per_unit) || 0;
+      const bottle = isBottle(p);
+      const cap = bottle && p.capacity_ml ? Number(p.capacity_ml) : 0;
+      // cost per ml for bottles; cost per unit otherwise
+      const costPerBase = bottle && cap > 0 ? costPerUnit / cap : costPerUnit;
+
       for (const b of balances) {
         if (b.product_id !== p.id) continue;
         const loc = locations.find(l => l.id === b.location_id);
         if (!loc) continue;
         const qty = Number(b.quantity) || 0;
-        const val = qty * costPerUnit;
+        // qty is always in base unit (ml for bottles, units for units)
+        const val = qty * costPerBase;
         if (loc.type === "warehouse") {
           warehouseCost += val;
-          warehouseQty += qty;
         } else {
           barsCost += val;
-          barsQty += qty;
         }
       }
     }
