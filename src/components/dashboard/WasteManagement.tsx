@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { isBottle } from "@/lib/product-type";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -242,11 +243,16 @@ export function WasteManagement({ isReadOnly = false }: { isReadOnly?: boolean }
         // 2. Get product CPP cost for the snapshot
         const { data: productData } = await supabase
           .from("products")
-          .select("cost_per_unit")
+          .select("cost_per_unit, capacity_ml")
           .eq("id", reviewRequest.product_id)
           .maybeSingle();
-        const unitCostCpp = Number(productData?.cost_per_unit ?? 0);
-        const totalWasteCost = unitCostCpp * Math.abs(reviewRequest.quantity);
+        // For bottles: quantity is in ml, cost_per_unit is per full bottle → use cost_per_ml
+        const costPerUnit = Number(productData?.cost_per_unit ?? 0);
+        const cap = productData?.capacity_ml;
+        const costPerBase = isBottle(productData) && cap && cap > 0
+          ? costPerUnit / cap
+          : costPerUnit;
+        const totalWasteCost = costPerBase * Math.abs(reviewRequest.quantity);
 
         // 3. Create stock movement with cost snapshot
         const { error: movError } = await supabase.from("stock_movements").insert({
@@ -258,7 +264,7 @@ export function WasteManagement({ isReadOnly = false }: { isReadOnly?: boolean }
           jornada_id: reviewRequest.jornada_id || null,
           notes: `[MERMA APROBADA] [${reviewRequest.reason}]${reviewRequest.notes ? ` ${reviewRequest.notes}` : ""}`.trim(),
           source_type: "waste",
-          unit_cost_snapshot: unitCostCpp,
+          unit_cost_snapshot: costPerBase,
           total_cost_snapshot: totalWasteCost,
         });
         if (movError) throw movError;
