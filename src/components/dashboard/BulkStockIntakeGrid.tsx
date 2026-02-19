@@ -330,14 +330,26 @@ export function BulkStockIntakeGrid({
         const product = products.find(p => p.id === r.product_id);
         const bottle = isBottle(product);
         const capacityMl = product?.capacity_ml ?? 1;
-        const qtyInput = parseFloat(r.quantity); // bottles or units
-        const net = parseFloat(r.net_unit_cost);  // per bottle or per unit
+        const qtyInput = parseFloat(r.quantity); // bottles or units (from user input)
+        const net = parseFloat(r.net_unit_cost);  // per bottle (bottles) or per unit (units)
 
-        // Stock is always stored in natural unit (ml or units)
+        // Stock is always stored in base unit: ml for bottles, units for unit products
         const qtyStored = bottle ? qtyInput * capacityMl : qtyInput;
-        // unit_cost in movements = per-unit-of-measure (per ml or per unit)
+        // unit_cost in stock_movements = per ml (bottles) or per unit
         const unitCostUom = bottle ? net / capacityMl : net;
 
+        // ── STEP 1: Read BEFORE state for correct CPP ─────────────────────────
+        // CRITICAL: fetch product cost + all balances BEFORE updating stock_balances
+        // so stockBefore is the true pre-intake stock.
+        const [productDataRes, balancesBeforeRes] = await Promise.all([
+          supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", r.product_id).single(),
+          supabase.from("stock_balances").select("quantity").eq("product_id", r.product_id),
+        ]);
+
+        const stockBefore = (balancesBeforeRes.data || [])
+          .reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+
+        // ── STEP 2: Insert stock_movement ──────────────────────────────────────
         await supabase.from("stock_movements").insert({
           product_id: r.product_id,
           quantity: qtyStored,
@@ -348,11 +360,11 @@ export function BulkStockIntakeGrid({
           vat_amount: bottle ? (r.iva_unit / capacityMl) * qtyStored : r.iva_unit * qtyStored,
           specific_tax_amount: bottle ? (r.specific_tax_unit / capacityMl) * qtyStored : r.specific_tax_unit * qtyStored,
           source_type: "manual_batch",
-          notes: r.notes || `Ingreso masivo a Bodega Principal${bottle ? ` (${qtyInput} bot. × ${capacityMl}ml)` : ""}`,
+          notes: r.notes || `Ingreso manual a Bodega Principal${bottle ? ` (${qtyInput} bot. × ${capacityMl}ml)` : ""}`,
           venue_id: venueId,
         });
 
-        // Update stock_balances
+        // ── STEP 3: Update stock_balances ──────────────────────────────────────
         const { data: existing } = await supabase
           .from("stock_balances")
           .select("quantity")
@@ -363,7 +375,7 @@ export function BulkStockIntakeGrid({
         if (existing) {
           await supabase
             .from("stock_balances")
-            .update({ quantity: existing.quantity + qtyStored, updated_at: new Date().toISOString() })
+            .update({ quantity: (Number(existing.quantity) || 0) + qtyStored, updated_at: new Date().toISOString() })
             .eq("location_id", warehouseId)
             .eq("product_id", r.product_id);
         } else {
@@ -375,41 +387,33 @@ export function BulkStockIntakeGrid({
           });
         }
 
-        // Update product CPP + current_stock
-        // SOURCE OF TRUTH: use stock_balances sum (not products.current_stock which can drift)
-        const [productDataRes, balancesRes] = await Promise.all([
-          supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", r.product_id).single(),
-          supabase.from("stock_balances").select("quantity").eq("product_id", r.product_id),
-        ]);
-
+        // ── STEP 4: Recalculate CPP using BEFORE stock ─────────────────────────
         if (productDataRes.data) {
           const productData = productDataRes.data;
-          // Real stock = sum of all location balances (source of truth)
-          const currentStock = (balancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
-          // After we've already inserted the new balance above, the sum includes qtyStored.
-          // We need the BEFORE state for CPP, so subtract qtyStored.
-          const stockBefore = Math.max(0, currentStock - qtyStored);
+          const oldCostPerUnit = Number(productData.cost_per_unit) || 0;
 
-          const oldCostPerUnit = productData.cost_per_unit || 0;
-
-          // Si cost_per_unit previo es 0 (producto sin costo base), el CPP debe ser
-          // directamente el costo del nuevo ingreso — ignorar el stock previo para
-          // evitar dilución incorrecta del costo hacia cero.
-          const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : net;
+          // If existing cost is $0 (first intake), treat as fresh start:
+          // avoid zero-dilution by ignoring previous stock quantity.
           const effectiveOldStock = oldCostPerUnit > 0 ? stockBefore : 0;
+          const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : net;
 
-          const newCostPerUnit = calculateCPP({
+          // calculateCPP handles ml↔bottle conversion internally for bottle products.
+          // net = per-bottle cost; qtyStored = ml. Returns per-bottle cost.
+          const rawCPP = calculateCPP({
             product: productData,
-            currentStock: effectiveOldStock,
-            oldCostPerUnit: effectiveOldCost,
-            addedQty: qtyStored,
-            newCostPerUnit: net, // per bottle for bottles, per unit for units
+            currentStock: effectiveOldStock,     // ml before intake (or 0 for fresh)
+            oldCostPerUnit: effectiveOldCost,    // per bottle (or per unit)
+            addedQty: qtyStored,                 // ml added (or units)
+            newCostPerUnit: net,                 // per bottle cost from invoice/entry
           });
 
-          // Sync current_stock to real balance sum (including new intake)
+          // CLP = integer currency, always round. cost_per_unit = per-bottle for bottles.
+          const newCPP = Math.round(rawCPP);
+          const newTotalStock = stockBefore + qtyStored;
+
           await supabase.from("products").update({
-            current_stock: currentStock,
-            cost_per_unit: Math.round(newCostPerUnit),
+            current_stock: newTotalStock,
+            cost_per_unit: newCPP,
           }).eq("id", r.product_id);
         }
       }
@@ -521,25 +525,30 @@ export function BulkStockIntakeGrid({
                 <TableHead className="w-8 text-center">#</TableHead>
                 <TableHead className="min-w-[200px]">Producto *</TableHead>
                 <TableHead className="w-20 text-center">Tipo</TableHead>
-                <TableHead className="w-[110px]">
+                <TableHead className="w-[130px]">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help underline decoration-dotted">Cantidad *</span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Botellas → número de botellas (no ml)</p>
-                      <p>Unitario → número de unidades</p>
+                      <p className="font-semibold">Botella (capacity_ml &gt; 0)</p>
+                      <p>→ Ingresar Nº de botellas completas</p>
+                      <p className="font-semibold mt-1">Unitario</p>
+                      <p>→ Ingresar Nº de unidades</p>
+                      <p className="text-destructive mt-1">⚠ Nunca ingresar ml directamente</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
-                <TableHead className="w-[120px]">
+                <TableHead className="w-[140px]">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="cursor-help underline decoration-dotted">Neto unit. *</span>
+                      <span className="cursor-help underline decoration-dotted">Costo neto *</span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Botellas → costo neto por botella completa</p>
-                      <p>Unitario → costo neto por unidad</p>
+                      <p className="font-semibold">Botella → costo por botella completa</p>
+                      <p className="text-muted-foreground">El costo/ml se calcula automáticamente</p>
+                      <p className="font-semibold mt-1">Unitario → costo por unidad</p>
+                      <p className="text-muted-foreground">Usado para CPP (promedio ponderado)</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
@@ -611,23 +620,26 @@ export function BulkStockIntakeGrid({
                         <div className="relative">
                           <Input
                             type="number"
-                            min="0.01"
-                            step="0.01"
+                            min="1"
+                            step="1"
                             value={row.quantity}
                             onChange={(e) => updateRow(row.id, "quantity", e.target.value)}
                             placeholder={bottle ? "# botellas" : "# unidades"}
-                            className={`h-8 text-xs pr-8 ${hasErrors(row, "quantity") ? "border-destructive" : ""}`}
+                            className={`h-8 text-xs pr-10 ${hasErrors(row, "quantity") ? "border-destructive" : ""}`}
                           />
-                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none">
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none font-medium">
                             {bottle ? "bot." : product ? "ud" : ""}
                           </span>
                         </div>
-                        {/* Helper: 1 botella = X ml */}
+                        {/* Helper: botellas → ml conversion */}
                         {bottle && capacityMl > 0 && (
-                          <p className="text-[9px] text-muted-foreground px-0.5">
-                            1 bot. = {capacityMl} ml
-                            {qtyInput > 0 && (
-                              <span className="font-medium text-foreground"> · Total: {(qtyInput * capacityMl).toLocaleString()} ml</span>
+                          <p className="text-[9px] px-0.5">
+                            {qtyInput > 0 ? (
+                              <span className="font-medium text-primary">
+                                {qtyInput} × {capacityMl}ml = {(qtyInput * capacityMl).toLocaleString()} ml
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">1 bot. = {capacityMl} ml</span>
                             )}
                           </p>
                         )}
@@ -648,11 +660,14 @@ export function BulkStockIntakeGrid({
                             className={`h-8 text-xs ${hasErrors(row, "net_unit_cost") ? "border-destructive" : ""}`}
                           />
                         </div>
-                        {/* Helper: costo por ml estimado */}
-                        {bottle && capacityMl > 0 && netInput > 0 && (
-                          <p className="text-[9px] text-muted-foreground px-0.5">
-                            ≈ <span className="font-medium text-primary">{formatCLP(netInput / capacityMl)}/ml</span>
+                        {/* Helper: per-bottle → per-ml conversion */}
+                        {bottle && capacityMl > 0 && netInput > 0 ? (
+                          <p className="text-[9px] px-0.5">
+                            <span className="text-muted-foreground">≈ </span>
+                            <span className="font-medium text-primary">{formatCLP(Math.round(netInput / capacityMl))}/ml</span>
                           </p>
+                        ) : !bottle && product && (
+                          <p className="text-[9px] text-muted-foreground px-0.5">por unidad</p>
                         )}
                       </div>
                     </TableCell>
