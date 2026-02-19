@@ -743,7 +743,14 @@ export default function Bar() {
 
         {/* ── Mixer dialog ── */}
         {scanState === "mixer_selection" && (
-          <MixerSelectionDialog mixerSlots={mixerSlots} isLoading={isRedeemingWithMixer} onConfirm={handleMixerConfirm} onCancel={handleMixerCancel} />
+          <MixerSelectionDialog
+            mixerSlots={mixerSlots}
+            locationId={selectedBarId}
+            venueId={currentVenueId}
+            isLoading={isRedeemingWithMixer}
+            onConfirm={handleMixerConfirm}
+            onCancel={handleMixerCancel}
+          />
         )}
 
         {/* ── Manual entry dialog ── */}
