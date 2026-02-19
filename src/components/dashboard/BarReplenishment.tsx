@@ -35,7 +35,10 @@ export function BarReplenishment() {
       for (const line of confirmLines) {
         const { product, barId } = line;
         const targetBarId = barId || "";
-        const costSnapshot = product.cost_per_unit;
+        // For volumetric (ml) products: unitCost = cost_per_ml = cost_per_unit / capacity_ml
+        // For unit products: unitCost = cost_per_unit
+        // Always use unitCost as snapshot so valorization is coherent with the unit of measure
+        const costSnapshot = product.unitCost;
         const totalCost = line.quantity * product.unitCost;
 
         // 1. transfer_out from warehouse
