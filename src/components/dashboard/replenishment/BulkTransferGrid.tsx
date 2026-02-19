@@ -143,22 +143,37 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
       if (!row.productId || !row.quantity) continue;
       const product = products.find(p => p.id === row.productId);
       if (!product) continue;
-      const qty = parseFloat(row.quantity);
-      if (isNaN(qty) || qty <= 0) continue;
+      // qty input is in bottles for volumetric, units otherwise
+      const qtyInput = parseFloat(row.quantity);
+      if (isNaN(qtyInput) || qtyInput <= 0) continue;
+
+      // Convert to the base unit used in stock_balances (ml for bottles, units for units)
+      const cap = product.isVolumetric && product.capacity_ml ? product.capacity_ml : null;
+      const qtyBase = cap ? qtyInput * cap : qtyInput; // ml or units
+
       const barId = row.barId || defaultBarId;
       if (!barId) {
         toast.error("Selecciona barra destino para todas las filas");
         return null;
       }
-      if (qty > product.warehouseStock) {
-        toast.error(`${product.name}: excede stock (${product.warehouseStock} ${product.unit})`);
+      // Validate against warehouse stock (which is in ml for bottles)
+      if (qtyBase > product.warehouseStock) {
+        const stockDisplay = cap
+          ? `${(product.warehouseStock / cap).toFixed(2)} bot`
+          : `${product.warehouseStock} ${product.unit}`;
+        toast.error(`${product.name}: excede stock en bodega (${stockDisplay})`);
         return null;
       }
       const bar = barLocations.find(b => b.id === barId);
+      // estimatedCost: for bottles → qtyInput(bottles) × cost_per_unit(per bottle)
+      //               for units   → qtyBase × unitCost (same as cost_per_unit)
+      const estimatedCost = cap
+        ? qtyInput * product.cost_per_unit
+        : qtyBase * product.unitCost;
       lines.push({
         product,
-        quantity: qty,
-        estimatedCost: qty * product.unitCost,
+        quantity: qtyBase, // always in base unit (ml or units)
+        estimatedCost,
         barId,
         barName: bar?.name || "",
       });
@@ -182,9 +197,11 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
     for (const row of rows) {
       if (!row.productId || !row.quantity) continue;
       const product = products.find(p => p.id === row.productId);
-      const qty = parseFloat(row.quantity);
-      if (!product || isNaN(qty) || qty <= 0) continue;
-      totalCost += qty * product.unitCost;
+      const qtyInput = parseFloat(row.quantity);
+      if (!product || isNaN(qtyInput) || qtyInput <= 0) continue;
+      const cap = product.isVolumetric && product.capacity_ml ? product.capacity_ml : null;
+      // Same logic as buildLines: bottles × cost_per_bottle or units × unitCost
+      totalCost += cap ? qtyInput * product.cost_per_unit : qtyInput * product.unitCost;
       lineCount++;
     }
     return { totalCost, lineCount };
@@ -283,8 +300,8 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
                 </th>
                 <th className="p-3 text-left font-medium min-w-[200px]">Producto</th>
                 <th className="p-3 text-left font-medium w-16">Tipo</th>
-                <th className="p-3 text-right font-medium w-24">Stock</th>
-                <th className="p-3 text-left font-medium w-32">Cantidad</th>
+                <th className="p-3 text-right font-medium w-28">Stock bodega</th>
+                <th className="p-3 text-left font-medium w-36">Cantidad</th>
                 {!useDefaultBar && <th className="p-3 text-left font-medium min-w-[140px]">Barra</th>}
                 <th className="p-3 text-right font-medium w-28">Costo est.</th>
                 <th className="p-3 w-10"></th>
@@ -293,9 +310,26 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
             <tbody>
               {rows.map((row) => {
                 const product = products.find(p => p.id === row.productId);
-                const qty = parseFloat(row.quantity) || 0;
-                const cost = product ? qty * product.unitCost : 0;
-                const overStock = product ? qty > product.warehouseStock : false;
+                const qtyInput = parseFloat(row.quantity) || 0;
+                const cap = product?.isVolumetric && product.capacity_ml ? product.capacity_ml : null;
+
+                // Stock display: bottles for volumetric, units otherwise
+                const stockDisplay = product
+                  ? cap
+                    ? `${(product.warehouseStock / cap).toFixed(2)} bot`
+                    : `${product.warehouseStock} ${product.unit}`
+                  : "—";
+
+                // Validation: compare in base unit (ml)
+                const qtyBase = cap ? qtyInput * cap : qtyInput;
+                const overStock = product ? qtyBase > product.warehouseStock : false;
+
+                // Cost: bottles × cost_per_bottle OR units × unitCost
+                const cost = product && qtyInput > 0
+                  ? cap
+                    ? qtyInput * product.cost_per_unit
+                    : qtyInput * product.unitCost
+                  : 0;
 
                 return (
                   <tr key={row.id} className={`border-b transition-colors ${overStock ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
@@ -326,28 +360,34 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
                     </td>
                     <td className="p-3">
                       <Badge variant="outline" className="text-xs">
-                        {product?.isVolumetric ? "ml" : "ud"}
+                        {product?.isVolumetric ? `${product.capacity_ml}ml` : "ud"}
                       </Badge>
                     </td>
-                    <td className="p-3 text-right font-mono text-xs">
-                      {product ? `${product.warehouseStock} ${product.unit}` : "—"}
+                    <td className="p-3 text-right font-mono text-xs text-muted-foreground">
+                      {stockDisplay}
                     </td>
                     <td className="p-3">
-                      <Input
-                        ref={(el) => {
-                          if (el) qtyRefs.current.set(row.id, el);
-                          else qtyRefs.current.delete(row.id);
-                        }}
-                        type="number"
-                        min="0"
-                        step={product?.isVolumetric ? "1" : "1"}
-                        max={product?.warehouseStock}
-                        value={row.quantity}
-                        onChange={(e) => updateRow(row.id, "quantity", e.target.value)}
-                        onKeyDown={(e) => handleQtyKeyDown(e, row.id)}
-                        placeholder="0"
-                        className={`h-11 font-mono text-base ${overStock ? "border-destructive" : ""}`}
-                      />
+                      <div className="space-y-1">
+                        <Input
+                          ref={(el) => {
+                            if (el) qtyRefs.current.set(row.id, el);
+                            else qtyRefs.current.delete(row.id);
+                          }}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.quantity}
+                          onChange={(e) => updateRow(row.id, "quantity", e.target.value)}
+                          onKeyDown={(e) => handleQtyKeyDown(e, row.id)}
+                          placeholder="0"
+                          className={`h-11 font-mono text-base ${overStock ? "border-destructive" : ""}`}
+                        />
+                        {product && (
+                          <p className="text-[10px] text-muted-foreground px-1">
+                            {cap ? `botellas (1 = ${cap} ml)` : product.unit}
+                          </p>
+                        )}
+                      </div>
                     </td>
                     {!useDefaultBar && (
                       <td className="p-3">
@@ -364,7 +404,7 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
                       </td>
                     )}
                     <td className="p-3 text-right font-mono text-sm">
-                      {qty > 0 && product ? formatCLP(cost) : "—"}
+                      {qtyInput > 0 && product ? formatCLP(cost) : "—"}
                     </td>
                     <td className="p-3">
                       <Button
