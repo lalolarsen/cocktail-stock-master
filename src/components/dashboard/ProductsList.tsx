@@ -51,28 +51,39 @@ import {
 import { formatCLP } from "@/lib/currency";
 
 // ──────────────────────────────────────────────
-// Agrupación por categoría (fuente de verdad: products.category)
+// Categorías (fuente de verdad: products.category)
+// unit (ml/unidades/gramos) es INDEPENDIENTE y no se toca
 // ──────────────────────────────────────────────
 const CATEGORY_CONFIG: Record<string, {
   label: string;
   icon: typeof Wine;
   order: number;
   description: string;
-  stockType: 'volumetrico' | 'unitario';
+  isVolumetric: boolean;         // solo informativo para colores/badges
+  defaultCapacityMl?: number;    // para auto-asignar capacity_ml al guardar
 }> = {
-  ml:                    { label: "Volumétrico (ml)",      icon: Wine,    order: 1,  description: "Botellas y destilados. Control por mililitros.", stockType: 'volumetrico' },
-  mixers_tradicionales:  { label: "Mixers Tradicionales",  icon: Droplet, order: 2,  description: "Coca-Cola, Ginger Ale, Sprite y similares.", stockType: 'unitario' },
-  redbull:               { label: "Red Bull",              icon: Droplet, order: 3,  description: "Red Bull variedades.", stockType: 'unitario' },
-  mixers_redbull:        { label: "Red Bull",              icon: Droplet, order: 3,  description: "Red Bull variedades.", stockType: 'unitario' },
-  unidades:              { label: "Unitario (ud)",         icon: Package, order: 4,  description: "Cervezas, botellines y similares.", stockType: 'unitario' },
-  sin_categoria:         { label: "Sin Categoría",         icon: Package, order: 99, description: "Pendientes de clasificación.", stockType: 'unitario' },
+  botellas_1500: { label: "Botellas 1500ml", icon: Wine,    order: 1,  description: "Formato grande. Control volumétrico.", isVolumetric: true,  defaultCapacityMl: 1500 },
+  botellas_1000: { label: "Botellas 1000ml", icon: Wine,    order: 2,  description: "Destilados y coctelería.", isVolumetric: true,  defaultCapacityMl: 1000 },
+  botellas_750:  { label: "Botellas 750ml",  icon: Wine,    order: 3,  description: "Venta directa o coctelería.", isVolumetric: true,  defaultCapacityMl: 750  },
+  botellas_700:  { label: "Botellas 700ml",  icon: Wine,    order: 4,  description: "Venta directa o coctelería.", isVolumetric: true,  defaultCapacityMl: 700  },
+  botellines:           { label: "Botellines",          icon: Package, order: 5,  description: "Cervezas y botellines individuales.", isVolumetric: false },
+  mixers_tradicionales: { label: "Mixers Tradicionales", icon: Droplet, order: 6,  description: "Coca-Cola, Sprite, Ginger Ale y similares.", isVolumetric: false },
+  redbull:              { label: "Red Bull",             icon: Droplet, order: 7,  description: "Red Bull en todas sus variedades.", isVolumetric: false },
+  // compatibilidad con valores legacy
+  mixers_redbull:       { label: "Red Bull",             icon: Droplet, order: 7,  description: "Red Bull en todas sus variedades.", isVolumetric: false },
+  ml:                   { label: "Volumétrico (ml)",     icon: Wine,    order: 8,  description: "Productos volumétricos sin categoría específica.", isVolumetric: true  },
+  unidades:             { label: "Unitario (ud)",        icon: Package, order: 9,  description: "Productos unitarios sin categoría específica.", isVolumetric: false },
+  sin_categoria:        { label: "Sin Categoría",        icon: Package, order: 99, description: "Pendientes de clasificación.", isVolumetric: false },
 };
 
 const CATEGORY_OPTIONS = [
-  { value: "ml",                   label: "Volumétrico (ml)" },
-  { value: "unidades",             label: "Unitario (ud)" },
-  { value: "mixers_tradicionales", label: "Mixer Tradicional (Coca-Cola, Sprite…)" },
-  { value: "redbull",              label: "Mixer Red Bull" },
+  { value: "botellas_1500",        label: "Botellas 1500ml (volumétrico)" },
+  { value: "botellas_1000",        label: "Botellas 1000ml (volumétrico)" },
+  { value: "botellas_750",         label: "Botellas 750ml (volumétrico)" },
+  { value: "botellas_700",         label: "Botellas 700ml (volumétrico)" },
+  { value: "botellines",           label: "Botellines (unitario)" },
+  { value: "mixers_tradicionales", label: "Mixers Tradicionales (unitario)" },
+  { value: "redbull",              label: "Red Bull (unitario)" },
 ];
 
 const getCategoryConfig = (category: string | null) => {
@@ -184,14 +195,17 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       if (!editingState.name.trim()) { toast.error("El nombre no puede estar vacío"); return; }
 
       const catConfig = getCategoryConfig(editingState.category);
-      const newUnit = catConfig.stockType === "volumetrico" ? "ml" : "unidad";
+      // Auto-asignar capacity_ml si la categoría lo implica; unit NO se toca
+      const capacityUpdate = catConfig.defaultCapacityMl !== undefined
+        ? { capacity_ml: catConfig.defaultCapacityMl }
+        : {};
 
       const { error } = await supabase
         .from("products")
         .update({
           name: editingState.name.trim(),
           category: editingState.category as any,
-          unit: newUnit,
+          ...capacityUpdate,
         })
         .eq("id", productId);
 
@@ -309,7 +323,7 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
           const config = getCategoryConfig(category);
           const Icon = config.icon;
           const isExpanded = expandedCategories.has(category);
-          const isVol = config.stockType === 'volumetrico';
+          const isVol = config.isVolumetric;
 
           return (
             <Collapsible key={category} open={isExpanded} onOpenChange={() => toggleCategory(category)}>
