@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { calculateCPP, isBottle } from "@/lib/product-type";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
@@ -328,24 +329,40 @@ export default function ProveedoresImportDetail() {
         await supabase.from("expense_lines" as any).insert(taxExpenseLines);
       }
 
-      // Update stock for each inventory line (CPP)
+      // Update stock for each inventory line (CPP) — bottle-aware
       for (const line of invLines) {
-        const { data: product } = await supabase.from("products").select("current_stock, cost_per_unit").eq("id", line.product_id!).single();
+        const { data: product } = await supabase
+          .from("products")
+          .select("current_stock, cost_per_unit, capacity_ml")
+          .eq("id", line.product_id!)
+          .single();
         if (!product) continue;
 
-        const currentStock = product.current_stock || 0;
-        const currentCost = product.cost_per_unit || 0;
-        const newCPP = currentStock === 0 || currentCost === 0
-          ? line.cost_unit_net
-          : Math.round(((currentStock * currentCost) + (line.units_real * line.cost_unit_net)) / (currentStock + line.units_real) * 100) / 100;
+        const currentStock = product.current_stock || 0; // ml for bottles, units otherwise
+        const bottle = isBottle(product);
+        const cap = product.capacity_ml;
+
+        // line.units_real = physical bottles (or units) from the invoice
+        // line.cost_unit_net = net cost per bottle (or per unit)
+        // For stock operations, convert to base unit (ml for bottles)
+        const qtyToAdd = bottle && cap && cap > 0 ? line.units_real * cap : line.units_real;
+
+        // CPP using the utility (handles ml ↔ bottle equivalents internally)
+        const newCPP = calculateCPP({
+          product,
+          currentStock,                         // ml for bottles
+          oldCostPerUnit: product.cost_per_unit || 0, // per bottle
+          addedQty: qtyToAdd,                   // ml for bottles
+          newCostPerUnit: line.cost_unit_net,   // per bottle
+        });
 
         await supabase.from("products").update({
-          current_stock: currentStock + line.units_real,
-          cost_per_unit: newCPP,
+          current_stock: currentStock + qtyToAdd,
+          cost_per_unit: Math.round(newCPP),
           updated_at: new Date().toISOString(),
         }).eq("id", line.product_id!);
 
-        // Update stock_balances
+        // Update stock_balances (always in base unit)
         const { data: balance } = await supabase.from("stock_balances")
           .select("id, quantity")
           .eq("product_id", line.product_id!)
@@ -354,15 +371,15 @@ export default function ProveedoresImportDetail() {
 
         if (balance) {
           await supabase.from("stock_balances").update({
-            quantity: (balance.quantity || 0) + line.units_real,
+            quantity: (balance.quantity || 0) + qtyToAdd,
             updated_at: new Date().toISOString(),
           }).eq("id", balance.id);
         } else {
           await supabase.from("stock_balances").insert({
-            product_id: line.product_id,
+            product_id: line.product_id!,
             location_id: imp.location_id,
             venue_id: venue.id,
-            quantity: line.units_real,
+            quantity: qtyToAdd, // ml for bottles, units otherwise
           });
         }
       }

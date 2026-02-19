@@ -3,6 +3,7 @@ import { Package, AlertTriangle, TrendingDown, DollarSign, Warehouse, Wine } fro
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStockData } from "@/hooks/useStockData";
 import { formatCLP } from "@/lib/currency";
+import { isBottle } from "@/lib/product-type";
 import {
   Tooltip,
   TooltipContent,
@@ -23,9 +24,15 @@ export const StatsCards = () => {
     );
   }
 
-  // Calculate warehouse and bar totals for the tooltip
-  const warehouseTotal = products.reduce((sum, p) => sum + p.warehouseStock * p.cost_per_unit, 0);
-  const barTotal = products.reduce((sum, p) => sum + p.barStock * p.cost_per_unit, 0);
+  // Correct valuation: for bottles, stock is in ml and cost_per_unit is per full bottle
+  // → use cost_per_ml = cost_per_unit / capacity_ml
+  const calcValue = (stock: number, p: typeof products[number]) => {
+    const cap = p.capacity_ml;
+    const costPerBase = isBottle(p) && cap && cap > 0 ? p.cost_per_unit / cap : p.cost_per_unit;
+    return stock * costPerBase;
+  };
+  const warehouseTotal = products.reduce((sum, p) => sum + calcValue(p.warehouseStock, p), 0);
+  const barTotal = products.reduce((sum, p) => sum + calcValue(p.barStock, p), 0);
 
   const cards = [
     {
