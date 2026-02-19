@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-
+import { isBottle } from "@/lib/product-type";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Card, CardContent } from "@/components/ui/card";
@@ -224,8 +224,14 @@ export function WarehouseInventory() {
         if (locMin) effectiveMinimum = Number(locMin.minimum_stock);
       }
 
-      const status = getStockStatus(quantity, effectiveMinimum);
-      const value = quantity * (product.cost_per_unit || 0);
+      const status: StockStatus = getStockStatus(quantity, effectiveMinimum);
+      // value: for bottles qty is in ml, cost_per_unit is per bottle → use cost_per_ml
+      const bottle = isBottle(product);
+      const cap = product.capacity_ml;
+      const costPerBase = bottle && cap && cap > 0
+        ? (product.cost_per_unit || 0) / cap
+        : (product.cost_per_unit || 0);
+      const value = quantity * costPerBase;
 
       return { ...product, quantity, effectiveMinimum, status, value };
     });

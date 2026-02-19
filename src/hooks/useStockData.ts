@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isBottle } from "@/lib/product-type";
 
 export interface StockBreakdown {
   productId: string;
@@ -196,11 +197,13 @@ export const useStockData = () => {
         (p) => p.barStock <= p.minimum_stock * 0.5 // 50% of minimum as bar threshold
       ).length;
 
-      // Total value based on total stock across all locations
-      const totalValue = productsWithStock.reduce(
-        (sum, p) => sum + (p.totalStock * p.cost_per_unit),
-        0
-      );
+      // Total value — for bottles: qty_ml × cost_per_ml; for units: qty × cost_per_unit
+      const totalValue = productsWithStock.reduce((sum, p) => {
+        const cap = p.capacity_ml;
+        const bottle = isBottle(p);
+        const costPerBase = bottle && cap && cap > 0 ? p.cost_per_unit / cap : p.cost_per_unit;
+        return sum + p.totalStock * costPerBase;
+      }, 0);
 
       setProducts(productsWithStock);
       setStats({
