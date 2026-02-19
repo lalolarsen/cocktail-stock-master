@@ -797,6 +797,20 @@ function ProductRow({
       <Badge variant="secondary" className="text-[10px] px-2 py-0.5">OK</Badge>
     );
 
+  // Cost display: for bottles → per-bottle + per-ml; for units → per-unit
+  const costDisplay = useMemo(() => {
+    const cost = product.cost_per_unit;
+    if (!cost || cost <= 0) return null;
+    if (isVolumetric && product.capacity_ml) {
+      const perMl = cost / product.capacity_ml;
+      return {
+        bottle: formatCLP(cost),
+        perMl: `≈ ${formatCLP(Math.round(perMl * 100) / 100)}/ml`,
+      };
+    }
+    return { unit: formatCLP(cost) };
+  }, [isVolumetric, product.cost_per_unit, product.capacity_ml]);
+
   return (
     <div className={`flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg border-l-2 ${borderClass} hover:bg-muted/30 transition-fast`}>
       {/* Left: Name + SKU + Badge */}
@@ -807,6 +821,11 @@ function ProductRow({
           {product.subcategory && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
               {subcategoryLabels[product.subcategory] || product.subcategory}
+            </Badge>
+          )}
+          {isVolumetric && product.capacity_ml && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              {product.capacity_ml}ml
             </Badge>
           )}
         </div>
@@ -830,9 +849,25 @@ function ProductRow({
             </span>
           )}
         </div>
+        {/* Cost display */}
+        {costDisplay && (
+          <div className="mt-1 text-[11px]">
+            {'bottle' in costDisplay ? (
+              <span className="text-muted-foreground">
+                CPP: <span className="font-medium text-foreground">{costDisplay.bottle}/bot.</span>
+                {" "}
+                <span className="text-muted-foreground/70">{costDisplay.perMl}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                CPP: <span className="font-medium text-foreground">{costDisplay.unit}/ud</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Right: Value + Status + Actions */}
+      {/* Right: Quantity + Value + Status + Actions */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
           {bottleDisplay ? (
