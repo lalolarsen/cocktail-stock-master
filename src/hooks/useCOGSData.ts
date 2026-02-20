@@ -134,23 +134,14 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
         const qty = Math.abs(Number(m.quantity));
         const capacityMl = Number(m.products?.capacity_ml) || 0;
         const unitCost = Number(m.unit_cost) || 0;
-        const productCpp = Number(m.products?.cost_per_unit) || 0;
 
-        // Para productos tipo BOTELLA (capacity_ml > 0):
-        //   quantity está en ml. unit_cost PUEDE ser per-bottle o per-ml
-        //   (inconsistencia histórica). Detectamos comparando con el CPP del producto.
-        //   Si unit_cost es similar al CPP → es per-bottle → COGS = (qty/cap) * cost
-        //   Si unit_cost es mucho menor → es per-ml → COGS = qty * cost
-        // Para productos UNITARIOS: COGS = qty * unit_cost
-        let cost: number;
-        if (capacityMl > 0) {
-          const isPerBottle = productCpp <= 0 || unitCost > productCpp * 0.1;
-          cost = isPerBottle
-            ? (qty / capacityMl) * unitCost
-            : qty * unitCost;
-        } else {
-          cost = qty * unitCost;
-        }
+        // Regla determinística:
+        //   BOTELLA (capacity_ml > 0): quantity en ml, unit_cost por botella
+        //     → costo = (qty_ml / capacity_ml) * unit_cost
+        //   UNITARIO: costo = qty * unit_cost
+        const cost = capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
 
         totalCogs += cost;
         totalItems++;
