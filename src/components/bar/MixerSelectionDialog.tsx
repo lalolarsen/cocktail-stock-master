@@ -109,16 +109,27 @@ export function MixerSelectionDialog({
 }: MixerSelectionDialogProps) {
   const { tradicionales, redbull, loading } = useMixerCatalog(locationId, venueId);
 
-  // Detect if all slots are redbull type to default to that tab
-  const allRedbull = mixerSlots.length > 0 && mixerSlots.every(s => s.mixer_category === "redbull");
-  const defaultTab = allRedbull ? "redbull" : "tradicionales";
+  // Determine which category the recipe requires from mixer_category
+  const requiredCategory = mixerSlots.length > 0
+    ? (mixerSlots[0].mixer_category ?? "").toLowerCase().replace(/\s+/g, "_")
+    : "";
 
-  // One selection per slot — we use slot_index 0 for the mixer (unified)
+  const isRedbullRequired = ["redbull", "mixers_redbull"].includes(requiredCategory);
+  const isTradicionalRequired = ["tradicional", "tradicionales", "mixers_tradicionales", "latas"].includes(requiredCategory);
+
+  // If recipe specifies a category, show ONLY that category. Otherwise show both.
+  const showBothTabs = !isRedbullRequired && !isTradicionalRequired;
+  const defaultTab = isRedbullRequired ? "redbull" : "tradicionales";
+
+  // Filter products based on what the recipe requires
+  const visibleTradicionales = (showBothTabs || isTradicionalRequired) ? tradicionales : [];
+  const visibleRedbull = (showBothTabs || isRedbullRequired) ? redbull : [];
+
+  // One selection per slot
   const [selectedId, setSelectedId] = useState<string>("");
 
   const handleConfirm = () => {
     if (!selectedId) return;
-    // Map selection to all mixer slots that need it
     const selections = mixerSlots.map(slot => ({
       slot_index: slot.slot_index,
       product_id: selectedId,
@@ -128,13 +139,16 @@ export function MixerSelectionDialog({
 
   const canConfirm = !!selectedId && !isLoading;
 
+  // Header subtitle based on required category
+  const categoryLabel = isRedbullRequired ? "Red Bull" : isTradicionalRequired ? "Mixer tradicional" : "Mixer";
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="shrink-0 bg-primary text-primary-foreground px-5 py-4 flex items-center gap-3 shadow-md">
         <GlassWater className="h-7 w-7 shrink-0" />
         <div className="min-w-0">
-          <h1 className="text-xl font-bold leading-tight">Seleccionar Mixer</h1>
+          <h1 className="text-xl font-bold leading-tight">Seleccionar {categoryLabel}</h1>
           <p className="text-sm opacity-80">
             {mixerSlots.length > 0
               ? `${mixerSlots[0].label} · ${mixerSlots[0].quantity}ml`
@@ -149,74 +163,58 @@ export function MixerSelectionDialog({
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : (
+        ) : showBothTabs ? (
+          /* Show both tabs when recipe doesn't specify a category */
           <Tabs defaultValue={defaultTab} className="flex-1 flex flex-col overflow-hidden">
-            {/* Tab triggers */}
             <div className="shrink-0 px-4 pt-4">
               <TabsList className="w-full h-14 grid grid-cols-2 text-base">
                 <TabsTrigger value="tradicionales" className="h-full gap-2 text-base font-semibold">
                   <GlassWater className="h-4 w-4" />
-                  Mixers tradicionales
+                  Tradicionales
                   {tradicionales.length > 0 && (
-                    <Badge variant="secondary" className="ml-1 text-xs">
-                      {tradicionales.length}
-                    </Badge>
+                    <Badge variant="secondary" className="ml-1 text-xs">{tradicionales.length}</Badge>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="redbull" className="h-full gap-2 text-base font-semibold">
                   <Zap className="h-4 w-4" />
                   Red Bull
                   {redbull.length > 0 && (
-                    <Badge variant="secondary" className="ml-1 text-xs">
-                      {redbull.length}
-                    </Badge>
+                    <Badge variant="secondary" className="ml-1 text-xs">{redbull.length}</Badge>
                   )}
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            {/* Tradicionales tab */}
-            <TabsContent
-              value="tradicionales"
-              className="flex-1 overflow-y-auto px-4 pb-4 mt-4 data-[state=active]:flex data-[state=active]:flex-col"
-            >
-              {tradicionales.length === 0 ? (
-                <EmptyMixers label="Mixers tradicionales" />
-              ) : (
+            <TabsContent value="tradicionales" className="flex-1 overflow-y-auto px-4 pb-4 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
+              {tradicionales.length === 0 ? <EmptyMixers label="Mixers tradicionales" /> : (
                 <div className="grid grid-cols-2 gap-3">
-                  {tradicionales.map(p => (
-                    <MixerCard
-                      key={p.id}
-                      product={p}
-                      selected={selectedId === p.id}
-                      onSelect={() => setSelectedId(p.id)}
-                    />
-                  ))}
+                  {tradicionales.map(p => <MixerCard key={p.id} product={p} selected={selectedId === p.id} onSelect={() => setSelectedId(p.id)} />)}
                 </div>
               )}
             </TabsContent>
 
-            {/* Red Bull tab */}
-            <TabsContent
-              value="redbull"
-              className="flex-1 overflow-y-auto px-4 pb-4 mt-4 data-[state=active]:flex data-[state=active]:flex-col"
-            >
-              {redbull.length === 0 ? (
-                <EmptyMixers label="Redbull" />
-              ) : (
+            <TabsContent value="redbull" className="flex-1 overflow-y-auto px-4 pb-4 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
+              {redbull.length === 0 ? <EmptyMixers label="Redbull" /> : (
                 <div className="grid grid-cols-2 gap-3">
-                  {redbull.map(p => (
-                    <MixerCard
-                      key={p.id}
-                      product={p}
-                      selected={selectedId === p.id}
-                      onSelect={() => setSelectedId(p.id)}
-                    />
-                  ))}
+                  {redbull.map(p => <MixerCard key={p.id} product={p} selected={selectedId === p.id} onSelect={() => setSelectedId(p.id)} />)}
                 </div>
               )}
             </TabsContent>
           </Tabs>
+        ) : (
+          /* Show ONLY the required category — no tabs needed */
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            {(() => {
+              const products = isRedbullRequired ? visibleRedbull : visibleTradicionales;
+              const label = isRedbullRequired ? "Red Bull" : "Mixers tradicionales";
+              if (products.length === 0) return <EmptyMixers label={label} />;
+              return (
+                <div className="grid grid-cols-2 gap-3">
+                  {products.map(p => <MixerCard key={p.id} product={p} selected={selectedId === p.id} onSelect={() => setSelectedId(p.id)} />)}
+                </div>
+              );
+            })()}
+          </div>
         )}
       </div>
 
