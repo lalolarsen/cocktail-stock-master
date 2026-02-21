@@ -307,6 +307,26 @@ export function JornadaManagement() {
 
   const handleCloseJornada = (jornadaId: string) => { setShowReconciliation(jornadaId); };
 
+  const handleApproveReview = async (jornadaId: string) => {
+    setActionLoading(jornadaId);
+    try {
+      const { error } = await supabase
+        .from("jornadas")
+        .update({ requires_review: false })
+        .eq("id", jornadaId);
+      if (error) throw error;
+      await logAuditEvent({ action: "jornada_review_approved", status: "success", metadata: { jornada_id: jornadaId } });
+      toast.success("Jornada aprobada. Revisión completada.");
+      fetchJornadas();
+      fetchPendingReviewCount();
+    } catch (error) {
+      console.error("Error approving review:", error);
+      toast.error("Error al aprobar revisión");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleReconciliationComplete = () => {
     setShowReconciliation(null);
     toast.success("Jornada cerrada exitosamente");
@@ -374,6 +394,16 @@ export function JornadaManagement() {
 
   return (
     <div className="space-y-6">
+      {/* ── Pending Review Alert ── */}
+      {pendingReviewCount > 0 && (
+        <Alert className="border-destructive/50 bg-destructive/5">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="text-sm">
+            <strong>{pendingReviewCount} jornada(s)</strong> con cierre forzado pendiente(s) de revisión.
+            Ve al historial y aprueba la revisión con el botón <CheckCircle className="w-3.5 h-3.5 inline text-green-600" />.
+          </AlertDescription>
+        </Alert>
+      )}
       {/* ── Page Header ── */}
       <div className="flex items-center justify-between">
         <div>
@@ -527,6 +557,7 @@ export function JornadaManagement() {
             onCloseJornada={handleCloseJornada}
             onDeleteJornada={deleteJornada}
             onForceClose={(role === "admin" || role === "gerencia") ? (j) => openForceCloseModal(j) : undefined}
+            onApproveReview={(role === "admin" || role === "gerencia") ? handleApproveReview : undefined}
             onShowDetail={(id) => setDetailDrawerJornadaId(id)}
             onExportCSV={exportJornadaCSV}
           />

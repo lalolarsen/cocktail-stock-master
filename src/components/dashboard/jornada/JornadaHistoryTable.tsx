@@ -14,6 +14,7 @@ import {
   Download,
   AlertTriangle,
   Eye,
+  CheckCircle,
 } from "lucide-react";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
@@ -29,6 +30,8 @@ interface Jornada {
   hora_cierre: string | null;
   estado: string;
   created_at: string;
+  forced_close?: boolean;
+  requires_review?: boolean;
 }
 
 interface JornadaStats {
@@ -55,6 +58,7 @@ interface JornadaHistoryTableProps {
   onCloseJornada: (id: string) => void;
   onDeleteJornada: (id: string) => void;
   onForceClose?: (jornada: Jornada) => void;
+  onApproveReview?: (jornadaId: string) => void;
   onShowDetail: (jornadaId: string) => void;
   onExportCSV: (jornada: Jornada) => void;
   staleThresholdHours?: number;
@@ -70,6 +74,7 @@ export function JornadaHistoryTable({
   onCloseJornada,
   onDeleteJornada,
   onForceClose,
+  onApproveReview,
   onShowDetail,
   onExportCSV,
   staleThresholdHours = STALE_JORNADA_THRESHOLD_HOURS,
@@ -100,10 +105,10 @@ export function JornadaHistoryTable({
   };
 
   const getForcedBadge = (jornada: Jornada) => {
-    if ((jornada as any).forced_close) {
+    if (jornada.forced_close) {
       return (
         <Badge variant="destructive" className="text-[10px] ml-1">
-          Forzado
+          {jornada.requires_review ? "Pendiente revisión" : "Forzado ✓"}
         </Badge>
       );
     }
@@ -165,6 +170,17 @@ export function JornadaHistoryTable({
                     {jornada.estado === "cerrada" && summary && (
                       <Button size="sm" variant="ghost" onClick={() => onExportCSV(jornada)} title="Exportar CSV">
                         <Download className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {jornada.forced_close && jornada.requires_review && onApproveReview && (
+                      <Button
+                        size="sm" variant="ghost"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-500/10"
+                        onClick={() => onApproveReview(jornada.id)}
+                        disabled={actionLoading === jornada.id}
+                        title="Aprobar revisión"
+                      >
+                        <CheckCircle className="w-4 h-4" />
                       </Button>
                     )}
                     {jornada.estado === "activa" && isStaleJornada(jornada) && onForceClose && (
