@@ -137,10 +137,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS
+        // COGS — need capacity_ml from products for deterministic cost
         supabase
           .from("stock_movements")
-          .select("quantity, unit_cost")
+          .select("quantity, unit_cost, products:product_id(capacity_ml)")
           .eq("venue_id", venueId)
           .eq("movement_type", "salida")
           .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
@@ -189,11 +189,16 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS (abs to normalize) ──
-      const cogs = (cogsRes.data || []).reduce(
-        (s, r) => s + Math.abs(Number(r.quantity)) * Math.abs(Number(r.unit_cost) || 0),
-        0,
-      );
+      // ── COGS — deterministic: bottles use (qty_ml / capacity_ml) * unit_cost ──
+      const cogs = (cogsRes.data || []).reduce((s, r: any) => {
+        const qty = Math.abs(Number(r.quantity));
+        const unitCost = Math.abs(Number(r.unit_cost) || 0);
+        const capacityMl = Number(r.products?.capacity_ml) || 0;
+        const cost = capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
+        return s + cost;
+      }, 0);
       setCogsTotal(cogs);
 
       // ── OPEX by category (from operational_expenses) ──
