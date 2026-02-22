@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import {
   Dialog,
   DialogContent,
@@ -412,14 +412,12 @@ export default function CourtesyQR() {
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar producto…" />
                 </SelectTrigger>
-                <SelectContent>
-                  <ScrollArea className="max-h-60">
-                    {cocktails.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} — {formatCLP(c.price)}
-                      </SelectItem>
-                    ))}
-                  </ScrollArea>
+                <SelectContent className="max-h-60">
+                  {cocktails.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} — {formatCLP(c.price)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
