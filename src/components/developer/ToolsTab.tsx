@@ -35,9 +35,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   UserPlus,
-  Building2,
-  Database,
-  Download
+  Building2
 } from "lucide-react";
 
 interface ToolsTabProps {
@@ -59,37 +57,6 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
   const [workerRole, setWorkerRole] = useState<"admin" | "vendedor" | "bar" | "ticket_seller" | "gerencia">("vendedor");
   const [workerVenueId, setWorkerVenueId] = useState<string>("");
   const [cleanVenueId, setCleanVenueId] = useState<string>("");
-  const [isDownloadingSchema, setIsDownloadingSchema] = useState(false);
-
-  const handleDownloadSchema = async () => {
-    setIsDownloadingSchema(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("No session");
-
-      const res = await supabase.functions.invoke("dump-schema", {});
-      
-      if (res.error) throw new Error(res.error.message);
-      
-      // The response is SQL text
-      const sqlText = typeof res.data === "string" ? res.data : JSON.stringify(res.data, null, 2);
-      const blob = new Blob([sqlText], { type: "application/sql" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `stockia_schema_${new Date().toISOString().slice(0, 10)}.sql`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("Schema SQL descargado");
-    } catch (err: any) {
-      console.error("Schema download error:", err);
-      toast.error(`Error: ${err.message}`);
-    } finally {
-      setIsDownloadingSchema(false);
-    }
-  };
 
   // Fetch all venues for selectors
   const { data: venues = [] } = useQuery({
@@ -222,25 +189,7 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
       {/* Berlin Full Reset Panel */}
       <VenueResetPanel />
       
-      {/* Schema SQL Download */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-primary" />
-            Exportar Schema SQL
-          </CardTitle>
-          <CardDescription>
-            Descarga el esquema completo de la base de datos (tablas, funciones, triggers, RLS, índices).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={handleDownloadSchema} disabled={isDownloadingSchema} className="gap-2">
-            {isDownloadingSchema ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {isDownloadingSchema ? "Generando..." : "Descargar Schema SQL"}
-          </Button>
-        </CardContent>
-      </Card>
-
+      
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
