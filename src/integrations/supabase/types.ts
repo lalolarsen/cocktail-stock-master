@@ -1971,6 +1971,7 @@ export type Database = {
       }
       pos_terminals: {
         Row: {
+          auto_print_enabled: boolean
           auto_redeem: boolean
           bar_location_id: string | null
           business_type: string | null
@@ -1983,11 +1984,13 @@ export type Database = {
           name: string
           pos_kind: string | null
           pos_type: string
+          printer_name: string | null
           updated_at: string
           venue_id: string | null
           zone: string | null
         }
         Insert: {
+          auto_print_enabled?: boolean
           auto_redeem?: boolean
           bar_location_id?: string | null
           business_type?: string | null
@@ -2000,11 +2003,13 @@ export type Database = {
           name: string
           pos_kind?: string | null
           pos_type?: string
+          printer_name?: string | null
           updated_at?: string
           venue_id?: string | null
           zone?: string | null
         }
         Update: {
+          auto_print_enabled?: boolean
           auto_redeem?: boolean
           bar_location_id?: string | null
           business_type?: string | null
@@ -2017,6 +2022,7 @@ export type Database = {
           name?: string
           pos_kind?: string | null
           pos_type?: string
+          printer_name?: string | null
           updated_at?: string
           venue_id?: string | null
           zone?: string | null
@@ -2038,6 +2044,86 @@ export type Database = {
           },
           {
             foreignKeyName: "pos_terminals_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      print_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          error_message: string | null
+          id: string
+          job_type: string
+          payload: Json
+          pickup_token_id: string | null
+          pos_id: string | null
+          print_status: string
+          printed_at: string | null
+          printer_name: string | null
+          sale_id: string | null
+          user_id: string
+          venue_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type?: string
+          payload?: Json
+          pickup_token_id?: string | null
+          pos_id?: string | null
+          print_status?: string
+          printed_at?: string | null
+          printer_name?: string | null
+          sale_id?: string | null
+          user_id: string
+          venue_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type?: string
+          payload?: Json
+          pickup_token_id?: string | null
+          pos_id?: string | null
+          print_status?: string
+          printed_at?: string | null
+          printer_name?: string | null
+          sale_id?: string | null
+          user_id?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "print_jobs_pickup_token_id_fkey"
+            columns: ["pickup_token_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_tokens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "print_jobs_pos_id_fkey"
+            columns: ["pos_id"]
+            isOneToOne: false
+            referencedRelation: "pos_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "print_jobs_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "print_jobs_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"

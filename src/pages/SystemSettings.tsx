@@ -19,6 +19,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
+import { PrintSettingsCard } from "@/components/settings/PrintSettingsCard";
 
 const CONFIRMATION_TEXT = "BORRAR";
 
@@ -104,6 +105,9 @@ export default function SystemSettings() {
 
         {/* Receipt Settings */}
         <ReceiptSettingsCard />
+
+        {/* Print Settings */}
+        <PrintSettingsCard />
 
         {/* Danger Zone */}
         <Card className="border-destructive/50">
