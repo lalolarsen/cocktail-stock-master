@@ -73,8 +73,17 @@ export function PrintingPanel({ venueName }: PrintingPanelProps) {
       toast.success("QZ Tray conectado", { duration: 2000 });
       // Auto-search printers to trigger permission popup
       await searchPrinters();
-    } catch {
+    } catch (e: any) {
       setStatus("disconnected");
+      const msg = e?.message || "desconocido";
+      if (msg.includes("signature") || msg.includes("sign")) {
+        toast.error("Error de firma QZ. Verifica que QZ Tray esté autorizado.", { duration: 5000 });
+      } else if (msg.includes("certificate")) {
+        toast.error("Error obteniendo certificado QZ.", { duration: 5000 });
+      } else {
+        toast.error("QZ Tray no disponible. ¿Está instalado y corriendo?", { duration: 5000 });
+      }
+      console.error("[PrintingPanel] Connect error:", e);
     }
   }, []);
 
