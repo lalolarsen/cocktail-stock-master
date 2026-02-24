@@ -29,6 +29,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
+import { PrintingPanel } from "@/components/sales/PrintingPanel";
 import {
   Select,
   SelectContent,
@@ -641,7 +642,11 @@ export default function Sales() {
       fetchRecentSales();
 
       // ── Auto-print receipt + QR ──
-      if (currentPos?.auto_print_enabled && currentPos?.printer_name) {
+      const savedPrinter = localStorage.getItem("stockia_printer_name");
+      const printerToUse = currentPos?.printer_name || savedPrinter;
+      const shouldAutoPrint = (currentPos?.auto_print_enabled || !!savedPrinter) && !!printerToUse;
+      
+      if (shouldAutoPrint && printerToUse) {
         const receiptData: ReceiptData = {
           saleNumber,
           venueName: venue?.name || "Venue",
@@ -1248,6 +1253,9 @@ export default function Sales() {
                   </>
                 )}
               </div>
+
+              {/* Printing Panel */}
+              <PrintingPanel venueName={venue?.name} />
 
               {/* Recent Sales (minimal) */}
               {recentSales.length > 0 && (

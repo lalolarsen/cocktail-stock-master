@@ -3,10 +3,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 /**
  * Persisted Cart Hook
  *
- * Stores the cart in localStorage keyed by venue+pos+jornada.
- * Hydrates on mount, persists on every mutation.
- * Designed for reliability on Windows PWA / kiosk environments.
+ * Stores the cart in localStorage with a SINGLE STABLE key: stockia_cart_v1
+ * This ensures the cart works reliably across all platforms including
+ * Windows PWA, iPad, Android, and Chrome.
+ *
+ * Key design decisions:
+ * - Single stable key prevents issues with dynamic keys (venue/pos/jornada)
+ *   that caused the cart to appear empty on Windows PWA.
+ * - Hydrates on mount, persists on every mutation.
+ * - Fallback: if React state has 0 items but storage has items, rehydrate.
  */
+
+const STORAGE_KEY = "stockia_cart_v1";
 
 export type SelectedAddon = {
   id: string;
@@ -30,71 +38,101 @@ export type CartItem = {
 };
 
 interface UsePersistedCartOptions {
-  venueId: string | undefined;
-  posId: string;
-  jornadaId: string | null;
+  /** @deprecated No longer used for storage key – kept for API compat */
+  venueId?: string | undefined;
+  /** @deprecated No longer used for storage key – kept for API compat */
+  posId?: string;
+  /** @deprecated No longer used for storage key – kept for API compat */
+  jornadaId?: string | null;
 }
 
-function buildKey(venueId: string, posId: string, jornadaId: string): string {
-  return `cart:${venueId}:${posId}:${jornadaId}`;
+function readCartFromStorage(): CartItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return [];
+  } catch (e) {
+    console.warn("[Cart] read from storage failed", e);
+    return [];
+  }
 }
 
-export function usePersistedCart({ venueId, posId, jornadaId }: UsePersistedCartOptions) {
-  const [cart, setCartState] = useState<CartItem[]>([]);
+function writeCartToStorage(cart: CartItem[]) {
+  try {
+    if (cart.length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+    }
+  } catch (e) {
+    console.warn("[Cart] write to storage failed", e);
+  }
+}
+
+export function usePersistedCart(_opts?: UsePersistedCartOptions) {
+  const [cart, setCartState] = useState<CartItem[]>(() => readCartFromStorage());
   const [isHydrated, setIsHydrated] = useState(false);
   const [lastRemovedItem, setLastRemovedItem] = useState<CartItem | null>(null);
-  const keyRef = useRef<string | null>(null);
+  const didHydrate = useRef(false);
 
-  // Build storage key
-  const storageKey = venueId && posId && jornadaId
-    ? buildKey(venueId, posId, jornadaId)
-    : null;
-
-  // Hydrate from localStorage on key change
+  // Hydrate once on mount
   useEffect(() => {
-    if (!storageKey) {
-      setCartState([]);
-      setIsHydrated(true);
-      return;
+    if (didHydrate.current) return;
+    didHydrate.current = true;
+    const stored = readCartFromStorage();
+    if (stored.length > 0) {
+      console.info("[Cart] hydrate", { items: stored.length });
+      setCartState(stored);
     }
-
-    // If key changed, hydrate from new key
-    if (keyRef.current !== storageKey) {
-      keyRef.current = storageKey;
-      try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw) as CartItem[];
-          if (Array.isArray(parsed)) {
-            console.info("[Cart] hydrate", { items: parsed.length, key: storageKey });
-            setCartState(parsed);
-          } else {
-            setCartState([]);
-          }
-        } else {
-          setCartState([]);
-        }
-      } catch (e) {
-        console.warn("[Cart] hydrate failed, resetting", e);
-        setCartState([]);
-      }
-      setIsHydrated(true);
-    }
-  }, [storageKey]);
+    setIsHydrated(true);
+  }, []);
 
   // Persist to localStorage whenever cart changes (after hydration)
   useEffect(() => {
-    if (!isHydrated || !storageKey) return;
-    try {
+    if (!isHydrated) return;
+    writeCartToStorage(cart);
+  }, [cart, isHydrated]);
+
+  // Fallback: periodically check if React state lost items but storage has them
+  useEffect(() => {
+    if (!isHydrated) return;
+    const interval = setInterval(() => {
       if (cart.length === 0) {
-        localStorage.removeItem(storageKey);
-      } else {
-        localStorage.setItem(storageKey, JSON.stringify(cart));
+        const stored = readCartFromStorage();
+        if (stored.length > 0) {
+          console.info("[Cart] fallback rehydrate", { items: stored.length });
+          setCartState(stored);
+        }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [cart.length, isHydrated]);
+
+  // Migrate from old dynamic keys on first load
+  useEffect(() => {
+    if (!isHydrated) return;
+    try {
+      // Check for old cart:* keys and migrate
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("cart:") && key !== STORAGE_KEY) {
+          const oldRaw = localStorage.getItem(key);
+          if (oldRaw && cart.length === 0) {
+            const oldItems = JSON.parse(oldRaw);
+            if (Array.isArray(oldItems) && oldItems.length > 0) {
+              console.info("[Cart] migrating from old key", { key, items: oldItems.length });
+              setCartState(oldItems);
+            }
+          }
+          localStorage.removeItem(key);
+        }
       }
     } catch (e) {
-      console.warn("[Cart] persist failed", e);
+      console.warn("[Cart] migration failed", e);
     }
-  }, [cart, isHydrated, storageKey]);
+  }, [isHydrated]);
 
   // ── Cart mutations ──
 
