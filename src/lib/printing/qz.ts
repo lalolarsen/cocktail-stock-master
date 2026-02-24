@@ -66,41 +66,80 @@ async function fetchCertificate(): Promise<string> {
   const cached = (window as any).__QZ_CERTIFICATE_CACHE;
   if (cached) return cached;
 
-  const { data, error } = await supabase.functions.invoke("qz-certificate", {
-    method: "POST",
-    body: {},
-  });
+  let lastError: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data, error } = await supabase.functions.invoke("qz-certificate", {
+        method: "POST",
+        body: {},
+      });
 
-  if (error) {
-    console.error("[QZ] Certificate fetch failed:", error);
-    throw new Error("QZ certificate not available");
+      if (error) {
+        console.warn(`[QZ] Certificate attempt ${attempt + 1} error:`, error);
+        lastError = error;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
+      const cert = typeof data === "string" ? data : data?.toString?.() ?? "";
+      if (!cert || cert.length < 50) {
+        console.warn(`[QZ] Certificate attempt ${attempt + 1} invalid (len=${cert?.length})`);
+        lastError = new Error("QZ certificate invalid or empty");
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
+      (window as any).__QZ_CERTIFICATE_CACHE = cert;
+      return cert;
+    } catch (e) {
+      console.warn(`[QZ] Certificate attempt ${attempt + 1} exception:`, e);
+      lastError = e;
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
   }
 
-  const cert = typeof data === "string" ? data : data?.toString?.() ?? "";
-  if (!cert || cert.length < 50) {
-    throw new Error("QZ certificate invalid or empty");
-  }
-
-  (window as any).__QZ_CERTIFICATE_CACHE = cert;
-  return cert;
+  console.error("[QZ] All certificate fetch attempts failed:", lastError);
+  throw new Error("QZ certificate not available after 3 attempts");
 }
 
 /**
  * Sign a request string via the `qz-sign` Edge Function.
  * QZ Tray calls this callback with the string it wants signed.
+ * Retries up to 2 times on transient failures.
  */
 export async function signRequest(toSign: string): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("qz-sign", {
-    method: "POST",
-    body: { payload: toSign },
-  });
+  let lastError: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data, error } = await supabase.functions.invoke("qz-sign", {
+        method: "POST",
+        body: { payload: toSign },
+      });
 
-  if (error || !data?.signature) {
-    console.error("[QZ] Signing failed:", error || data);
-    throw new Error("QZ signature failed");
+      if (error) {
+        console.warn(`[QZ] Sign attempt ${attempt + 1} error:`, error);
+        lastError = error;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
+      if (!data?.signature) {
+        console.warn(`[QZ] Sign attempt ${attempt + 1} no signature in response:`, data);
+        lastError = new Error("No signature in response");
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
+      return data.signature;
+    } catch (e) {
+      console.warn(`[QZ] Sign attempt ${attempt + 1} exception:`, e);
+      lastError = e;
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
   }
 
-  return data.signature;
+  console.error("[QZ] All sign attempts failed:", lastError);
+  throw new Error("QZ signature failed after 3 attempts");
 }
 
 function configureSecurity() {
