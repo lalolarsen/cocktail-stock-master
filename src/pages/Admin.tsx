@@ -20,6 +20,8 @@ import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
+import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
+import { PrintSettingsCard } from "@/components/settings/PrintSettingsCard";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -28,7 +30,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -120,6 +122,7 @@ export default function Admin() {
       case "courtesy-qr": return "QR de Cortesía";
       case "waste": return "Merma / Pérdida";
       case "botellas": return "Botellas Abiertas";
+      case "settings": return "Configuración";
       default: return "Panel de Administración";
     }
   };
@@ -251,6 +254,13 @@ export default function Admin() {
             {activeView === "botellas" && (
               <div className="space-y-6">
                 <OpenBottlesMonitor />
+              </div>
+            )}
+
+            {activeView === "settings" && (
+              <div className="space-y-6">
+                <ReceiptSettingsCard />
+                <PrintSettingsCard />
               </div>
             )}
           </div>
