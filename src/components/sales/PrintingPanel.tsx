@@ -76,14 +76,14 @@ export function PrintingPanel({ venueName }: PrintingPanelProps) {
     } catch (e: any) {
       setStatus("disconnected");
       const msg = e?.message || "desconocido";
-      if (msg.includes("signature") || msg.includes("sign")) {
-        toast.error("Error de firma QZ. Verifica que QZ Tray esté autorizado.", { duration: 5000 });
+      console.error("[PrintingPanel] Connect error:", msg, e);
+      if (msg.includes("signature") || msg.includes("sign") || msg.includes("Sign")) {
+        toast.error(`Error de firma QZ: ${msg}`, { duration: 8000 });
       } else if (msg.includes("certificate")) {
-        toast.error("Error obteniendo certificado QZ.", { duration: 5000 });
+        toast.error(`Error certificado QZ: ${msg}`, { duration: 8000 });
       } else {
-        toast.error("QZ Tray no disponible. ¿Está instalado y corriendo?", { duration: 5000 });
+        toast.error(`QZ Tray no disponible: ${msg}`, { duration: 5000 });
       }
-      console.error("[PrintingPanel] Connect error:", e);
     }
   }, []);
 
@@ -96,8 +96,9 @@ export function PrintingPanel({ venueName }: PrintingPanelProps) {
         toast.info("No se encontraron impresoras");
       }
     } catch (e: any) {
-      toast.error("Error buscando impresoras: " + (e?.message || "desconocido"));
-      setPrinters([]);
+      const msg = e?.message || "desconocido";
+      toast.error(`Error buscando impresoras: ${msg}`, { duration: 5000 });
+      console.error("[PrintingPanel] Search printers error:", msg, e);
     } finally {
       setIsSearching(false);
     }

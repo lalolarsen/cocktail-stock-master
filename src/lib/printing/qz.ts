@@ -104,33 +104,42 @@ async function fetchCertificate(): Promise<string> {
 
 /**
  * Sign a request string via the `qz-sign` Edge Function.
- * QZ Tray calls this callback with the string it wants signed.
+ * Sends the payload as PLAIN TEXT, receives base64 signature as PLAIN TEXT.
  * Retries up to 2 times on transient failures.
  */
 export async function signRequest(toSign: string): Promise<string> {
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/qz-sign`;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
   let lastError: any;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const { data, error } = await supabase.functions.invoke("qz-sign", {
+      const res = await fetch(url, {
         method: "POST",
-        body: { payload: toSign },
+        headers: {
+          "apikey": anonKey,
+          "Content-Type": "text/plain",
+        },
+        body: toSign,
       });
 
-      if (error) {
-        console.warn(`[QZ] Sign attempt ${attempt + 1} error:`, error);
-        lastError = error;
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn(`[QZ] Sign attempt ${attempt + 1} HTTP ${res.status}:`, errText);
+        lastError = new Error(`Sign HTTP ${res.status}: ${errText}`);
         if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
         continue;
       }
 
-      if (!data?.signature) {
-        console.warn(`[QZ] Sign attempt ${attempt + 1} no signature in response:`, data);
-        lastError = new Error("No signature in response");
+      const signature = await res.text();
+      if (!signature || signature.length < 10) {
+        console.warn(`[QZ] Sign attempt ${attempt + 1} empty signature`);
+        lastError = new Error("Empty signature response");
         if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
         continue;
       }
 
-      return data.signature;
+      return signature;
     } catch (e) {
       console.warn(`[QZ] Sign attempt ${attempt + 1} exception:`, e);
       lastError = e;
@@ -146,7 +155,7 @@ function configureSecurity() {
   if (securityConfigured || !window.qz) return;
 
   window.qz.security.setCertificatePromise(() => fetchCertificate());
-  window.qz.security.setSignatureAlgorithm("SHA512");
+  window.qz.security.setSignatureAlgorithm("SHA256");
   window.qz.security.setSignaturePromise((toSign: string) =>
     (async () => await signRequest(toSign))(),
   );
