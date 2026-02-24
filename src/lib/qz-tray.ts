@@ -86,24 +86,32 @@ async function fetchCertificate(): Promise<string> {
 }
 
 async function signPayload(toSign: string): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("qz-sign", {
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/qz-sign`;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  const res = await fetch(url, {
     method: "POST",
-    body: { payload: toSign },
+    headers: {
+      "apikey": anonKey,
+      "Content-Type": "text/plain",
+    },
+    body: toSign,
   });
 
-  if (error || !data?.signature) {
-    console.error("[QZTray] Signing failed:", error || data);
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("[QZTray] Signing failed:", errText);
     throw new Error("QZ signature failed");
   }
 
-  return data.signature;
+  return await res.text();
 }
 
 function configureSecurity() {
   if (securityConfigured || !window.qz) return;
 
   window.qz.security.setCertificatePromise(() => fetchCertificate());
-  window.qz.security.setSignatureAlgorithm("SHA512");
+  window.qz.security.setSignatureAlgorithm("SHA256");
   window.qz.security.setSignaturePromise((toSign: string) =>
     (async () => await signPayload(toSign))(),
   );
