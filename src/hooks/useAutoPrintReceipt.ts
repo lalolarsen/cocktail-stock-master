@@ -55,7 +55,8 @@ export function useAutoPrintReceipt({
       saleId?: string,
       pickupTokenId?: string,
     ): Promise<PrintResult> => {
-      if (!venueId || !autoPrintEnabled || !printerName) {
+      const effectivePrinter = printerName || localStorage.getItem("stockia_printer_name") || "";
+      if (!venueId || !effectivePrinter) {
         return { success: false, error: "Impresión automática no configurada" };
       }
 
@@ -73,7 +74,7 @@ export function useAutoPrintReceipt({
           user_id: userId,
           job_type: "receipt_qr",
           print_status: "pending",
-          printer_name: printerName,
+          printer_name: effectivePrinter,
           payload: data as any,
           attempts: 0,
         })
@@ -84,13 +85,13 @@ export function useAutoPrintReceipt({
       if (jobId) lastJobIdRef.current = jobId;
 
       // Attempt 1
-      let result = await printRaw(printerName, data);
+      let result = await printRaw(effectivePrinter, data);
 
       // Retry once
       if (!result.success) {
         console.warn("[AutoPrint] Attempt 1 failed, retrying…", result.error);
         await new Promise((r) => setTimeout(r, 1000));
-        result = await printRaw(printerName, data);
+        result = await printRaw(effectivePrinter, data);
       }
 
       // Update audit
