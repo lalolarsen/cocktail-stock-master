@@ -1,14 +1,17 @@
 /**
  * useAutoPrintReceipt – auto-print a receipt+QR for a sale via QZ Tray.
  *
- * If QZ is not available, exposes `fallbackPrint()` to open browser print dialog.
+ * Fallback de navegador deshabilitado: la impresión sale solo por QZ.
  */
 
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  getPreferredPaperWidthStorageKey,
+  getPreferredPrinterStorageKey,
   isQZConnected,
   printRaw,
+  type PaperWidth,
   type ReceiptData,
 } from "@/lib/printing/qz";
 
@@ -55,7 +58,16 @@ export function useAutoPrintReceipt({
       saleId?: string,
       pickupTokenId?: string,
     ): Promise<PrintResult> => {
-      const effectivePrinter = printerName || localStorage.getItem("stockia_printer_name") || "";
+      const preferredPrinterKey = getPreferredPrinterStorageKey(venueId, posId);
+      const effectivePrinter =
+        printerName ||
+        localStorage.getItem(preferredPrinterKey) ||
+        localStorage.getItem("stockia_printer_name") ||
+        "";
+      const preferredPaperWidth =
+        (localStorage.getItem(getPreferredPaperWidthStorageKey(venueId, posId)) as PaperWidth | null) ||
+        "80mm";
+
       if (!venueId || !effectivePrinter) {
         return { success: false, error: "Impresión automática no configurada" };
       }
@@ -85,13 +97,13 @@ export function useAutoPrintReceipt({
       if (jobId) lastJobIdRef.current = jobId;
 
       // Attempt 1
-      let result = await printRaw(effectivePrinter, data);
+      let result = await printRaw(effectivePrinter, data, preferredPaperWidth);
 
       // Retry once
       if (!result.success) {
         console.warn("[AutoPrint] Attempt 1 failed, retrying…", result.error);
         await new Promise((r) => setTimeout(r, 1000));
-        result = await printRaw(effectivePrinter, data);
+        result = await printRaw(effectivePrinter, data, preferredPaperWidth);
       }
 
       // Update audit
@@ -132,9 +144,14 @@ export function useAutoPrintReceipt({
     }
 
     setIsPrinting(true);
+    const preferredPaperWidth =
+      (localStorage.getItem(getPreferredPaperWidthStorageKey(venueId, posId)) as PaperWidth | null) ||
+      "80mm";
+
     const result = await printRaw(
       job.printer_name || printerName,
       job.payload as unknown as ReceiptData,
+      preferredPaperWidth,
     );
 
     await supabase
@@ -151,51 +168,14 @@ export function useAutoPrintReceipt({
     setLastPrintStatus(result.success ? "success" : "failed");
 
     return { success: result.success, error: result.error };
-  }, [printerName]);
+  }, [printerName, posId, venueId]);
 
   /**
-   * Fallback: open browser print dialog with a minimal receipt.
-   * Used when QZ Tray is not available.
+   * Fallback deshabilitado: la impresión debe salir siempre por QZ Tray.
    */
-  const fallbackPrint = useCallback((data: ReceiptData) => {
-    const html = `
-      <html>
-      <head>
-        <title>Recibo ${data.saleNumber}</title>
-        <style>
-          @page { size: 80mm auto; margin: 0; }
-          body { font-family: monospace; font-size: 12px; width: 80mm; margin: 0 auto; padding: 4mm; }
-          h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
-          .center { text-align: center; }
-          .line { border-top: 1px dashed #000; margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; }
-          td:last-child { text-align: right; }
-          .total { font-size: 14px; font-weight: bold; text-align: right; }
-        </style>
-      </head>
-      <body>
-        <h1>${data.venueName}</h1>
-        <div class="center">Venta: ${data.saleNumber}<br/>POS: ${data.posName}<br/>${data.dateTime}</div>
-        <div class="line"></div>
-        <table>
-          ${data.items.map((i) => `<tr><td>${i.quantity}x ${i.name}</td><td>$${i.price.toLocaleString("es-CL")}</td></tr>`).join("")}
-        </table>
-        <div class="line"></div>
-        <div class="total">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
-        <div class="center" style="margin-top:4px;">Pago: ${data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta"}</div>
-        ${data.pickupToken ? `<div class="center" style="margin-top:8px;font-weight:bold;">Token: ${data.pickupToken}</div>` : ""}
-        <div class="center" style="margin-top:8px;">Gracias por tu compra</div>
-      </body>
-      </html>
-    `;
-
-    const w = window.open("", "_blank", "width=350,height=600");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-      w.print();
-    }
+  const fallbackPrint = useCallback((_data: ReceiptData) => {
+    console.error("[AutoPrint] Fallback print está deshabilitado. Usa QZ Tray.");
+    setLastPrintStatus("failed");
   }, []);
 
   return {
