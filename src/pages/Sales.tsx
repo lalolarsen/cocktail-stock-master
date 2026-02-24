@@ -642,7 +642,12 @@ export default function Sales() {
       fetchRecentSales();
 
       // ── Auto-print receipt + QR ──
-      const savedPrinter = localStorage.getItem("stockia_printer_name");
+      const preferredPrinterKey =
+        venue?.id && selectedPosId
+          ? `preferred_printer:${venue.id}:${selectedPosId}`
+          : "stockia_printer_name";
+      const savedPrinter =
+        localStorage.getItem(preferredPrinterKey) || localStorage.getItem("stockia_printer_name");
       const printerToUse = currentPos?.printer_name || savedPrinter;
       const shouldAutoPrint = (currentPos?.auto_print_enabled || !!savedPrinter) && !!printerToUse;
       
@@ -1255,7 +1260,7 @@ export default function Sales() {
               </div>
 
               {/* Printing Panel */}
-              <PrintingPanel venueName={venue?.name} />
+              <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
 
               {/* Recent Sales (minimal) */}
               {recentSales.length > 0 && (
