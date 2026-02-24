@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, AlertCircle, FileCheck, QrCode, X, Undo2, Gift } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer } from "lucide-react";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
@@ -17,9 +17,13 @@ import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
+import { usePrintJob } from "@/hooks/usePrintJob";
+import type { ReceiptData } from "@/lib/qz-tray";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
 import {
   Select,
   SelectContent,
@@ -38,21 +42,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type Cocktail = {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-};
-
-type CartItem = {
-  cocktail: Cocktail;
-  quantity: number;
-  addons: SelectedAddon[];
-  isCourtesy?: boolean;
-  courtesyCode?: string;
-};
-
 type POSTerminal = {
   id: string;
   name: string;
@@ -63,6 +52,8 @@ type POSTerminal = {
   auto_redeem: boolean;
   bar_location_id: string | null;
   bar_location?: { id: string; name: string } | null;
+  auto_print_enabled?: boolean;
+  printer_name?: string | null;
 };
 
 // BarLocation removed - bar is determined at redemption time, not at sale
@@ -71,8 +62,6 @@ export default function Sales() {
   const { activeJornadaId, hasActiveJornada } = useAppSession();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const { venue } = useActiveVenue();
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [lastRemovedItem, setLastRemovedItem] = useState<CartItem | null>(null);
   const [pointOfSale, setPointOfSale] = useState("");
   const [loading, setLoading] = useState(false);
   const [issuingDocument, setIssuingDocument] = useState(false);
@@ -81,14 +70,41 @@ export default function Sales() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
-  // Simplified to card (external POS) or cash (internal receipt)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
   
   // Multi-POS selection (bar is determined at redemption, not sale)
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
-  const [selectedPosId, setSelectedPosId] = useState<string>("");
+  const [selectedPosId, setSelectedPosId] = useState<string>(() => localStorage.getItem("selectedPosId") || "");
   const [showPosSelection, setShowPosSelection] = useState(true);
-  
+
+  // ── Persisted cart ──
+  const {
+    cart,
+    isHydrated: cartHydrated,
+    lastRemovedItem,
+    addToCart,
+    increaseQuantity,
+    decreaseQuantity,
+    updateCartItemAddons,
+    undoLastRemove,
+    clearCart: clearCartStore,
+    calculateTotal,
+  } = usePersistedCart({
+    venueId: venue?.id,
+    posId: selectedPosId,
+    jornadaId: activeJornadaId,
+  });
+
+  // ── Auto-print hook ──
+  const selectedPosObj_forPrint = posTerminals.find(p => p.id === selectedPosId);
+  const { executePrint, reprintLast, isPrinting, lastPrintStatus, qzAvailable, checkQzStatus } = usePrintJob({
+    venueId: venue?.id,
+    posId: selectedPosId,
+    userId: "", // Will be set dynamically at print time
+    printerName: selectedPosObj_forPrint?.printer_name || "",
+    autoPrintEnabled: selectedPosObj_forPrint?.auto_print_enabled || false,
+  });
+
   // Clear cart confirmation
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showCourtesyRedeem, setShowCourtesyRedeem] = useState(false);
@@ -135,10 +151,6 @@ export default function Sales() {
   // Fetch POS terminals on mount
   useEffect(() => {
     fetchPosTerminals();
-    
-    // Restore last used POS selection from localStorage
-    const savedPosId = localStorage.getItem("selectedPosId");
-    if (savedPosId) setSelectedPosId(savedPosId);
   }, []);
 
   useEffect(() => {
@@ -282,42 +294,7 @@ export default function Sales() {
     }
   };
 
-  const addToCart = (cocktail: Cocktail, opts?: { isCourtesy?: boolean; courtesyCode?: string; overrideQty?: number }) => {
-    // Don't add products without price (unless courtesy)
-    if (!opts?.isCourtesy && (!cocktail.price || cocktail.price <= 0)) return;
-    setLastRemovedItem(null);
-    
-    if (opts?.isCourtesy) {
-      // Courtesy items are always separate entries
-      setCart((prev) => [
-        ...prev,
-        {
-          cocktail: { ...cocktail, price: 0 },
-          quantity: opts.overrideQty || 1,
-          addons: [],
-          isCourtesy: true,
-          courtesyCode: opts.courtesyCode,
-        },
-      ]);
-      return;
-    }
-    
-    const existing = cart.find((item) => item.cocktail.id === cocktail.id && !item.isCourtesy);
-    if (existing) {
-      setCart(
-        cart.map((item) =>
-          item.cocktail.id === cocktail.id && !item.isCourtesy
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      );
-    } else {
-      setCart([...cart, { cocktail, quantity: 1, addons: [] }]);
-    }
-  };
-
   const handleCourtesyRedeemed = (item: { cocktailId: string; name: string; qty: number }) => {
-    // Find the cocktail in loaded data, or create a minimal one
     const cocktail = cocktails.find((c) => c.id === item.cocktailId) || {
       id: item.cocktailId,
       name: item.name,
@@ -328,57 +305,9 @@ export default function Sales() {
     toast.success(`Cortesía agregada: ${item.name} × ${item.qty}`);
   };
 
-  const updateCartItemAddons = (cocktailId: string, addons: SelectedAddon[]) => {
-    setCart(
-      cart.map((item) =>
-        item.cocktail.id === cocktailId ? { ...item, addons } : item
-      )
-    );
-  };
-
-  const decreaseQuantity = (cocktailId: string) => {
-    const item = cart.find((i) => i.cocktail.id === cocktailId);
-    if (item && item.quantity > 1) {
-      setCart(
-        cart.map((i) =>
-          i.cocktail.id === cocktailId ? { ...i, quantity: i.quantity - 1 } : i
-        )
-      );
-    } else if (item) {
-      setLastRemovedItem(item);
-      setCart(cart.filter((i) => i.cocktail.id !== cocktailId));
-    }
-  };
-
-  const increaseQuantity = (cocktailId: string) => {
-    setCart(
-      cart.map((item) =>
-        item.cocktail.id === cocktailId
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
-    );
-  };
-
-  const undoLastRemove = () => {
-    if (lastRemovedItem) {
-      setCart((prev) => [...prev, lastRemovedItem]);
-      setLastRemovedItem(null);
-    }
-  };
-
   const clearCart = () => {
-    setCart([]);
-    setLastRemovedItem(null);
+    clearCartStore();
     setShowClearConfirm(false);
-  };
-
-  const calculateTotal = () => {
-    return cart.reduce((sum, item) => {
-      const basePrice = item.cocktail.price * item.quantity;
-      const addonsPrice = item.addons.reduce((a, addon) => a + addon.price, 0) * item.quantity;
-      return sum + basePrice + addonsPrice;
-    }, 0);
   };
 
   const confirmPosSelection = () => {
@@ -625,8 +554,35 @@ export default function Sales() {
         cartItems: cartItemsForQR,
       });
       setShowSuccessScreen(true);
-      setCart([]);
+      clearCartStore();
       fetchRecentSales();
+
+      // ── Auto-print receipt + QR ──
+      if (currentPos?.auto_print_enabled && currentPos?.printer_name) {
+        const receiptData: ReceiptData = {
+          saleNumber,
+          venueName: venue?.name || "Venue",
+          posName: currentPos?.name || "POS",
+          dateTime: new Date().toLocaleString("es-CL"),
+          items: cartItemsForQR,
+          total: totalAmount,
+          paymentMethod: dbPaymentMethod,
+          pickupToken: pickupData?.token,
+        };
+        // Fire-and-forget with toast feedback
+        executePrint(receiptData, sale.id).then((result) => {
+          if (result.success) {
+            toast.success("Impreso OK", { duration: 2000 });
+          } else {
+            toast.error(`Impresión falló: ${result.error}`, {
+              action: {
+                label: "Reintentar",
+                onClick: () => reprintLast(),
+              },
+            });
+          }
+        });
+      }
     } catch (error: any) {
       toast.error(error.message || "Error al procesar la venta");
     } finally {
@@ -867,6 +823,26 @@ export default function Sales() {
             </div>
           )}
 
+          {/* Print status + reprint */}
+          {lastPrintStatus === "success" && (
+            <div className="flex items-center justify-center gap-2 text-sm text-green-600">
+              <CheckCircle className="w-4 h-4" />
+              <span>Impreso correctamente</span>
+            </div>
+          )}
+          {lastPrintStatus === "failed" && (
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                Impresión falló
+              </span>
+              <Button variant="outline" size="sm" onClick={() => reprintLast()} disabled={isPrinting}>
+                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 mr-1" />}
+                Reimprimir
+              </Button>
+            </div>
+          )}
+
           <Button
             onClick={handleNewSale}
             size="lg"
@@ -982,7 +958,12 @@ export default function Sales() {
                 </div>
               </div>
 
-                {cart.length === 0 ? (
+                {!cartHydrated ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Cargando carrito…</span>
+                  </div>
+                ) : cart.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
                     <span>Carrito vacío</span>
                     {lastRemovedItem && (
