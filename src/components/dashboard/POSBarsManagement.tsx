@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Monitor, Trash2, Edit, Info, ChevronDown, ChevronUp, Search, Store, MapPin } from "lucide-react";
+import { Plus, Monitor, Trash2, Edit, Info, ChevronDown, ChevronUp, Search, Store, MapPin, Printer, Loader2, CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +64,8 @@ interface POSTerminal {
   is_cash_register: boolean;
   location?: StockLocation | null;
   bar_location?: StockLocation | null;
+  auto_print_enabled?: boolean;
+  printer_name?: string | null;
 }
 
 type FilterKey = "all" | "active" | "inactive" | "cash" | "no_cash" | "alcohol" | "tickets";
@@ -120,79 +122,144 @@ function TerminalRow({
   onEdit,
   onDelete,
   onToggle,
+  onUpdatePrinter,
 }: {
   terminal: POSTerminal;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: (active: boolean) => void;
+  onUpdatePrinter: (posId: string, field: "auto_print_enabled" | "printer_name", value: any) => Promise<void>;
 }) {
+  const [showPrint, setShowPrint] = useState(false);
+  const [savingPrint, setSavingPrint] = useState(false);
+
+  const handlePrintToggle = async (enabled: boolean) => {
+    setSavingPrint(true);
+    await onUpdatePrinter(terminal.id, "auto_print_enabled", enabled);
+    setSavingPrint(false);
+  };
+
+  const handlePrinterName = async (name: string) => {
+    if (name === (terminal.printer_name || "")) return;
+    setSavingPrint(true);
+    await onUpdatePrinter(terminal.id, "printer_name", name || null);
+    setSavingPrint(false);
+  };
+
   return (
-    <div
-      className="flex items-center justify-between px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/20 transition-fast cursor-pointer group"
-      onClick={(e) => {
-        const tag = (e.target as HTMLElement).closest("button, label, [role='switch']");
-        if (!tag) onEdit();
-      }}
-    >
-      {/* Left: icon + name + type + hybrid info */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="p-2 rounded-md bg-secondary">
-          <Monitor className="w-4 h-4 text-foreground" />
-        </div>
-        <div className="min-w-0">
-          <p className="font-medium text-sm truncate">{terminal.name}</p>
-          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            <Badge
-              variant="outline"
-              className="text-[10px] font-normal"
-            >
-              {POS_TYPE_LABELS[terminal.pos_type] ?? terminal.pos_type}
-            </Badge>
-            {terminal.auto_redeem && (
-              <Badge variant="outline" className="text-[10px] font-normal border-amber-500/40 text-amber-600 bg-amber-500/10">
-                Híbrido
+    <div className="border-b border-border last:border-b-0">
+      <div
+        className="flex items-center justify-between px-4 py-3 hover:bg-secondary/20 transition-fast cursor-pointer group"
+        onClick={(e) => {
+          const tag = (e.target as HTMLElement).closest("button, label, [role='switch']");
+          if (!tag) onEdit();
+        }}
+      >
+        {/* Left: icon + name + type + hybrid info */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 rounded-md bg-secondary">
+            <Monitor className="w-4 h-4 text-foreground" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm truncate">{terminal.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <Badge
+                variant="outline"
+                className="text-[10px] font-normal"
+              >
+                {POS_TYPE_LABELS[terminal.pos_type] ?? terminal.pos_type}
               </Badge>
-            )}
-            {terminal.auto_redeem && terminal.bar_location && (
-              <span className="text-[10px] text-muted-foreground">
-                → {terminal.bar_location.name}
-              </span>
-            )}
+              {terminal.auto_redeem && (
+                <Badge variant="outline" className="text-[10px] font-normal border-amber-500/40 text-amber-600 bg-amber-500/10">
+                  Híbrido
+                </Badge>
+              )}
+              {terminal.auto_redeem && terminal.bar_location && (
+                <span className="text-[10px] text-muted-foreground">
+                  → {terminal.bar_location.name}
+                </span>
+              )}
+              {terminal.auto_print_enabled && (
+                <Badge variant="outline" className="text-[10px] font-normal border-primary/40 text-primary bg-primary/10">
+                  <Printer className="w-2.5 h-2.5 mr-0.5" />
+                  {terminal.printer_name || "QZ"}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Right: status + toggle + actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge
+            variant={terminal.is_active ? "default" : "secondary"}
+            className={
+              terminal.is_active
+                ? "bg-primary/15 text-primary border-primary/30 text-[10px]"
+                : "text-[10px]"
+            }
+          >
+            {terminal.is_active ? "Activo" : "Inactivo"}
+          </Badge>
+
+          <Switch
+            checked={terminal.is_active}
+            onCheckedChange={onToggle}
+            className="data-[state=checked]:bg-primary"
+          />
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Configurar impresora"
+            onClick={(e) => { e.stopPropagation(); setShowPrint(!showPrint); }}
+          >
+            <Printer className="w-3.5 h-3.5" />
+          </Button>
+
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+            <Edit className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
 
-      {/* Right: status + toggle + actions */}
-      <div className="flex items-center gap-2 shrink-0">
-        <Badge
-          variant={terminal.is_active ? "default" : "secondary"}
-          className={
-            terminal.is_active
-              ? "bg-primary/15 text-primary border-primary/30 text-[10px]"
-              : "text-[10px]"
-          }
-        >
-          {terminal.is_active ? "Activo" : "Inactivo"}
-        </Badge>
-
-        <Switch
-          checked={terminal.is_active}
-          onCheckedChange={onToggle}
-          className="data-[state=checked]:bg-primary"
-        />
-
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-          <Edit className="w-3.5 h-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8 hover:text-destructive"
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
+      {/* Inline printer config */}
+      {showPrint && (
+        <div className="px-4 pb-3 pt-1 bg-secondary/10 border-t border-border/50">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Impresión auto (QZ)</Label>
+              <Switch
+                checked={terminal.auto_print_enabled ?? false}
+                onCheckedChange={handlePrintToggle}
+                disabled={savingPrint}
+                className="data-[state=checked]:bg-primary"
+              />
+            </div>
+            {terminal.auto_print_enabled && (
+              <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+                <Input
+                  placeholder="Nombre impresora (ej: XP-58)"
+                  defaultValue={terminal.printer_name || ""}
+                  className="text-xs h-8 max-w-[220px]"
+                  onBlur={(e) => handlePrinterName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                />
+              </div>
+            )}
+            {savingPrint && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -457,6 +524,20 @@ export function POSBarsManagement() {
     return list;
   }, [terminals, search, filter]);
 
+  /* ── Printer config handler ── */
+  const handleUpdatePrinter = async (posId: string, field: "auto_print_enabled" | "printer_name", value: any) => {
+    const { error } = await supabase
+      .from("pos_terminals")
+      .update({ [field]: value })
+      .eq("id", posId);
+    if (error) {
+      toast.error("Error al guardar config de impresora");
+    } else {
+      setTerminals((prev) => prev.map((t) => t.id === posId ? { ...t, [field]: value } : t));
+      toast.success("Configuración de impresora guardada");
+    }
+  };
+
   /* ── Handlers ── */
   const handleSavePOS = async (data: { name: string; posType: POSType; locationId: string | null; barLocationId: string | null; autoRedeem: boolean; isActive: boolean }) => {
     if (data.posType === "bar_redemption" && !data.locationId) {
@@ -667,6 +748,7 @@ export function POSBarsManagement() {
                       onEdit={() => { setEditingPOS(terminal); setShowPOSDialog(true); }}
                       onDelete={() => { setDeleteTarget({ type: "pos", item: terminal }); setShowDeleteDialog(true); }}
                       onToggle={(active) => handleToggleActive("pos", terminal.id, active)}
+                      onUpdatePrinter={handleUpdatePrinter}
                     />
                   ))}
                 </div>

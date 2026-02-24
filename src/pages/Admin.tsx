@@ -21,7 +21,7 @@ import CourtesyQR from "@/pages/CourtesyQR";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
-import { PrintSettingsCard } from "@/components/settings/PrintSettingsCard";
+
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -260,7 +260,6 @@ export default function Admin() {
             {activeView === "settings" && (
               <div className="space-y-6">
                 <ReceiptSettingsCard />
-                <PrintSettingsCard />
               </div>
             )}
           </div>
