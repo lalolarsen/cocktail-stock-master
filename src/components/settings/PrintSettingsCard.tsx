@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Printer, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { isQzConnected, findPrinters } from "@/lib/qz-tray";
+import { isQZConnected, listPrinters } from "@/lib/printing/qz";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 
 interface POSPrintConfig {
@@ -47,11 +47,11 @@ export function PrintSettingsCard() {
 
   const checkQz = async () => {
     setQzStatus("checking");
-    const connected = await isQzConnected();
+    const connected = await isQZConnected();
     setQzStatus(connected ? "connected" : "disconnected");
     if (connected) {
       try {
-        const printers = await findPrinters();
+        const printers = await listPrinters();
         setAvailablePrinters(printers);
       } catch {
         setAvailablePrinters([]);
