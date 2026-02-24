@@ -1,163 +1,50 @@
 /**
- * QZ Tray – Core printing module
+ * QZ Tray – Core printing module (v2.2.3 CDN)
  *
- * Silent thermal printing via QZ Tray (https://qz.io/).
+ * Uses the global `qz` object loaded via <script> in index.html.
  * Certificate + signature validation via backend Edge Functions.
  */
 
-import { supabase } from "@/integrations/supabase/client";
-
 // ---------------------------------------------------------------------------
-// Globals
+// Global type
 // ---------------------------------------------------------------------------
 
-declare global {
-  interface Window {
-    qz?: any;
-  }
-}
+declare const qz: any;
 
-let qzScriptLoaded = false;
-let qzScriptLoading = false;
 let securityConfigured = false;
 
 // ---------------------------------------------------------------------------
-// Script loader (CDN)
+// Security setup
 // ---------------------------------------------------------------------------
-
-async function loadQzScript(): Promise<boolean> {
-  if (window.qz) return true;
-  if (qzScriptLoaded) return !!window.qz;
-
-  if (qzScriptLoading) {
-    return new Promise((resolve) => {
-      const check = setInterval(() => {
-        if (!qzScriptLoading) {
-          clearInterval(check);
-          resolve(!!window.qz);
-        }
-      }, 100);
-    });
-  }
-
-  qzScriptLoading = true;
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/qz-tray@2/qz-tray.min.js";
-    script.async = true;
-    script.onload = () => {
-      qzScriptLoaded = true;
-      qzScriptLoading = false;
-      resolve(!!window.qz);
-    };
-    script.onerror = () => {
-      qzScriptLoading = false;
-      resolve(false);
-    };
-    document.head.appendChild(script);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Security: Certificate + Signature via Edge Functions
-// ---------------------------------------------------------------------------
-
-async function fetchCertificate(): Promise<string> {
-  const cached = (window as any).__QZ_CERTIFICATE_CACHE;
-  if (cached) return cached;
-
-  let lastError: any;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const { data, error } = await supabase.functions.invoke("qz-certificate", {
-        method: "POST",
-        body: {},
-      });
-
-      if (error) {
-        console.warn(`[QZ] Certificate attempt ${attempt + 1} error:`, error);
-        lastError = error;
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-
-      const cert = typeof data === "string" ? data : data?.toString?.() ?? "";
-      if (!cert || cert.length < 50) {
-        console.warn(`[QZ] Certificate attempt ${attempt + 1} invalid (len=${cert?.length})`);
-        lastError = new Error("QZ certificate invalid or empty");
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-
-      (window as any).__QZ_CERTIFICATE_CACHE = cert;
-      return cert;
-    } catch (e) {
-      console.warn(`[QZ] Certificate attempt ${attempt + 1} exception:`, e);
-      lastError = e;
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-    }
-  }
-
-  console.error("[QZ] All certificate fetch attempts failed:", lastError);
-  throw new Error("QZ certificate not available after 3 attempts");
-}
-
-/**
- * Sign a request string via the `qz-sign` Edge Function.
- * Sends the payload as PLAIN TEXT, receives base64 signature as PLAIN TEXT.
- * Retries up to 2 times on transient failures.
- */
-export async function signRequest(toSign: string): Promise<string> {
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/qz-sign`;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-  let lastError: any;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "apikey": anonKey,
-          "Content-Type": "text/plain",
-        },
-        body: toSign,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        console.warn(`[QZ] Sign attempt ${attempt + 1} HTTP ${res.status}:`, errText);
-        lastError = new Error(`Sign HTTP ${res.status}: ${errText}`);
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-
-      const signature = await res.text();
-      if (!signature || signature.length < 10) {
-        console.warn(`[QZ] Sign attempt ${attempt + 1} empty signature`);
-        lastError = new Error("Empty signature response");
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-
-      return signature;
-    } catch (e) {
-      console.warn(`[QZ] Sign attempt ${attempt + 1} exception:`, e);
-      lastError = e;
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-    }
-  }
-
-  console.error("[QZ] All sign attempts failed:", lastError);
-  throw new Error("QZ signature failed after 3 attempts");
-}
 
 function configureSecurity() {
-  if (securityConfigured || !window.qz) return;
+  if (securityConfigured) return;
+  if (typeof qz === "undefined") throw new Error("QZ Tray no cargado (script faltante)");
 
-  window.qz.security.setCertificatePromise(() => fetchCertificate());
-  window.qz.security.setSignatureAlgorithm("SHA256");
-  window.qz.security.setSignaturePromise((toSign: string) =>
-    (async () => await signRequest(toSign))(),
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  qz.security.setSignatureAlgorithm("SHA256");
+
+  qz.security.setCertificatePromise(() =>
+    fetch(`${baseUrl}/functions/v1/qz-certificate`, {
+      method: "POST",
+      headers: { apikey: anonKey },
+    }).then((r) => {
+      if (!r.ok) throw new Error(`Certificate HTTP ${r.status}`);
+      return r.text();
+    }),
+  );
+
+  qz.security.setSignaturePromise((toSign: string) =>
+    fetch(`${baseUrl}/functions/v1/qz-sign`, {
+      method: "POST",
+      headers: { apikey: anonKey, "Content-Type": "text/plain" },
+      body: toSign,
+    }).then((r) => {
+      if (!r.ok) throw new Error(`Sign HTTP ${r.status}`);
+      return r.text();
+    }),
   );
 
   securityConfigured = true;
@@ -167,32 +54,24 @@ function configureSecurity() {
 // Connection
 // ---------------------------------------------------------------------------
 
-/**
- * Ensure QZ Tray is loaded, security configured, and websocket active.
- * Retries once on failure.
- */
 export async function ensureQZConnected(): Promise<void> {
-  const loaded = await loadQzScript();
-  if (!loaded || !window.qz) throw new Error("QZ Tray no disponible");
+  if (typeof qz === "undefined") throw new Error("QZ Tray no cargado. Verifica que qz-tray.js esté en index.html");
 
   configureSecurity();
 
-  if (window.qz.websocket.isActive()) return;
+  if (qz.websocket.isActive()) return;
 
   try {
-    await window.qz.websocket.connect();
+    await qz.websocket.connect();
   } catch (err) {
-    console.warn("[QZ] First connect attempt failed, retrying…", err);
+    console.warn("[QZ] First connect failed, retrying…", err);
     await new Promise((r) => setTimeout(r, 1500));
-    if (!window.qz.websocket.isActive()) {
-      await window.qz.websocket.connect();
+    if (!qz.websocket.isActive()) {
+      await qz.websocket.connect();
     }
   }
 }
 
-/**
- * Check if QZ Tray is reachable (non-throwing).
- */
 export async function isQZConnected(): Promise<boolean> {
   try {
     await ensureQZConnected();
@@ -202,12 +81,9 @@ export async function isQZConnected(): Promise<boolean> {
   }
 }
 
-/**
- * Disconnect from QZ Tray websocket.
- */
 export async function disconnectQZ(): Promise<void> {
-  if (window.qz?.websocket?.isActive()) {
-    await window.qz.websocket.disconnect();
+  if (typeof qz !== "undefined" && qz.websocket?.isActive()) {
+    await qz.websocket.disconnect();
   }
 }
 
@@ -215,22 +91,15 @@ export async function disconnectQZ(): Promise<void> {
 // Printer discovery
 // ---------------------------------------------------------------------------
 
-/**
- * List all printers visible to QZ Tray.
- */
 export async function listPrinters(): Promise<string[]> {
   await ensureQZConnected();
-  return window.qz.printers.find();
+  return qz.printers.find();
 }
 
-/**
- * Find a printer whose name contains `nameContains` (case-insensitive).
- * Returns the exact printer name or null.
- */
 export async function findPrinter(nameContains: string): Promise<string | null> {
   await ensureQZConnected();
   try {
-    const printer = await window.qz.printers.find(nameContains);
+    const printer = await qz.printers.find(nameContains);
     return printer || null;
   } catch {
     return null;
@@ -262,14 +131,12 @@ const COLS_80MM = 48;
 function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   const cmds: string[] = [];
 
-  // Initialize printer
-  cmds.push("\x1B\x40"); // ESC @ — reset
-  cmds.push("\x1B\x61\x01"); // Center align
+  cmds.push("\x1B\x40");       // ESC @ — reset
+  cmds.push("\x1B\x61\x01");   // Center align
 
-  // Header
-  cmds.push("\x1B\x21\x30"); // Double height + double width
+  cmds.push("\x1B\x21\x30");   // Double height + double width
   cmds.push(data.venueName + "\n");
-  cmds.push("\x1B\x21\x00"); // Normal size
+  cmds.push("\x1B\x21\x00");   // Normal size
 
   cmds.push("=".repeat(cols) + "\n");
   cmds.push(`Venta: ${data.saleNumber}\n`);
@@ -277,8 +144,7 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   cmds.push(`${data.dateTime}\n`);
   cmds.push("=".repeat(cols) + "\n");
 
-  // Items — left aligned
-  cmds.push("\x1B\x61\x00");
+  cmds.push("\x1B\x61\x00");   // Left align
   for (const item of data.items) {
     const line = `${item.quantity}x ${item.name}`;
     const price = `$${item.price.toLocaleString("es-CL")}`;
@@ -286,17 +152,15 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
     cmds.push(line + " ".repeat(padding) + price + "\n");
   }
 
-  // Total
   cmds.push("-".repeat(cols) + "\n");
-  cmds.push("\x1B\x61\x02"); // Right align
-  cmds.push("\x1B\x21\x10"); // Double height
+  cmds.push("\x1B\x61\x02");   // Right align
+  cmds.push("\x1B\x21\x10");   // Double height
   cmds.push(`TOTAL: $${data.total.toLocaleString("es-CL")}\n`);
   cmds.push("\x1B\x21\x00");
-  cmds.push("\x1B\x61\x01"); // Center
+  cmds.push("\x1B\x61\x01");   // Center
 
   cmds.push(`Pago: ${data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta"}\n`);
 
-  // QR token label
   if (data.pickupToken) {
     cmds.push("\n");
     cmds.push("--- CANJE QR ---\n");
@@ -304,13 +168,10 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
     cmds.push("\n");
   }
 
-  // Footer
   cmds.push("\n");
   cmds.push("Gracias por tu compra\n");
   cmds.push("\n\n\n");
-
-  // Cut paper
-  cmds.push("\x1D\x56\x00"); // GS V 0 — full cut
+  cmds.push("\x1D\x56\x00");   // GS V 0 — full cut
 
   return cmds;
 }
@@ -319,14 +180,6 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
 // printRaw – send ESC/POS data directly to thermal printer
 // ---------------------------------------------------------------------------
 
-/**
- * Print raw ESC/POS receipt data on a thermal printer.
- * Supports native QR code rendering for pickup tokens.
- *
- * @param printerName  Exact printer name (from findPrinter / listPrinters)
- * @param data         Receipt payload
- * @param paperWidth   "58mm" | "80mm" — defaults to auto-detect from printer name
- */
 export async function printRaw(
   printerName: string,
   data: ReceiptData,
@@ -340,9 +193,8 @@ export async function printRaw(
       return { success: false, error: `Impresora "${printerName}" no encontrada` };
     }
 
-    const config = window.qz.configs.create(printer, { encoding: "UTF-8" });
+    const config = qz.configs.create(printer, { encoding: "UTF-8" });
 
-    // Determine column width
     const cols =
       paperWidth === "58mm"
         ? COLS_58MM
@@ -352,16 +204,13 @@ export async function printRaw(
             ? COLS_58MM
             : COLS_80MM;
 
-    // Build print data
     const printData: any[] = [];
     const escPosCommands = buildEscPosReceipt(data, cols);
     for (const cmd of escPosCommands) {
       printData.push({ type: "raw", format: "plain", data: cmd });
     }
 
-    // Native ESC/POS QR code
     if (data.pickupToken) {
-      // Pop footer + cut to insert QR before them
       const cutCmd = printData.pop();
       const footerCmd = printData.pop();
       const thanksCmd = printData.pop();
@@ -370,23 +219,21 @@ export async function printRaw(
       const token = data.pickupToken;
       const storeLen = token.length + 3;
 
-      // Center align
       printData.push({ type: "raw", format: "command", data: "\x1B\x61\x01" });
       printData.push({ type: "raw", format: "plain", data: "\n" });
 
-      // ESC/POS QR commands
       printData.push({
         type: "raw",
         format: "command",
         data:
-          "\x1D\x28\x6B\x04\x00\x31\x41\x32\x00" +               // Model 2
-          "\x1D\x28\x6B\x03\x00\x31\x43" + String.fromCharCode(qrModuleSize) + // Module size
-          "\x1D\x28\x6B\x03\x00\x31\x45\x31" +                    // Error correction M
+          "\x1D\x28\x6B\x04\x00\x31\x41\x32\x00" +
+          "\x1D\x28\x6B\x03\x00\x31\x43" + String.fromCharCode(qrModuleSize) +
+          "\x1D\x28\x6B\x03\x00\x31\x45\x31" +
           "\x1D\x28\x6B" +
           String.fromCharCode(storeLen & 0xff) +
           String.fromCharCode((storeLen >> 8) & 0xff) +
-          "\x31\x50\x30" + token +                                 // Store QR data
-          "\x1D\x28\x6B\x03\x00\x31\x51\x30",                     // Print QR
+          "\x31\x50\x30" + token +
+          "\x1D\x28\x6B\x03\x00\x31\x51\x30",
       });
 
       printData.push({ type: "raw", format: "plain", data: "\n\n" });
@@ -395,7 +242,7 @@ export async function printRaw(
       if (cutCmd) printData.push(cutCmd);
     }
 
-    await window.qz.print(config, printData);
+    await qz.print(config, printData);
     return { success: true };
   } catch (err: any) {
     console.error("[QZ] Print error:", err);
