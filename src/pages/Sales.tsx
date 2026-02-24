@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isQzConnected, findPrinters } from "@/lib/qz-tray";
+import { isQZConnected, listPrinters } from "@/lib/printing/qz";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
@@ -22,8 +22,8 @@ import PickupQRDialog from "@/components/PickupQRDialog";
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
-import { usePrintJob } from "@/hooks/usePrintJob";
-import type { ReceiptData } from "@/lib/qz-tray";
+import { useAutoPrintReceipt } from "@/hooks/useAutoPrintReceipt";
+import type { ReceiptData } from "@/lib/printing/qz";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
@@ -77,11 +77,11 @@ function PrinterConfigPopover({
 
   useEffect(() => {
     (async () => {
-      const connected = await isQzConnected();
+      const connected = await isQZConnected();
       setQzStatus(connected ? "connected" : "disconnected");
       if (connected) {
         try {
-          const p = await findPrinters();
+          const p = await listPrinters();
           setDetectedPrinters(p);
         } catch { setDetectedPrinters([]); }
       }
@@ -180,7 +180,7 @@ export default function Sales() {
 
   // ── Auto-print hook ──
   const selectedPosObj_forPrint = posTerminals.find(p => p.id === selectedPosId);
-  const { executePrint, reprintLast, isPrinting, lastPrintStatus, qzAvailable, checkQzStatus } = usePrintJob({
+  const { autoPrintReceipt, reprintLast, isPrinting, lastPrintStatus, qzAvailable, checkQzStatus, fallbackPrint } = useAutoPrintReceipt({
     venueId: venue?.id,
     posId: selectedPosId,
     userId: "", // Will be set dynamically at print time
@@ -653,7 +653,7 @@ export default function Sales() {
           pickupToken: pickupData?.token,
         };
         // Fire-and-forget with toast feedback
-        executePrint(receiptData, sale.id).then((result) => {
+        autoPrintReceipt(receiptData, sale.id).then((result) => {
           if (result.success) {
             toast.success("Impreso OK", { duration: 2000 });
           } else {
