@@ -4,7 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { isQzConnected, findPrinters } from "@/lib/qz-tray";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
@@ -55,6 +60,84 @@ type POSTerminal = {
   auto_print_enabled?: boolean;
   printer_name?: string | null;
 };
+
+function PrinterConfigPopover({
+  posId,
+  autoPrintEnabled,
+  printerName,
+  onUpdate,
+}: {
+  posId: string;
+  autoPrintEnabled: boolean;
+  printerName: string;
+  onUpdate: (field: "auto_print_enabled" | "printer_name", value: any) => void;
+}) {
+  const [qzStatus, setQzStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [detectedPrinters, setDetectedPrinters] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const connected = await isQzConnected();
+      setQzStatus(connected ? "connected" : "disconnected");
+      if (connected) {
+        try {
+          const p = await findPrinters();
+          setDetectedPrinters(p);
+        } catch { setDetectedPrinters([]); }
+      }
+    })();
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Impresión automática</p>
+          <p className="text-xs text-muted-foreground">
+            {qzStatus === "connected" ? "QZ conectado ✓" : qzStatus === "disconnected" ? "QZ no detectado" : "Verificando…"}
+          </p>
+        </div>
+        <Switch
+          checked={autoPrintEnabled}
+          onCheckedChange={(v) => onUpdate("auto_print_enabled", v)}
+        />
+      </div>
+      {autoPrintEnabled && (
+        <div className="space-y-2">
+          <Label className="text-xs">Nombre de impresora</Label>
+          <Input
+            placeholder="Ej: XP-58, Xprinter"
+            defaultValue={printerName}
+            className="text-sm h-8"
+            onBlur={(e) => {
+              if (e.target.value !== printerName) {
+                onUpdate("printer_name", e.target.value || null);
+              }
+            }}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          />
+          {detectedPrinters.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">Detectadas:</p>
+              <div className="flex flex-wrap gap-1">
+                {detectedPrinters.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className="text-[10px] px-2 py-0.5 rounded bg-secondary text-secondary-foreground hover:bg-primary/20 transition-colors"
+                    onClick={() => onUpdate("printer_name", p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // BarLocation removed - bar is determined at redemption time, not at sale
 
@@ -889,6 +972,41 @@ export default function Sales() {
               </Button>
             </div>
             <div className="flex items-center gap-3">
+              {/* Printer config popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-8 w-8 p-0 ${selectedPosObj?.auto_print_enabled ? 'text-green-600' : 'text-muted-foreground'}`}
+                    title="Configurar impresora"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <PrinterConfigPopover
+                    posId={selectedPosId}
+                    autoPrintEnabled={selectedPosObj?.auto_print_enabled || false}
+                    printerName={selectedPosObj?.printer_name || ""}
+                    onUpdate={(field, value) => {
+                      // Update local state
+                      setPosTerminals(prev => prev.map(p =>
+                        p.id === selectedPosId ? { ...p, [field]: value } : p
+                      ));
+                      // Persist to DB
+                      supabase
+                        .from("pos_terminals")
+                        .update({ [field]: value })
+                        .eq("id", selectedPosId)
+                        .then(({ error }) => {
+                          if (error) toast.error("Error al guardar");
+                          else toast.success("Guardado");
+                        });
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
               <VenueIndicator variant="header" />
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />
