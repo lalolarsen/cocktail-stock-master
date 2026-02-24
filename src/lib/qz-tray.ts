@@ -4,13 +4,11 @@
  * Sends ESC/POS commands directly to a thermal printer (e.g. XPrinter)
  * via QZ Tray (https://qz.io/) without opening browser print dialogs.
  *
- * Prerequisites:
- *   1. QZ Tray installed on the kiosk PC
- *   2. QZ Tray running (system tray)
- *   3. Printer name configured in POS settings
+ * Uses certificate + signature validation via backend Edge Function.
  */
 
-// Declare global qz object injected by QZ Tray's websocket connection
+import { supabase } from "@/integrations/supabase/client";
+
 declare global {
   interface Window {
     qz?: any;
@@ -19,16 +17,17 @@ declare global {
 
 let qzScriptLoaded = false;
 let qzScriptLoading = false;
+let securityConfigured = false;
 
-/**
- * Dynamically load the QZ Tray JS library from CDN
- */
+// ---------------------------------------------------------------------------
+// Script loader
+// ---------------------------------------------------------------------------
+
 export async function loadQzTray(): Promise<boolean> {
   if (window.qz) return true;
   if (qzScriptLoaded) return !!window.qz;
 
   if (qzScriptLoading) {
-    // Wait for ongoing load
     return new Promise((resolve) => {
       const check = setInterval(() => {
         if (!qzScriptLoading) {
@@ -57,16 +56,94 @@ export async function loadQzTray(): Promise<boolean> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Security: Certificate + Signature via Edge Function
+// ---------------------------------------------------------------------------
+
+async function fetchCertificate(): Promise<string> {
+  const cached = (window as any).__QZ_CERTIFICATE_CACHE;
+  if (cached) return cached;
+
+  const { data, error } = await supabase.functions.invoke("qz-certificate", {
+    method: "POST",
+    body: {},
+  });
+
+  // The response is plain text (the PEM certificate)
+  if (error) {
+    console.error("[QZTray] Certificate fetch failed:", error);
+    throw new Error("QZ certificate not available");
+  }
+
+  // data could be a string or an object depending on response content-type
+  const cert = typeof data === "string" ? data : data?.toString?.() ?? "";
+  if (!cert || cert.length < 50) {
+    throw new Error("QZ certificate invalid or empty");
+  }
+
+  (window as any).__QZ_CERTIFICATE_CACHE = cert;
+  return cert;
+}
+
+async function signPayload(toSign: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("qz-sign", {
+    method: "POST",
+    body: { payload: toSign },
+  });
+
+  if (error || !data?.signature) {
+    console.error("[QZTray] Signing failed:", error || data);
+    throw new Error("QZ signature failed");
+  }
+
+  return data.signature;
+}
+
+function configureSecurity() {
+  if (securityConfigured || !window.qz) return;
+
+  window.qz.security.setCertificatePromise(() => fetchCertificate());
+  window.qz.security.setSignatureAlgorithm("SHA512");
+  window.qz.security.setSignaturePromise((toSign: string) =>
+    (async () => await signPayload(toSign))(),
+  );
+
+  securityConfigured = true;
+}
+
+// ---------------------------------------------------------------------------
+// Connection helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure QZ Tray is loaded, security is configured, and websocket is active.
+ * Retries once on failure.
+ */
+export async function ensureQz(): Promise<void> {
+  const loaded = await loadQzTray();
+  if (!loaded || !window.qz) throw new Error("QZ Tray no disponible");
+
+  configureSecurity();
+
+  if (window.qz.websocket.isActive()) return;
+
+  try {
+    await window.qz.websocket.connect();
+  } catch (err) {
+    console.warn("[QZTray] First connect attempt failed, retrying...", err);
+    await new Promise((r) => setTimeout(r, 1500));
+    if (!window.qz.websocket.isActive()) {
+      await window.qz.websocket.connect();
+    }
+  }
+}
+
 /**
  * Check if QZ Tray is available and connected
  */
 export async function isQzConnected(): Promise<boolean> {
-  const loaded = await loadQzTray();
-  if (!loaded || !window.qz) return false;
-
   try {
-    if (window.qz.websocket.isActive()) return true;
-    await window.qz.websocket.connect();
+    await ensureQz();
     return true;
   } catch {
     return false;
@@ -74,37 +151,23 @@ export async function isQzConnected(): Promise<boolean> {
 }
 
 /**
- * Connect to QZ Tray websocket
+ * Connect to QZ Tray websocket (alias for ensureQz)
  */
 export async function connectQz(): Promise<void> {
-  const loaded = await loadQzTray();
-  if (!loaded || !window.qz) throw new Error("QZ Tray no disponible");
-
-  if (!window.qz.websocket.isActive()) {
-    // Skip certificate validation for local use (self-signed)
-    window.qz.security.setCertificatePromise(() =>
-      Promise.resolve("-----BEGIN CERTIFICATE-----\nMIIFAzCCAuugAwIBAgICEAIwDQYJKoZIhvcNAQEFBQAwgZgxCzAJBgNVBAYTAlVT\n-----END CERTIFICATE-----")
-    );
-    window.qz.security.setSignatureAlgorithm("SHA512");
-    window.qz.security.setSignaturePromise(() => (hash: string) => Promise.resolve(""));
-
-    await window.qz.websocket.connect();
-  }
+  await ensureQz();
 }
 
-/**
- * Find available printers
- */
+// ---------------------------------------------------------------------------
+// Printer discovery
+// ---------------------------------------------------------------------------
+
 export async function findPrinters(): Promise<string[]> {
-  await connectQz();
+  await ensureQz();
   return window.qz.printers.find();
 }
 
-/**
- * Find a specific printer by partial name
- */
 export async function findPrinter(name: string): Promise<string | null> {
-  await connectQz();
+  await ensureQz();
   try {
     const printer = await window.qz.printers.find(name);
     return printer || null;
@@ -112,6 +175,10 @@ export async function findPrinter(name: string): Promise<string | null> {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Receipt data type
+// ---------------------------------------------------------------------------
 
 export interface ReceiptData {
   saleNumber: string;
@@ -124,10 +191,14 @@ export interface ReceiptData {
   pickupToken?: string;
 }
 
-/**
- * Generate ESC/POS commands for a receipt + QR ticket
- */
-function buildEscPosReceipt(data: ReceiptData): string[] {
+// ---------------------------------------------------------------------------
+// ESC/POS receipt builder (58mm / 80mm thermal)
+// ---------------------------------------------------------------------------
+
+const COLS_58MM = 32;
+const COLS_80MM = 48;
+
+function buildEscPosReceipt(data: ReceiptData, cols: number = COLS_58MM): string[] {
   const cmds: string[] = [];
 
   // Initialize printer
@@ -139,23 +210,23 @@ function buildEscPosReceipt(data: ReceiptData): string[] {
   cmds.push(data.venueName + "\n");
   cmds.push("\x1B\x21\x00"); // Normal size
 
-  cmds.push("================================\n");
+  cmds.push("=".repeat(cols) + "\n");
   cmds.push(`Venta: ${data.saleNumber}\n`);
   cmds.push(`POS: ${data.posName}\n`);
   cmds.push(`${data.dateTime}\n`);
-  cmds.push("================================\n");
+  cmds.push("=".repeat(cols) + "\n");
 
   // Items — left aligned
   cmds.push("\x1B\x61\x00"); // Left align
   for (const item of data.items) {
     const line = `${item.quantity}x ${item.name}`;
     const price = `$${item.price.toLocaleString("es-CL")}`;
-    const padding = Math.max(1, 32 - line.length - price.length);
+    const padding = Math.max(1, cols - line.length - price.length);
     cmds.push(line + " ".repeat(padding) + price + "\n");
   }
 
   // Total
-  cmds.push("--------------------------------\n");
+  cmds.push("-".repeat(cols) + "\n");
   cmds.push("\x1B\x61\x02"); // Right align
   cmds.push("\x1B\x21\x10"); // Double height
   cmds.push(`TOTAL: $${data.total.toLocaleString("es-CL")}\n`);
@@ -164,12 +235,10 @@ function buildEscPosReceipt(data: ReceiptData): string[] {
 
   cmds.push(`Pago: ${data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta"}\n`);
 
-  // QR Code (if pickup token exists)
+  // QR token label (if exists)
   if (data.pickupToken) {
     cmds.push("\n");
     cmds.push("--- CANJE QR ---\n");
-    // QR Code command (using GS ( k — QZ Tray interprets these)
-    // We'll use QZ Tray's built-in QR generation instead
     cmds.push(`Token: ${data.pickupToken}\n`);
     cmds.push("\n");
   }
@@ -185,15 +254,20 @@ function buildEscPosReceipt(data: ReceiptData): string[] {
   return cmds;
 }
 
+// ---------------------------------------------------------------------------
+// Print
+// ---------------------------------------------------------------------------
+
 /**
- * Print a receipt using QZ Tray
+ * Print a receipt using QZ Tray.
+ * Supports ESC/POS native QR code rendering for thermal printers.
  */
 export async function printReceipt(
   printerName: string,
   data: ReceiptData,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await connectQz();
+    await ensureQz();
 
     const printer = await findPrinter(printerName);
     if (!printer) {
@@ -204,55 +278,50 @@ export async function printReceipt(
       encoding: "UTF-8",
     });
 
-    // Build print data — mix of raw ESC/POS and QR image
+    // Determine column width based on common thermal widths
+    const cols = printerName.toLowerCase().includes("58") ? COLS_58MM : COLS_80MM;
+
+    // Build print data
     const printData: any[] = [];
 
-    // Raw ESC/POS text commands
-    const escPosCommands = buildEscPosReceipt(data);
+    const escPosCommands = buildEscPosReceipt(data, cols);
     for (const cmd of escPosCommands) {
       printData.push({ type: "raw", format: "plain", data: cmd });
     }
 
-    // If there's a QR code, use QZ Tray's native QR rendering
+    // If there's a QR code, use ESC/POS native QR rendering
     if (data.pickupToken) {
-      // Insert QR before the cut command (remove last 2 items: footer + cut)
-      const cutCmd = printData.pop(); // cut
-      const footerCmd = printData.pop(); // footer newlines
-      const thanksCmd = printData.pop(); // thanks text
+      // Remove last items (thanks + newlines + cut) to insert QR before them
+      const cutCmd = printData.pop();
+      const footerCmd = printData.pop();
+      const thanksCmd = printData.pop();
 
-      // QR code via QZ image rendering (large, centered)
+      // QR size: 4 for 58mm, 6 for 80mm (module size in dots)
+      const qrModuleSize = cols === COLS_58MM ? 4 : 6;
+
+      // Center align
+      printData.push({ type: "raw", format: "command", data: "\x1B\x61\x01" });
+      printData.push({ type: "raw", format: "plain", data: "\n" });
+
+      // ESC/POS native QR code commands
+      const token = data.pickupToken!;
+      const storeLen = token.length + 3;
       printData.push({
         type: "raw",
         format: "command",
-        data: "\x1B\x61\x01", // center
-      });
-      printData.push({
-        type: "raw",
-        format: "plain",
-        data: "\n",
-      });
-      // Use pixel-based QR (ESC/POS native)
-      printData.push({
-        type: "raw",
-        format: "command",
-        // QR model 2, error correction M, module size 8
         data:
           "\x1D\x28\x6B\x04\x00\x31\x41\x32\x00" + // Model 2
-          "\x1D\x28\x6B\x03\x00\x31\x43\x08" + // Module size 8
+          "\x1D\x28\x6B\x03\x00\x31\x43" + String.fromCharCode(qrModuleSize) + // Module size
           "\x1D\x28\x6B\x03\x00\x31\x45\x31" + // Error correction M
           "\x1D\x28\x6B" +
-          String.fromCharCode((data.pickupToken!.length + 3) & 0xff) +
-          String.fromCharCode(((data.pickupToken!.length + 3) >> 8) & 0xff) +
+          String.fromCharCode(storeLen & 0xff) +
+          String.fromCharCode((storeLen >> 8) & 0xff) +
           "\x31\x50\x30" +
-          data.pickupToken! + // Store QR data
+          token + // Store QR data
           "\x1D\x28\x6B\x03\x00\x31\x51\x30", // Print QR
       });
 
-      printData.push({
-        type: "raw",
-        format: "plain",
-        data: "\n\n",
-      });
+      printData.push({ type: "raw", format: "plain", data: "\n\n" });
       if (thanksCmd) printData.push(thanksCmd);
       if (footerCmd) printData.push(footerCmd);
       if (cutCmd) printData.push(cutCmd);
@@ -267,9 +336,10 @@ export async function printReceipt(
   }
 }
 
-/**
- * Disconnect from QZ Tray
- */
+// ---------------------------------------------------------------------------
+// Disconnect
+// ---------------------------------------------------------------------------
+
 export async function disconnectQz(): Promise<void> {
   if (window.qz?.websocket?.isActive()) {
     await window.qz.websocket.disconnect();
