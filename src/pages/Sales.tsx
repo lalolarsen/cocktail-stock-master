@@ -584,22 +584,25 @@ export default function Sales() {
           });
       }
 
-      // Issue receipt based on config mode:
-      // - hybrid: only cash issues receipt internally
-      // - unified: both cash and card issue receipt internally
-      let receiptStatus: "issued" | "pending" | "failed" | "skipped" = "skipped";
-      if (shouldIssueInternally) {
-        // Attempt to issue receipt (non-blocking)
-        const docResult = await issueDocument(sale.id, documentType);
-        const docLabel = documentType === "boleta" ? "Boleta" : "Factura";
-        
+      // DECISIÓN: Boleta SOLO para pagos en efectivo.
+      // Card = proveedor externo (voucher POS), Stockia solo registra venta.
+      let receiptStatus: "issued" | "pending" | "failed" | "skipped" | "paid_external" = "skipped";
+      const isCashPayment = dbPaymentMethod === "cash";
+      
+      if (isCashPayment && !isFullCourtesy) {
+        // Cash: emit boleta
+        receiptStatus = "pending"; // boleta_pending
+        const docResult = await issueDocument(sale.id, "boleta");
         if (docResult.success) {
-          receiptStatus = "issued";
+          receiptStatus = "issued"; // boleta_issued
         } else {
-          receiptStatus = "failed";
-          console.warn(`${docLabel} pendiente: ${docResult.errorMessage}`);
-          toast.warning(`${docLabel} no emitida. Puede reintentar desde Documentos.`);
+          receiptStatus = "failed"; // boleta_failed
+          console.warn(`Boleta pendiente: ${docResult.errorMessage}`);
+          toast.warning("Boleta no emitida. Puede reintentar desde Documentos.");
         }
+      } else if (!isCashPayment) {
+        // Card: external POS handles receipt
+        receiptStatus = "paid_external";
       }
 
       // Generate pickup QR token

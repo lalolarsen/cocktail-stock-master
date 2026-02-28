@@ -3,6 +3,12 @@
  *
  * Uses the global `qz` object loaded via <script> in index.html.
  * Certificate + signature validation via backend functions.
+ *
+ * RULES:
+ * - connect: max 3 retries
+ * - listPrinters: 3s hard timeout, fallback to getDefault
+ * - NO infinite loops, NO setInterval for printers
+ * - All errors surface to caller
  */
 
 declare const qz: any;
@@ -41,31 +47,18 @@ let diagnostics: QZDiagnostics = {
 
 const COLS_58MM = 32;
 const COLS_80MM = 48;
+const MAX_CONNECT_RETRIES = 3;
+const LIST_PRINTERS_TIMEOUT_MS = 3000;
+
+// ── Helpers ──
 
 function updateDiagnostics(partial: Partial<QZDiagnostics>) {
-  diagnostics = {
-    ...diagnostics,
-    ...partial,
-    websocketState,
-  };
+  diagnostics = { ...diagnostics, ...partial, websocketState };
 }
 
 function setWebsocketState(state: QZConnectionStatus) {
   websocketState = state;
   updateDiagnostics({ websocketState: state });
-}
-
-function getFunctionUrl(name: string): string {
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL;
-  if (!baseUrl) throw new Error("Backend URL no configurada");
-  return `${baseUrl}/functions/v1/${name}`;
-}
-
-function qzError(message: string, cause?: unknown, payload?: string): Error {
-  const error = new Error(message);
-  (error as any).cause = cause;
-  if (payload) (error as any).payload = payload;
-  return error;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -74,22 +67,24 @@ function getErrorMessage(error: unknown): string {
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+  let tid: ReturnType<typeof setTimeout> | undefined;
+  const tp = new Promise<never>((_, reject) => {
+    tid = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
   });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  }) as Promise<T>;
+  return Promise.race([promise, tp]).finally(() => { if (tid) clearTimeout(tid); }) as Promise<T>;
 }
+
+function getFunctionUrl(name: string): string {
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!baseUrl) throw new Error("Backend URL no configurada");
+  return `${baseUrl}/functions/v1/${name}`;
+}
+
+// ── Security ──
 
 function configureSecurity() {
   if (securityConfigured) return;
-  if (typeof qz === "undefined") {
-    throw new Error("QZ no cargado");
-  }
+  if (typeof qz === "undefined") throw new Error("QZ no cargado");
 
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   if (!anonKey) throw new Error("Publishable key no configurada");
@@ -102,12 +97,10 @@ function configureSecurity() {
       method: "POST",
       headers: { apikey: anonKey },
     });
-
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`Certificate HTTP ${res.status}${body ? ` - ${body}` : ""}`);
     }
-
     return (await res.text()).trim();
   });
 
@@ -118,53 +111,51 @@ function configureSecurity() {
       lastError: null,
     });
 
-    try {
-      const res = await fetch(getFunctionUrl("qz-sign"), {
-        method: "POST",
-        headers: {
-          apikey: anonKey,
-          "Content-Type": "text/plain",
-        },
-        body: toSign,
-      });
+    const res = await fetch(getFunctionUrl("qz-sign"), {
+      method: "POST",
+      headers: { apikey: anonKey, "Content-Type": "text/plain" },
+      body: toSign,
+    });
 
-      const responseText = await res.text();
-
-      if (!res.ok) {
-        throw qzError(
-          `Failed to sign request (${res.status})${responseText ? `: ${responseText}` : ""}`,
-          undefined,
-          toSign,
-        );
-      }
-
-      const signature = responseText.trim();
-      if (!signature) {
-        throw qzError("Failed to sign request: firma vacía", undefined, toSign);
-      }
-
-      return signature;
-    } catch (error) {
-      const message = getErrorMessage(error);
-      updateDiagnostics({ lastError: message, lastPayloadToSign: toSign });
-      if (error instanceof Error && (error as any).payload) throw error;
-      throw qzError(message, error, toSign);
+    const responseText = await res.text();
+    if (!res.ok) {
+      const msg = `Firma falló (${res.status}): ${responseText}`;
+      updateDiagnostics({ lastError: msg });
+      throw new Error(msg);
     }
+
+    const signature = responseText.trim();
+    if (!signature) {
+      const msg = "Firma vacía";
+      updateDiagnostics({ lastError: msg });
+      throw new Error(msg);
+    }
+    return signature;
   });
 
   securityConfigured = true;
 }
 
+// ── Connection ──
+
 export function getQZDiagnostics(): QZDiagnostics {
   return { ...diagnostics, websocketState };
 }
 
+export function getQZConnectionStatus(): QZConnectionStatus {
+  return websocketState;
+}
+
+/**
+ * Connect to QZ Tray with retry (max 3 attempts).
+ * Configures security on first call.
+ */
 export async function initQZ(): Promise<void> {
   if (typeof qz === "undefined") {
     setWebsocketState("ERROR");
-    const message = "QZ no cargado. Verifica qz-tray.js en index.html";
-    updateDiagnostics({ lastError: message, lastAttemptAt: new Date().toISOString() });
-    throw new Error(message);
+    const msg = "QZ Tray no detectado. Instálalo desde qz.io";
+    updateDiagnostics({ lastError: msg, lastAttemptAt: new Date().toISOString() });
+    throw new Error(msg);
   }
 
   configureSecurity();
@@ -177,15 +168,25 @@ export async function initQZ(): Promise<void> {
   setWebsocketState("CONNECTING");
   updateDiagnostics({ lastAttemptAt: new Date().toISOString(), lastError: null });
 
-  try {
-    await qz.websocket.connect();
-    setWebsocketState("CONNECTED");
-  } catch (error) {
-    const message = getErrorMessage(error);
-    setWebsocketState("ERROR");
-    updateDiagnostics({ lastError: message });
-    throw new Error(message);
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+    try {
+      await qz.websocket.connect();
+      setWebsocketState("CONNECTED");
+      return;
+    } catch (error) {
+      lastErr = error instanceof Error ? error : new Error(getErrorMessage(error));
+      console.warn(`[QZ] Connect attempt ${attempt}/${MAX_CONNECT_RETRIES} failed:`, lastErr.message);
+      if (attempt < MAX_CONNECT_RETRIES) {
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
   }
+
+  setWebsocketState("ERROR");
+  const msg = lastErr?.message || "No se pudo conectar a QZ Tray";
+  updateDiagnostics({ lastError: msg });
+  throw new Error(msg);
 }
 
 export async function ensureQZConnected(): Promise<void> {
@@ -194,8 +195,8 @@ export async function ensureQZConnected(): Promise<void> {
 
 export async function isQZConnected(): Promise<boolean> {
   try {
-    await ensureQZConnected();
-    return true;
+    if (typeof qz === "undefined") return false;
+    return qz.websocket.isActive();
   } catch {
     return false;
   }
@@ -208,20 +209,58 @@ export async function disconnectQZ(): Promise<void> {
   setWebsocketState("DISCONNECTED");
 }
 
-export async function listPrinters(timeoutMs = 10000): Promise<string[]> {
-  await ensureQZConnected();
+// ── Printers ──
 
+/**
+ * Get default printer (fast, triggers permission popup).
+ */
+export async function getDefaultPrinter(): Promise<string | null> {
+  await ensureQZConnected();
+  try {
+    const printer = await withTimeout(
+      qz.printers.getDefault(),
+      LIST_PRINTERS_TIMEOUT_MS,
+      "Timeout obteniendo impresora predeterminada",
+    );
+    return (printer as string) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List all printers. 3s hard timeout. 1 attempt only.
+ * If find() fails/timeouts, falls back to getDefault().
+ */
+export async function listPrinters(timeoutMs = LIST_PRINTERS_TIMEOUT_MS): Promise<string[]> {
+  await ensureQZConnected();
   updateDiagnostics({ lastAttemptAt: new Date().toISOString(), lastError: null });
 
   try {
     const printers = await withTimeout(
       qz.printers.find(),
       timeoutMs,
-      "No se pudo listar impresoras (timeout 10s)",
+      `No se pudo listar impresoras (timeout ${timeoutMs / 1000}s)`,
     );
     return Array.isArray(printers) ? printers : [];
   } catch (error) {
     const message = getErrorMessage(error);
+    console.warn("[QZ] find() failed, trying getDefault():", message);
+
+    // Fallback: try getDefault
+    try {
+      const defaultPrinter = await withTimeout(
+        qz.printers.getDefault(),
+        LIST_PRINTERS_TIMEOUT_MS,
+        "Timeout getDefault",
+      );
+      if (defaultPrinter) {
+        return [defaultPrinter as string];
+      }
+    } catch (fallbackErr) {
+      console.warn("[QZ] getDefault() also failed:", getErrorMessage(fallbackErr));
+    }
+
     updateDiagnostics({ lastError: message });
     throw new Error(message);
   }
@@ -229,7 +268,6 @@ export async function listPrinters(timeoutMs = 10000): Promise<string[]> {
 
 export async function findPrinter(nameContains: string): Promise<string | null> {
   await ensureQZConnected();
-
   try {
     const printer = await qz.printers.find(nameContains);
     return printer || null;
@@ -237,6 +275,35 @@ export async function findPrinter(nameContains: string): Promise<string | null> 
     return null;
   }
 }
+
+/**
+ * Force handshake: getDefault() then find() to trigger Site Manager permission popup.
+ */
+export async function forceHandshake(): Promise<{ defaultPrinter: string | null; allPrinters: string[] }> {
+  await ensureQZConnected();
+
+  // Step 1: getDefault triggers permission popup
+  let defaultPrinter: string | null = null;
+  try {
+    defaultPrinter = await withTimeout(qz.printers.getDefault(), LIST_PRINTERS_TIMEOUT_MS, "Timeout getDefault");
+  } catch (err) {
+    console.warn("[QZ] getDefault in handshake:", getErrorMessage(err));
+  }
+
+  // Step 2: find() to list all
+  let allPrinters: string[] = [];
+  try {
+    const result = await withTimeout(qz.printers.find(), LIST_PRINTERS_TIMEOUT_MS, "Timeout find");
+    allPrinters = Array.isArray(result) ? result : [];
+  } catch (err) {
+    console.warn("[QZ] find in handshake:", getErrorMessage(err));
+    if (defaultPrinter) allPrinters = [defaultPrinter];
+  }
+
+  return { defaultPrinter, allPrinters };
+}
+
+// ── Printing ──
 
 export interface ReceiptData {
   saleNumber: string;
@@ -252,12 +319,12 @@ export interface ReceiptData {
 function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   const cmds: string[] = [];
 
-  cmds.push("\x1B\x40");
-  cmds.push("\x1B\x61\x01");
+  cmds.push("\x1B\x40"); // init
+  cmds.push("\x1B\x61\x01"); // center
 
-  cmds.push("\x1B\x21\x30");
+  cmds.push("\x1B\x21\x30"); // double height+width
   cmds.push(data.venueName + "\n");
-  cmds.push("\x1B\x21\x00");
+  cmds.push("\x1B\x21\x00"); // reset
 
   cmds.push("=".repeat(cols) + "\n");
   cmds.push(`Venta: ${data.saleNumber}\n`);
@@ -265,7 +332,7 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   cmds.push(`${data.dateTime}\n`);
   cmds.push("=".repeat(cols) + "\n");
 
-  cmds.push("\x1B\x61\x00");
+  cmds.push("\x1B\x61\x00"); // left
   for (const item of data.items) {
     const line = `${item.quantity}x ${item.name}`;
     const price = `$${item.price.toLocaleString("es-CL")}`;
@@ -274,11 +341,11 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   }
 
   cmds.push("-".repeat(cols) + "\n");
-  cmds.push("\x1B\x61\x02");
-  cmds.push("\x1B\x21\x10");
+  cmds.push("\x1B\x61\x02"); // right
+  cmds.push("\x1B\x21\x10"); // double width
   cmds.push(`TOTAL: $${data.total.toLocaleString("es-CL")}\n`);
-  cmds.push("\x1B\x21\x00");
-  cmds.push("\x1B\x61\x01");
+  cmds.push("\x1B\x21\x00"); // reset
+  cmds.push("\x1B\x61\x01"); // center
 
   cmds.push(`Pago: ${data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta"}\n`);
 
@@ -292,7 +359,7 @@ function buildEscPosReceipt(data: ReceiptData, cols: number): string[] {
   cmds.push("\n");
   cmds.push("Gracias por tu compra\n");
   cmds.push("\n\n\n");
-  cmds.push("\x1D\x56\x00");
+  cmds.push("\x1D\x56\x00"); // cut
 
   return cmds;
 }
@@ -336,7 +403,7 @@ export async function printRaw(
       const token = data.pickupToken;
       const storeLen = token.length + 3;
 
-      printData.push({ type: "raw", format: "command", data: "\x1B\x61\x01" });
+      printData.push({ type: "raw", format: "command", data: "\x1B\x61\x01" }); // center
       printData.push({ type: "raw", format: "plain", data: "\n" });
 
       printData.push({
