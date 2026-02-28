@@ -10,6 +10,8 @@ export {
   disconnectQZ as disconnectQz,
   listPrinters as findPrinters,
   findPrinter,
+  getDefaultPrinter,
+  forceHandshake,
   getQZDiagnostics,
   getPreferredPrinterStorageKey,
   getPreferredPaperWidthStorageKey,

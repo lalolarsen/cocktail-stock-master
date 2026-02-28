@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 import {
   ensureQZConnected,
+  forceHandshake,
   getPreferredPaperWidthStorageKey,
   getPreferredPrinterStorageKey,
   getQZDiagnostics,
@@ -61,7 +62,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
   const [guideOpen, setGuideOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState(() => getQZDiagnostics());
+  const [diagnosticsData, setDiagnosticsData] = useState(() => getQZDiagnostics());
 
   const autoSearchDoneRef = useRef(false);
 
@@ -75,9 +76,10 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
   );
 
   const refreshDiagnostics = useCallback(() => {
-    setDiagnostics(getQZDiagnostics());
+    setDiagnosticsData(getQZDiagnostics());
   }, []);
 
+  // Load saved preferences
   useEffect(() => {
     const saved =
       localStorage.getItem(printerStorageKey) ||
@@ -85,16 +87,14 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
       "";
     setSelectedPrinter(saved);
 
-    const savedPaperWidth = localStorage.getItem(paperWidthStorageKey) as PaperWidth | null;
-    if (savedPaperWidth === "58mm" || savedPaperWidth === "80mm") {
-      setPaperWidth(savedPaperWidth);
-    }
+    const savedPW = localStorage.getItem(paperWidthStorageKey) as PaperWidth | null;
+    if (savedPW === "58mm" || savedPW === "80mm") setPaperWidth(savedPW);
   }, [paperWidthStorageKey, printerStorageKey]);
 
+  // ── Connect ──
   const connectQZ = useCallback(async () => {
     setStatus("CONNECTING");
     setLastError(null);
-    refreshDiagnostics();
 
     try {
       await ensureQZConnected();
@@ -102,83 +102,99 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
       refreshDiagnostics();
       toast.success("QZ Tray conectado", { duration: 2000 });
 
+      // Auto-search once after connect
       if (!autoSearchDoneRef.current) {
         autoSearchDoneRef.current = true;
         setIsSearching(true);
         try {
-          const found = await listPrinters(10000);
+          const found = await listPrinters();
           setPrinters(found);
+          if (found.length === 0) {
+            toast.info("No se detectaron impresoras. Revisa QZ Tray → Site Manager.");
+          }
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Error desconocido";
-          console.error(error);
-          setLastError(message);
-          toast.error("No se pudo listar impresoras (ver QZ Tray y permisos)");
+          const msg = error instanceof Error ? error.message : "Error desconocido";
+          setLastError(msg);
+          toast.error(`Impresoras: ${msg}`);
         } finally {
           setIsSearching(false);
           refreshDiagnostics();
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error desconocido";
-      console.error(error);
+      const msg = error instanceof Error ? error.message : "Error desconocido";
       setStatus("ERROR");
-      setLastError(message);
+      setLastError(msg);
       refreshDiagnostics();
-      toast.error(message);
+      toast.error(msg);
     }
   }, [refreshDiagnostics]);
 
-  const searchPrinters = useCallback(
-    async (silent = false) => {
-      if (status !== "CONNECTED") {
-        if (!silent) toast.error("Conecta QZ Tray antes de buscar impresoras");
-        return;
-      }
+  // ── Search printers (manual) ──
+  const searchPrinters = useCallback(async () => {
+    if (status !== "CONNECTED") {
+      toast.error("Conecta QZ Tray antes de buscar impresoras");
+      return;
+    }
 
-      setIsSearching(true);
-      setLastError(null);
+    setIsSearching(true);
+    setLastError(null);
+
+    try {
+      const found = await listPrinters();
+      setPrinters(found);
+      if (found.length === 0) {
+        toast.info("No se detectaron impresoras");
+      } else {
+        toast.success(`${found.length} impresora(s) encontrada(s)`);
+      }
+      if (selectedPrinter && !found.includes(selectedPrinter)) {
+        setSelectedPrinter("");
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      setLastError(msg);
+      toast.error(`Impresoras: ${msg}`);
+    } finally {
+      setIsSearching(false);
       refreshDiagnostics();
+    }
+  }, [refreshDiagnostics, selectedPrinter, status]);
 
-      try {
-        const found = await listPrinters(10000);
-        setPrinters(found);
-
-        if (found.length === 0 && !silent) {
-          toast.info("No se detectaron impresoras");
-        }
-
-        if (selectedPrinter && !found.includes(selectedPrinter)) {
-          setSelectedPrinter("");
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Error desconocido";
-        console.error(error);
-        setLastError(message);
-        setStatus("ERROR");
-        toast.error("No se pudo listar impresoras (ver QZ Tray y permisos)");
-      } finally {
-        setIsSearching(false);
-        refreshDiagnostics();
-      }
-    },
-    [refreshDiagnostics, selectedPrinter, status],
-  );
-
+  // ── Force handshake (triggers Site Manager popup) ──
   const retryAuthorization = useCallback(async () => {
     if (status !== "CONNECTED") {
       toast.error("Conecta QZ Tray primero");
       return;
     }
 
-    await searchPrinters();
-  }, [searchPrinters, status]);
+    setIsSearching(true);
+    setLastError(null);
 
+    try {
+      const result = await forceHandshake();
+      setPrinters(result.allPrinters);
+      if (result.allPrinters.length > 0) {
+        toast.success(`${result.allPrinters.length} impresora(s) detectada(s)`);
+      } else {
+        toast.info("No se detectaron impresoras. Verifica QZ Tray → Site Manager.");
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      setLastError(msg);
+      toast.error(msg);
+    } finally {
+      setIsSearching(false);
+      refreshDiagnostics();
+    }
+  }, [refreshDiagnostics, status]);
+
+  // ── Save preferences ──
   const savePrinter = useCallback(() => {
     if (!selectedPrinter) {
       toast.error("Selecciona una impresora para guardar");
       return;
     }
-
     localStorage.setItem(printerStorageKey, selectedPrinter);
     localStorage.setItem(LEGACY_PRINTER_KEY, selectedPrinter);
     toast.success(`Impresora guardada: ${selectedPrinter}`);
@@ -193,6 +209,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
     [paperWidthStorageKey],
   );
 
+  // ── Test print ──
   const printTest = useCallback(async () => {
     if (!selectedPrinter) {
       toast.error("Selecciona una impresora primero");
@@ -200,7 +217,6 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
     }
 
     setIsPrinting(true);
-
     const testData: ReceiptData = {
       saleNumber: "CAJ-TEST-001",
       venueName: venueName || "STOCKIA",
@@ -220,36 +236,37 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
       if (result.success) {
         toast.success("Ticket de prueba impreso correctamente");
       } else {
-        const message = result.error || "Error desconocido";
-        setLastError(message);
-        toast.error(message);
+        setLastError(result.error || "Error desconocido");
+        toast.error(result.error || "Error de impresión");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error desconocido";
-      console.error(error);
-      setLastError(message);
-      toast.error(message);
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      setLastError(msg);
+      toast.error(msg);
     } finally {
       setIsPrinting(false);
       refreshDiagnostics();
     }
   }, [paperWidth, refreshDiagnostics, selectedPrinter, venueName]);
 
+  // ── Copy diagnostics ──
   const copyDiagnostics = useCallback(async () => {
     const content = [
       `Estado UI: ${status}`,
-      `Estado WebSocket: ${diagnostics.websocketState}`,
-      `Último intento: ${diagnostics.lastAttemptAt ?? "-"}`,
-      `Último error: ${lastError ?? diagnostics.lastError ?? "-"}`,
-      `Payload firmado: ${diagnostics.lastPayloadToSign ?? "-"}`,
+      `Estado WebSocket: ${diagnosticsData.websocketState}`,
+      `Último intento: ${diagnosticsData.lastAttemptAt ?? "-"}`,
+      `Último error: ${lastError ?? diagnosticsData.lastError ?? "-"}`,
+      `Payload firmado: ${diagnosticsData.lastPayloadToSign ?? "-"}`,
       `Storage impresora: ${printerStorageKey}`,
       `Storage ancho: ${paperWidthStorageKey}`,
+      `Impresoras detectadas: ${printers.join(", ") || "ninguna"}`,
     ].join("\n");
 
     await navigator.clipboard.writeText(content);
     toast.success("Diagnóstico copiado");
-  }, [diagnostics, lastError, paperWidthStorageKey, printerStorageKey, status]);
+  }, [diagnosticsData, lastError, paperWidthStorageKey, printerStorageKey, printers, status]);
 
+  // Auto-connect on mount
   useEffect(() => {
     void connectQZ();
   }, [connectQZ]);
@@ -285,6 +302,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t border-border/30 pt-3">
+          {/* Connection + Search buttons */}
           <div className="flex flex-wrap items-center gap-2">
             {status !== "CONNECTED" ? (
               <Button onClick={connectQZ} disabled={status === "CONNECTING"} size="sm">
@@ -298,26 +316,34 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
               </div>
             )}
 
-            <Button variant="outline" size="sm" onClick={() => searchPrinters()} disabled={status !== "CONNECTED" || isSearching}>
+            <Button variant="outline" size="sm" onClick={searchPrinters} disabled={status !== "CONNECTED" || isSearching}>
               {isSearching ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
               Buscar impresoras
             </Button>
 
             <Button variant="outline" size="sm" onClick={retryAuthorization} disabled={status !== "CONNECTED" || isSearching}>
               <ShieldCheck className="w-4 h-4 mr-1" />
-              Reintentar autorización
+              Forzar autorización
             </Button>
           </div>
 
+          {/* Error display */}
+          {lastError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <strong>Error:</strong> {lastError}
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground">
-            Si QZ Tray está conectado pero no aparecen impresoras, abre QZ Tray → Advanced → Site Manager y autoriza este dominio.
+            Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autoriza este dominio.
           </p>
 
+          {/* Printer selection + settings */}
           {status === "CONNECTED" && (
             <div className="space-y-2">
               <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Selecciona impresora" />
+                  <SelectValue placeholder={printers.length === 0 ? "Sin impresoras detectadas" : "Selecciona impresora"} />
                 </SelectTrigger>
                 <SelectContent>
                   {printers.map((printer) => (
@@ -334,7 +360,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
 
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">Ancho papel</p>
-                <Select value={paperWidth} onValueChange={(value) => savePaperWidth(value as PaperWidth)}>
+                <Select value={paperWidth} onValueChange={(v) => savePaperWidth(v as PaperWidth)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -354,12 +380,12 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
             </div>
           )}
 
+          {/* Guide + Diagnostics */}
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" size="sm" className="text-xs" onClick={() => setGuideOpen(true)}>
               <Info className="w-3 h-3 mr-1" />
-              Abrir guía de configuración
+              Guía de configuración
             </Button>
-
             <Button variant="ghost" size="sm" className="text-xs" onClick={() => setDiagnosticsOpen((prev) => !prev)}>
               {diagnosticsOpen ? "Ocultar diagnóstico" : "Mostrar diagnóstico"}
             </Button>
@@ -367,10 +393,11 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
 
           {diagnosticsOpen && (
             <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs space-y-2">
-              <p><strong>Último error:</strong> {lastError ?? diagnostics.lastError ?? "-"}</p>
-              <p><strong>Estado websocket:</strong> {diagnostics.websocketState}</p>
-              <p><strong>Último intento:</strong> {diagnostics.lastAttemptAt ?? "-"}</p>
-              <p className="break-all"><strong>Payload firmado:</strong> {diagnostics.lastPayloadToSign ?? "-"}</p>
+              <p><strong>Último error:</strong> {lastError ?? diagnosticsData.lastError ?? "-"}</p>
+              <p><strong>Estado websocket:</strong> {diagnosticsData.websocketState}</p>
+              <p><strong>Último intento:</strong> {diagnosticsData.lastAttemptAt ?? "-"}</p>
+              <p><strong>Impresoras:</strong> {printers.join(", ") || "ninguna"}</p>
+              <p className="break-all"><strong>Payload firmado:</strong> {diagnosticsData.lastPayloadToSign ?? "-"}</p>
               <Button variant="outline" size="sm" className="text-xs" onClick={copyDiagnostics}>
                 <Copy className="w-3 h-3 mr-1" />
                 Copiar diagnóstico
@@ -384,15 +411,16 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Guía de configuración QZ Tray</DialogTitle>
-            <DialogDescription>Configura impresión térmica por equipo y autoriza el dominio en Site Manager.</DialogDescription>
+            <DialogDescription>Configura impresión térmica por equipo y autoriza el dominio.</DialogDescription>
           </DialogHeader>
           <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
-            <li>Instala QZ Tray desde qz.io/download.</li>
+            <li>Instala QZ Tray desde <strong>qz.io/download</strong>.</li>
             <li>Abre STOCKIA y presiona <strong>Conectar QZ</strong>.</li>
             <li>Acepta el popup de autorización de QZ Tray.</li>
-            <li>Presiona <strong>Buscar impresoras</strong>.</li>
+            <li>Presiona <strong>Buscar impresoras</strong> o <strong>Forzar autorización</strong>.</li>
             <li>Selecciona una impresora y pulsa <strong>Guardar impresora</strong>.</li>
             <li>Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autorizar dominio.</li>
+            <li>Imprime un ticket de prueba para verificar el tamaño correcto.</li>
           </ol>
         </DialogContent>
       </Dialog>
