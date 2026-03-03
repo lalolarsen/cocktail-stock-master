@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_worker_sessions: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          is_active: boolean
+          location_id: string
+          module: string
+          started_at: string
+          updated_at: string
+          venue_id: string
+          worker_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          is_active?: boolean
+          location_id: string
+          module: string
+          started_at?: string
+          updated_at?: string
+          venue_id: string
+          worker_id: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          module?: string
+          started_at?: string
+          updated_at?: string
+          venue_id?: string
+          worker_id?: string
+        }
+        Relationships: []
+      }
       admin_audit_logs: {
         Row: {
           action: string
@@ -932,6 +971,72 @@ export type Database = {
           },
         ]
       }
+      jornada_bar_assignments: {
+        Row: {
+          bartender_1_id: string
+          bartender_2_id: string
+          created_at: string
+          created_by_admin_id: string
+          id: string
+          jornada_id: string
+          location_id: string
+        }
+        Insert: {
+          bartender_1_id: string
+          bartender_2_id: string
+          created_at?: string
+          created_by_admin_id: string
+          id?: string
+          jornada_id: string
+          location_id: string
+        }
+        Update: {
+          bartender_1_id?: string
+          bartender_2_id?: string
+          created_at?: string
+          created_by_admin_id?: string
+          id?: string
+          jornada_id?: string
+          location_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jornada_bar_assignments_bartender_1_id_fkey"
+            columns: ["bartender_1_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_bar_assignments_bartender_2_id_fkey"
+            columns: ["bartender_2_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_bar_assignments_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_bar_assignments_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jornada_bar_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jornada_cash_closings: {
         Row: {
           cash_sales_total: number
@@ -1809,6 +1914,7 @@ export type Database = {
         Row: {
           bartender_id: string
           created_at: string
+          delivered_by_worker_id: string | null
           id: string
           metadata: Json | null
           pickup_token_id: string | null
@@ -1821,6 +1927,7 @@ export type Database = {
         Insert: {
           bartender_id: string
           created_at?: string
+          delivered_by_worker_id?: string | null
           id?: string
           metadata?: Json | null
           pickup_token_id?: string | null
@@ -1833,6 +1940,7 @@ export type Database = {
         Update: {
           bartender_id?: string
           created_at?: string
+          delivered_by_worker_id?: string | null
           id?: string
           metadata?: Json | null
           pickup_token_id?: string | null
@@ -2291,6 +2399,8 @@ export type Database = {
           internal_email: string | null
           is_active: boolean | null
           notification_email: string | null
+          pin_hash: string | null
+          pin_updated_at: string | null
           point_of_sale: string | null
           rut_code: string | null
           venue_id: string | null
@@ -2303,6 +2413,8 @@ export type Database = {
           internal_email?: string | null
           is_active?: boolean | null
           notification_email?: string | null
+          pin_hash?: string | null
+          pin_updated_at?: string | null
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
@@ -2315,6 +2427,8 @@ export type Database = {
           internal_email?: string | null
           is_active?: boolean | null
           notification_email?: string | null
+          pin_hash?: string | null
+          pin_updated_at?: string | null
           point_of_sale?: string | null
           rut_code?: string | null
           venue_id?: string | null
@@ -4880,6 +4994,27 @@ export type Database = {
         Args: { p_venue_id: string }
         Returns: Json
       }
+      end_worker_session: {
+        Args: { p_session_id: string }
+        Returns: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          is_active: boolean
+          location_id: string
+          module: string
+          started_at: string
+          updated_at: string
+          venue_id: string
+          worker_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "active_worker_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
         Returns: Json
@@ -5049,19 +5184,15 @@ export type Database = {
         }
         Returns: undefined
       }
-      redeem_pickup_token:
-        | {
-            Args: { p_bartender_bar_id?: string; p_token: string }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_bartender_bar_id?: string
-              p_mixer_overrides?: Json
-              p_token: string
-            }
-            Returns: Json
-          }
+      redeem_pickup_token: {
+        Args: {
+          p_bartender_bar_id?: string
+          p_delivered_by_worker_id?: string
+          p_mixer_overrides?: Json
+          p_token: string
+        }
+        Returns: Json
+      }
       reset_demo_data: { Args: never; Returns: Json }
       reset_venue_data: {
         Args: { p_keep_user_ids?: string[]; p_venue_id: string }
@@ -5084,9 +5215,39 @@ export type Database = {
         Args: { p_enabled: boolean; p_flag_key: string; p_venue_id: string }
         Returns: undefined
       }
+      set_worker_pin: {
+        Args: { p_new_pin: string; p_worker_id: string }
+        Returns: undefined
+      }
       start_jornada_with_cash: {
         Args: { p_cash_amounts?: Json; p_jornada_id: string }
         Returns: Json
+      }
+      start_worker_session: {
+        Args: {
+          p_location_id: string
+          p_module: string
+          p_venue_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          is_active: boolean
+          location_id: string
+          module: string
+          started_at: string
+          updated_at: string
+          venue_id: string
+          worker_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "active_worker_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       transfer_stock: {
         Args: {
@@ -5118,6 +5279,13 @@ export type Database = {
           p_status: string
         }
         Returns: undefined
+      }
+      validate_bar_pin: {
+        Args: { p_jornada_id: string; p_location_id: string; p_pin: string }
+        Returns: {
+          worker_id: string
+          worker_name: string
+        }[]
       }
       validate_cocktail_cost: {
         Args: { p_cocktail_id: string }
