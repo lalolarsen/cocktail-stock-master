@@ -41,10 +41,11 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
       setLoading(true);
       setError(null);
       try {
-        // Fetch ALL products from mixer categories (case-insensitive done client-side)
+        // Fetch products from mixer categories scoped to this venue
         const { data: products, error: prodErr } = await supabase
           .from("products")
           .select("id, name, category, subcategory, unit")
+          .eq("venue_id", venueId)
           .order("name");
 
         if (prodErr) throw prodErr;
