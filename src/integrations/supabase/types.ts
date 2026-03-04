@@ -1910,6 +1910,157 @@ export type Database = {
           },
         ]
       }
+      passline_audit_items: {
+        Row: {
+          cocktail_id: string | null
+          created_at: string
+          id: string
+          income_applied: boolean
+          product_name: string
+          quantity: number
+          session_id: string
+          stock_applied: boolean
+          total_amount: number
+          unit_price: number
+          venue_id: string
+        }
+        Insert: {
+          cocktail_id?: string | null
+          created_at?: string
+          id?: string
+          income_applied?: boolean
+          product_name: string
+          quantity?: number
+          session_id: string
+          stock_applied?: boolean
+          total_amount?: number
+          unit_price?: number
+          venue_id: string
+        }
+        Update: {
+          cocktail_id?: string | null
+          created_at?: string
+          id?: string
+          income_applied?: boolean
+          product_name?: string
+          quantity?: number
+          session_id?: string
+          stock_applied?: boolean
+          total_amount?: number
+          unit_price?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "passline_audit_items_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "passline_audit_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "passline_audit_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "passline_audit_items_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      passline_audit_sessions: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          jornada_id: string | null
+          notes: string | null
+          payment_amex: number
+          payment_debito: number
+          payment_diners: number
+          payment_mastercard: number
+          payment_otras: number
+          payment_visa: number
+          period_end: string | null
+          period_start: string | null
+          report_number: string
+          session_date: string
+          status: string
+          total_amount: number
+          total_txns: number
+          totem_number: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          jornada_id?: string | null
+          notes?: string | null
+          payment_amex?: number
+          payment_debito?: number
+          payment_diners?: number
+          payment_mastercard?: number
+          payment_otras?: number
+          payment_visa?: number
+          period_end?: string | null
+          period_start?: string | null
+          report_number: string
+          session_date?: string
+          status?: string
+          total_amount?: number
+          total_txns?: number
+          totem_number: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          jornada_id?: string | null
+          notes?: string | null
+          payment_amex?: number
+          payment_debito?: number
+          payment_diners?: number
+          payment_mastercard?: number
+          payment_otras?: number
+          payment_visa?: number
+          period_end?: string | null
+          period_start?: string | null
+          report_number?: string
+          session_date?: string
+          status?: string
+          total_amount?: number
+          total_txns?: number
+          totem_number?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "passline_audit_sessions_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "passline_audit_sessions_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickup_redemptions_log: {
         Row: {
           bartender_id: string
