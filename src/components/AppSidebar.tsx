@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit";
 
 interface AppSidebarProps {
   activeView: ViewType;
