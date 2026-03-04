@@ -5142,6 +5142,13 @@ export type Database = {
       }
       is_feature_enabled: { Args: { flag_key: string }; Returns: boolean }
       is_product_sellable: { Args: { p_product_id: string }; Returns: boolean }
+      list_bar_workers: {
+        Args: { p_venue_id: string }
+        Returns: {
+          role: Database["public"]["Enums"]["app_role"]
+          worker_id: string
+        }[]
+      }
       log_admin_action: {
         Args: {
           p_action: string
