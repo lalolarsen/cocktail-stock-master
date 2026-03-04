@@ -7,9 +7,13 @@ const corsHeaders = {
 
 function pemToArrayBuffer(pem: string): ArrayBuffer {
   const pemBody = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\s/g, "");
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\\n/g, "")
+    .replace(/\n/g, "")
+    .replace(/\r/g, "")
+    .replace(/\s/g, "")
+    .trim();
   const binaryStr = atob(pemBody);
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) {
@@ -32,8 +36,8 @@ serve(async (req) => {
     const res = await fetch(`${supabaseUrl}/rest/v1/rpc/get_qz_secret`, {
       method: "POST",
       headers: {
-        "apikey": serviceKey,
-        "Authorization": `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ secret_name: "QZ_PRIVATE_KEY" }),
@@ -42,7 +46,8 @@ serve(async (req) => {
     const pemKey = pemRaw.replace(/^"|"$/g, "");
     if (!pemKey || pemKey.includes("error")) {
       return new Response("QZ_PRIVATE_KEY not found", {
-        status: 500, headers: corsHeaders,
+        status: 500,
+        headers: corsHeaders,
       });
     }
     const privateKey = await crypto.subtle.importKey(
@@ -52,11 +57,7 @@ serve(async (req) => {
       false,
       ["sign"],
     );
-    const signature = await crypto.subtle.sign(
-      "RSASSA-PKCS1-v1_5",
-      privateKey,
-      new TextEncoder().encode(payload),
-    );
+    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(payload));
     const bytes = new Uint8Array(signature);
     let binary = "";
     for (const b of bytes) binary += String.fromCharCode(b);
@@ -66,7 +67,8 @@ serve(async (req) => {
     });
   } catch (err) {
     return new Response(err.message || "Signing failed", {
-      status: 500, headers: corsHeaders,
+      status: 500,
+      headers: corsHeaders,
     });
   }
 });
