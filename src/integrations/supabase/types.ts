@@ -5145,8 +5145,9 @@ export type Database = {
       list_bar_workers: {
         Args: { p_venue_id: string }
         Returns: {
-          role: Database["public"]["Enums"]["app_role"]
-          worker_id: string
+          full_name: string
+          id: string
+          role: string
         }[]
       }
       log_admin_action: {
