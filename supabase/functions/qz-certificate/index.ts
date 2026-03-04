@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,16 +12,34 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const cert = Deno.env.get("QZ_CERTIFICATE");
-  if (!cert) {
+  try {
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data, error } = await supabaseAdmin
+      .from("vault.decrypted_secrets")
+      .select("decrypted_secret")
+      .eq("name", "QZ_CERTIFICATE")
+      .single();
+
+    if (error || !data?.decrypted_secret) {
+      return new Response(
+        JSON.stringify({ error: "QZ_CERTIFICATE not configured in Vault" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(data.decrypted_secret, {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "text/plain" },
+    });
+  } catch (err) {
+    console.error("[qz-certificate] Error:", err);
     return new Response(
-      JSON.stringify({ error: "QZ_CERTIFICATE not configured" }),
+      JSON.stringify({ error: err.message || "Failed to read certificate" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
-
-  return new Response(cert, {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "text/plain" },
-  });
 });

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,13 +39,25 @@ serve(async (req) => {
       });
     }
 
-    const pemKey = Deno.env.get("QZ_PRIVATE_KEY");
-    if (!pemKey) {
-      return new Response("QZ_PRIVATE_KEY not configured", {
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data, error } = await supabaseAdmin
+      .from("vault.decrypted_secrets")
+      .select("decrypted_secret")
+      .eq("name", "QZ_PRIVATE_KEY")
+      .single();
+
+    if (error || !data?.decrypted_secret) {
+      return new Response("QZ_PRIVATE_KEY not configured in Vault", {
         status: 500,
         headers: corsHeaders,
       });
     }
+
+    const pemKey = data.decrypted_secret;
 
     // Import key with SHA-256 (matching QZ Tray default)
     const privateKey = await crypto.subtle.importKey(
