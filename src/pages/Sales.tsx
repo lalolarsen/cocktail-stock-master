@@ -880,6 +880,7 @@ export default function Sales() {
           barLocationId={lastSaleData.barLocationId}
           barName={lastSaleData.barName}
           sellerId={lastSaleData.sellerId}
+          venueId={venue?.id}
           pickupToken={lastSaleData.pickupData?.token}
           pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
           onComplete={handleNewSale}
