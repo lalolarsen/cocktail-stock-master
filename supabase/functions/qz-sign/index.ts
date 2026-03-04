@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 function pemToArrayBuffer(pem: string): ArrayBuffer {
   const pemBody = pem
     .replace(/-----BEGIN PRIVATE KEY-----/, "")
@@ -13,11 +18,6 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -27,9 +27,21 @@ serve(async (req) => {
     if (!payload) {
       return new Response("Missing payload", { status: 400, headers: corsHeaders });
     }
-    const pemKey = Deno.env.get("QZ_PRIVATE_KEY");
-    if (!pemKey) {
-      return new Response("QZ_PRIVATE_KEY not configured", {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/get_qz_secret`, {
+      method: "POST",
+      headers: {
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ secret_name: "QZ_PRIVATE_KEY" }),
+    });
+    const pemRaw = await res.text();
+    const pemKey = pemRaw.replace(/^"|"$/g, "");
+    if (!pemKey || pemKey.includes("error")) {
+      return new Response("QZ_PRIVATE_KEY not found", {
         status: 500, headers: corsHeaders,
       });
     }

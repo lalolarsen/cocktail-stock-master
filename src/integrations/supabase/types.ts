@@ -5244,6 +5244,7 @@ export type Database = {
         }[]
       }
       get_open_jornada: { Args: never; Returns: Json }
+      get_qz_secret: { Args: { secret_name: string }; Returns: string }
       get_sidebar_config: {
         Args: { p_role: string; p_venue_id: string }
         Returns: Json
