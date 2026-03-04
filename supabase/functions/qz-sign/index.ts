@@ -50,6 +50,15 @@ serve(async (req) => {
         headers: corsHeaders,
       });
     }
+    const first50 = pemKey.substring(0, 50);
+    const lastChars = pemKey.substring(pemKey.length - 30);
+    const hasCarriageReturn = pemKey.includes('\r');
+    const hasLiteralBackslashN = pemKey.includes('\\n');
+    console.log("[qz-sign] PEM first50:", JSON.stringify(first50));
+    console.log("[qz-sign] PEM last30:", JSON.stringify(lastChars));
+    console.log("[qz-sign] hasCarriageReturn:", hasCarriageReturn);
+    console.log("[qz-sign] hasLiteralBackslashN:", hasLiteralBackslashN);
+    console.log("[qz-sign] total length:", pemKey.length);
     const privateKey = await crypto.subtle.importKey(
       "pkcs8",
       pemToArrayBuffer(pemKey),
