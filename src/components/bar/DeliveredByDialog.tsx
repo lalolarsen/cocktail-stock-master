@@ -1,68 +1,48 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import * as React from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { UserCheck } from "lucide-react";
 import type { BarWorker } from "./BartenderSetupDialog";
 
-interface DeliveredByDialogProps {
+type Props = {
   open: boolean;
   bartenders: BarWorker[];
   onConfirm: (workerId: string) => void;
   onCancel: () => void;
-}
+};
 
-export function DeliveredByDialog({ open, bartenders, onConfirm, onCancel }: DeliveredByDialogProps) {
-  const [selectedId, setSelectedId] = useState<string>("");
+export function DeliveredByDialog({ open, bartenders, onConfirm, onCancel }: Props) {
+  const [selectedId, setSelectedId] = React.useState("");
 
-  const handleConfirm = () => {
-    if (!selectedId) return;
-    onConfirm(selectedId);
-    setSelectedId("");
-  };
+  React.useEffect(() => {
+    if (!open) setSelectedId("");
+  }, [open]);
 
-  const handleCancel = () => {
-    setSelectedId("");
-    onCancel();
-  };
+  const canConfirm = !!selectedId;
 
   return (
-    <Dialog open={open}>
-      <DialogContent className="max-w-xs" onPointerDownOutside={e => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel(); }}>
+      <DialogContent onPointerDownOutside={e => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserCheck className="w-5 h-5" />
-            ¿Quién entrega?
-          </DialogTitle>
-          <DialogDescription>
-            Selecciona el bartender que entrega este pedido
-          </DialogDescription>
+          <DialogTitle>¿Quién entrega?</DialogTitle>
+          <DialogDescription>Selecciona el bartender responsable de esta entrega</DialogDescription>
         </DialogHeader>
 
-        <RadioGroup value={selectedId} onValueChange={setSelectedId} className="space-y-2 pt-2">
-          {bartenders.map(b => (
-            <label
-              key={b.id}
-              className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors
-                ${selectedId === b.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
-            >
-              <RadioGroupItem value={b.id} id={`bt-${b.id}`} />
-              <Label htmlFor={`bt-${b.id}`} className="text-sm font-medium cursor-pointer flex-1">
-                {b.full_name || "Sin nombre"}
-              </Label>
+        <RadioGroup value={selectedId} onValueChange={setSelectedId} className="space-y-2">
+          {bartenders.map((b) => (
+            <label key={b.id} className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50">
+              <RadioGroupItem value={b.id} />
+              <span className="text-sm font-medium">{b.full_name || "Sin nombre"}</span>
             </label>
           ))}
         </RadioGroup>
 
-        <div className="flex gap-2 pt-2">
-          <Button variant="outline" className="flex-1 h-11" onClick={handleCancel}>
-            Cancelar
-          </Button>
-          <Button className="flex-1 h-11" disabled={!selectedId} onClick={handleConfirm}>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onCancel}>Cancelar</Button>
+          <Button type="button" onClick={() => onConfirm(selectedId)} disabled={!canConfirm}>
             Confirmar
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
