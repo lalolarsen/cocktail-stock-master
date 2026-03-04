@@ -35,6 +35,7 @@ interface HybridPostSaleWizardProps {
   barLocationId: string;
   barName: string;
   sellerId: string;
+  venueId?: string;
   pickupToken?: string;
   pickupExpiresAt?: string;
   onComplete: () => void;
@@ -48,6 +49,7 @@ export function HybridPostSaleWizard({
   barLocationId,
   barName,
   sellerId,
+  venueId = "",
   pickupToken,
   pickupExpiresAt,
   onComplete,
@@ -166,6 +168,8 @@ export function HybridPostSaleWizard({
     return (
       <MixerSelectionDialog
         mixerSlots={mixerSlots}
+        locationId={barLocationId}
+        venueId={venueId}
         onConfirm={handleMixerConfirm}
         onCancel={handleMixerCancel}
         isLoading={isRedeeming}
