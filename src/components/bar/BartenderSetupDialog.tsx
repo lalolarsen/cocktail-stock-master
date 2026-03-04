@@ -1,105 +1,83 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import * as React from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, AlertCircle } from "lucide-react";
 
-export interface BarWorker {
-  id: string;
-  full_name: string;
-}
+export type BarWorker = { id: string; full_name: string | null };
 
-interface BartenderSetupDialogProps {
+type Props = {
   open: boolean;
   workers: BarWorker[];
   loading: boolean;
+  maxBartenders?: number;
   onConfirm: (selected: BarWorker[]) => void;
-}
+};
 
-const MAX_BARTENDERS = 3;
-
-export function BartenderSetupDialog({ open, workers, loading, onConfirm }: BartenderSetupDialogProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+export function BartenderSetupDialog({ open, workers, loading, maxBartenders = 3, onConfirm }: Props) {
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
   const toggle = (id: string) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        if (next.size >= MAX_BARTENDERS) return prev;
+      if (next.has(id)) next.delete(id);
+      else {
+        if (next.size >= maxBartenders) return prev;
         next.add(id);
       }
       return next;
     });
   };
 
-  const handleConfirm = () => {
-    const chosen = workers.filter(w => selected.has(w.id));
-    if (chosen.length === 0) return;
-    onConfirm(chosen);
-  };
+  const chosen = React.useMemo(() => workers.filter(w => selected.has(w.id)), [workers, selected]);
+  const canConfirm = chosen.length >= 1 && chosen.length <= maxBartenders && !loading;
 
   return (
     <Dialog open={open}>
-      <DialogContent className="max-w-sm" onPointerDownOutside={e => e.preventDefault()}>
+      <DialogContent onPointerDownOutside={e => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Iniciar Turno Barra
-          </DialogTitle>
+          <DialogTitle>Iniciar Turno Barra</DialogTitle>
           <DialogDescription>
-            Selecciona los bartenders activos (1 a {MAX_BARTENDERS})
+            Selecciona los bartenders activos (1 a {maxBartenders})
           </DialogDescription>
         </DialogHeader>
 
         {loading ? (
-          <div className="py-8 text-center text-muted-foreground text-sm">Cargando trabajadores…</div>
+          <div className="text-sm text-muted-foreground">Cargando trabajadores…</div>
         ) : workers.length === 0 ? (
-          <div className="py-8 text-center space-y-2">
-            <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
-            <p className="text-sm text-muted-foreground">No hay trabajadores con rol de barra disponibles.</p>
-          </div>
+          <div className="text-sm text-destructive">No hay trabajadores de barra disponibles.</div>
         ) : (
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {workers.map(w => {
-                const checked = selected.has(w.id);
-                const disabled = !checked && selected.size >= MAX_BARTENDERS;
-                return (
-                  <label
-                    key={w.id}
-                    className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors
-                      ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}
-                      ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <Checkbox
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={() => toggle(w.id)}
-                    />
-                    <span className="text-sm font-medium">{w.full_name || "Sin nombre"}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            {selected.size >= MAX_BARTENDERS && (
-              <p className="text-xs text-amber-500 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                Máximo {MAX_BARTENDERS} bartenders
-              </p>
+          <div className="space-y-2">
+            {workers.map((w) => {
+              const checked = selected.has(w.id);
+              const disabled = !checked && selected.size >= maxBartenders;
+              return (
+                <label
+                  key={w.id}
+                  className={`flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors
+                    ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}
+                    ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                  onClick={(e) => { e.preventDefault(); if (!disabled) toggle(w.id); }}
+                >
+                  <Checkbox checked={checked} disabled={disabled} />
+                  <span className="text-sm font-medium">{w.full_name || "Sin nombre"}</span>
+                </label>
+              );
+            })}
+            {selected.size >= maxBartenders && (
+              <div className="text-xs text-amber-500">Máximo {maxBartenders} bartenders</div>
             )}
-
-            <Button
-              className="w-full h-12 text-base"
-              disabled={selected.size === 0}
-              onClick={handleConfirm}
-            >
-              Comenzar ({selected.size} seleccionado{selected.size !== 1 ? "s" : ""})
-            </Button>
           </div>
         )}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={() => onConfirm(chosen)}
+            disabled={!canConfirm}
+          >
+            Comenzar ({chosen.length} seleccionado{chosen.length !== 1 ? "s" : ""})
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

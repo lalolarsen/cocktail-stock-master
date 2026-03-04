@@ -50,6 +50,7 @@ type ScanHistoryEntry = {
 type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection" | "delivered_by_selection";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+const MAX_BARTENDERS = 3;
 const MAX_HISTORY_ENTRIES = 20;
 const DEDUPE_WINDOW_MS = 5000;
 const AUTO_RESET_MS = 2500;
@@ -852,32 +853,18 @@ export default function Bar() {
 
         {/* ── Bartender setup dialog ── */}
         <BartenderSetupDialog
-          open={showBartenderSetup && activeBartenders.length === 0}
+          open={showBartenderSetup}
           workers={barWorkers}
           loading={barWorkersLoading}
+          maxBartenders={MAX_BARTENDERS}
           onConfirm={(selected) => {
             setActiveBartenders(selected);
             setShowBartenderSetup(false);
             if (selected.length === 1) setDeliveredByWorkerId(selected[0].id);
+            else setDeliveredByWorkerId(null);
             focusInput();
           }}
         />
-
-        {/* ── Re-select bartenders (change) ── */}
-        {showBartenderSetup && activeBartenders.length > 0 && (
-          <BartenderSetupDialog
-            open={true}
-            workers={barWorkers}
-            loading={barWorkersLoading}
-            onConfirm={(selected) => {
-              setActiveBartenders(selected);
-              setShowBartenderSetup(false);
-              if (selected.length === 1) setDeliveredByWorkerId(selected[0].id);
-              else setDeliveredByWorkerId(null);
-              focusInput();
-            }}
-          />
-        )}
 
         {/* ── Delivered-by dialog ── */}
         <DeliveredByDialog
