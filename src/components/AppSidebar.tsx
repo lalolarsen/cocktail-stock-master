@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -70,6 +70,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
+      { title: "Totems Passline", value: "passline-audit", icon: Monitor },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },
