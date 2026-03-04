@@ -14,6 +14,12 @@ import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
 import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
@@ -155,6 +161,7 @@ export default function Sales() {
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [historialOpen, setHistorialOpen] = useState(false);
   
   // Multi-POS selection (bar is determined at redemption, not sale)
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
@@ -1034,10 +1041,10 @@ export default function Sales() {
           )}
         </div>
 
-        {/* Main content — fills remaining height */}
-        <div className="flex-1 min-h-0 flex">
-          {/* Product Grid — 70% */}
-          <div className="flex-[7] min-w-0 p-3">
+        {/* Main content — fills remaining height, 2 columns */}
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          {/* LEFT: Product Grid — flexible */}
+          <div className="flex-1 min-w-0 p-3 overflow-hidden">
             <div className="h-full rounded-lg border border-border/30 bg-card p-3">
               <CategoryProductGrid
                 cocktails={cocktails}
@@ -1047,17 +1054,18 @@ export default function Sales() {
             </div>
           </div>
 
-          {/* Cart Panel — 30% */}
-          <div className="flex-[3] min-w-0 p-3 pl-0 flex flex-col gap-3">
-            {/* Cart */}
-            <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-3">
+          {/* RIGHT: Caja Panel — 340px fixed */}
+          <div className="w-[340px] shrink-0 p-3 pl-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 flex flex-col overflow-hidden">
+              {/* CARRITO header */}
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30 shrink-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold">Carrito</h2>
+                  <ShoppingCart className="w-3.5 h-3.5 text-muted-foreground" />
+                  <h2 className="text-xs font-bold tracking-wide">Carrito</h2>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-xs gap-1"
+                    className="h-6 text-[10px] gap-1 px-2"
                     onClick={() => setShowCourtesyRedeem(true)}
                     disabled={!hasActiveJornada}
                   >
@@ -1067,91 +1075,59 @@ export default function Sales() {
                 </div>
                 <div className="flex items-center gap-1">
                   {lastRemovedItem && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-primary"
-                      onClick={undoLastRemove}
-                      title="Deshacer"
-                    >
-                      <Undo2 className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-primary" onClick={undoLastRemove} title="Deshacer">
+                      <Undo2 className="w-3.5 h-3.5" />
                     </Button>
                   )}
                   {cart.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setShowClearConfirm(true)}
-                    >
-                      <Trash2 className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => setShowClearConfirm(true)}>
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   )}
                 </div>
               </div>
 
+              {/* CARRITO items — flex-1 with scroll */}
+              <div className="flex-1 min-h-0">
                 {!cartHydrated ? (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-3">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Cargando carrito…</span>
+                  <div className="flex h-full items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Cargando carrito…</span>
                   </div>
                 ) : cart.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                    <span>Carrito vacío</span>
+                  <div className="flex h-full flex-col items-center justify-center text-muted-foreground gap-2">
+                    <ShoppingCart className="w-7 h-7" strokeWidth={1} />
+                    <span className="text-xs">Selecciona productos</span>
                     {lastRemovedItem && (
-                      <Button variant="outline" size="sm" onClick={undoLastRemove}>
-                        <Undo2 className="w-4 h-4 mr-1" /> Deshacer
+                      <Button variant="outline" size="sm" className="text-xs" onClick={undoLastRemove}>
+                        <Undo2 className="w-3.5 h-3.5 mr-1" /> Deshacer
                       </Button>
                     )}
                   </div>
                 ) : (
-                  <>
-                    <ScrollArea className="flex-1 min-h-0" ref={cartScrollRef}>
-                      <div className="space-y-2 pr-2">
-                        {cart.map((item) => {
-                          const itemAddonsTotal = item.addons.reduce((a, addon) => a + addon.price, 0);
-                          const itemTotal = (item.cocktail.price + itemAddonsTotal) * item.quantity;
-                          
-                          return (
-                            <div
-                              key={`${item.cocktail.id}-${item.isCourtesy ? 'c' : 'r'}`}
-                              className={`p-3 rounded-lg space-y-2 ${item.isCourtesy ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <p className="font-medium truncate">{item.cocktail.name}</p>
-                                    {item.isCourtesy && (
-                                      <span className="text-[10px] font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded">CORTESÍA</span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">
-                                    {item.isCourtesy ? "$0 (cortesía)" : formatCLP(itemTotal)}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-11 w-11 min-w-[44px] min-h-[44px]"
-                                    onClick={() => decreaseQuantity(item.cocktail.id)}
-                                  >
-                                    <Minus className="w-5 h-5" />
-                                  </Button>
-                                  <span className="w-8 text-center font-bold text-lg">{item.quantity}</span>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-11 w-11 min-w-[44px] min-h-[44px]"
-                                    onClick={() => increaseQuantity(item.cocktail.id)}
-                                  >
-                                    <Plus className="w-5 h-5" />
-                                  </Button>
-                                </div>
+                  <ScrollArea className="h-full" ref={cartScrollRef}>
+                    <div className="py-1">
+                      {cart.map((item) => {
+                        const itemAddonsTotal = item.addons.reduce((a, addon) => a + addon.price, 0);
+                        const itemTotal = (item.cocktail.price + itemAddonsTotal) * item.quantity;
+
+                        return (
+                          <div
+                            key={`${item.cocktail.id}-${item.isCourtesy ? 'c' : 'r'}`}
+                            className={`flex items-center gap-2 border-b border-border/30 px-3 py-2 ${item.isCourtesy ? 'bg-primary/10' : ''}`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1">
+                                <p className="truncate text-[11px] font-semibold">{item.cocktail.name}</p>
+                                {item.isCourtesy && (
+                                  <span className="text-[9px] font-semibold bg-primary/20 text-primary px-1 py-0.5 rounded">CORTESÍA</span>
+                                )}
                               </div>
-                              
-                              {/* Add-ons section */}
-                              <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-[10px] text-muted-foreground">
+                                {item.isCourtesy ? "$0" : formatCLP(itemTotal)}
+                              </p>
+                              {/* Add-ons */}
+                              <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                 {venue?.id && (
                                   <AddonSelector
                                     cocktailId={item.cocktail.id}
@@ -1160,181 +1136,168 @@ export default function Sales() {
                                     onAddonsChange={(addons) => updateCartItemAddons(item.cocktail.id, addons)}
                                   />
                                 )}
-                                {/* Show selected addons as removable badges */}
                                 {item.addons.map(addon => (
                                   <span
                                     key={addon.id}
-                                    className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full cursor-pointer hover:bg-destructive/20 hover:text-destructive"
-                                    onClick={() => updateCartItemAddons(
-                                      item.cocktail.id,
-                                      item.addons.filter(a => a.id !== addon.id)
-                                    )}
+                                    className="inline-flex items-center gap-0.5 text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full cursor-pointer hover:bg-destructive/20 hover:text-destructive"
+                                    onClick={() => updateCartItemAddons(item.cocktail.id, item.addons.filter(a => a.id !== addon.id))}
                                   >
                                     {addon.name}
                                     {addon.price > 0 && ` +${formatCLP(addon.price)}`}
-                                    <X className="w-3 h-3" />
+                                    <X className="w-2.5 h-2.5" />
                                   </span>
                                 ))}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-
-                    <div className="mt-4 space-y-3 border-t pt-4">
-                      {/* Payment method: Card (external POS) or Cash */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("cash")}
-                          className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                            paymentMethod === "cash"
-                              ? "border-primary bg-primary/10 text-primary font-semibold"
-                              : "border-muted hover:border-primary/50"
-                          }`}
-                        >
-                          <Banknote className="w-5 h-5" />
-                          <span>Efectivo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("card")}
-                          className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                            paymentMethod === "card"
-                              ? "border-primary bg-primary/10 text-primary font-semibold"
-                              : "border-muted hover:border-primary/50"
-                          }`}
-                        >
-                          <CreditCard className="w-5 h-5" />
-                          <span>Tarjeta</span>
-                        </button>
-                      </div>
-                      
-                      {/* Document type selector - show for cash, or card in unified mode */}
-                      {(paymentMethod === "cash" || receiptMode === "unified") && (
-                        <Select
-                          value={documentType}
-                          onValueChange={(value: DocumentType) => setDocumentType(value)}
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="boleta">Boleta</SelectItem>
-                            <SelectItem value="factura">Factura</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                      
-                      {/* Info text for card payments in hybrid mode */}
-                      {paymentMethod === "card" && receiptMode === "hybrid" && (
-                        <p className="text-xs text-muted-foreground text-center">
-                          El comprobante se emite desde el POS externo
-                        </p>
-                      )}
-
-                      {/* Total */}
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg font-semibold">Total:</span>
-                        <span className="text-3xl font-bold text-primary">
-                          {formatCLP(calculateTotal())}
-                        </span>
-                      </div>
-
-                      {/* Cobrar Button */}
-                      <Button
-                        onClick={processSale}
-                        disabled={loading || !hasActiveJornada}
-                        className="w-full text-lg py-6"
-                        size="lg"
-                      >
-                        {loading ? (
-                          <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            {issuingDocument ? "Procesando..." : "Procesando..."}
-                          </>
-                        ) : (
-                          "Cobrar"
-                        )}
-                      </Button>
+                            <div className="flex items-center gap-1 rounded bg-muted px-1 py-0.5 shrink-0">
+                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="min-w-[18px] text-center text-xs font-bold">{item.quantity}</span>
+                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </>
+                  </ScrollArea>
                 )}
               </div>
 
-              {/* Printing Panel */}
-              <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
-
-              {/* Recent Sales (minimal) */}
-              {recentSales.length > 0 && (
-                <div className="rounded-lg border border-border/30 bg-card/80 p-3 shrink-0">
-                  <h3 className="text-xs font-semibold text-muted-foreground mb-2">Recientes</h3>
-                  <div className="space-y-1">
-                    {recentSales.slice(0, 5).map((sale) => {
-                      const doc = sale.sales_documents?.[0];
-                      const isExternal = sale.receipt_source === "external";
-                      const receiptStatus = isExternal
-                        ? "external"
-                        : doc?.status || "pending";
-                      const pickupToken = sale.pickup_tokens?.[0];
-                      const tokenStatus = pickupToken?.status;
-
-                      return (
-                        <div
-                          key={sale.id}
-                          className="flex items-center justify-between text-sm py-1"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium text-xs">{sale.sale_number}</span>
-                            {receiptStatus === "external" && (
-                              <span className="text-xs text-muted-foreground" title="Comprobante externo">
-                                <CreditCard className="w-3 h-3" />
-                              </span>
-                            )}
-                            {receiptStatus === "issued" && (
-                              <span className="text-xs text-green-600" title="Boleta emitida">
-                                <FileCheck className="w-3 h-3" />
-                              </span>
-                            )}
-                            {receiptStatus === "pending" && (
-                              <span className="text-xs text-yellow-600" title="Boleta pendiente">
-                                <Clock className="w-3 h-3" />
-                              </span>
-                            )}
-                            {receiptStatus === "failed" && (
-                              <span className="text-xs text-destructive" title="Boleta fallida">
-                                <AlertCircle className="w-3 h-3" />
-                              </span>
-                            )}
-                            <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                              <Clock className="w-3 h-3" />
-                              {formatTime(sale.created_at)}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 gap-1"
-                            onClick={() => viewSaleQR(sale)}
-                            title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
-                          >
-                            <QrCode className="w-3.5 h-3.5" />
-                            <span className="text-[10px]">
-                              {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
-                            </span>
-                            {tokenStatus === 'redeemed' && (
-                              <Check className="w-3 h-3 text-green-600" />
-                            )}
-                          </Button>
-                        </div>
-                      );
-                    })}
+              {/* PAGO — shrink-0, always visible */}
+              {cart.length > 0 && (
+                <div className="shrink-0 border-t border-border px-3 py-3 space-y-2.5">
+                  {/* Payment method */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("cash")}
+                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "cash" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                      }`}
+                    >
+                      <Banknote className="w-3.5 h-3.5" /> Efectivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("card")}
+                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "card" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                      }`}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" /> Tarjeta
+                    </button>
                   </div>
+
+                  {/* Document type */}
+                  {(paymentMethod === "cash" || receiptMode === "unified") && (
+                    <Select value={documentType} onValueChange={(value: DocumentType) => setDocumentType(value)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="boleta">Boleta</SelectItem>
+                        <SelectItem value="factura">Factura</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {paymentMethod === "card" && receiptMode === "hybrid" && (
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      El comprobante se emite desde el POS externo
+                    </p>
+                  )}
+
+                  {/* Total */}
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
+                    <span className="text-xl font-bold text-primary tabular-nums">
+                      {formatCLP(calculateTotal())}
+                    </span>
+                  </div>
+
+                  {/* Cobrar */}
+                  <Button
+                    onClick={processSale}
+                    disabled={loading || !hasActiveJornada}
+                    className="w-full h-11 text-sm font-bold tracking-widest uppercase"
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      "Cobrar"
+                    )}
+                  </Button>
                 </div>
+              )}
+
+              {/* Printing Panel */}
+              <div className="shrink-0">
+                <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
+              </div>
+
+              {/* HISTORIAL COLAPSABLE — shrink-0, at bottom */}
+              {recentSales.length > 0 && (
+                <Collapsible open={historialOpen} onOpenChange={setHistorialOpen} className="shrink-0 border-t border-border/30">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground">
+                      <span>Recientes</span>
+                      <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px]">
+                        {recentSales.length}
+                      </span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${historialOpen ? "rotate-180" : ""}`} />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <ScrollArea className="max-h-[200px]">
+                      {recentSales.slice(0, 5).map((sale) => {
+                        const doc = sale.sales_documents?.[0];
+                        const isExternal = sale.receipt_source === "external";
+                        const receiptStatus = isExternal ? "external" : doc?.status || "pending";
+                        const pickupToken = sale.pickup_tokens?.[0];
+                        const tokenStatus = pickupToken?.status;
+
+                        return (
+                          <div key={sale.id} className="flex items-center justify-between border-t border-border/30 px-3 py-1.5">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] font-semibold text-muted-foreground">{sale.sale_number}</span>
+                                {receiptStatus === "external" && <CreditCard className="w-2.5 h-2.5 text-muted-foreground" />}
+                                {receiptStatus === "issued" && <FileCheck className="w-2.5 h-2.5 text-green-600" />}
+                                {receiptStatus === "pending" && <Clock className="w-2.5 h-2.5 text-yellow-600" />}
+                                {receiptStatus === "failed" && <AlertCircle className="w-2.5 h-2.5 text-destructive" />}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground/60">{formatTime(sale.created_at)}</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-1.5 gap-1"
+                              onClick={() => viewSaleQR(sale)}
+                              title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
+                            >
+                              <QrCode className="w-3 h-3" />
+                              <span className="text-[9px]">
+                                {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
+                              </span>
+                              {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </ScrollArea>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </div>
           </div>
+        </div>
         </div>
 
         {/* Clear Cart Confirmation */}
