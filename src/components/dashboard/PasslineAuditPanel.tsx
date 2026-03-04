@@ -852,14 +852,14 @@ export function PasslineAuditPanel() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Jornada</Label>
                 <Select
-                  value={form.jornada_id}
-                  onValueChange={(v) => setForm((f) => ({ ...f, jornada_id: v }))}
+                  value={form.jornada_id || "none"}
+                  onValueChange={(v) => setForm((f) => ({ ...f, jornada_id: v === "none" ? "" : v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar jornada" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin jornada</SelectItem>
+                    <SelectItem value="none">Sin jornada</SelectItem>
                     {jornadas.map((j) => (
                       <SelectItem key={j.id} value={j.id}>
                         {j.fecha}{" "}
