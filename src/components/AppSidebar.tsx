@@ -61,7 +61,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Productos", value: "products", icon: Package },
       { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
       { title: "Merma", value: "waste", icon: Trash2 },
-      { title: "Botellas Abiertas", value: "botellas", icon: Wine },
+      // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
     ],
   },
@@ -70,7 +70,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
-      { title: "Totems Passline", value: "passline-audit", icon: Monitor },
+      // { title: "Totems Passline", value: "passline-audit", icon: Monitor },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },
