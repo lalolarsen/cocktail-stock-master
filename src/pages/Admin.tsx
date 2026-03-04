@@ -19,6 +19,7 @@ import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
+import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 
@@ -30,7 +31,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -123,6 +124,7 @@ export default function Admin() {
       case "waste": return "Merma / Pérdida";
       case "botellas": return "Botellas Abiertas";
       case "settings": return "Configuración";
+      case "passline-audit": return "Auditoría Totems Passline";
       default: return "Panel de Administración";
     }
   };
@@ -260,6 +262,12 @@ export default function Admin() {
             {activeView === "settings" && (
               <div className="space-y-6">
                 <ReceiptSettingsCard />
+              </div>
+            )}
+
+            {activeView === "passline-audit" && !isReadOnly && (
+              <div className="slide-in-up">
+                <PasslineAuditPanel />
               </div>
             )}
           </div>
