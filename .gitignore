@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Sensitive setup scripts (contain private keys — run once and delete)
+supabase/seed_qz_secrets.sql
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
