@@ -14,6 +14,7 @@ import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
 import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
+import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
   Collapsible,
   CollapsibleContent,
@@ -1241,6 +1242,14 @@ export default function Sales() {
               <div className="shrink-0">
                 <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
               </div>
+
+              {/* QR SCANNER PANEL — solo para caja híbrida */}
+              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+                <HybridQRScannerPanel
+                  barLocationId={selectedPosObj.bar_location_id}
+                  barName={barNameForHeader}
+                />
+              )}
 
               {/* HISTORIAL COLAPSABLE — shrink-0, at bottom */}
               {recentSales.length > 0 && (
