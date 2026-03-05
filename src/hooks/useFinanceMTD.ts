@@ -35,6 +35,13 @@ export interface WasteBreakdownItem {
   reason: string;
 }
 
+export interface ManualIncomeEntry {
+  id: string;
+  amount: number;
+  description: string | null;
+  entry_date: string;
+}
+
 export interface FinanceMTD {
   // Sales
   salesGross: number;
@@ -43,6 +50,10 @@ export interface FinanceMTD {
   salesBruto: number;
   salesNeto: number;
   cogsTotal: number;
+
+  // Manual income entries (ingresos brutos declarados)
+  manualIncomeTotal: number;
+  manualIncomeEntries: ManualIncomeEntry[];
 
   // Waste (merma aprobada)
   wasteTotal: number;
@@ -117,6 +128,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const [specificTaxBreakdown, setSpecificTaxBreakdown] = useState<SpecificTaxBreakdown>({
     iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0,
   });
+  const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -126,7 +138,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes] = await Promise.all([
+      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes] = await Promise.all([
         // Sales — read columns directly
         supabase
           .from("sales")
@@ -172,6 +184,15 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .eq("status", "CONFIRMED")
           .gte("document_date", start)
           .lte("document_date", end),
+
+        // Manual gross income entries declared by admin
+        supabase
+          .from("gross_income_entries")
+          .select("id, amount, description, entry_date, created_at")
+          .eq("venue_id", venueId)
+          .eq("source_type", "manual")
+          .gte("entry_date", start)
+          .lte("entry_date", end),
       ]);
 
       // ── Sales with fallback ──
@@ -329,6 +350,17 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
       setWasteTotal(wasteTotalCalc);
       setWasteItems(wasteItemsCalc);
+
+      // ── Manual income entries ──
+      const manualRows = (manualIncomeRes.data || []) as any[];
+      setManualIncomeEntries(
+        manualRows.map((r) => ({
+          id: r.id,
+          amount: Math.abs(Number(r.amount)),
+          description: r.description ?? null,
+          entry_date: r.entry_date ?? r.created_at.slice(0, 10),
+        }))
+      );
     } catch (err) {
       console.error("Error fetching finance MTD:", err);
     } finally {
@@ -344,6 +376,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const ivaDebito = ivaDebitoState;
   const salesNeto = salesNet;
   const salesBruto = salesGross;
+  const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
 
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
@@ -387,6 +420,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     cogsTotal,
     wasteTotal,
     wasteItems,
+    manualIncomeTotal,
+    manualIncomeEntries,
     specificTaxTotal,
     specificTaxFromInvoices,
     specificTaxFromOpex,

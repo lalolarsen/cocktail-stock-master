@@ -22,6 +22,7 @@ import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
+import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 
 
 import { AppSidebar } from "@/components/AppSidebar";
@@ -31,7 +32,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -66,7 +67,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -119,6 +120,7 @@ export default function Admin() {
       case "notifications": return "Notificaciones";
       case "tickets": return "Tipos de Entrada";
       case "finance": return "Finanzas";
+      case "income": return "Ingresos Brutos";
       case "proveedores": return "Proveedores";
       case "courtesy-qr": return "QR de Cortesía";
       case "waste": return "Merma / Pérdida";
@@ -232,6 +234,12 @@ export default function Admin() {
             {activeView === "finance" && (
               <div className="space-y-6">
                 <FinancePanel />
+              </div>
+            )}
+
+            {activeView === "income" && (
+              <div className="space-y-6">
+                <IncomeDeclarationPanel />
               </div>
             )}
 
