@@ -14,6 +14,7 @@ import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { logAuditEvent } from "@/lib/monitoring";
+import { parseQRToken } from "@/lib/qr";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
@@ -57,22 +58,6 @@ const AUTO_RESET_MS = 2500;
 const WATCHDOG_MS = 10000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function parseQRToken(raw: string): { valid: boolean; token: string } {
-  const trimmed = raw.trim();
-  let token = "";
-  if (trimmed.includes("token=")) {
-    const m = trimmed.match(/[?&]token=([a-f0-9]+)/i); if (m) token = m[1];
-  } else if (trimmed.includes("/r/")) {
-    const m = trimmed.match(/\/r\/([a-f0-9]+)/i); if (m) token = m[1];
-  } else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
-    token = trimmed.substring(7);
-  } else {
-    const m = trimmed.match(/[a-f0-9]{12,64}/i); if (m) token = m[0];
-  }
-  token = token.toLowerCase();
-  if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token)) return { valid: true, token };
-  return { valid: false, token: "" };
-}
 
 function getErrorTitle(code?: string): string {
   switch (code) {

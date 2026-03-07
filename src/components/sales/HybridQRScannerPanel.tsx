@@ -7,26 +7,10 @@ import {
   QrCode, ChevronDown, CheckCircle2, XCircle, Loader2,
   Package, Scan,
 } from "lucide-react";
+import { parseQRToken } from "@/lib/qr";
+import { logAuditEvent } from "@/lib/monitoring";
 
-// ── Helpers shared with Bar.tsx ──────────────────────────────────────────────
-function parseQRToken(raw: string): { valid: boolean; token: string } {
-  const trimmed = raw.trim();
-  let token = "";
-  if (trimmed.includes("token=")) {
-    const m = trimmed.match(/[?&]token=([a-f0-9]+)/i); if (m) token = m[1];
-  } else if (trimmed.includes("/r/")) {
-    const m = trimmed.match(/\/r\/([a-f0-9]+)/i); if (m) token = m[1];
-  } else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
-    token = trimmed.substring(7);
-  } else {
-    const m = trimmed.match(/[a-f0-9]{12,64}/i); if (m) token = m[0];
-  }
-  token = token.toLowerCase();
-  if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token))
-    return { valid: true, token };
-  return { valid: false, token: "" };
-}
-
+// ── Types ────────────────────────────────────────────────────────────────────
 type ScanState = "idle" | "processing" | "success" | "error";
 
 interface DeliverItem { name: string; quantity: number }
@@ -40,54 +24,118 @@ interface RedemptionResult {
     quantity?: number;
     items?: DeliverItem[];
   };
+  // RPC returns `missing` (confirmed from migration SQL)
   missing?: Array<{ product_name: string; required_qty: number; available_qty?: number; unit: string }>;
 }
 
-interface HybridQRScannerPanelProps {
-  /** Bar location ID configured in the hybrid POS */
+export interface HybridQRScannerPanelProps {
+  /** Bar location ID configured in the hybrid POS terminal */
   barLocationId: string;
   barName: string;
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
 const AUTO_RESET_MS = 3500;
 const DEDUPE_MS = 5000;
+const WATCHDOG_MS = 10000;
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function errorLabel(code: string | undefined, fallback?: string): string {
+  switch (code) {
+    case "ALREADY_REDEEMED":        return "Ya canjeado";
+    case "TOKEN_EXPIRED":           return "QR vencido";
+    case "PAYMENT_NOT_CONFIRMED":   return "Pago no confirmado";
+    case "SALE_CANCELLED":          return "Venta cancelada";
+    case "TOKEN_NOT_FOUND":         return "QR no encontrado";
+    case "INSUFFICIENT_BAR_STOCK":  return "Sin stock en barra";
+    default:                        return fallback || "Error al canjear";
+  }
+}
+
+function deliverSummary(result: RedemptionResult | null): string {
+  if (!result?.deliver) return "";
+  const d = result.deliver;
+  if (d.type === "cover" && d.name) return `${d.name} x${d.quantity ?? 1}`;
+  if (d.type === "menu_items" && d.items?.length)
+    return d.items.map(i => `${i.name} x${i.quantity}`).join(", ");
+  return "";
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScannerPanelProps) {
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
 
-  // USB scanner: hidden input + keyboard buffer
+  // USB scanner: hidden input + keyboard buffer (mirrors Bar.tsx pattern)
   const inputRef = useRef<HTMLInputElement>(null);
   const bufferRef = useRef("");
   const lastTokenRef = useRef("");
   const lastTimeRef = useRef(0);
+
+  // Timers & abort
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const watchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const processingRef = useRef(false);
 
-  // Focus the hidden input when panel opens and is idle
-  useEffect(() => {
-    if (open && scanState === "idle") {
-      setTimeout(() => inputRef.current?.focus(), 80);
-    }
-  }, [open, scanState]);
+  // ── Internal helpers ──────────────────────────────────────────────────────
 
-  const scheduleReset = useCallback(() => {
-    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = setTimeout(() => {
-      processingRef.current = false;
-      setScanState("idle");
-      setResult(null);
-      bufferRef.current = "";
-      if (inputRef.current) inputRef.current.value = "";
-      setTimeout(() => inputRef.current?.focus(), 80);
-    }, AUTO_RESET_MS);
+  const clearTimers = useCallback(() => {
+    if (resetTimerRef.current) { clearTimeout(resetTimerRef.current); resetTimerRef.current = null; }
+    if (watchdogRef.current)   { clearTimeout(watchdogRef.current);   watchdogRef.current   = null; }
   }, []);
 
-  const processToken = useCallback(async (raw: string) => {
+  const focusInput = useCallback(() => {
+    setTimeout(() => inputRef.current?.focus(), 80);
+  }, []);
+
+  const resetToIdle = useCallback((opts?: { clearDedup?: boolean }) => {
+    clearTimers();
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    processingRef.current = false;
+    if (opts?.clearDedup) { lastTokenRef.current = ""; lastTimeRef.current = 0; }
+    bufferRef.current = "";
+    if (inputRef.current) inputRef.current.value = "";
+    setScanState("idle");
+    setResult(null);
+  }, [clearTimers]);
+
+  // ── Lifecycle: unmount cleanup ────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      clearTimers();
+      if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    };
+  }, [clearTimers]);
+
+  // ── Lifecycle: open/close cleanup ─────────────────────────────────────────
+  useEffect(() => {
+    if (!open) {
+      // Abort in-flight request, clear timers, clear partial buffer
+      resetToIdle();
+    } else {
+      focusInput();
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Lifecycle: focus when idle + open ────────────────────────────────────
+  useEffect(() => {
+    if (open && scanState === "idle") focusInput();
+  }, [open, scanState, focusInput]);
+
+  // ── scheduleReset ─────────────────────────────────────────────────────────
+  const scheduleReset = useCallback(() => {
+    clearTimers();
+    resetTimerRef.current = setTimeout(() => {
+      resetToIdle({ clearDedup: false });
+      if (open) focusInput();
+    }, AUTO_RESET_MS);
+  }, [clearTimers, resetToIdle, open, focusInput]);
+
+  // ── processToken ──────────────────────────────────────────────────────────
+  const processToken = useCallback(async (token: string) => {
     if (processingRef.current) return;
-    const { valid, token } = parseQRToken(raw);
-    if (!valid) return;
 
     // Deduplicate rapid double-scans of same token
     const now = Date.now();
@@ -99,81 +147,107 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     setScanState("processing");
     setResult(null);
 
+    // Watchdog: force-reset if RPC hangs beyond WATCHDOG_MS
+    watchdogRef.current = setTimeout(() => {
+      resetToIdle({ clearDedup: true });
+      if (open) focusInput();
+    }, WATCHDOG_MS);
+
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+
     try {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
-        p_bartender_bar_id: barLocationId || null,
+        p_bartender_bar_id: barLocationId,
         p_mixer_overrides: null,
         p_delivered_by_worker_id: null,
       });
+
+      if (signal.aborted) return;
+      clearTimers();
 
       if (error) throw error;
 
       const r = data as RedemptionResult;
 
-      // Silently swallow TOO_FAST
-      if ((r as any).error_code === "TOO_FAST") {
+      // Silently swallow TOO_FAST (server-side dedupe)
+      if (r.error_code === "TOO_FAST") {
         processingRef.current = false;
         setScanState("idle");
         return;
       }
 
+      logAuditEvent({
+        action: "redeem_pickup_token",
+        status: r.success ? "success" : "fail",
+        metadata: {
+          token: token.slice(0, 8) + "...",
+          error_code: r.error_code,
+          bar_id: barLocationId,
+          source: "hybrid_pos_scanner",
+        },
+      });
+
       setResult(r);
       setScanState(r.success ? "success" : "error");
       scheduleReset();
     } catch (err: any) {
+      if (signal.aborted) return;
+      clearTimers();
+      logAuditEvent({
+        action: "redeem_pickup_token",
+        status: "fail",
+        metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: barLocationId, source: "hybrid_pos_scanner" },
+      });
       setResult({ success: false, message: err?.message || "Error inesperado" });
       setScanState("error");
       scheduleReset();
+    } finally {
+      processingRef.current = false;
+      abortRef.current = null;
     }
-  }, [barLocationId, scheduleReset]);
+  }, [barLocationId, clearTimers, resetToIdle, scheduleReset, open, focusInput]);
 
-  // Keyboard handler: buffer chars, trigger on Enter/newline (USB scanner behaviour)
+  // ── Keyboard handler (USB scanner: buffer chars → dispatch on Enter) ──────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      const raw = bufferRef.current;
+      const raw = bufferRef.current.trim();
       bufferRef.current = "";
       if (inputRef.current) inputRef.current.value = "";
-      if (raw.trim()) processToken(raw.trim());
-    } else if (e.key.length === 1) {
+      if (!raw || scanState !== "idle") return;
+      const parsed = parseQRToken(raw);
+      if (parsed.valid) processToken(parsed.token);
+    } else {
       bufferRef.current += e.key;
     }
-  }, [processToken]);
+  }, [scanState, processToken]);
 
-  // Click anywhere on the panel to re-focus the hidden input
-  const handlePanelClick = useCallback(() => {
-    if (open && scanState === "idle") inputRef.current?.focus();
-  }, [open, scanState]);
+  // ── onBlur: re-focus input if nothing meaningful stole focus ─────────────
+  const handleBlur = useCallback(() => {
+    if (!open) return;
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (active === document.body || active === null) {
+        inputRef.current?.focus();
+      }
+    }, 200);
+  }, [open]);
 
-  // ── Derived display ──
-  const deliverSummary = (): string => {
-    if (!result?.deliver) return "";
-    const d = result.deliver;
-    if (d.type === "cover" && d.name) return `${d.name} x${d.quantity ?? 1}`;
-    if (d.type === "menu_items" && d.items?.length) {
-      return d.items.map(i => `${i.name} x${i.quantity}`).join(", ");
-    }
-    return "";
-  };
+  // ── Manual dismiss ────────────────────────────────────────────────────────
+  const handleDismiss = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    resetToIdle({ clearDedup: true });
+    focusInput();
+  }, [resetToIdle, focusInput]);
 
-  const errorLabel = (code?: string) => {
-    switch (code) {
-      case "ALREADY_REDEEMED": return "Ya canjeado";
-      case "TOKEN_EXPIRED": return "QR vencido";
-      case "PAYMENT_NOT_CONFIRMED": return "Pago no confirmado";
-      case "SALE_CANCELLED": return "Venta cancelada";
-      case "TOKEN_NOT_FOUND": return "QR no encontrado";
-      case "INSUFFICIENT_BAR_STOCK": return "Sin stock en barra";
-      default: return result?.message || "Error al canjear";
-    }
-  };
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const summary = deliverSummary(result);
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="shrink-0 border-t border-amber-500/30 bg-amber-500/5">
-      <CollapsibleTrigger
-        className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-amber-500/10 transition-colors"
-        onClick={handlePanelClick}
-      >
+      <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-amber-500/10 transition-colors">
         <div className="flex items-center gap-2">
           <QrCode className="w-3.5 h-3.5 text-amber-600" />
           <span className="text-[11px] font-semibold tracking-wide text-amber-700">
@@ -197,22 +271,26 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        {/* Hidden input — captures USB scanner keystrokes */}
+        {/* Hidden input — captures USB scanner keystrokes (mirrors Bar.tsx pattern) */}
         <input
           ref={inputRef}
-          className="sr-only"
-          readOnly
-          aria-hidden="true"
+          className="fixed -left-[9999px] w-px h-px opacity-0 pointer-events-none"
           onKeyDown={handleKeyDown}
+          onChange={e => { bufferRef.current = e.target.value; }}
+          onBlur={handleBlur}
+          autoComplete="off"
+          inputMode="none"
+          aria-hidden="true"
           tabIndex={open ? 0 : -1}
         />
 
-        <div className="px-3 pb-3 space-y-2" onClick={handlePanelClick}>
-          {/* Status area */}
+        <div
+          className="px-3 pb-3 space-y-2"
+          onClick={() => { if (scanState === "idle") inputRef.current?.focus(); }}
+        >
+          {/* ── Idle ── */}
           {scanState === "idle" && (
-            <div
-              className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400/40 py-4 cursor-default select-none"
-            >
+            <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400/40 py-4 cursor-default select-none">
               <Scan className="w-6 h-6 text-amber-500/60" />
               <p className="text-[11px] text-amber-700/70 font-medium">
                 Escanea un QR con el lector USB
@@ -223,6 +301,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
             </div>
           )}
 
+          {/* ── Processing ── */}
           {scanState === "processing" && (
             <div className="flex flex-col items-center justify-center gap-2 py-4">
               <Loader2 className="w-7 h-7 animate-spin text-amber-600" />
@@ -230,26 +309,30 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
             </div>
           )}
 
+          {/* ── Success ── */}
           {scanState === "success" && result && (
             <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-3 space-y-1.5">
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
                 <span className="text-xs font-bold text-green-700">ENTREGAR</span>
               </div>
-              {deliverSummary() && (
+              {summary && (
                 <div className="flex items-center gap-1.5 pl-5">
                   <Package className="w-3 h-3 text-green-600/70" />
-                  <p className="text-[11px] text-green-800 font-medium">{deliverSummary()}</p>
+                  <p className="text-[11px] text-green-800 font-medium">{summary}</p>
                 </div>
               )}
             </div>
           )}
 
+          {/* ── Error ── */}
           {scanState === "error" && result && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 space-y-1.5">
               <div className="flex items-center gap-1.5">
                 <XCircle className="w-4 h-4 text-destructive shrink-0" />
-                <span className="text-xs font-semibold text-destructive">{errorLabel(result.error_code)}</span>
+                <span className="text-xs font-semibold text-destructive">
+                  {errorLabel(result.error_code, result.message)}
+                </span>
               </div>
               {result.missing && result.missing.length > 0 && (
                 <div className="pl-5 space-y-0.5">
@@ -263,21 +346,13 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
             </div>
           )}
 
-          {/* Manual dismiss button during error/success */}
+          {/* ── Dismiss button ── */}
           {(scanState === "success" || scanState === "error") && (
             <Button
               variant="ghost"
               size="sm"
               className="w-full h-7 text-[10px] text-muted-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-                processingRef.current = false;
-                setScanState("idle");
-                setResult(null);
-                bufferRef.current = "";
-                setTimeout(() => inputRef.current?.focus(), 80);
-              }}
+              onClick={handleDismiss}
             >
               Listo — seguir escaneando
             </Button>
