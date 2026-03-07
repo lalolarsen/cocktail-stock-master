@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { openBottleEventsTable } from "@/lib/db-tables";
 import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -49,9 +49,12 @@ const EVENT_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
+interface BottleEventRow extends BottleEvent {
+  profiles: { full_name: string } | null;
+}
+
 async function fetchEvents(bottleId: string): Promise<BottleEvent[]> {
-  const { data, error } = await (supabase as any)
-    .from("open_bottle_events")
+  const { data, error } = await openBottleEventsTable()
     .select(`
       id, event_type, delta_ml, before_ml, after_ml,
       created_at, reason, actor_user_id,
@@ -63,7 +66,7 @@ async function fetchEvents(bottleId: string): Promise<BottleEvent[]> {
 
   if (error) throw error;
 
-  return (data || []).map((e: any) => ({
+  return ((data ?? []) as unknown as BottleEventRow[]).map((e) => ({
     ...e,
     actor_name: e.profiles?.full_name ?? e.actor_user_id?.slice(0, 8) ?? "—",
   }));

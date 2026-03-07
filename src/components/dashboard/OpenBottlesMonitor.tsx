@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { openBottlesTable } from "@/lib/db-tables";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -77,9 +77,14 @@ const LEVEL_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
 
 // ─── Data Fetching ────────────────────────────────────────────────────────────
 
+interface OpenBottleRawRow extends Omit<OpenBottleRow, "product_name" | "product_capacity_ml" | "location_name" | "opened_by_name"> {
+  products: { id: string; name: string; capacity_ml: number } | null;
+  stock_locations: { id: string; name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
 async function fetchOpenBottles(): Promise<OpenBottleRow[]> {
-  const { data, error } = await (supabase as any)
-    .from("open_bottles")
+  const { data, error } = await openBottlesTable()
     .select(`
       *,
       products:product_id(id, name, capacity_ml),
@@ -92,7 +97,7 @@ async function fetchOpenBottles(): Promise<OpenBottleRow[]> {
 
   if (error) throw error;
 
-  return (data || []).map((r: any) => ({
+  return ((data ?? []) as unknown as OpenBottleRawRow[]).map((r) => ({
     ...r,
     product_name: r.products?.name ?? "—",
     product_capacity_ml: r.products?.capacity_ml ?? null,

@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { calculateCPP, isBottle } from "@/lib/product-type";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  purchaseImportsTable,
+  purchaseImportLinesTable,
+  purchaseImportTaxesTable,
+  purchasesTable,
+  purchaseLinesTable,
+  expenseLinesTable,
+  learningProductMappingsTable,
+  specificTaxCategoriesTable,
+} from "@/lib/db-tables";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,16 +64,51 @@ interface Product {
   category: string;
 }
 
+interface PurchaseImport {
+  id: string;
+  venue_id: string;
+  status: string;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  vat_amount: number | null;
+  iaba_10_total: number | null;
+  iaba_18_total: number | null;
+  ila_vino_total: number | null;
+  ila_cerveza_total: number | null;
+  ila_destilados_total: number | null;
+  specific_taxes_total: number | null;
+  financial_summary: Record<string, unknown> | null;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+interface ImportTax {
+  id: string;
+  purchase_import_id: string;
+  tax_type: string;
+  amount: number | null;
+  [key: string]: unknown;
+}
+
+interface TaxCategory {
+  id: string;
+  code: string;
+  name: string;
+  rate: number;
+  is_active: boolean;
+}
+
 export default function ProveedoresImportDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { venue } = useActiveVenue();
 
-  const [imp, setImp] = useState<any>(null);
+  const [imp, setImp] = useState<PurchaseImport | null>(null);
   const [lines, setLines] = useState<ImportLine[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxes, setTaxes] = useState<ImportTax[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [taxCategories, setTaxCategories] = useState<any[]>([]);
+  const [taxCategories, setTaxCategories] = useState<TaxCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(1); // 1=Summary, 2=Lines, 3=Confirm
   const [confirming, setConfirming] = useState(false);
@@ -75,18 +120,18 @@ export default function ProveedoresImportDetail() {
     setLoading(true);
 
     const [impRes, linesRes, taxesRes, prodsRes, taxCatRes] = await Promise.all([
-      supabase.from("purchase_imports" as any).select("*").eq("id", id).single(),
-      supabase.from("purchase_import_lines" as any).select("*").eq("purchase_import_id", id).order("line_index"),
-      supabase.from("purchase_import_taxes" as any).select("*").eq("purchase_import_id", id),
+      purchaseImportsTable().select("*").eq("id", id).single(),
+      purchaseImportLinesTable().select("*").eq("purchase_import_id", id).order("line_index"),
+      purchaseImportTaxesTable().select("*").eq("purchase_import_id", id),
       supabase.from("products").select("id, name, code, category").eq("venue_id", venue?.id || "").order("name"),
-      supabase.from("specific_tax_categories" as any).select("*").eq("is_active", true),
+      specificTaxCategoriesTable().select("*").eq("is_active", true),
     ]);
 
-    if (impRes.data) setImp(impRes.data);
-    if (linesRes.data) setLines(linesRes.data as any[]);
-    if (taxesRes.data) setTaxes(taxesRes.data as any[]);
+    if (impRes.data) setImp(impRes.data as unknown as PurchaseImport);
+    if (linesRes.data) setLines(linesRes.data as unknown as ImportLine[]);
+    if (taxesRes.data) setTaxes(taxesRes.data as unknown as ImportTax[]);
     if (prodsRes.data) setProducts(prodsRes.data as Product[]);
-    if (taxCatRes.data) setTaxCategories(taxCatRes.data as any[]);
+    if (taxCatRes.data) setTaxCategories(taxCatRes.data as unknown as TaxCategory[]);
     setLoading(false);
   }, [id, venue?.id]);
 
@@ -103,13 +148,13 @@ export default function ProveedoresImportDetail() {
     for (const l of updatedLines) {
       if (l.classification === "freight" || l.classification === "other_expense") continue;
       if (!l.tax_category_id) continue;
-      const tc = taxCategories.find((c: any) => c.id === l.tax_category_id);
+      const tc = taxCategories.find((c) => c.id === l.tax_category_id);
       if (!tc?.code) continue;
       const headerField = TAX_CODE_MAP[tc.code];
       if (headerField) totals[headerField] += l.tax_amount || 0;
     }
     const specific_taxes_total = Object.values(totals).reduce((a, b) => a + b, 0);
-    await supabase.from("purchase_imports" as any).update({
+    await purchaseImportsTable().update({
       ...totals, specific_taxes_total,
     }).eq("id", id);
     // Refresh imp state so Summary tab reflects new totals
@@ -168,7 +213,7 @@ export default function ProveedoresImportDetail() {
     const newLines = lines.map(l => l.id === lineId ? merged : l);
     setLines(newLines);
 
-    await supabase.from("purchase_import_lines" as any).update({
+    await purchaseImportLinesTable().update({
       product_id: merged.product_id,
       detected_multiplier: merged.detected_multiplier,
       units_real: merged.units_real,
@@ -216,12 +261,12 @@ export default function ProveedoresImportDetail() {
       classification: "inventory",
       status: "REVIEW",
     };
-    const { data, error } = await supabase.from("purchase_import_lines" as any).insert(newLine).select("*").single();
-    if (data) setLines(prev => [...prev, data as any]);
+    const { data, error } = await purchaseImportLinesTable().insert(newLine).select("*").single();
+    if (data) setLines(prev => [...prev, data as unknown as ImportLine]);
   };
 
   const deleteLine = async (lineId: string) => {
-    await supabase.from("purchase_import_lines" as any).delete().eq("id", lineId);
+    await purchaseImportLinesTable().delete().eq("id", lineId);
     setLines(prev => prev.filter(l => l.id !== lineId));
   };
 
@@ -259,7 +304,7 @@ export default function ProveedoresImportDetail() {
       const userId = (await supabase.auth.getUser()).data.user?.id;
 
       // Create purchases record
-      const { data: purchase, error: purErr } = await supabase.from("purchases" as any).insert({
+      const { data: purchase, error: purErr } = await purchasesTable().insert({
         purchase_import_id: id,
         venue_id: venue.id,
         location_id: imp.location_id,
@@ -275,12 +320,12 @@ export default function ProveedoresImportDetail() {
       }).select("id").single();
 
       if (purErr) throw purErr;
-      const purchaseId = (purchase as any).id;
+      const purchaseId = (purchase as unknown as { id: string }).id;
 
       // Create purchase_lines (inventory)
       const invLines = lines.filter(l => l.classification === "inventory" && l.product_id);
       if (invLines.length > 0) {
-        await supabase.from("purchase_lines" as any).insert(
+        await purchaseLinesTable().insert(
           invLines.map(l => ({
             purchase_id: purchaseId,
             product_id: l.product_id,
@@ -294,7 +339,7 @@ export default function ProveedoresImportDetail() {
       // Create expense_lines (freight/other)
       const expLines = lines.filter(l => l.classification !== "inventory");
       if (expLines.length > 0) {
-        await supabase.from("expense_lines" as any).insert(
+        await expenseLinesTable().insert(
           expLines.map(l => ({
             purchase_id: purchaseId,
             expense_type: l.classification === "freight" ? "freight" : "other",
@@ -326,7 +371,7 @@ export default function ProveedoresImportDetail() {
         }
       }
       if (taxExpenseLines.length > 0) {
-        await supabase.from("expense_lines" as any).insert(taxExpenseLines);
+        await expenseLinesTable().insert(taxExpenseLines);
       }
 
       // Update stock for each inventory line (CPP) — bottle-aware
@@ -406,23 +451,23 @@ export default function ProveedoresImportDetail() {
       // Learning: upsert product mappings
       for (const line of invLines) {
         if (!line.raw_text || !line.product_id) continue;
-        const { data: existing } = await supabase
-          .from("learning_product_mappings" as any)
+        const { data: existing } = await learningProductMappingsTable()
           .select("id, times_used")
           .eq("venue_id", venue.id)
           .eq("raw_text", line.raw_text)
           .eq("product_id", line.product_id)
           .maybeSingle();
 
-        if (existing) {
-          await supabase.from("learning_product_mappings" as any).update({
-            times_used: ((existing as any).times_used || 0) + 1,
+        const existingRow = existing as unknown as { id: string; times_used: number } | null;
+        if (existingRow) {
+          await learningProductMappingsTable().update({
+            times_used: (existingRow.times_used || 0) + 1,
             detected_multiplier: line.detected_multiplier,
             last_used_at: new Date().toISOString(),
-            confidence: Math.min(0.95, 0.8 + ((existing as any).times_used || 0) * 0.02),
-          }).eq("id", (existing as any).id);
+            confidence: Math.min(0.95, 0.8 + (existingRow.times_used || 0) * 0.02),
+          }).eq("id", existingRow.id);
         } else {
-          await supabase.from("learning_product_mappings" as any).insert({
+          await learningProductMappingsTable().insert({
             venue_id: venue.id,
             supplier_rut: imp.supplier_rut,
             raw_text: line.raw_text,
@@ -433,7 +478,7 @@ export default function ProveedoresImportDetail() {
       }
 
       // Update import status + persist financial summary
-      await supabase.from("purchase_imports" as any).update({
+      await purchaseImportsTable().update({
         status: "CONFIRMED",
         financial_summary: financialSummary,
         updated_at: new Date().toISOString(),
@@ -451,7 +496,7 @@ export default function ProveedoresImportDetail() {
 
   const handleReject = async () => {
     if (!id) return;
-    await supabase.from("purchase_imports" as any).update({ status: "REJECTED", updated_at: new Date().toISOString() }).eq("id", id);
+    await purchaseImportsTable().update({ status: "REJECTED", updated_at: new Date().toISOString() }).eq("id", id);
     toast.info("Importación rechazada");
     navigate("/admin");
   };
@@ -460,8 +505,8 @@ export default function ProveedoresImportDetail() {
     if (!id) return;
     toast.info("Re-extrayendo...");
     // Delete existing lines and taxes
-    await supabase.from("purchase_import_lines" as any).delete().eq("purchase_import_id", id);
-    await supabase.from("purchase_import_taxes" as any).delete().eq("purchase_import_id", id);
+    await purchaseImportLinesTable().delete().eq("purchase_import_id", id);
+    await purchaseImportTaxesTable().delete().eq("purchase_import_id", id);
     // Trigger extraction
     const { error } = await supabase.functions.invoke("extract-invoice", {
       body: { purchase_import_id: id },

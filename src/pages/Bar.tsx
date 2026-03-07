@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { logAuditEvent } from "@/lib/monitoring";
 import { parseQRToken } from "@/lib/qr";
+import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
@@ -25,6 +26,18 @@ import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+interface SaleItemWithIngredients {
+  quantity: number;
+  cocktail_id: string | null;
+  cocktails: {
+    cocktail_ingredients: Array<{
+      quantity: number;
+      products: { id: string; name: string; capacity_ml: number } | null;
+    }>;
+  } | null;
+}
+
 type DeliverItem = { name: string; quantity: number; addons?: string[] };
 type DeliverInfo = {
   type: "cover" | "menu_items";
@@ -367,9 +380,9 @@ export default function Bar() {
       if (se) throw se;
 
       const mlMap = new Map<string, { product_id: string; product_name: string; required_ml: number; capacity_ml: number }>();
-      for (const item of (si || [])) {
-        const qty = (item as any).quantity || 1;
-        for (const ing of ((item as any).cocktails?.cocktail_ingredients || [])) {
+      for (const item of ((si ?? []) as unknown as SaleItemWithIngredients[])) {
+        const qty = item.quantity || 1;
+        for (const ing of (item.cocktails?.cocktail_ingredients || [])) {
           const p = ing.products;
           if (!p?.capacity_ml || p.capacity_ml <= 0) continue;
           const ingQty = (ing.quantity || 0) * qty;
@@ -400,15 +413,16 @@ export default function Bar() {
           console.log(`[Bar][auto-open] ${check.product_name} x${count} (faltaban ${missing}ml)`);
           toast.info(`Auto-open: ${check.product_name} ×${count} botella${count > 1 ? "s" : ""} (faltaban ${missing}ml)`);
           for (let i = 0; i < count; i++) {
-            const { data: nb, error: ie } = await (supabase as any).from("open_bottles").insert({
+            const { data: nb, error: ie } = await openBottlesTable().insert({
               venue_id: currentVenueId, location_id: selectedBarId, product_id: check.product_id,
               status: "OPEN", opened_by_user_id: currentUserId,
               initial_ml: capacity_ml, remaining_ml: capacity_ml,
               notes: `Auto-abierta por canje ${token.slice(-6)}`,
             }).select().single();
             if (ie) throw ie;
-            await (supabase as any).from("open_bottle_events").insert({
-              open_bottle_id: nb.id, event_type: "OPENED", delta_ml: capacity_ml,
+            await openBottleEventsTable().insert({
+              open_bottle_id: (nb as unknown as { id: string }).id,
+              event_type: "OPENED", delta_ml: capacity_ml,
               before_ml: 0, after_ml: capacity_ml, actor_user_id: currentUserId, reason: "Auto-open por canje",
             });
           }

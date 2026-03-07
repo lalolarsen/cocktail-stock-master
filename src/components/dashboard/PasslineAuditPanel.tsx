@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { passlineAuditSessionsTable, passlineAuditItemsTable } from "@/lib/db-tables";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -182,6 +183,9 @@ export function PasslineAuditPanel() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // O(1) lookup — prevents N+1 cocktails.find() inside render loops
+  const cocktailMap = useMemo(() => new Map(cocktails.map((c) => [c.id, c])), [cocktails]);
+
   // New session dialog
   const [showDialog, setShowDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -224,15 +228,14 @@ export function PasslineAuditPanel() {
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("passline_audit_sessions" as any)
+      const { data, error } = await passlineAuditSessionsTable()
         .select("*")
         .eq("venue_id", venue!.id)
         .order("created_at", { ascending: false })
         .limit(50);
 
       if (error) throw error;
-      setSessions((data as any[]) || []);
+      setSessions(((data ?? []) as unknown as AuditSession[]));
     } catch (err: any) {
       toast.error("Error al cargar auditorías Passline");
     } finally {
@@ -241,8 +244,7 @@ export function PasslineAuditPanel() {
   };
 
   const fetchSessionItems = async (sessionId: string) => {
-    const { data, error } = await supabase
-      .from("passline_audit_items" as any)
+    const { data, error } = await passlineAuditItemsTable()
       .select("*")
       .eq("session_id", sessionId)
       .order("created_at");
@@ -250,7 +252,7 @@ export function PasslineAuditPanel() {
     if (!error && data) {
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === sessionId ? { ...s, items: data as any[] } : s
+          s.id === sessionId ? { ...s, items: data as unknown as AuditItem[] } : s
         )
       );
     }
@@ -389,8 +391,7 @@ export function PasslineAuditPanel() {
         created_by: userId,
       };
 
-      const { data: newSession, error: sessionError } = await supabase
-        .from("passline_audit_sessions" as any)
+      const { data: newSession, error: sessionError } = await passlineAuditSessionsTable()
         .insert(sessionPayload)
         .select()
         .single();
@@ -400,7 +401,7 @@ export function PasslineAuditPanel() {
       const itemsPayload = items
         .filter((i) => i.product_name.trim())
         .map((i) => ({
-          session_id: (newSession as any).id,
+          session_id: (newSession as unknown as { id: string }).id,
           venue_id: venue!.id,
           product_name: i.product_name.trim().toUpperCase(),
           quantity: i.quantity,
@@ -411,8 +412,7 @@ export function PasslineAuditPanel() {
           income_applied: false,
         }));
 
-      const { error: itemsError } = await supabase
-        .from("passline_audit_items" as any)
+      const { error: itemsError } = await passlineAuditItemsTable()
         .insert(itemsPayload);
 
       if (itemsError) throw itemsError;
@@ -469,8 +469,7 @@ export function PasslineAuditPanel() {
       const userId = authData.session?.user.id;
 
       // Update session status
-      const { error: updateError } = await supabase
-        .from("passline_audit_sessions" as any)
+      const { error: updateError } = await passlineAuditSessionsTable()
         .update({
           status: reconcileStatus,
           notes: reconcileNotes || null,
@@ -497,8 +496,7 @@ export function PasslineAuditPanel() {
           toast.warning("Sesión conciliada pero error al registrar ingreso: " + incomeError.message);
         } else {
           // Mark items as income_applied
-          await supabase
-            .from("passline_audit_items" as any)
+          await passlineAuditItemsTable()
             .update({ income_applied: true })
             .eq("session_id", reconcileSession.id);
         }
@@ -522,8 +520,7 @@ export function PasslineAuditPanel() {
 
   const handleDelete = async (sessionId: string) => {
     if (!confirm("¿Eliminar esta auditoría? Esta acción no se puede deshacer.")) return;
-    const { error } = await supabase
-      .from("passline_audit_sessions" as any)
+    const { error } = await passlineAuditSessionsTable()
       .delete()
       .eq("id", sessionId);
 
@@ -747,9 +744,7 @@ export function PasslineAuditPanel() {
                             </TableHeader>
                             <TableBody>
                               {session.items.map((item, idx) => {
-                                const matchedCocktail = cocktails.find(
-                                  (c) => c.id === item.cocktail_id
-                                );
+                                const matchedCocktail = item.cocktail_id ? cocktailMap.get(item.cocktail_id) : undefined;
                                 return (
                                   <TableRow key={item.id || idx}>
                                     <TableCell className="font-mono text-xs py-2">
@@ -887,7 +882,7 @@ export function PasslineAuditPanel() {
                     <Label className="text-[10px] text-muted-foreground">{label}</Label>
                     <Input
                       placeholder="0"
-                      value={(form as any)[key]}
+                      value={form[key as keyof typeof form]}
                       onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                     />
                   </div>

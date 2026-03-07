@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 
 // ── Raw DB row types (tables not yet in auto-generated Supabase types) ────────
 
@@ -38,10 +39,6 @@ interface DeductOpenBottlesResult {
   missing_ml: number;
   bottles_used: Array<{ bottle_id: string; deducted_ml: number }>;
 }
-
-// Typed accessor helpers — isolate the cast to a single point per table
-const openBottlesTable = () => supabase.from("open_bottles" as never);
-const openBottleEventsTable = () => supabase.from("open_bottle_events" as never);
 
 // ── Public types ──────────────────────────────────────────────────────────────
 

@@ -45,7 +45,7 @@ export function BarReplenishment() {
         const { error: outErr } = await supabase.from("stock_movements").insert({
           product_id: product.id,
           quantity: line.quantity,
-          movement_type: "transfer_out" as any,
+          movement_type: "transfer_out" as never,
           from_location_id: warehouse.id,
           to_location_id: targetBarId,
           source_type: "replenishment",
@@ -60,7 +60,7 @@ export function BarReplenishment() {
         const { error: inErr } = await supabase.from("stock_movements").insert({
           product_id: product.id,
           quantity: line.quantity,
-          movement_type: "transfer_in" as any,
+          movement_type: "transfer_in" as never,
           from_location_id: warehouse.id,
           to_location_id: targetBarId,
           source_type: "replenishment",
