@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
+import { toast } from "sonner";
 
 export interface OpexCategoryBreakdown {
   category: string;
@@ -130,9 +131,11 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   });
   const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     const { start, end } = getMonthRange(year, month);
     const fromISO = `${start}T00:00:00-03:00`;
     const toISO = `${end}T23:59:59-03:00`;
@@ -361,8 +364,11 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           entry_date: r.entry_date ?? r.created_at.slice(0, 10),
         }))
       );
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err?.message || "Error al cargar datos financieros";
       console.error("Error fetching finance MTD:", err);
+      setFetchError(msg);
+      toast.error(msg, { description: "Revisa tu conexión o recarga la página." });
     } finally {
       setLoading(false);
     }
@@ -451,6 +457,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     opexPctForecast,
     salesTotal: salesBruto,
     loading,
+    error: fetchError,
     refresh: fetchData,
   };
 }
