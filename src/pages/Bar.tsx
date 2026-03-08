@@ -354,8 +354,9 @@ export default function Bar() {
       if (c.required_ml <= 0) continue;
       try {
         await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-      } catch (e) {
+      } catch (e: any) {
         console.error("[Bar] Bottle deduction non-blocking:", e);
+        logAuditEvent({ action: "bottle_deduction_failed", status: "fail", metadata: { token: token.slice(-6), product_id: c.product_id, required_ml: c.required_ml, error: e?.message || String(e) } });
         toast.warning("Canje OK, pero no se pudo registrar consumo de botella (revisar).");
       }
     }
@@ -436,6 +437,7 @@ export default function Bar() {
     } catch (err: any) {
       const msg = err?.message || "Error al verificar botellas";
       console.error("[Bar][bottles]", err);
+      logAuditEvent({ action: "auto_open_bottles_failed", status: "fail", metadata: { token: token.slice(-6), bar_id: selectedBarId, error: msg } });
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: msg });
       const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + msg.slice(0, 40), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
