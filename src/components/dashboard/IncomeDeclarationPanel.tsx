@@ -37,32 +37,6 @@ interface IncomeEntry {
   created_at: string;
 }
 
-function getSourceLabel(type: string) {
-  switch (type) {
-    case "sale": return "Venta barra";
-    case "ticket": return "Entrada";
-    case "manual": return "Manual";
-    default: return type;
-  }
-}
-
-function getSourceVariant(type: string): "default" | "secondary" | "outline" {
-  switch (type) {
-    case "sale": return "default";
-    case "ticket": return "secondary";
-    case "manual": return "outline";
-    default: return "outline";
-  }
-}
-
-function getSourceIcon(type: string) {
-  switch (type) {
-    case "sale": return <Receipt className="h-3 w-3" />;
-    case "ticket": return <Ticket className="h-3 w-3" />;
-    case "manual": return <FileEdit className="h-3 w-3" />;
-    default: return <DollarSign className="h-3 w-3" />;
-  }
-}
 
 export function IncomeDeclarationPanel() {
   const { isReadOnly } = useUserRole();
