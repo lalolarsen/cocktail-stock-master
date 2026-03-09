@@ -70,7 +70,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
-      // { title: "Totems Passline", value: "passline-audit", icon: Monitor },
+      { title: "Totems Passline", value: "passline-audit", icon: Monitor },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },
