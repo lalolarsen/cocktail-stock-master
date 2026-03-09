@@ -145,7 +145,6 @@ export function IncomeDeclarationPanel() {
       setShowAddDialog(false);
       setAmount("");
       setDescription("");
-      setEntryDate(new Date().toISOString().slice(0, 10));
       fetchEntries();
     } catch (err: any) {
       console.error("Error adding income:", err);
