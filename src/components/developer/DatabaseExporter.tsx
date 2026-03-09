@@ -16,7 +16,7 @@ export function DatabaseExporter() {
       const { data: tablesData, error: tablesError } = await supabase.rpc('dev_get_all_tables');
       if (tablesError) throw tablesError;
 
-      const tables = (tablesData as { table_name: string }[]).map(t => t.table_name);
+      const tables: string[] = (tablesData as any[] || []).map((t: any) => t.table_name as string);
       
       let sqlDump = "-- Exportación de base de datos (Datos)\n\n";
 
