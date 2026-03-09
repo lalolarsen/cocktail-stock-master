@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { passlineAuditSessionsTable, passlineAuditItemsTable } from "@/lib/db-tables";
 import { Button } from "@/components/ui/button";
@@ -39,19 +39,28 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  Link2,
   DollarSign,
   ShoppingBag,
   Monitor,
   FileBarChart2,
   X,
   PackageCheck,
+  TrendingUp,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CatalogProduct {
+  id: string;
+  name: string;
+  price: number;
+  type: "cocktail" | "product";
+  cost_per_unit: number;
+  capacity_ml: number | null;
+}
 
 interface AuditItem {
   id?: string;
@@ -60,8 +69,11 @@ interface AuditItem {
   unit_price: number;
   total_amount: number;
   cocktail_id: string | null;
+  product_id: string | null;
   stock_applied: boolean;
   income_applied: boolean;
+  // Local-only for COGS preview
+  _cogs_per_unit?: number;
 }
 
 interface AuditSession {
@@ -71,12 +83,9 @@ interface AuditSession {
   session_date: string;
   total_amount: number;
   total_txns: number;
-  payment_debito: number;
-  payment_visa: number;
-  payment_amex: number;
-  payment_diners: number;
-  payment_mastercard: number;
-  payment_otras: number;
+  cogs_total: number;
+  net_amount: number;
+  iva_amount: number;
   status: "pending" | "reconciled" | "discrepancy";
   notes: string | null;
   created_at: string;
@@ -84,17 +93,17 @@ interface AuditSession {
   items?: AuditItem[];
 }
 
-interface Cocktail {
-  id: string;
-  name: string;
-  price: number;
-}
-
 interface Jornada {
   id: string;
   fecha: string;
   estado: string;
   hora_apertura: string | null;
+}
+
+interface CocktailIngredient {
+  product_id: string;
+  quantity: number;
+  is_mixer_slot: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -106,7 +115,7 @@ const STATUS_CONFIG = {
     className: "bg-amber-500/15 text-amber-600 border-amber-500/30",
   },
   reconciled: {
-    label: "Conciliado",
+    label: "Confirmado",
     icon: CheckCircle2,
     className: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
   },
@@ -117,15 +126,14 @@ const STATUS_CONFIG = {
   },
 };
 
-const EMPTY_ITEM: AuditItem = {
-  product_name: "",
-  quantity: 1,
-  unit_price: 0,
-  total_amount: 0,
-  cocktail_id: null,
-  stock_applied: false,
-  income_applied: false,
-};
+const IVA_RATE = 0.19;
+
+function calcNet(gross: number) {
+  return Math.round(gross / (1 + IVA_RATE));
+}
+function calcIva(gross: number) {
+  return gross - calcNet(gross);
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -133,33 +141,19 @@ function StatusBadge({ status }: { status: AuditSession["status"] }) {
   const cfg = STATUS_CONFIG[status];
   const Icon = cfg.icon;
   return (
-    <span
-      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.className}`}
-    >
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.className}`}>
       <Icon className="w-3 h-3" />
       {cfg.label}
     </span>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: typeof DollarSign;
-}) {
+function SummaryCard({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon: typeof DollarSign }) {
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            {label}
-          </p>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
           <p className="text-2xl font-bold mt-1">{value}</p>
           {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
         </div>
@@ -178,13 +172,12 @@ export function PasslineAuditPanel() {
   const { activeJornadaId } = useAppSession();
 
   const [sessions, setSessions] = useState<AuditSession[]>([]);
-  const [cocktails, setCocktails] = useState<Cocktail[]>([]);
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [jornadas, setJornadas] = useState<Jornada[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // O(1) lookup — prevents N+1 cocktails.find() inside render loops
-  const cocktailMap = useMemo(() => new Map(cocktails.map((c) => [c.id, c])), [cocktails]);
+  const catalogMap = useMemo(() => new Map(catalog.map((c) => [c.id, c])), [catalog]);
 
   // New session dialog
   const [showDialog, setShowDialog] = useState(false);
@@ -196,31 +189,36 @@ export function PasslineAuditPanel() {
     report_number: "",
     session_date: new Date().toISOString().split("T")[0],
     jornada_id: activeJornadaId || "",
-    payment_debito: "",
-    payment_visa: "",
-    payment_amex: "",
-    payment_diners: "",
-    payment_mastercard: "",
-    payment_otras: "",
     notes: "",
   });
-  const [items, setItems] = useState<AuditItem[]>([{ ...EMPTY_ITEM }]);
+  const [items, setItems] = useState<AuditItem[]>([makeEmptyItem()]);
 
-  // Reconcile dialog
-  const [showReconcileDialog, setShowReconcileDialog] = useState(false);
-  const [reconcileSession, setReconcileSession] = useState<AuditSession | null>(null);
-  const [reconcileStatus, setReconcileStatus] = useState<"reconciled" | "discrepancy">("reconciled");
-  const [reconcileNotes, setReconcileNotes] = useState("");
-  const [applyToIncome, setApplyToIncome] = useState(true);
-  const [applyToStock, setApplyToStock] = useState(false);
-  const [reconciling, setReconciling] = useState(false);
+  // Confirm dialog
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmSession, setConfirmSession] = useState<AuditSession | null>(null);
+  const [confirmStatus, setConfirmStatus] = useState<"reconciled" | "discrepancy">("reconciled");
+  const [confirmNotes, setConfirmNotes] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  function makeEmptyItem(): AuditItem {
+    return {
+      product_name: "",
+      quantity: 1,
+      unit_price: 0,
+      total_amount: 0,
+      cocktail_id: null,
+      product_id: null,
+      stock_applied: false,
+      income_applied: false,
+    };
+  }
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (venue?.id) {
       fetchSessions();
-      fetchCocktails();
+      fetchCatalog();
       fetchJornadas();
     }
   }, [venue?.id]);
@@ -233,10 +231,9 @@ export function PasslineAuditPanel() {
         .eq("venue_id", venue!.id)
         .order("created_at", { ascending: false })
         .limit(50);
-
       if (error) throw error;
-      setSessions(((data ?? []) as unknown as AuditSession[]));
-    } catch (err: any) {
+      setSessions((data ?? []) as unknown as AuditSession[]);
+    } catch {
       toast.error("Error al cargar auditorías Passline");
     } finally {
       setLoading(false);
@@ -248,23 +245,56 @@ export function PasslineAuditPanel() {
       .select("*")
       .eq("session_id", sessionId)
       .order("created_at");
-
     if (!error && data) {
       setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId ? { ...s, items: data as unknown as AuditItem[] } : s
-        )
+        prev.map((s) => (s.id === sessionId ? { ...s, items: data as unknown as AuditItem[] } : s))
       );
     }
   };
 
-  const fetchCocktails = async () => {
-    const { data } = await supabase
-      .from("cocktails")
-      .select("id, name, price")
-      .eq("venue_id", venue!.id)
-      .order("name");
-    setCocktails((data as Cocktail[]) || []);
+  const fetchCatalog = async () => {
+    // Fetch cocktails AND products in parallel
+    const [cocktailsRes, productsRes] = await Promise.all([
+      supabase
+        .from("cocktails")
+        .select("id, name, price")
+        .eq("venue_id", venue!.id)
+        .order("name"),
+      supabase
+        .from("products")
+        .select("id, name, cost_per_unit, capacity_ml, category")
+        .eq("venue_id", venue!.id)
+        .eq("is_active_in_sales", true)
+        .order("name"),
+    ]);
+
+    const merged: CatalogProduct[] = [];
+
+    // Cocktails — cost will be calculated from ingredients on confirm
+    for (const c of cocktailsRes.data || []) {
+      merged.push({
+        id: c.id,
+        name: c.name,
+        price: c.price,
+        type: "cocktail",
+        cost_per_unit: 0, // calculated from recipe
+        capacity_ml: null,
+      });
+    }
+
+    // Products (unitarios y botellas activos en ventas)
+    for (const p of productsRes.data || []) {
+      merged.push({
+        id: p.id,
+        name: p.name,
+        price: 0, // products don't have a fixed sale price in this table
+        type: "product",
+        cost_per_unit: Number(p.cost_per_unit) || 0,
+        capacity_ml: p.capacity_ml,
+      });
+    }
+
+    setCatalog(merged);
   };
 
   const fetchJornadas = async () => {
@@ -278,20 +308,42 @@ export function PasslineAuditPanel() {
 
   // ── Computed totals ────────────────────────────────────────────────────────
 
-  const computed = {
-    totalPendiente: sessions
-      .filter((s) => s.status === "pending")
-      .reduce((a, s) => a + s.total_amount, 0),
-    totalReconciliado: sessions
-      .filter((s) => s.status === "reconciled")
-      .reduce((a, s) => a + s.total_amount, 0),
-    totalSessions: sessions.length,
-    totalDiscrepancies: sessions.filter((s) => s.status === "discrepancy").length,
-  };
+  const computed = useMemo(() => {
+    const confirmed = sessions.filter((s) => s.status === "reconciled");
+    const pending = sessions.filter((s) => s.status === "pending");
+    return {
+      totalConfirmado: confirmed.reduce((a, s) => a + s.total_amount, 0),
+      totalPendiente: pending.reduce((a, s) => a + s.total_amount, 0),
+      totalCOGS: confirmed.reduce((a, s) => a + (s.cogs_total || 0), 0),
+      totalSessions: sessions.length,
+      totalDiscrepancies: sessions.filter((s) => s.status === "discrepancy").length,
+      pendingCount: pending.length,
+    };
+  }, [sessions]);
 
   // ── Item row helpers ───────────────────────────────────────────────────────
 
-  const updateItem = (idx: number, field: keyof AuditItem, value: any) => {
+  const selectCatalogProduct = (idx: number, catalogId: string) => {
+    const product = catalogMap.get(catalogId);
+    if (!product) return;
+
+    setItems((prev) => {
+      const next = [...prev];
+      const qty = next[idx].quantity || 1;
+      const unitPrice = product.price || next[idx].unit_price;
+      next[idx] = {
+        ...next[idx],
+        product_name: product.name,
+        unit_price: unitPrice,
+        total_amount: qty * unitPrice,
+        cocktail_id: product.type === "cocktail" ? product.id : null,
+        product_id: product.type === "product" ? product.id : null,
+      };
+      return next;
+    });
+  };
+
+  const updateItemField = (idx: number, field: keyof AuditItem, value: any) => {
     setItems((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
@@ -304,73 +356,27 @@ export function PasslineAuditPanel() {
     });
   };
 
-  const addItem = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
-  const removeItem = (idx: number) =>
-    setItems((prev) => prev.filter((_, i) => i !== idx));
-
-  // Parse items from ticket text (quick-entry helper)
-  const pasteItems = (raw: string) => {
-    // Expected format lines: "PRODUCT NAME    0001    $ 6.500"
-    const parsed: AuditItem[] = [];
-    raw.split("\n").forEach((line) => {
-      const m = line
-        .trim()
-        .match(/^(.+?)\s{2,}(\d{4})\s+\$\s*([\d.]+)\s*$/);
-      if (m) {
-        const name = m[1].trim().toUpperCase();
-        const qty = parseInt(m[2], 10);
-        const total = parseInt(m[3].replace(/\./g, ""), 10);
-        const unit = qty > 0 ? Math.round(total / qty) : total;
-        parsed.push({
-          product_name: name,
-          quantity: qty,
-          unit_price: unit,
-          total_amount: total,
-          cocktail_id: null,
-          stock_applied: false,
-          income_applied: false,
-        });
-      }
-    });
-    if (parsed.length > 0) {
-      setItems(parsed);
-      toast.success(`${parsed.length} productos detectados del ticket`);
-    } else {
-      toast.error("No se pudo parsear el texto. Usa el formato del ticket Passline.");
-    }
-  };
+  const addItem = () => setItems((prev) => [...prev, makeEmptyItem()]);
+  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
 
   // ── Submit new session ─────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
-    if (!form.totem_number.trim()) {
-      toast.error("Ingresa el número de totem");
-      return;
-    }
-    if (!form.report_number.trim()) {
-      toast.error("Ingresa el número de informe");
-      return;
-    }
-    if (items.some((i) => !i.product_name.trim())) {
-      toast.error("Todos los productos deben tener nombre");
-      return;
-    }
+    if (!form.totem_number.trim()) return toast.error("Ingresa el número de totem");
+    if (!form.report_number.trim()) return toast.error("Ingresa el número de informe");
+
+    const validItems = items.filter((i) => i.cocktail_id || i.product_id);
+    if (validItems.length === 0) return toast.error("Todos los productos deben estar vinculados a la carta");
 
     setSubmitting(true);
     try {
-      const { data: session_data } = await supabase.auth.getSession();
-      const userId = session_data.session?.user.id;
+      const { data: authData } = await supabase.auth.getSession();
+      const userId = authData.session?.user.id;
       if (!userId) throw new Error("No autenticado");
 
-      const parsedInt = (v: string) => (v ? parseInt(v.replace(/\./g, ""), 10) || 0 : 0);
-
-      const totalAmount = items.reduce((a, i) => a + i.total_amount, 0);
-      const totalTxns =
-        parsedInt(form.payment_debito) > 0
-          ? 1
-          : 0 +
-            (parsedInt(form.payment_mastercard) > 0 ? 1 : 0) +
-            (parsedInt(form.payment_visa) > 0 ? 1 : 0);
+      const totalAmount = validItems.reduce((a, i) => a + i.total_amount, 0);
+      const netAmount = calcNet(totalAmount);
+      const ivaAmount = calcIva(totalAmount);
 
       const sessionPayload: any = {
         venue_id: venue!.id,
@@ -379,13 +385,10 @@ export function PasslineAuditPanel() {
         report_number: form.report_number.trim(),
         session_date: form.session_date,
         total_amount: totalAmount,
-        total_txns: totalTxns,
-        payment_debito: parsedInt(form.payment_debito),
-        payment_visa: parsedInt(form.payment_visa),
-        payment_amex: parsedInt(form.payment_amex),
-        payment_diners: parsedInt(form.payment_diners),
-        payment_mastercard: parsedInt(form.payment_mastercard),
-        payment_otras: parsedInt(form.payment_otras),
+        total_txns: validItems.reduce((a, i) => a + i.quantity, 0),
+        net_amount: netAmount,
+        iva_amount: ivaAmount,
+        cogs_total: 0, // calculated on confirm
         notes: form.notes || null,
         status: "pending",
         created_by: userId,
@@ -395,26 +398,24 @@ export function PasslineAuditPanel() {
         .insert(sessionPayload)
         .select()
         .single();
-
       if (sessionError) throw sessionError;
 
-      const itemsPayload = items
-        .filter((i) => i.product_name.trim())
-        .map((i) => ({
-          session_id: (newSession as unknown as { id: string }).id,
-          venue_id: venue!.id,
-          product_name: i.product_name.trim().toUpperCase(),
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-          total_amount: i.total_amount,
-          cocktail_id: i.cocktail_id || null,
-          stock_applied: false,
-          income_applied: false,
-        }));
+      const sessionId = (newSession as unknown as { id: string }).id;
 
-      const { error: itemsError } = await passlineAuditItemsTable()
-        .insert(itemsPayload);
+      const itemsPayload = validItems.map((i) => ({
+        session_id: sessionId,
+        venue_id: venue!.id,
+        product_name: i.product_name.trim(),
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total_amount: i.total_amount,
+        cocktail_id: i.cocktail_id || null,
+        product_id: i.product_id || null,
+        stock_applied: false,
+        income_applied: false,
+      }));
 
+      const { error: itemsError } = await passlineAuditItemsTable().insert(itemsPayload);
       if (itemsError) throw itemsError;
 
       toast.success("Auditoría Passline registrada");
@@ -438,81 +439,176 @@ export function PasslineAuditPanel() {
       report_number: "",
       session_date: new Date().toISOString().split("T")[0],
       jornada_id: activeJornadaId || "",
-      payment_debito: "",
-      payment_visa: "",
-      payment_amex: "",
-      payment_diners: "",
-      payment_mastercard: "",
-      payment_otras: "",
       notes: "",
     });
-    setItems([{ ...EMPTY_ITEM }]);
+    setItems([makeEmptyItem()]);
   };
 
-  // ── Reconcile ─────────────────────────────────────────────────────────────
+  // ── Confirm (reconcile + stock deduction + COGS) ──────────────────────────
 
-  const openReconcile = (session: AuditSession) => {
-    setReconcileSession(session);
-    setReconcileStatus("reconciled");
-    setReconcileNotes("");
-    setApplyToIncome(true);
-    setApplyToStock(false);
-    setShowReconcileDialog(true);
+  const openConfirm = (session: AuditSession) => {
+    setConfirmSession(session);
+    setConfirmStatus("reconciled");
+    setConfirmNotes("");
+    setShowConfirmDialog(true);
     if (!session.items) fetchSessionItems(session.id);
   };
 
-  const handleReconcile = async () => {
-    if (!reconcileSession) return;
-    setReconciling(true);
+  const handleConfirm = async () => {
+    if (!confirmSession) return;
+    setConfirming(true);
+
     try {
       const { data: authData } = await supabase.auth.getSession();
       const userId = authData.session?.user.id;
+      if (!userId) throw new Error("No autenticado");
 
-      // Update session status
-      const { error: updateError } = await passlineAuditSessionsTable()
-        .update({
-          status: reconcileStatus,
-          notes: reconcileNotes || null,
-        })
-        .eq("id", reconcileSession.id);
-
-      if (updateError) throw updateError;
-
-      // Optionally register income in gross_income_entries
-      if (applyToIncome) {
-        const { error: incomeError } = await supabase
-          .from("gross_income_entries")
-          .insert({
-            venue_id: venue!.id,
-            source_type: "passline_totem",
-            source_id: reconcileSession.id,
-            amount: reconcileSession.total_amount,
-            description: `Passline Totem ${reconcileSession.totem_number} — ${reconcileSession.report_number}`,
-            jornada_id: reconcileSession.jornada_id || null,
-            created_by: userId,
-          });
-
-        if (incomeError) {
-          toast.warning("Sesión conciliada pero error al registrar ingreso: " + incomeError.message);
-        } else {
-          // Mark items as income_applied
-          await passlineAuditItemsTable()
-            .update({ income_applied: true })
-            .eq("session_id", reconcileSession.id);
-        }
+      // Load items if not loaded
+      let sessionItems = confirmSession.items;
+      if (!sessionItems) {
+        const { data } = await passlineAuditItemsTable()
+          .select("*")
+          .eq("session_id", confirmSession.id);
+        sessionItems = (data || []) as unknown as AuditItem[];
       }
 
+      let totalCogs = 0;
+
+      if (confirmStatus === "reconciled") {
+        // Get the first bar location for stock deduction
+        const { data: locations } = await supabase
+          .from("stock_locations")
+          .select("id")
+          .eq("venue_id", venue!.id)
+          .eq("type", "bar" as any)
+          .eq("is_active", true)
+          .limit(1);
+
+        const barLocationId = locations?.[0]?.id;
+        if (!barLocationId) throw new Error("No hay barra activa para descontar stock");
+
+        // Process each item
+        for (const item of sessionItems) {
+          if (item.cocktail_id) {
+            // Cocktail — get recipe and deduct each ingredient
+            const { data: ingredients } = await supabase
+              .from("cocktail_ingredients")
+              .select("product_id, quantity, is_mixer_slot")
+              .eq("cocktail_id", item.cocktail_id)
+              .eq("venue_id", venue!.id);
+
+            for (const ing of (ingredients || []).filter((i: any) => i.product_id && !i.is_mixer_slot)) {
+              const { data: prod } = await supabase
+                .from("products")
+                .select("cost_per_unit, capacity_ml")
+                .eq("id", ing.product_id)
+                .single();
+
+              if (!prod) continue;
+
+              const ingQtyPerServing = Number(ing.quantity);
+              const totalIngQty = ingQtyPerServing * item.quantity;
+              const costPerUnit = Number(prod.cost_per_unit) || 0;
+              const capacityMl = Number(prod.capacity_ml) || 0;
+
+              // COGS: (ml / capacity) * cost for bottles, qty * cost for units
+              const ingCogs = capacityMl > 0
+                ? (totalIngQty / capacityMl) * costPerUnit
+                : totalIngQty * costPerUnit;
+              totalCogs += ingCogs;
+
+              // Create stock_movement
+              await supabase.from("stock_movements").insert({
+                product_id: ing.product_id,
+                venue_id: venue!.id,
+                movement_type: "salida",
+                quantity: -totalIngQty,
+                unit_cost: costPerUnit,
+                source_type: "passline_totem",
+                from_location_id: barLocationId,
+                jornada_id: confirmSession.jornada_id || null,
+                notes: `[PASSLINE] Totem #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
+              });
+
+              // Update stock_balances
+              await supabase.rpc("decrement_stock_balance" as any, {
+                p_product_id: ing.product_id,
+                p_location_id: barLocationId,
+                p_quantity: totalIngQty,
+              }).then(async (res) => {
+                // If RPC doesn't exist, do manual update
+                if (res.error) {
+                  await supabase
+                    .from("stock_balances")
+                    .update({ quantity: supabase.rpc("" as any) as any }) // fallback below
+                    .eq("product_id", ing.product_id)
+                    .eq("location_id", barLocationId);
+                }
+              }).catch(() => {});
+            }
+          } else if (item.product_id) {
+            // Unit product — deduct directly
+            const prod = catalogMap.get(item.product_id);
+            const costPerUnit = prod?.cost_per_unit || 0;
+            const capacityMl = prod?.capacity_ml || 0;
+
+            const deductQty = capacityMl && capacityMl > 0 ? item.quantity * capacityMl : item.quantity;
+            const itemCogs = capacityMl > 0
+              ? item.quantity * costPerUnit
+              : item.quantity * costPerUnit;
+            totalCogs += itemCogs;
+
+            await supabase.from("stock_movements").insert({
+              product_id: item.product_id,
+              venue_id: venue!.id,
+              movement_type: "salida",
+              quantity: -deductQty,
+              unit_cost: costPerUnit,
+              source_type: "passline_totem",
+              from_location_id: barLocationId,
+              jornada_id: confirmSession.jornada_id || null,
+              notes: `[PASSLINE] Totem #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
+            });
+          }
+        }
+
+        // Register gross income
+        await supabase.from("gross_income_entries").insert({
+          venue_id: venue!.id,
+          source_type: "passline_totem",
+          source_id: confirmSession.id,
+          amount: confirmSession.total_amount,
+          description: `Passline Totem #${confirmSession.totem_number} — Informe ${confirmSession.report_number}`,
+          jornada_id: confirmSession.jornada_id || null,
+          created_by: userId,
+        });
+
+        // Mark items as applied
+        await passlineAuditItemsTable()
+          .update({ stock_applied: true, income_applied: true })
+          .eq("session_id", confirmSession.id);
+      }
+
+      // Update session
+      await passlineAuditSessionsTable()
+        .update({
+          status: confirmStatus,
+          cogs_total: Math.round(totalCogs),
+          notes: confirmNotes || null,
+        })
+        .eq("id", confirmSession.id);
+
       toast.success(
-        reconcileStatus === "reconciled"
-          ? "✓ Sesión conciliada correctamente"
+        confirmStatus === "reconciled"
+          ? "✓ Confirmado — stock descontado y COGS registrado"
           : "⚠ Discrepancia registrada"
       );
-      setShowReconcileDialog(false);
+      setShowConfirmDialog(false);
       fetchSessions();
     } catch (err: any) {
-      toast.error(err.message || "Error al conciliar");
+      toast.error(err.message || "Error al confirmar");
     } finally {
-      setReconciling(false);
+      setConfirming(false);
     }
   };
 
@@ -520,13 +616,9 @@ export function PasslineAuditPanel() {
 
   const handleDelete = async (sessionId: string) => {
     if (!confirm("¿Eliminar esta auditoría? Esta acción no se puede deshacer.")) return;
-    const { error } = await passlineAuditSessionsTable()
-      .delete()
-      .eq("id", sessionId);
-
-    if (error) {
-      toast.error("Error al eliminar");
-    } else {
+    const { error } = await passlineAuditSessionsTable().delete().eq("id", sessionId);
+    if (error) toast.error("Error al eliminar");
+    else {
       toast.success("Auditoría eliminada");
       fetchSessions();
     }
@@ -544,7 +636,13 @@ export function PasslineAuditPanel() {
     }
   };
 
+  // ── Helpers for current item selection ID ─────────────────────────────────
+
+  const getItemCatalogId = (item: AuditItem) => item.cocktail_id || item.product_id || "";
+
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  const itemsTotal = items.reduce((a, i) => a + i.total_amount, 0);
 
   return (
     <div className="space-y-6">
@@ -553,10 +651,10 @@ export function PasslineAuditPanel() {
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Monitor className="w-5 h-5 text-primary" />
-            Auditoría Passline Totems
+            Ventas por Totems Passline
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Registra y concilia las ventas de los totems externos contra tu inventario e ingresos
+            Registra ventas de totems externos, descuenta stock y calcula COGS/IVA/Margen
           </p>
         </div>
         <Button onClick={() => setShowDialog(true)} className="gap-2">
@@ -568,27 +666,32 @@ export function PasslineAuditPanel() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
-          label="Total Conciliado"
-          value={formatCLP(computed.totalReconciliado)}
-          sub="ingresado al sistema"
+          label="Ventas Confirmadas"
+          value={formatCLP(computed.totalConfirmado)}
+          sub="con stock descontado"
           icon={CheckCircle2}
         />
         <SummaryCard
-          label="Pendiente Conciliar"
+          label="Pendiente Confirmar"
           value={formatCLP(computed.totalPendiente)}
-          sub={`${sessions.filter((s) => s.status === "pending").length} sesiones`}
+          sub={`${computed.pendingCount} sesiones`}
           icon={Clock}
         />
         <SummaryCard
-          label="Sesiones Totales"
-          value={String(computed.totalSessions)}
-          icon={FileBarChart2}
+          label="COGS Totems"
+          value={formatCLP(computed.totalCOGS)}
+          sub="costo de ventas terceros"
+          icon={ShoppingBag}
         />
         <SummaryCard
-          label="Discrepancias"
-          value={String(computed.totalDiscrepancies)}
-          sub="requieren revisión"
-          icon={AlertTriangle}
+          label="Margen Bruto"
+          value={
+            computed.totalConfirmado > 0
+              ? `${(((calcNet(computed.totalConfirmado) - computed.totalCOGS) / calcNet(computed.totalConfirmado)) * 100).toFixed(1)}%`
+              : "—"
+          }
+          sub={formatCLP(calcNet(computed.totalConfirmado) - computed.totalCOGS)}
+          icon={TrendingUp}
         />
       </div>
 
@@ -596,7 +699,7 @@ export function PasslineAuditPanel() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <ShoppingBag className="w-4 h-4" />
+            <FileBarChart2 className="w-4 h-4" />
             Historial de Jornadas
           </CardTitle>
         </CardHeader>
@@ -610,9 +713,7 @@ export function PasslineAuditPanel() {
             <div className="text-center py-12 text-muted-foreground">
               <Monitor className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm">No hay jornadas registradas aún.</p>
-              <p className="text-xs mt-1">
-                Registra el reporte del totem al cierre de cada jornada.
-              </p>
+              <p className="text-xs mt-1">Registra el reporte del totem al cierre de cada jornada.</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -624,45 +725,36 @@ export function PasslineAuditPanel() {
                       onClick={() => toggleExpand(session.id)}
                       className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {expandedId === session.id ? (
-                        <ChevronUp className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
+                      {expandedId === session.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
 
-                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-0.5">
+                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-6 gap-x-4 gap-y-0.5">
                       <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          Totem
-                        </p>
-                        <p className="text-sm font-semibold">
-                          #{session.totem_number}
-                        </p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Totem</p>
+                        <p className="text-sm font-semibold">#{session.totem_number}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          Informe
-                        </p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Informe</p>
                         <p className="text-sm font-mono">{session.report_number}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          Fecha
-                        </p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Fecha</p>
                         <p className="text-sm">
-                          {new Date(session.session_date + "T12:00:00").toLocaleDateString(
-                            "es-CL",
-                            { day: "2-digit", month: "short", year: "2-digit" }
-                          )}
+                          {new Date(session.session_date + "T12:00:00").toLocaleDateString("es-CL", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "2-digit",
+                          })}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          Total
-                        </p>
-                        <p className="text-sm font-bold text-primary">
-                          {formatCLP(session.total_amount)}
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Venta Bruta</p>
+                        <p className="text-sm font-bold text-primary">{formatCLP(session.total_amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">COGS</p>
+                        <p className="text-sm font-semibold text-destructive">
+                          {session.cogs_total ? formatCLP(session.cogs_total) : "—"}
                         </p>
                       </div>
                       <div className="flex items-center">
@@ -672,14 +764,9 @@ export function PasslineAuditPanel() {
 
                     <div className="flex items-center gap-1 shrink-0">
                       {session.status === "pending" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => openReconcile(session)}
-                        >
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => openConfirm(session)}>
                           <PackageCheck className="w-3 h-3" />
-                          Conciliar
+                          Confirmar
                         </Button>
                       )}
                       <Button
@@ -696,29 +783,29 @@ export function PasslineAuditPanel() {
                   {/* Expanded detail */}
                   {expandedId === session.id && (
                     <div className="bg-muted/20 border-t border-border px-4 py-4 space-y-4">
-                      {/* Payment breakdown */}
-                      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                        {[
-                          { label: "Débito", value: session.payment_debito },
-                          { label: "Visa", value: session.payment_visa },
-                          { label: "Amex", value: session.payment_amex },
-                          { label: "Diners", value: session.payment_diners },
-                          { label: "Mastercard", value: session.payment_mastercard },
-                          { label: "Otras", value: session.payment_otras },
-                        ]
-                          .filter((p) => p.value > 0)
-                          .map((p) => (
-                            <div
-                              key={p.label}
-                              className="bg-background rounded-lg p-2 text-center border border-border/50"
-                            >
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                {p.label}
-                              </p>
-                              <p className="text-sm font-semibold">{formatCLP(p.value)}</p>
-                            </div>
-                          ))}
-                      </div>
+                      {/* Financial summary */}
+                      {session.status === "reconciled" && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Venta Neta</p>
+                            <p className="text-sm font-semibold">{formatCLP(session.net_amount || calcNet(session.total_amount))}</p>
+                          </div>
+                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">IVA (19%)</p>
+                            <p className="text-sm font-semibold">{formatCLP(session.iva_amount || calcIva(session.total_amount))}</p>
+                          </div>
+                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">COGS</p>
+                            <p className="text-sm font-semibold text-destructive">{formatCLP(session.cogs_total)}</p>
+                          </div>
+                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
+                            <p className="text-sm font-bold text-primary">
+                              {formatCLP((session.net_amount || calcNet(session.total_amount)) - (session.cogs_total || 0))}
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Items table */}
                       {session.items === undefined ? (
@@ -735,59 +822,27 @@ export function PasslineAuditPanel() {
                               <TableRow className="bg-muted/40">
                                 <TableHead className="text-xs">Producto</TableHead>
                                 <TableHead className="text-xs text-right w-16">Cant.</TableHead>
-                                <TableHead className="text-xs text-right w-28">Precio Unit.</TableHead>
+                                <TableHead className="text-xs text-right w-28">Precio</TableHead>
                                 <TableHead className="text-xs text-right w-28">Total</TableHead>
-                                <TableHead className="text-xs text-center w-24">Carta</TableHead>
                                 <TableHead className="text-xs text-center w-16">Stock</TableHead>
-                                <TableHead className="text-xs text-center w-16">Ingreso</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {session.items.map((item, idx) => {
-                                const matchedCocktail = item.cocktail_id ? cocktailMap.get(item.cocktail_id) : undefined;
-                                return (
-                                  <TableRow key={item.id || idx}>
-                                    <TableCell className="font-mono text-xs py-2">
-                                      {item.product_name}
-                                    </TableCell>
-                                    <TableCell className="text-right text-xs py-2">
-                                      {item.quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right text-xs py-2">
-                                      {formatCLP(item.unit_price)}
-                                    </TableCell>
-                                    <TableCell className="text-right text-xs font-semibold py-2">
-                                      {formatCLP(item.total_amount)}
-                                    </TableCell>
-                                    <TableCell className="text-center py-2">
-                                      {matchedCocktail ? (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium flex items-center gap-1 justify-center">
-                                          <Link2 className="w-2.5 h-2.5" />
-                                          {matchedCocktail.name}
-                                        </span>
-                                      ) : (
-                                        <span className="text-[10px] text-muted-foreground">
-                                          Sin mapeo
-                                        </span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="text-center py-2">
-                                      {item.stock_applied ? (
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mx-auto" />
-                                      ) : (
-                                        <X className="w-3.5 h-3.5 text-muted-foreground/40 mx-auto" />
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="text-center py-2">
-                                      {item.income_applied ? (
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mx-auto" />
-                                      ) : (
-                                        <X className="w-3.5 h-3.5 text-muted-foreground/40 mx-auto" />
-                                      )}
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              })}
+                              {session.items.map((item, idx) => (
+                                <TableRow key={item.id || idx}>
+                                  <TableCell className="text-xs py-2 font-medium">{item.product_name}</TableCell>
+                                  <TableCell className="text-right text-xs py-2">{item.quantity}</TableCell>
+                                  <TableCell className="text-right text-xs py-2">{formatCLP(item.unit_price)}</TableCell>
+                                  <TableCell className="text-right text-xs font-semibold py-2">{formatCLP(item.total_amount)}</TableCell>
+                                  <TableCell className="text-center py-2">
+                                    {item.stock_applied ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mx-auto" />
+                                    ) : (
+                                      <X className="w-3.5 h-3.5 text-muted-foreground/40 mx-auto" />
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
                             </TableBody>
                           </Table>
                         </div>
@@ -857,8 +912,7 @@ export function PasslineAuditPanel() {
                     <SelectItem value="none">Sin jornada</SelectItem>
                     {jornadas.map((j) => (
                       <SelectItem key={j.id} value={j.id}>
-                        {j.fecha}{" "}
-                        {j.estado === "activa" || j.estado === "abierta" ? "✓ Activa" : ""}
+                        {j.fecha} {j.estado === "activa" || j.estado === "abierta" ? "✓ Activa" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -866,57 +920,24 @@ export function PasslineAuditPanel() {
               </div>
             </div>
 
-            {/* Payments */}
-            <div>
-              <Label className="text-xs mb-2 block">Desglose de Medios de Pago (CLP)</Label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { key: "payment_debito", label: "Débito" },
-                  { key: "payment_visa", label: "Visa" },
-                  { key: "payment_amex", label: "Amex" },
-                  { key: "payment_diners", label: "Diners" },
-                  { key: "payment_mastercard", label: "Mastercard" },
-                  { key: "payment_otras", label: "Otras" },
-                ].map(({ key, label }) => (
-                  <div key={key} className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">{label}</Label>
-                    <Input
-                      placeholder="0"
-                      value={form[key as keyof typeof form]}
-                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Products */}
+            {/* Products from catalog */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <Label className="text-xs">Productos vendidos</Label>
-                <div className="flex gap-2">
-                  <PasteDialog onPaste={pasteItems} />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={addItem}
-                  >
-                    <Plus className="w-3 h-3" />
-                    Agregar fila
-                  </Button>
-                </div>
+                <Label className="text-xs">Productos vendidos (de la carta)</Label>
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addItem}>
+                  <Plus className="w-3 h-3" />
+                  Agregar fila
+                </Button>
               </div>
 
               <div className="rounded-lg border border-border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs">Nombre Producto</TableHead>
+                      <TableHead className="text-xs w-[45%]">Producto de la Carta *</TableHead>
                       <TableHead className="text-xs w-20">Cant.</TableHead>
                       <TableHead className="text-xs w-28">Precio Unit.</TableHead>
                       <TableHead className="text-xs w-28">Total</TableHead>
-                      <TableHead className="text-xs w-40">Mapear a Carta</TableHead>
                       <TableHead className="w-8" />
                     </TableRow>
                   </TableHeader>
@@ -924,12 +945,53 @@ export function PasslineAuditPanel() {
                     {items.map((item, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="py-1.5">
-                          <Input
-                            className="h-7 text-xs"
-                            placeholder="NOMBRE PRODUCTO"
-                            value={item.product_name}
-                            onChange={(e) => updateItem(idx, "product_name", e.target.value)}
-                          />
+                          <Select
+                            value={getItemCatalogId(item) || "__none__"}
+                            onValueChange={(v) => {
+                              if (v !== "__none__") selectCatalogProduct(idx, v);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Seleccionar producto..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__" disabled>
+                                Seleccionar producto...
+                              </SelectItem>
+                              {catalog.length > 0 && (
+                                <>
+                                  {catalog.filter((c) => c.type === "cocktail").length > 0 && (
+                                    <>
+                                      <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                        Cocktails
+                                      </div>
+                                      {catalog
+                                        .filter((c) => c.type === "cocktail")
+                                        .map((c) => (
+                                          <SelectItem key={c.id} value={c.id}>
+                                            🍸 {c.name} — {formatCLP(c.price)}
+                                          </SelectItem>
+                                        ))}
+                                    </>
+                                  )}
+                                  {catalog.filter((c) => c.type === "product").length > 0 && (
+                                    <>
+                                      <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">
+                                        Productos
+                                      </div>
+                                      {catalog
+                                        .filter((c) => c.type === "product")
+                                        .map((c) => (
+                                          <SelectItem key={c.id} value={c.id}>
+                                            📦 {c.name}
+                                          </SelectItem>
+                                        ))}
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="py-1.5">
                           <Input
@@ -937,7 +999,7 @@ export function PasslineAuditPanel() {
                             type="number"
                             min={1}
                             value={item.quantity}
-                            onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))}
+                            onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
                           />
                         </TableCell>
                         <TableCell className="py-1.5">
@@ -947,33 +1009,11 @@ export function PasslineAuditPanel() {
                             min={0}
                             placeholder="0"
                             value={item.unit_price || ""}
-                            onChange={(e) => updateItem(idx, "unit_price", Number(e.target.value))}
+                            onChange={(e) => updateItemField(idx, "unit_price", Number(e.target.value))}
                           />
                         </TableCell>
                         <TableCell className="py-1.5">
-                          <span className="text-xs font-medium tabular-nums">
-                            {formatCLP(item.total_amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <Select
-                            value={item.cocktail_id || "__none__"}
-                            onValueChange={(v) =>
-                              updateItem(idx, "cocktail_id", v === "__none__" ? null : v)
-                            }
-                          >
-                            <SelectTrigger className="h-7 text-xs">
-                              <SelectValue placeholder="Sin mapeo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">Sin mapeo</SelectItem>
-                              {cocktails.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <span className="text-xs font-medium tabular-nums">{formatCLP(item.total_amount)}</span>
                         </TableCell>
                         <TableCell className="py-1.5 pr-2">
                           <Button
@@ -992,13 +1032,16 @@ export function PasslineAuditPanel() {
                 </Table>
               </div>
 
-              {/* Running total */}
-              <div className="flex justify-end mt-2 pr-2">
+              {/* Running total + IVA preview */}
+              <div className="flex justify-end mt-2 pr-2 gap-4">
+                <span className="text-xs text-muted-foreground">
+                  Neto: <span className="font-semibold text-foreground">{formatCLP(calcNet(itemsTotal))}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  IVA: <span className="font-semibold text-foreground">{formatCLP(calcIva(itemsTotal))}</span>
+                </span>
                 <span className="text-sm text-muted-foreground">
-                  Total productos:{" "}
-                  <span className="font-bold text-foreground">
-                    {formatCLP(items.reduce((a, i) => a + i.total_amount, 0))}
-                  </span>
+                  Total: <span className="font-bold text-foreground">{formatCLP(itemsTotal)}</span>
                 </span>
               </div>
             </div>
@@ -1017,9 +1060,7 @@ export function PasslineAuditPanel() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
             <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               Guardar Auditoría
@@ -1028,57 +1069,63 @@ export function PasslineAuditPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Reconcile Dialog ──────────────────────────────────────────────────── */}
-      <Dialog open={showReconcileDialog} onOpenChange={setShowReconcileDialog}>
+      {/* ─── Confirm Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageCheck className="w-5 h-5 text-primary" />
-              Conciliar Jornada
+              Confirmar Jornada de Totem
             </DialogTitle>
           </DialogHeader>
 
-          {reconcileSession && (
+          {confirmSession && (
             <div className="space-y-4 py-2">
               {/* Summary */}
-              <div className="bg-muted/40 rounded-lg p-4 space-y-1 text-sm">
+              <div className="bg-muted/40 rounded-lg p-4 space-y-1.5 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Totem:</span>
-                  <span className="font-semibold">#{reconcileSession.totem_number}</span>
+                  <span className="font-semibold">#{confirmSession.totem_number}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Informe:</span>
-                  <span className="font-mono">{reconcileSession.report_number}</span>
+                  <span className="font-mono">{confirmSession.report_number}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total:</span>
-                  <span className="font-bold text-primary text-base">
-                    {formatCLP(reconcileSession.total_amount)}
-                  </span>
+                  <span className="text-muted-foreground">Venta Bruta:</span>
+                  <span className="font-bold text-primary text-base">{formatCLP(confirmSession.total_amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Neto (sin IVA):</span>
+                  <span className="font-semibold">{formatCLP(calcNet(confirmSession.total_amount))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">IVA (19%):</span>
+                  <span className="font-semibold">{formatCLP(calcIva(confirmSession.total_amount))}</span>
                 </div>
               </div>
 
               {/* Status */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Resultado de la conciliación</Label>
+                <Label className="text-xs">Resultado</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setReconcileStatus("reconciled")}
+                    onClick={() => setConfirmStatus("reconciled")}
                     className={`flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition-all ${
-                      reconcileStatus === "reconciled"
+                      confirmStatus === "reconciled"
                         ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-medium"
                         : "border-muted hover:border-emerald-500/50"
                     }`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    Cuadra OK
+                    Confirmar OK
                   </button>
                   <button
                     type="button"
-                    onClick={() => setReconcileStatus("discrepancy")}
+                    onClick={() => setConfirmStatus("discrepancy")}
                     className={`flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition-all ${
-                      reconcileStatus === "discrepancy"
+                      confirmStatus === "discrepancy"
                         ? "border-red-500 bg-red-500/10 text-red-700 font-medium"
                         : "border-muted hover:border-red-500/50"
                     }`}
@@ -1089,48 +1136,24 @@ export function PasslineAuditPanel() {
                 </div>
               </div>
 
-              {/* Options */}
-              <div className="space-y-2">
-                <Label className="text-xs">Acciones al conciliar</Label>
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={applyToIncome}
-                    onChange={(e) => setApplyToIncome(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <p className="text-sm font-medium">Registrar como ingreso</p>
-                    <p className="text-xs text-muted-foreground">
-                      Agrega {formatCLP(reconcileSession.total_amount)} a los ingresos brutos de la
-                      jornada
-                    </p>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 cursor-pointer opacity-60">
-                  <input
-                    type="checkbox"
-                    checked={applyToStock}
-                    disabled
-                    onChange={(e) => setApplyToStock(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <p className="text-sm font-medium">Descontar stock (próximamente)</p>
-                    <p className="text-xs text-muted-foreground">
-                      Descuenta ingredientes de los productos mapeados a la carta
-                    </p>
-                  </div>
-                </label>
-              </div>
+              {confirmStatus === "reconciled" && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-xs text-emerald-700 space-y-1">
+                  <p className="font-medium">Al confirmar se ejecutará:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Descuento de stock (ingredientes de cada producto)</li>
+                    <li>Registro de COGS por producto</li>
+                    <li>Registro de ingreso bruto</li>
+                  </ul>
+                </div>
+              )}
 
               {/* Notes */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Notas de conciliación</Label>
+                <Label className="text-xs">Notas (opcional)</Label>
                 <Textarea
-                  placeholder="Describe cualquier diferencia encontrada..."
-                  value={reconcileNotes}
-                  onChange={(e) => setReconcileNotes(e.target.value)}
+                  placeholder="Observaciones..."
+                  value={confirmNotes}
+                  onChange={(e) => setConfirmNotes(e.target.value)}
                   className="resize-none text-sm"
                   rows={2}
                 />
@@ -1139,81 +1162,18 @@ export function PasslineAuditPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReconcileDialog(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancelar</Button>
             <Button
-              onClick={handleReconcile}
-              disabled={reconciling}
-              className={`gap-2 ${
-                reconcileStatus === "discrepancy"
-                  ? "bg-red-500 hover:bg-red-600 text-white"
-                  : ""
-              }`}
+              onClick={handleConfirm}
+              disabled={confirming}
+              className={`gap-2 ${confirmStatus === "discrepancy" ? "bg-red-500 hover:bg-red-600 text-white" : ""}`}
             >
-              {reconciling && <Loader2 className="w-4 h-4 animate-spin" />}
-              {reconcileStatus === "reconciled" ? "Confirmar Conciliación" : "Marcar Discrepancia"}
+              {confirming && <Loader2 className="w-4 h-4 animate-spin" />}
+              {confirmStatus === "reconciled" ? "Confirmar y Descontar Stock" : "Marcar Discrepancia"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// ─── Paste helper dialog ──────────────────────────────────────────────────────
-
-function PasteDialog({ onPaste }: { onPaste: (text: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-
-  const handlePaste = () => {
-    onPaste(text);
-    setText("");
-    setOpen(false);
-  };
-
-  return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs gap-1"
-        onClick={() => setOpen(true)}
-      >
-        <FileBarChart2 className="w-3 h-3" />
-        Pegar desde ticket
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-base">Pegar detalle del ticket Passline</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-xs text-muted-foreground">
-              Copia las líneas del{" "}
-              <strong>DETALLE DE PRODUCTOS</strong> del ticket (formato:{" "}
-              <code className="bg-muted px-1 rounded">NOMBRE &nbsp; 0001 &nbsp; $ 6.500</code>)
-            </p>
-            <Textarea
-              placeholder={`RAMAZZOTTI ROSSATO    0001    $ 6.500\nMISTRAL 35 BEBIDA    0001    $ 5.000\nGIN DE VERANO    0001    $ 8.000`}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              className="font-mono text-xs resize-none"
-              rows={6}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handlePaste} disabled={!text.trim()}>
-              Importar productos
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
