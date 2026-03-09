@@ -40,6 +40,13 @@ interface ManualIncomeRow {
   created_at: string;
 }
 
+export interface CourtesyCOGSItem {
+  note: string;
+  product_name: string;
+  cost: number;
+  redeemed_count: number;
+}
+
 export interface OpexCategoryBreakdown {
   category: string;
   netTotal: number;
