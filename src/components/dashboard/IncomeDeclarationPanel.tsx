@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, DollarSign, FileEdit, Receipt, Ticket } from "lucide-react";
+import { Loader2, Plus, DollarSign, FileEdit } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -37,32 +37,6 @@ interface IncomeEntry {
   created_at: string;
 }
 
-function getSourceLabel(type: string) {
-  switch (type) {
-    case "sale": return "Venta barra";
-    case "ticket": return "Entrada";
-    case "manual": return "Manual";
-    default: return type;
-  }
-}
-
-function getSourceVariant(type: string): "default" | "secondary" | "outline" {
-  switch (type) {
-    case "sale": return "default";
-    case "ticket": return "secondary";
-    case "manual": return "outline";
-    default: return "outline";
-  }
-}
-
-function getSourceIcon(type: string) {
-  switch (type) {
-    case "sale": return <Receipt className="h-3 w-3" />;
-    case "ticket": return <Ticket className="h-3 w-3" />;
-    case "manual": return <FileEdit className="h-3 w-3" />;
-    default: return <DollarSign className="h-3 w-3" />;
-  }
-}
 
 export function IncomeDeclarationPanel() {
   const { isReadOnly } = useUserRole();
@@ -94,6 +68,7 @@ export function IncomeDeclarationPanel() {
         .from("gross_income_entries")
         .select("id, source_type, amount, description, created_at")
         .eq("venue_id", venueId)
+        .eq("source_type", "manual")
         .gte("created_at", `${start}T00:00:00`)
         .lte("created_at", `${end}T23:59:59`)
         .order("created_at", { ascending: false });
@@ -155,9 +130,6 @@ export function IncomeDeclarationPanel() {
   };
 
   const totalGross = entries.reduce((s, e) => s + e.amount, 0);
-  const totalManual = entries.filter((e) => e.source_type === "manual").reduce((s, e) => s + e.amount, 0);
-  const totalSales = entries.filter((e) => e.source_type === "sale").reduce((s, e) => s + e.amount, 0);
-  const totalTickets = entries.filter((e) => e.source_type === "ticket").reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="space-y-8">
@@ -191,53 +163,24 @@ export function IncomeDeclarationPanel() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary card */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-5 space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-6 w-28" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="p-5 space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-6 w-28" />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Total bruto
-              </p>
-              <p className="text-2xl font-bold text-green-600 tabular-nums">{formatCLP(totalGross)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Manuales declarados
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalManual)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Ventas barra
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalSales)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Entradas / Tickets
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalTickets)}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
+              Total ingresos declarados
+            </p>
+            <p className="text-2xl font-bold text-green-600 tabular-nums">{formatCLP(totalGross)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{entries.length} registro{entries.length !== 1 ? "s" : ""}</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Entries table */}
@@ -268,9 +211,9 @@ export function IncomeDeclarationPanel() {
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50 gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <Badge variant={getSourceVariant(entry.source_type)} className="gap-1 shrink-0">
-                        {getSourceIcon(entry.source_type)}
-                        {getSourceLabel(entry.source_type)}
+                      <Badge variant="outline" className="gap-1 shrink-0">
+                        <FileEdit className="h-3 w-3" />
+                        Manual
                       </Badge>
                       <div className="min-w-0">
                         {entry.description && (
