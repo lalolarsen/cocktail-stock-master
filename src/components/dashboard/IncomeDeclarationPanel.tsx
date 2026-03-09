@@ -68,6 +68,7 @@ export function IncomeDeclarationPanel() {
         .from("gross_income_entries")
         .select("id, source_type, amount, description, created_at")
         .eq("venue_id", venueId)
+        .eq("source_type", "manual")
         .gte("created_at", `${start}T00:00:00`)
         .lte("created_at", `${end}T23:59:59`)
         .order("created_at", { ascending: false });
