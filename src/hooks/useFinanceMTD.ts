@@ -443,7 +443,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         }))
       );
 
-      // ── Courtesy COGS (only redeemed QRs count as COGS) ──
+      // ── Passline totem sessions ──
+      const passlineRows = (passlineRes.data || []) as unknown as PasslineSessionSummary[];
+      setPasslineSessions(passlineRows);
+
       const { data: courtesyRedemptions } = await supabase
         .from("courtesy_redemptions")
         .select("courtesy_id, venue_id, courtesy_qr:courtesy_id(product_name, note, qty)")
