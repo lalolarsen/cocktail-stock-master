@@ -508,6 +508,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const salesNeto = salesNet;
   const salesBruto = salesGross;
   const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
+  const courtesyCogsTotal = courtesyCogsItems.reduce((s, i) => s + i.cost, 0);
 
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
