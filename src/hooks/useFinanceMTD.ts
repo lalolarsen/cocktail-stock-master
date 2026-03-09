@@ -210,7 +210,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes] = await Promise.all([
+      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes, passlineRes] = await Promise.all([
         // Sales — read columns directly
         supabase
           .from("sales")
@@ -265,6 +265,15 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .eq("source_type", "manual")
           .gte("created_at", `${start}T00:00:00`)
           .lte("created_at", `${end}T23:59:59`),
+
+        // Passline totem sessions (confirmed only)
+        supabase
+          .from("passline_audit_sessions" as never)
+          .select("id, totem_number, report_number, session_date, total_amount, net_amount, iva_amount, cogs_total")
+          .eq("venue_id", venueId)
+          .eq("status", "reconciled")
+          .gte("session_date", start)
+          .lte("session_date", end),
       ]);
 
       // ── Sales with fallback ──
