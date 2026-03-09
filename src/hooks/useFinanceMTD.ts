@@ -542,6 +542,13 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
   const courtesyCogsTotal = courtesyCogsItems.reduce((s, i) => s + i.cost, 0);
 
+  // Passline totems
+  const passlineSalesGross = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.total_amount)), 0);
+  const passlineSalesNet = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.net_amount) || Math.round(Number(p.total_amount) / 1.19)), 0);
+  const passlineIva = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.iva_amount) || (Number(p.total_amount) - Math.round(Number(p.total_amount) / 1.19))), 0);
+  const passlineCogs = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.cogs_total) || 0), 0);
+  const passlineMargin = passlineSalesNet - passlineCogs;
+
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
   const opexTotal = opexDetailSum;
