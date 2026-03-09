@@ -550,6 +550,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     salesNeto,
     ivaDebito,
     cogsTotal,
+    courtesyCogsTotal,
+    courtesyCogsItems,
     wasteTotal,
     wasteItems,
     manualIncomeTotal,
