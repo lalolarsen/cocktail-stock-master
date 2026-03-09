@@ -198,6 +198,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   });
   const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
   const [courtesyCogsItems, setCourtesyCogsItems] = useState<CourtesyCOGSItem[]>([]);
+  const [passlineSessions, setPasslineSessions] = useState<PasslineSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
