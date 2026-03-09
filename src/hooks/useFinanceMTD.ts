@@ -228,11 +228,11 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         // Manual gross income entries declared by admin
         supabase
           .from("gross_income_entries")
-          .select("id, amount, description, entry_date, created_at")
+          .select("id, amount, description, created_at")
           .eq("venue_id", venueId)
           .eq("source_type", "manual")
-          .gte("entry_date", start)
-          .lte("entry_date", end),
+          .gte("created_at", `${start}T00:00:00`)
+          .lte("created_at", `${end}T23:59:59`),
       ]);
 
       // ── Sales with fallback ──
