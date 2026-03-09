@@ -22,7 +22,6 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAppSession } from "@/contexts/AppSessionContext";
-import { DEFAULT_VENUE_ID } from "@/lib/venue";
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -67,7 +66,8 @@ function getSourceIcon(type: string) {
 
 export function IncomeDeclarationPanel() {
   const { isReadOnly } = useUserRole();
-  const { user } = useAppSession();
+  const { user, venue } = useAppSession();
+  const venueId = venue?.id;
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear] = useState(now.getFullYear());
@@ -83,6 +83,7 @@ export function IncomeDeclarationPanel() {
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const fetchEntries = useCallback(async () => {
+    if (!venueId) return;
     setLoading(true);
     const start = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -92,7 +93,7 @@ export function IncomeDeclarationPanel() {
       const { data, error } = await supabase
         .from("gross_income_entries")
         .select("id, source_type, amount, description, entry_date, created_at")
-        .eq("venue_id", DEFAULT_VENUE_ID)
+        .eq("venue_id", venueId)
         .or(`entry_date.gte.${start},entry_date.is.null`)
         .order("entry_date", { ascending: false })
         .order("created_at", { ascending: false });
@@ -112,7 +113,7 @@ export function IncomeDeclarationPanel() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, venueId]);
 
   useEffect(() => {
     fetchEntries();
@@ -127,14 +128,14 @@ export function IncomeDeclarationPanel() {
       toast.error("Ingresa el motivo del ingreso");
       return;
     }
-    if (!user?.id) return;
+    if (!user?.id || !venueId) return;
 
     setSubmitting(true);
     try {
       const { error } = await supabase
         .from("gross_income_entries")
         .insert({
-          venue_id: DEFAULT_VENUE_ID,
+          venue_id: venueId,
           source_type: "manual",
           amount: Math.round(parseFloat(amount)),
           description: description.trim(),
