@@ -99,16 +99,19 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0 || mtd.wasteTotal > 0 || mtd.manualIncomeTotal > 0;
+  const hasPassline = mtd.passlineSalesGross > 0;
+  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0 || mtd.wasteTotal > 0 || mtd.manualIncomeTotal > 0 || hasPassline;
   const noDataAtAll = !mtd.loading && !hasAnyData;
-  const hasSales = mtd.salesGross > 0;
+  const hasSales = mtd.salesGross > 0 || hasPassline;
 
   // When no sales, COGS and margins must be 0 (stock entries are NOT cost of sales)
   const displayCogs = hasSales ? mtd.cogsTotal : 0;
   const displayWaste = mtd.wasteTotal;
-  // Gross margin accounts for both COGS and waste cost
-  const displayGrossMargin = hasSales ? (mtd.salesNet - mtd.cogsTotal - displayWaste) : -displayWaste;
-  const displayMarginPct = mtd.salesNet > 0 ? (displayGrossMargin / mtd.salesNet) * 100 : 0;
+  // Gross margin accounts for both COGS, waste, and passline
+  const totalSalesNet = mtd.salesNet + mtd.passlineSalesNet;
+  const totalCogs = displayCogs + mtd.passlineCogs;
+  const displayGrossMargin = hasSales ? (totalSalesNet - totalCogs - displayWaste) : -displayWaste;
+  const displayMarginPct = totalSalesNet > 0 ? (displayGrossMargin / totalSalesNet) * 100 : 0;
   const displayMarginPostTax = displayGrossMargin - mtd.specificTaxTotal;
   const displayOperationalResult = displayMarginPostTax - mtd.opexTotal;
 
