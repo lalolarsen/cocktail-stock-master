@@ -87,6 +87,17 @@ export interface ManualIncomeEntry {
   entry_date: string;
 }
 
+export interface PasslineSessionSummary {
+  id: string;
+  totem_number: string;
+  report_number: string;
+  session_date: string;
+  total_amount: number;
+  net_amount: number;
+  iva_amount: number;
+  cogs_total: number;
+}
+
 export interface FinanceMTD {
   // Sales
   salesGross: number;
@@ -103,6 +114,14 @@ export interface FinanceMTD {
   // Manual income entries (ingresos brutos declarados)
   manualIncomeTotal: number;
   manualIncomeEntries: ManualIncomeEntry[];
+
+  // Passline Totems (ventas por terceros)
+  passlineSalesGross: number;
+  passlineSalesNet: number;
+  passlineIva: number;
+  passlineCogs: number;
+  passlineMargin: number;
+  passlineSessions: PasslineSessionSummary[];
 
   // Waste (merma aprobada)
   wasteTotal: number;
