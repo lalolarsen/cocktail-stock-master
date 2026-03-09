@@ -490,9 +490,25 @@ export default function CourtesyQR() {
               />
             </div>
 
-            {/* Note */}
+            {/* Note / Socio selector */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nota interna (opcional)</label>
+              <label className="text-sm font-medium">Motivo / Nota</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {SOCIOS.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setNote(s.label)}
+                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                      note === s.label
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border/50 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
               <Input
                 placeholder="Ej: VIP mesa 3, cumpleaños…"
                 value={note}
