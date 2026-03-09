@@ -43,6 +43,7 @@ import {
   Gift,
   Search,
   CopyPlus,
+  Printer,
 } from "lucide-react";
 
 type CourtesyQR = {
