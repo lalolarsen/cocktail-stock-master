@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, DollarSign, FileEdit, Receipt, Ticket } from "lucide-react";
+import { Loader2, Plus, DollarSign, FileEdit } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
