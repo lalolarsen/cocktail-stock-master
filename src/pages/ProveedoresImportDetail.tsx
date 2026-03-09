@@ -283,7 +283,7 @@ export default function ProveedoresImportDetail() {
   // Financial engine — compute summary & cuadratura
   const financialSummary: FinancialSummary | null = useMemo(() => {
     if (!imp || lines.length === 0) return null;
-    return buildFinancialSummary(imp as ImportHeaderInput, lines as ImportLineInput[]);
+    return buildFinancialSummary(imp as unknown as ImportHeaderInput, lines as ImportLineInput[]);
   }, [imp, lines]);
 
   const isBalanced = financialSummary?.validation.is_balanced ?? false;
