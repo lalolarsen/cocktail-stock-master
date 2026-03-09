@@ -360,13 +360,13 @@ export default function ProveedoresImportDetail() {
         { field: "ila_destilados_total", label: "ILA Destilados 31,5%" },
       ];
       for (const tm of taxMapping) {
-        const amt = imp[tm.field] || 0;
+        const amt = (imp[tm.field] as number) || 0;
         if (amt > 0) {
           taxExpenseLines.push({
             purchase_id: purchaseId,
             expense_type: "tax_specific",
             description: `Impuesto específico: ${tm.label}`,
-            amount_net: amt,
+            amount_net: amt as number,
             vat_amount: 0,
           });
         }
