@@ -306,15 +306,6 @@ export function IncomeDeclarationPanel() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="entry-date">Fecha</Label>
-              <Input
-                id="entry-date"
-                type="date"
-                value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="income-amount">Monto bruto (CLP)</Label>
               <Input
                 id="income-amount"
