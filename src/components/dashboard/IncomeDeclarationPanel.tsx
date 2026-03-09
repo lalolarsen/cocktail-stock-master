@@ -80,7 +80,7 @@ export function IncomeDeclarationPanel() {
   // Form state
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // entryDate removed - column doesn't exist in DB
 
   const fetchEntries = useCallback(async () => {
     if (!venueId) return;
