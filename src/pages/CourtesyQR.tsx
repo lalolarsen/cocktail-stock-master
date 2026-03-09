@@ -43,6 +43,7 @@ import {
   Gift,
   Search,
   CopyPlus,
+  Printer,
 } from "lucide-react";
 
 type CourtesyQR = {
@@ -85,6 +86,12 @@ export default function CourtesyQR() {
   const [maxUses, setMaxUses] = useState(1);
   const [note, setNote] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const SOCIOS = [
+    { key: "socio_md", label: "Socio: Mauricio Duque" },
+    { key: "socio_gh", label: "Socio: Gabriel Hidalgo" },
+    { key: "socio_cs", label: "Socio: Carlos Sinning" },
+  ];
 
   // Fetch cocktails for product selection
   const { data: cocktails = [] } = useQuery({
@@ -483,9 +490,25 @@ export default function CourtesyQR() {
               />
             </div>
 
-            {/* Note */}
+            {/* Note / Socio selector */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nota interna (opcional)</label>
+              <label className="text-sm font-medium">Motivo / Nota</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {SOCIOS.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setNote(s.label)}
+                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                      note === s.label
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border/50 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
               <Input
                 placeholder="Ej: VIP mesa 3, cumpleaños…"
                 value={note}
@@ -522,7 +545,7 @@ export default function CourtesyQR() {
             <DialogTitle>QR de Cortesía</DialogTitle>
           </DialogHeader>
           {showQR && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4" id="courtesy-qr-print">
               <div className="flex justify-center">
                 <div className="bg-white p-4 rounded-xl">
                   <QRCodeSVG
@@ -544,14 +567,47 @@ export default function CourtesyQR() {
               {showQR.note && (
                 <p className="text-sm text-muted-foreground italic">"{showQR.note}"</p>
               )}
-              <Button
-                variant="outline"
-                onClick={() => copyCode(showQR.code)}
-                className="w-full"
-              >
-                <Copy className="w-4 h-4 mr-2" />
-                Copiar código
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => copyCode(showQR.code)}
+                  className="flex-1"
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar código
+                </Button>
+                <Button
+                  onClick={() => {
+                    const printContent = document.getElementById("courtesy-qr-print");
+                    if (!printContent) return;
+                    const w = window.open("", "_blank", "width=400,height=600");
+                    if (!w) { toast.error("Popup bloqueado"); return; }
+                    w.document.write(`
+                      <html><head><title>QR Cortesía</title>
+                      <style>
+                        body { font-family: sans-serif; text-align: center; padding: 20px; }
+                        svg { margin: 0 auto; }
+                        .note { font-style: italic; color: #666; font-size: 14px; }
+                        .product { font-size: 20px; font-weight: bold; margin: 12px 0 4px; }
+                        .sub { color: #666; font-size: 14px; }
+                        .code { font-family: monospace; font-size: 18px; letter-spacing: 2px; background: #f3f3f3; padding: 8px 16px; border-radius: 8px; display: inline-block; margin: 12px 0; }
+                      </style></head><body>
+                      <div class="product">${showQR.product_name}</div>
+                      <div class="sub">× ${showQR.qty} · ${showQR.max_uses === 1 ? "1 uso" : `${showQR.max_uses} usos`}</div>
+                      ${printContent.querySelector("svg")?.outerHTML || ""}
+                      <div class="code">${showQR.code}</div>
+                      ${showQR.note ? `<div class="note">"${showQR.note}"</div>` : ""}
+                      </body></html>
+                    `);
+                    w.document.close();
+                    w.print();
+                  }}
+                  className="flex-1"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Imprimir
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  Scale, Landmark, Trash2, FileEdit,
+  Scale, Landmark, Trash2, FileEdit, Gift,
 } from "lucide-react";
 
 const MONTHS = [
@@ -288,6 +288,26 @@ export function FinancePanel() {
                 ) : (
                   <>
                     <StatementRow label="Costo de ventas (COGS neto)" value={-displayCogs} negative />
+                    {/* Courtesy COGS breakdown */}
+                    {mtd.courtesyCogsTotal > 0 && (
+                      <>
+                        <div className="flex justify-between items-center py-1 pl-4 text-sm">
+                          <span className="text-muted-foreground flex items-center gap-1.5">
+                            <Gift className="h-3.5 w-3.5 text-purple-500" />
+                            COGS Cortesías (incluido arriba)
+                          </span>
+                          <span className="tabular-nums text-muted-foreground font-medium">{formatCLP(mtd.courtesyCogsTotal)}</span>
+                        </div>
+                        {mtd.courtesyCogsItems.map((item, i) => (
+                          <div key={i} className="flex justify-between text-xs text-muted-foreground pl-8">
+                            <span className="truncate mr-2">
+                              {item.note} — {item.product_name} ({item.redeemed_count} canje{item.redeemed_count !== 1 ? "s" : ""})
+                            </span>
+                            <span className="tabular-nums shrink-0">{formatCLP(item.cost)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </>
                 )}
 

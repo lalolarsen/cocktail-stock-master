@@ -40,6 +40,13 @@ interface ManualIncomeRow {
   created_at: string;
 }
 
+export interface CourtesyCOGSItem {
+  note: string;
+  product_name: string;
+  cost: number;
+  redeemed_count: number;
+}
+
 export interface OpexCategoryBreakdown {
   category: string;
   netTotal: number;
@@ -88,6 +95,10 @@ export interface FinanceMTD {
   salesBruto: number;
   salesNeto: number;
   cogsTotal: number;
+
+  // Courtesy COGS (redeemed only)
+  courtesyCogsTotal: number;
+  courtesyCogsItems: CourtesyCOGSItem[];
 
   // Manual income entries (ingresos brutos declarados)
   manualIncomeTotal: number;
@@ -167,6 +178,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0,
   });
   const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
+  const [courtesyCogsItems, setCourtesyCogsItems] = useState<CourtesyCOGSItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -401,6 +413,82 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           entry_date: r.entry_date ?? r.created_at.slice(0, 10),
         }))
       );
+
+      // ── Courtesy COGS (only redeemed QRs count as COGS) ──
+      const { data: courtesyRedemptions } = await supabase
+        .from("courtesy_redemptions")
+        .select("courtesy_id, venue_id, courtesy_qr:courtesy_id(product_name, note, qty)")
+        .eq("venue_id", venueId)
+        .eq("result", "success")
+        .gte("redeemed_at", fromISO)
+        .lte("redeemed_at", toISO);
+
+      // Get stock movements for courtesy sales in this period
+      const { data: courtesySales } = await supabase
+        .from("sales")
+        .select("id")
+        .eq("venue_id", venueId)
+        .eq("sale_category", "courtesy" as never)
+        .eq("is_cancelled", false)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO);
+
+      let courtesyCogs = 0;
+      if (courtesySales && courtesySales.length > 0) {
+        const saleIds = courtesySales.map((s) => s.id);
+        // Get pickup tokens from these sales
+        const { data: tokens } = await supabase
+          .from("pickup_tokens")
+          .select("id")
+          .in("sale_id", saleIds.slice(0, 200));
+
+        if (tokens && tokens.length > 0) {
+          const tokenIds = tokens.map((t) => t.id);
+          const { data: courtesyMovements } = await supabase
+            .from("stock_movements")
+            .select("quantity, unit_cost, products:product_id(capacity_ml)")
+            .eq("venue_id", venueId)
+            .eq("movement_type", "salida")
+            .in("pickup_token_id", tokenIds.slice(0, 200));
+
+          for (const m of courtesyMovements || []) {
+            const qty = Math.abs(Number(m.quantity));
+            const unitCost = Math.abs(Number(m.unit_cost) || 0);
+            const capacityMl = Number(m.products?.capacity_ml) || 0;
+            courtesyCogs += capacityMl > 0
+              ? (qty / capacityMl) * unitCost
+              : qty * unitCost;
+          }
+        }
+      }
+
+      // Group courtesy redemptions by note (socio)
+      const courtesyByNote = new Map<string, CourtesyCOGSItem>();
+      for (const r of courtesyRedemptions || []) {
+        const qr = r.courtesy_qr as any;
+        if (!qr) continue;
+        const noteKey = qr.note || "Sin motivo";
+        const existing = courtesyByNote.get(noteKey);
+        if (existing) {
+          existing.redeemed_count += 1;
+        } else {
+          courtesyByNote.set(noteKey, {
+            note: noteKey,
+            product_name: qr.product_name || "",
+            cost: 0,
+            redeemed_count: 1,
+          });
+        }
+      }
+      // Distribute courtesy COGS proportionally
+      const totalRedemptions = Array.from(courtesyByNote.values()).reduce((s, i) => s + i.redeemed_count, 0);
+      if (totalRedemptions > 0 && courtesyCogs > 0) {
+        for (const item of courtesyByNote.values()) {
+          item.cost = (item.redeemed_count / totalRedemptions) * courtesyCogs;
+        }
+      }
+      setCourtesyCogsItems(Array.from(courtesyByNote.values()).sort((a, b) => b.cost - a.cost));
+
     } catch (err: any) {
       const msg = err?.message || "Error al cargar datos financieros";
       console.error("Error fetching finance MTD:", err);
@@ -420,6 +508,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const salesNeto = salesNet;
   const salesBruto = salesGross;
   const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
+  const courtesyCogsTotal = courtesyCogsItems.reduce((s, i) => s + i.cost, 0);
 
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
@@ -461,6 +550,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     salesNeto,
     ivaDebito,
     cogsTotal,
+    courtesyCogsTotal,
+    courtesyCogsItems,
     wasteTotal,
     wasteItems,
     manualIncomeTotal,
