@@ -96,6 +96,10 @@ export interface FinanceMTD {
   salesNeto: number;
   cogsTotal: number;
 
+  // Courtesy COGS (redeemed only)
+  courtesyCogsTotal: number;
+  courtesyCogsItems: CourtesyCOGSItem[];
+
   // Manual income entries (ingresos brutos declarados)
   manualIncomeTotal: number;
   manualIncomeEntries: ManualIncomeEntry[];
