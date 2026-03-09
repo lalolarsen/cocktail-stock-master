@@ -5120,6 +5120,12 @@ export type Database = {
       }
       dev_clean_venue_data: { Args: { p_venue_id: string }; Returns: Json }
       dev_expire_old_tokens: { Args: never; Returns: Json }
+      dev_get_all_tables: {
+        Args: never
+        Returns: {
+          table_name: string
+        }[]
+      }
       dev_recalculate_jornada_summaries: {
         Args: { p_jornada_id: string }
         Returns: Json

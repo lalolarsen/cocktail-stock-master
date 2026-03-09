@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { VenueResetPanel } from "@/components/dashboard/VenueResetPanel";
+import { DatabaseExporter } from "./DatabaseExporter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -201,6 +202,9 @@ export function ToolsTab({ selectedVenueId }: ToolsTabProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Database Export */}
+          <DatabaseExporter />
+
           {/* Clean Venue Data */}
           <div className="p-4 border border-destructive/50 rounded-lg space-y-3 bg-destructive/5">
             <div>
