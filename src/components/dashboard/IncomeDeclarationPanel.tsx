@@ -163,53 +163,24 @@ export function IncomeDeclarationPanel() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary card */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-5 space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-6 w-28" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="p-5 space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-6 w-28" />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Total bruto
-              </p>
-              <p className="text-2xl font-bold text-green-600 tabular-nums">{formatCLP(totalGross)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Manuales declarados
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalManual)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Ventas barra
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalSales)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Entradas / Tickets
-              </p>
-              <p className="text-xl font-bold tabular-nums">{formatCLP(totalTickets)}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">
+              Total ingresos declarados
+            </p>
+            <p className="text-2xl font-bold text-green-600 tabular-nums">{formatCLP(totalGross)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{entries.length} registro{entries.length !== 1 ? "s" : ""}</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Entries table */}
