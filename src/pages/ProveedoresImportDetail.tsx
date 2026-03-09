@@ -69,8 +69,14 @@ interface PurchaseImport {
   venue_id: string;
   status: string;
   supplier_name: string | null;
+  supplier_rut: string | null;
+  document_number: string | null;
+  document_date: string | null;
+  location_id: string;
   invoice_number: string | null;
   invoice_date: string | null;
+  net_subtotal: number | null;
+  total_amount: number | null;
   vat_amount: number | null;
   iaba_10_total: number | null;
   iaba_18_total: number | null;
@@ -80,7 +86,7 @@ interface PurchaseImport {
   specific_taxes_total: number | null;
   financial_summary: Record<string, unknown> | null;
   created_at: string;
-  [key: string]: unknown;
+  [key: string]: any;
 }
 
 interface ImportTax {
