@@ -531,20 +531,20 @@ export function PasslineAuditPanel() {
               });
 
               // Update stock_balances
-              await supabase.rpc("decrement_stock_balance" as any, {
-                p_product_id: ing.product_id,
-                p_location_id: barLocationId,
-                p_quantity: totalIngQty,
-              }).then(async (res) => {
-                // If RPC doesn't exist, do manual update
-                if (res.error) {
-                  await supabase
-                    .from("stock_balances")
-                    .update({ quantity: supabase.rpc("" as any) as any }) // fallback below
-                    .eq("product_id", ing.product_id)
-                    .eq("location_id", barLocationId);
-                }
-              }).catch(() => {});
+              // Decrement stock balance directly
+              const { data: currentBalance } = await supabase
+                .from("stock_balances")
+                .select("quantity")
+                .eq("product_id", ing.product_id)
+                .eq("location_id", barLocationId)
+                .single();
+              if (currentBalance) {
+                await supabase
+                  .from("stock_balances")
+                  .update({ quantity: Math.max(0, Number(currentBalance.quantity) - totalIngQty) })
+                  .eq("product_id", ing.product_id)
+                  .eq("location_id", barLocationId);
+              }
             }
           } else if (item.product_id) {
             // Unit product — deduct directly
