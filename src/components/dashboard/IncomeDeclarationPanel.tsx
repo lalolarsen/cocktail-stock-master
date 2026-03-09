@@ -130,9 +130,6 @@ export function IncomeDeclarationPanel() {
   };
 
   const totalGross = entries.reduce((s, e) => s + e.amount, 0);
-  const totalManual = entries.filter((e) => e.source_type === "manual").reduce((s, e) => s + e.amount, 0);
-  const totalSales = entries.filter((e) => e.source_type === "sale").reduce((s, e) => s + e.amount, 0);
-  const totalTickets = entries.filter((e) => e.source_type === "ticket").reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="space-y-8">
