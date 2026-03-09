@@ -254,7 +254,7 @@ export function FinancePanel() {
                 </p>
 
                 {/* Sales block */}
-                <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesGross} />
+                <StatementRow label="Ventas totales (con IVA)" value={mtd.salesGross} />
                 <StatementRow label="IVA débito fiscal" value={-mtd.ivaDebito} indent />
                 <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNet} bold />
 
