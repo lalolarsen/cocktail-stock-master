@@ -1916,6 +1916,7 @@ export type Database = {
           created_at: string
           id: string
           income_applied: boolean
+          product_id: string | null
           product_name: string
           quantity: number
           session_id: string
@@ -1929,6 +1930,7 @@ export type Database = {
           created_at?: string
           id?: string
           income_applied?: boolean
+          product_id?: string | null
           product_name: string
           quantity?: number
           session_id: string
@@ -1942,6 +1944,7 @@ export type Database = {
           created_at?: string
           id?: string
           income_applied?: boolean
+          product_id?: string | null
           product_name?: string
           quantity?: number
           session_id?: string
@@ -1956,6 +1959,13 @@ export type Database = {
             columns: ["cocktail_id"]
             isOneToOne: false
             referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "passline_audit_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
@@ -1976,10 +1986,13 @@ export type Database = {
       }
       passline_audit_sessions: {
         Row: {
+          cogs_total: number
           created_at: string
           created_by: string
           id: string
+          iva_amount: number
           jornada_id: string | null
+          net_amount: number
           notes: string | null
           payment_amex: number
           payment_debito: number
@@ -1999,10 +2012,13 @@ export type Database = {
           venue_id: string
         }
         Insert: {
+          cogs_total?: number
           created_at?: string
           created_by: string
           id?: string
+          iva_amount?: number
           jornada_id?: string | null
+          net_amount?: number
           notes?: string | null
           payment_amex?: number
           payment_debito?: number
@@ -2022,10 +2038,13 @@ export type Database = {
           venue_id: string
         }
         Update: {
+          cogs_total?: number
           created_at?: string
           created_by?: string
           id?: string
+          iva_amount?: number
           jornada_id?: string | null
+          net_amount?: number
           notes?: string | null
           payment_amex?: number
           payment_debito?: number
