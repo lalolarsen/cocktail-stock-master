@@ -92,21 +92,18 @@ export function IncomeDeclarationPanel() {
     try {
       const { data, error } = await supabase
         .from("gross_income_entries")
-        .select("id, source_type, amount, description, entry_date, created_at")
+        .select("id, source_type, amount, description, created_at")
         .eq("venue_id", venueId)
-        .or(`entry_date.gte.${start},entry_date.is.null`)
-        .order("entry_date", { ascending: false })
+        .gte("created_at", `${start}T00:00:00`)
+        .lte("created_at", `${end}T23:59:59`)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      // Filter by month range using entry_date (fallback to created_at date)
-      const filtered = (data || []).filter((e) => {
-        const dateStr = e.entry_date ?? e.created_at.slice(0, 10);
-        return dateStr >= start && dateStr <= end;
-      });
-
-      setEntries(filtered);
+      setEntries((data || []).map((e) => ({
+        ...e,
+        entry_date: e.created_at.slice(0, 10),
+      })));
     } catch (err: any) {
       console.error("Error fetching income entries:", err);
       toast.error("Error al cargar ingresos");
