@@ -96,6 +96,7 @@ interface TaxCategory {
   code: string;
   name: string;
   rate: number;
+  rate_pct: number;
   is_active: boolean;
 }
 
