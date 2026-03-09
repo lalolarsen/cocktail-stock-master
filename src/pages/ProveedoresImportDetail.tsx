@@ -383,7 +383,7 @@ export default function ProveedoresImportDetail() {
           supabase.from("products").select("cost_per_unit, capacity_ml, current_stock").eq("id", line.product_id!).single(),
           supabase.from("stock_balances").select("id, quantity")
             .eq("product_id", line.product_id!)
-            .eq("location_id", imp.location_id)
+            .eq("location_id", (imp as any).location_id)
             .maybeSingle(),
         ]);
 
