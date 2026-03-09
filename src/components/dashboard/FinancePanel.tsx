@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  Scale, Landmark, Trash2, FileEdit, Gift,
+  Scale, Landmark, Trash2, FileEdit, Gift, Monitor,
 } from "lucide-react";
 
 const MONTHS = [
