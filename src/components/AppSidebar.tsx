@@ -104,13 +104,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    label: "Inventario",
-    items: [
-      { title: "Inventario", value: "inventory", icon: Warehouse },
-      { title: "Botellas Abiertas", value: "botellas", icon: Wine },
-    ],
-  },
-  {
     label: "Ventas",
     items: [
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
