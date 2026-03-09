@@ -87,6 +87,12 @@ export default function CourtesyQR() {
   const [note, setNote] = useState("");
   const [creating, setCreating] = useState(false);
 
+  const SOCIOS = [
+    { key: "socio_md", label: "Socio: Mauricio Duque" },
+    { key: "socio_gh", label: "Socio: Gabriel Hidalgo" },
+    { key: "socio_cs", label: "Socio: Carlos Sinning" },
+  ];
+
   // Fetch cocktails for product selection
   const { data: cocktails = [] } = useQuery({
     queryKey: ["cocktails-courtesy", venue?.id],
