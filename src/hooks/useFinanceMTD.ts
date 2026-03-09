@@ -178,6 +178,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0,
   });
   const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
+  const [courtesyCogsItems, setCourtesyCogsItems] = useState<CourtesyCOGSItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
