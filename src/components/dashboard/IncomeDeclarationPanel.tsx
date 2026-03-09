@@ -211,9 +211,9 @@ export function IncomeDeclarationPanel() {
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50 gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <Badge variant={getSourceVariant(entry.source_type)} className="gap-1 shrink-0">
-                        {getSourceIcon(entry.source_type)}
-                        {getSourceLabel(entry.source_type)}
+                      <Badge variant="outline" className="gap-1 shrink-0">
+                        <FileEdit className="h-3 w-3" />
+                        Manual
                       </Badge>
                       <div className="min-w-0">
                         {entry.description && (
