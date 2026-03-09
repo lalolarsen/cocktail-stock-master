@@ -1,6 +1,43 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
+import { toast } from "sonner";
+
+// ── Raw DB row types (tables / enum values not yet in auto-generated types) ──
+
+interface PurchaseImportRow {
+  vat_amount: number | null;
+  iaba_10_total: number | null;
+  iaba_18_total: number | null;
+  ila_vino_total: number | null;
+  ila_cerveza_total: number | null;
+  ila_destilados_total: number | null;
+  specific_taxes_total: number | null;
+  financial_summary: FinancialSummary | null;
+}
+
+interface FinancialSummary {
+  operational_expenses?: {
+    freight_total?: number;
+  };
+}
+
+interface StockMovementWithProduct {
+  product_id: string;
+  quantity: number | string;
+  unit_cost_snapshot: number | null;
+  total_cost_snapshot: number | null;
+  source_type: string;
+  products: { name: string; cost_per_unit: number | null } | null;
+}
+
+interface ManualIncomeRow {
+  id: string;
+  amount: number | string;
+  description: string | null;
+  entry_date: string | null;
+  created_at: string;
+}
 
 export interface OpexCategoryBreakdown {
   category: string;
@@ -35,6 +72,13 @@ export interface WasteBreakdownItem {
   reason: string;
 }
 
+export interface ManualIncomeEntry {
+  id: string;
+  amount: number;
+  description: string | null;
+  entry_date: string;
+}
+
 export interface FinanceMTD {
   // Sales
   salesGross: number;
@@ -43,6 +87,10 @@ export interface FinanceMTD {
   salesBruto: number;
   salesNeto: number;
   cogsTotal: number;
+
+  // Manual income entries (ingresos brutos declarados)
+  manualIncomeTotal: number;
+  manualIncomeEntries: ManualIncomeEntry[];
 
   // Waste (merma aprobada)
   wasteTotal: number;
@@ -117,16 +165,19 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const [specificTaxBreakdown, setSpecificTaxBreakdown] = useState<SpecificTaxBreakdown>({
     iaba_10: 0, iaba_18: 0, ila_vino: 0, ila_cerveza: 0, ila_destilados: 0,
   });
+  const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     const { start, end } = getMonthRange(year, month);
     const fromISO = `${start}T00:00:00-03:00`;
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes] = await Promise.all([
+      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes] = await Promise.all([
         // Sales — read columns directly
         supabase
           .from("sales")
@@ -166,12 +217,21 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
         // Confirmed purchase_imports — IVA, specific taxes, freight
         supabase
-          .from("purchase_imports" as any)
+          .from("purchase_imports" as never)
           .select("vat_amount, iaba_10_total, iaba_18_total, ila_vino_total, ila_cerveza_total, ila_destilados_total, specific_taxes_total, financial_summary")
           .eq("venue_id", venueId)
           .eq("status", "CONFIRMED")
           .gte("document_date", start)
           .lte("document_date", end),
+
+        // Manual gross income entries declared by admin
+        supabase
+          .from("gross_income_entries")
+          .select("id, amount, description, entry_date, created_at")
+          .eq("venue_id", venueId)
+          .eq("source_type", "manual")
+          .gte("entry_date", start)
+          .lte("entry_date", end),
       ]);
 
       // ── Sales with fallback ──
@@ -190,7 +250,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setIvaDebitoState(ivaD);
 
       // ── COGS — deterministic: bottles use (qty_ml / capacity_ml) * unit_cost ──
-      const cogs = (cogsRes.data || []).reduce((s, r: any) => {
+      const cogs = (cogsRes.data || []).reduce((s, r) => {
         const qty = Math.abs(Number(r.quantity));
         const unitCost = Math.abs(Number(r.unit_cost) || 0);
         const capacityMl = Number(r.products?.capacity_ml) || 0;
@@ -235,8 +295,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       const specTaxLegacy = invoiceRows.reduce((s, r) => s + Math.abs(Number(r.specific_tax_amount || 0)), 0);
 
       // ── From confirmed purchase_imports ──
-      const importRows = (importsRes.data || []) as any[];
-      const creditoImports = importRows.reduce((s: number, r: any) => s + Math.abs(Number(r.vat_amount || 0)), 0);
+      const importRows = (importsRes.data || []) as unknown as PurchaseImportRow[];
+      const creditoImports = importRows.reduce((s, r) => s + Math.abs(Number(r.vat_amount ?? 0)), 0);
       setIvaCreditoFromImports(creditoImports);
 
       // Specific taxes by category
@@ -251,7 +311,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         breakdown.ila_destilados += Math.abs(Number(r.ila_destilados_total || 0));
         specTaxImports += Math.abs(Number(r.specific_taxes_total || 0));
         // Extract freight from financial_summary
-        const fs = r.financial_summary as any;
+        const fs = r.financial_summary;
         if (fs?.operational_expenses?.freight_total) {
           freightTotal += Math.abs(fs.operational_expenses.freight_total);
         }
@@ -286,21 +346,21 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         .from("stock_movements")
         .select("quantity, unit_cost_snapshot, total_cost_snapshot, product_id, products:product_id(name, cost_per_unit), source_type")
         .eq("venue_id", venueId)
-        .eq("movement_type", "waste" as any)
+        .eq("movement_type", "waste" as never)
         .eq("source_type", "waste")
         .gte("created_at", fromISO)
         .lte("created_at", toISO);
 
-      const wasteRows = (wasteMovements || []) as any[];
+      const wasteRows = (wasteMovements || []) as unknown as StockMovementWithProduct[];
       let wasteTotalCalc = 0;
       const wasteItemsCalc: WasteBreakdownItem[] = [];
 
       // Aggregate by product
       const wasteByProduct = new Map<string, WasteBreakdownItem>();
       for (const row of wasteRows) {
-        const productId = row.product_id as string;
-        const productName = (row.products as any)?.name ?? "Producto";
-        const cpp = Math.abs(Number(row.unit_cost_snapshot ?? (row.products as any)?.cost_per_unit ?? 0));
+        const productId = row.product_id;
+        const productName = row.products?.name ?? "Producto";
+        const cpp = Math.abs(Number(row.unit_cost_snapshot ?? row.products?.cost_per_unit ?? 0));
         const qty = Math.abs(Number(row.quantity));
         const rowCost = row.total_cost_snapshot != null
           ? Math.abs(Number(row.total_cost_snapshot))
@@ -329,8 +389,22 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
       setWasteTotal(wasteTotalCalc);
       setWasteItems(wasteItemsCalc);
-    } catch (err) {
+
+      // ── Manual income entries ──
+      const manualRows = (manualIncomeRes.data || []) as unknown as ManualIncomeRow[];
+      setManualIncomeEntries(
+        manualRows.map((r) => ({
+          id: r.id,
+          amount: Math.abs(Number(r.amount)),
+          description: r.description ?? null,
+          entry_date: r.entry_date ?? r.created_at.slice(0, 10),
+        }))
+      );
+    } catch (err: any) {
+      const msg = err?.message || "Error al cargar datos financieros";
       console.error("Error fetching finance MTD:", err);
+      setFetchError(msg);
+      toast.error(msg, { description: "Revisa tu conexión o recarga la página." });
     } finally {
       setLoading(false);
     }
@@ -344,6 +418,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const ivaDebito = ivaDebitoState;
   const salesNeto = salesNet;
   const salesBruto = salesGross;
+  const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
 
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
@@ -387,6 +462,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     cogsTotal,
     wasteTotal,
     wasteItems,
+    manualIncomeTotal,
+    manualIncomeEntries,
     specificTaxTotal,
     specificTaxFromInvoices,
     specificTaxFromOpex,
@@ -416,6 +493,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     opexPctForecast,
     salesTotal: salesBruto,
     loading,
+    error: fetchError,
     refresh: fetchData,
   };
 }

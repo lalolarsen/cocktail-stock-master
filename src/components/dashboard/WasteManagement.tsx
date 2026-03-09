@@ -257,7 +257,7 @@ export function WasteManagement({ isReadOnly = false }: { isReadOnly?: boolean }
         // 3. Create stock movement with cost snapshot
         const { error: movError } = await supabase.from("stock_movements").insert({
           product_id: reviewRequest.product_id,
-          movement_type: "waste" as any,
+          movement_type: "waste" as never,
           quantity: -Math.abs(reviewRequest.quantity),
           from_location_id: reviewRequest.location_id,
           venue_id: venue.id,

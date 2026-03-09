@@ -738,7 +738,10 @@ export default function PurchasesImport() {
             
           if (taxExpenseError) {
             console.error("Error registering tax expenses:", taxExpenseError);
-            // Don't throw - tax expense registration failure shouldn't block inventory intake
+            // Non-blocking: inventory intake already completed; warn but don't throw
+            toast.warning("Ingreso registrado, pero no se pudieron guardar los gastos de impuestos. Revisa manualmente.", {
+              duration: 8000,
+            });
           }
         }
       }

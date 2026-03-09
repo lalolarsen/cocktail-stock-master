@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { purchaseImportDraftsTable } from "@/lib/db-tables";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import type { ComputedLine, DiscountMode } from "@/lib/purchase-calculator";
 import { toast } from "sonner";
@@ -330,8 +331,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
         // Try to sync back to DB
         if (venue?.id && user?.id) {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase.from("purchase_import_drafts") as any)
+            await purchaseImportDraftsTable()
               .upsert({
                 id: localDraft.id,
                 venue_id: venue.id,
@@ -449,8 +449,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
       if (dataToSave.discount_mode !== undefined) dbData.discount_mode = dataToSave.discount_mode;
       
       // Save to DB
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: dbError } = await (supabase.from("purchase_import_drafts") as any)
+      const { error: dbError } = await purchaseImportDraftsTable()
         .update(dbData)
         .eq("id", draftId);
       

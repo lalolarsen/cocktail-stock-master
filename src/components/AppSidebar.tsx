@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -84,6 +84,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Finanzas",
     items: [
+      { title: "Ingresos Brutos", value: "income", icon: TrendingUp },
       { title: "Finanzas", value: "finance", icon: Landmark },
     ],
   },
@@ -113,6 +114,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Finanzas",
     items: [
+      { title: "Ingresos Brutos", value: "income", icon: TrendingUp },
       { title: "Finanzas", value: "finance", icon: Landmark },
     ],
   },

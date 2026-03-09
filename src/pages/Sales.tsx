@@ -14,6 +14,7 @@ import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
 import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
+import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
   Collapsible,
   CollapsibleContent,
@@ -547,22 +548,26 @@ export default function Sales() {
       const courtesyItems = cart.filter((item) => item.isCourtesy && item.courtesyCode);
       for (const cItem of courtesyItems) {
         // Update courtesy_qr used_count + status
-        const { data: qr } = await supabase
+        const { data: qr, error: qrFetchError } = await supabase
           .from("courtesy_qr")
           .select("id, used_count, max_uses")
           .eq("code", cItem.courtesyCode!)
           .maybeSingle();
-        
+
+        if (qrFetchError) throw new Error(`Error cargando QR cortesía: ${qrFetchError.message}`);
+
         if (qr) {
           const newUsedCount = (qr.used_count || 0) + 1;
           const newStatus = newUsedCount >= qr.max_uses ? "redeemed" : "active";
-          await supabase
+          const { error: qrUpdateError } = await supabase
             .from("courtesy_qr")
             .update({ used_count: newUsedCount, status: newStatus })
             .eq("id", qr.id);
 
+          if (qrUpdateError) throw new Error(`Error actualizando QR cortesía: ${qrUpdateError.message}`);
+
           // Insert redemption record
-          await supabase
+          const { error: redemptionError } = await supabase
             .from("courtesy_redemptions")
             .insert({
               courtesy_id: qr.id,
@@ -573,12 +578,14 @@ export default function Sales() {
               result: "success",
               venue_id: venue?.id!,
             });
+
+          if (redemptionError) throw new Error(`Error registrando cortesía: ${redemptionError.message}`);
         }
       }
 
       // Record gross income entry (only if non-courtesy amount > 0)
       if (totalAmount > 0) {
-        await supabase
+        const { error: grossError } = await supabase
           .from("gross_income_entries")
           .insert({
             venue_id: sale.venue_id || "00000000-0000-0000-0000-000000000000",
@@ -589,6 +596,8 @@ export default function Sales() {
             jornada_id: activeJornadaId || null,
             created_by: session.session.user.id
           });
+
+        if (grossError) throw new Error(`Error registrando ingreso bruto: ${grossError.message}`);
       }
 
       // DECISIÓN: Boleta SOLO para pagos en efectivo.
@@ -684,6 +693,11 @@ export default function Sales() {
               },
             });
           }
+        }).catch((printErr) => {
+          console.error("[Sales] autoPrintReceipt error:", printErr);
+          toast.error("Error de impresión", {
+            action: { label: "Reintentar", onClick: () => reprintLast() },
+          });
         });
       }
     } catch (error: any) {
@@ -1241,6 +1255,14 @@ export default function Sales() {
               <div className="shrink-0">
                 <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
               </div>
+
+              {/* QR SCANNER PANEL — solo para caja híbrida */}
+              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+                <HybridQRScannerPanel
+                  barLocationId={selectedPosObj.bar_location_id}
+                  barName={barNameForHeader}
+                />
+              )}
 
               {/* HISTORIAL COLAPSABLE — shrink-0, at bottom */}
               {recentSales.length > 0 && (

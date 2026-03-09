@@ -128,7 +128,11 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="/debug/products" element={<DebugProducts />} />
+      <Route path="/debug/products" element={
+        <ProtectedRoute allowedRoles={["admin"]}>
+          <DebugProducts />
+        </ProtectedRoute>
+      } />
       <Route
         path="/admin/purchases/import"
         element={

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { purchaseImportsTable, purchasesTable, learningProductMappingsTable } from "@/lib/db-tables";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,13 +63,12 @@ export function ProveedoresPanel() {
     if (loc) setWarehouseId(loc.id);
 
     // Get imports
-    const { data, error } = await supabase
-      .from("purchase_imports" as any)
+    const { data, error } = await purchaseImportsTable()
       .select("*")
       .eq("venue_id", venue.id)
       .order("created_at", { ascending: false });
 
-    if (!error && data) setImports(data as any[]);
+    if (!error && data) setImports(data as unknown as PurchaseImport[]);
     setLoading(false);
   };
 
@@ -200,19 +200,37 @@ export function ProveedoresPanel() {
   );
 }
 
+interface PurchaseRow {
+  id: string;
+  document_date: string | null;
+  supplier_name: string | null;
+  document_number: string | null;
+  net_subtotal: number | null;
+  vat_credit: number | null;
+  total_amount: number | null;
+}
+
+interface MappingRow {
+  id: string;
+  raw_text: string;
+  detected_multiplier: number;
+  confidence: number | null;
+  times_used: number;
+  products: { name: string } | null;
+}
+
 function HistoryTab({ venueId }: { venueId?: string }) {
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!venueId) return;
-    supabase
-      .from("purchases" as any)
+    purchasesTable()
       .select("*")
       .eq("venue_id", venueId)
       .order("confirmed_at", { ascending: false })
       .then(({ data }) => {
-        setPurchases(data || []);
+        setPurchases((data ?? []) as unknown as PurchaseRow[]);
         setLoading(false);
       });
   }, [venueId]);
@@ -241,7 +259,7 @@ function HistoryTab({ venueId }: { venueId?: string }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {purchases.map((p: any) => (
+          {purchases.map((p) => (
             <TableRow key={p.id}>
               <TableCell>{p.document_date}</TableCell>
               <TableCell>{p.supplier_name || "—"}</TableCell>
@@ -258,18 +276,17 @@ function HistoryTab({ venueId }: { venueId?: string }) {
 }
 
 function LearningTab({ venueId }: { venueId?: string }) {
-  const [mappings, setMappings] = useState<any[]>([]);
+  const [mappings, setMappings] = useState<MappingRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!venueId) return;
-    supabase
-      .from("learning_product_mappings" as any)
+    learningProductMappingsTable()
       .select("*, products:product_id(name)")
       .eq("venue_id", venueId)
       .order("times_used", { ascending: false })
       .then(({ data }) => {
-        setMappings(data || []);
+        setMappings((data ?? []) as unknown as MappingRow[]);
         setLoading(false);
       });
   }, [venueId]);
@@ -298,10 +315,10 @@ function LearningTab({ venueId }: { venueId?: string }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {mappings.map((m: any) => (
+          {mappings.map((m) => (
             <TableRow key={m.id}>
               <TableCell className="text-xs max-w-[200px] truncate">{m.raw_text}</TableCell>
-              <TableCell className="text-sm">{(m.products as any)?.name || "—"}</TableCell>
+              <TableCell className="text-sm">{m.products?.name || "—"}</TableCell>
               <TableCell>{m.detected_multiplier}</TableCell>
               <TableCell>{Math.round((m.confidence || 0) * 100)}%</TableCell>
               <TableCell>{m.times_used}</TableCell>

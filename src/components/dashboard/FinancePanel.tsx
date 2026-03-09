@@ -13,7 +13,7 @@ import { formatCLP } from "@/lib/currency";
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Receipt,
   BarChart3, CalendarClock, AlertCircle, AlertTriangle,
-  Scale, Landmark, Trash2,
+  Scale, Landmark, Trash2, FileEdit,
 } from "lucide-react";
 
 const MONTHS = [
@@ -99,7 +99,7 @@ export function FinancePanel() {
       .then(({ count }) => setPendingReviewCount(count || 0));
   }, []);
 
-  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0 || mtd.wasteTotal > 0;
+  const hasAnyData = mtd.salesGross > 0 || mtd.cogsTotal > 0 || mtd.opexTotal > 0 || mtd.specificTaxTotal > 0 || mtd.ivaCreditoTotal > 0 || mtd.wasteTotal > 0 || mtd.manualIncomeTotal > 0;
   const noDataAtAll = !mtd.loading && !hasAnyData;
   const hasSales = mtd.salesGross > 0;
 
@@ -257,6 +257,28 @@ export function FinancePanel() {
                 <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesGross} />
                 <StatementRow label="IVA débito fiscal" value={-mtd.ivaDebito} indent />
                 <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNet} bold />
+
+                {/* Manual income entries */}
+                {mtd.manualIncomeTotal > 0 && (
+                  <>
+                    <div className="border-t my-2" />
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1 flex items-center gap-1.5">
+                      <FileEdit className="h-3.5 w-3.5" />
+                      Ingresos Brutos Declarados
+                    </p>
+                    {mtd.manualIncomeEntries.map((entry) => (
+                      <div key={entry.id} className="flex justify-between items-center py-1 pl-4 text-sm">
+                        <span className="text-muted-foreground truncate mr-2">
+                          {entry.entry_date} — {entry.description || "Sin motivo"}
+                        </span>
+                        <span className="tabular-nums text-green-600 font-medium shrink-0">
+                          {formatCLP(entry.amount)}
+                        </span>
+                      </div>
+                    ))}
+                    <StatementRow label="Total ingresos declarados" value={mtd.manualIncomeTotal} bold />
+                  </>
+                )}
 
                 <div className="border-t my-2" />
 
