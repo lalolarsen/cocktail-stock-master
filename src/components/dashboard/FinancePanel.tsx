@@ -207,7 +207,7 @@ export function FinancePanel() {
 
             {/* Key metrics cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <MetricCard label="Ventas brutas" value={formatCLP(mtd.salesGross)} icon={DollarSign} />
+              <MetricCard label="Ventas totales (con IVA)" value={formatCLP(mtd.salesGross)} icon={DollarSign} />
               <MetricCard label="IVA Débito Fiscal" value={formatCLP(mtd.ivaDebito)} icon={Scale} />
               <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNet)} icon={DollarSign} />
               <MetricCard label="COGS (neto)" value={formatCLP(displayCogs)} icon={Receipt} />
@@ -254,7 +254,7 @@ export function FinancePanel() {
                 </p>
 
                 {/* Sales block */}
-                <StatementRow label="Ventas brutas (con IVA)" value={mtd.salesGross} />
+                <StatementRow label="Ventas totales (con IVA)" value={mtd.salesGross} />
                 <StatementRow label="IVA débito fiscal" value={-mtd.ivaDebito} indent />
                 <StatementRow label="Ventas netas (sin IVA)" value={mtd.salesNet} bold />
 
