@@ -4,8 +4,8 @@
  * Usage: `openBottlesTable().select("*").eq(...)` instead of
  *        `supabase.from("open_bottles" as any)`.
  *
- * The `as never` cast is intentional: it tells TypeScript to skip the table
- * name check. The result is untyped on the way out, so callers must cast via
+ * The `as any` cast tells TypeScript to skip the table name check.
+ * The result is untyped on the way out, so callers must cast via
  * `as unknown as RowType[]` or the dedicated typed helpers below.
  *
  * When Supabase types are regenerated (e.g. via `supabase gen types`),
@@ -16,25 +16,25 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // ── Bar / open bottles ───────────────────────────────────────────────────────
-export const openBottlesTable      = () => supabase.from("open_bottles"       as never);
-export const openBottleEventsTable = () => supabase.from("open_bottle_events" as never);
+export const openBottlesTable      = () => supabase.from("open_bottles"       as any);
+export const openBottleEventsTable = () => supabase.from("open_bottle_events" as any);
 
 // ── Purchases / imports ──────────────────────────────────────────────────────
-export const purchaseImportsTable      = () => supabase.from("purchase_imports"       as never);
-export const purchaseImportLinesTable  = () => supabase.from("purchase_import_lines"  as never);
-export const purchaseImportTaxesTable  = () => supabase.from("purchase_import_taxes"  as never);
-export const purchasesTable            = () => supabase.from("purchases"               as never);
-export const purchaseLinesTable        = () => supabase.from("purchase_lines"          as never);
-export const expenseLinesTable         = () => supabase.from("expense_lines"           as never);
-export const purchaseImportDraftsTable = () => supabase.from("purchase_import_drafts" as never);
+export const purchaseImportsTable      = () => supabase.from("purchase_imports"       as any);
+export const purchaseImportLinesTable  = () => supabase.from("purchase_import_lines"  as any);
+export const purchaseImportTaxesTable  = () => supabase.from("purchase_import_taxes"  as any);
+export const purchasesTable            = () => supabase.from("purchases"               as any);
+export const purchaseLinesTable        = () => supabase.from("purchase_lines"          as any);
+export const expenseLinesTable         = () => supabase.from("expense_lines"           as any);
+export const purchaseImportDraftsTable = () => supabase.from("purchase_import_drafts" as any);
 
 // ── Product learning ─────────────────────────────────────────────────────────
-export const learningProductMappingsTable = () => supabase.from("learning_product_mappings" as never);
-export const specificTaxCategoriesTable   = () => supabase.from("specific_tax_categories"   as never);
+export const learningProductMappingsTable = () => supabase.from("learning_product_mappings" as any);
+export const specificTaxCategoriesTable   = () => supabase.from("specific_tax_categories"   as any);
 
 // ── Passline audit ───────────────────────────────────────────────────────────
-export const passlineAuditSessionsTable = () => supabase.from("passline_audit_sessions" as never);
-export const passlineAuditItemsTable    = () => supabase.from("passline_audit_items"    as never);
+export const passlineAuditSessionsTable = () => supabase.from("passline_audit_sessions" as any);
+export const passlineAuditItemsTable    = () => supabase.from("passline_audit_items"    as any);
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
-export const proveedoresTable = () => supabase.from("purchases" as never);
+export const proveedoresTable = () => supabase.from("purchases" as any);
