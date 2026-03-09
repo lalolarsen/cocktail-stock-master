@@ -214,6 +214,14 @@ export function FinancePanel() {
               <MetricCard label="IVA Débito Fiscal" value={formatCLP(mtd.ivaDebito)} icon={Scale} />
               <MetricCard label="Ventas netas (sin IVA)" value={formatCLP(mtd.salesNet)} icon={DollarSign} />
               <MetricCard label="COGS (neto)" value={formatCLP(displayCogs)} icon={Receipt} />
+              {hasPassline && (
+                <MetricCard
+                  label="Ventas Totems Passline"
+                  value={formatCLP(mtd.passlineSalesGross)}
+                  sub={`COGS: ${formatCLP(mtd.passlineCogs)} | Margen: ${formatCLP(mtd.passlineMargin)}`}
+                  icon={Monitor}
+                />
+              )}
               {displayWaste > 0 && (
                 <MetricCard
                   label="Merma (pérdida inventario)"
