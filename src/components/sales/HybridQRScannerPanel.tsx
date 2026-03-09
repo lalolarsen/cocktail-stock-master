@@ -169,7 +169,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
 
       if (error) throw error;
 
-      const r = data as RedemptionResult;
+      const r = data as unknown as RedemptionResult;
 
       // Silently swallow TOO_FAST (server-side dedupe)
       if (r.error_code === "TOO_FAST") {

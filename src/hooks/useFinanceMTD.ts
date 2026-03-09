@@ -28,6 +28,7 @@ interface StockMovementWithProduct {
   unit_cost_snapshot: number | null;
   total_cost_snapshot: number | null;
   source_type: string;
+  notes?: string | null;
   products: { name: string; cost_per_unit: number | null } | null;
 }
 
@@ -493,7 +494,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     opexPctForecast,
     salesTotal: salesBruto,
     loading,
-    error: fetchError,
+    fetchError,
     refresh: fetchData,
-  };
+  } as any;
 }

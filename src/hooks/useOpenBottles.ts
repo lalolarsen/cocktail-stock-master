@@ -212,7 +212,7 @@ export function useOpenBottles(venueId: string, locationId: string | null) {
       if (!venueId || !locationId) throw new Error("Venue o ubicación no definidos");
 
       const { data, error } = await supabase.rpc(
-        "deduct_open_bottles" as never,
+        "deduct_open_bottles" as any,
         {
           p_location_id: locationId,
           p_product_id: params.productId,

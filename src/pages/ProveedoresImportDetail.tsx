@@ -69,8 +69,14 @@ interface PurchaseImport {
   venue_id: string;
   status: string;
   supplier_name: string | null;
+  supplier_rut: string | null;
+  document_number: string | null;
+  document_date: string | null;
+  location_id: string;
   invoice_number: string | null;
   invoice_date: string | null;
+  net_subtotal: number | null;
+  total_amount: number | null;
   vat_amount: number | null;
   iaba_10_total: number | null;
   iaba_18_total: number | null;
@@ -80,7 +86,7 @@ interface PurchaseImport {
   specific_taxes_total: number | null;
   financial_summary: Record<string, unknown> | null;
   created_at: string;
-  [key: string]: unknown;
+  [key: string]: any;
 }
 
 interface ImportTax {
@@ -96,6 +102,7 @@ interface TaxCategory {
   code: string;
   name: string;
   rate: number;
+  rate_pct: number;
   is_active: boolean;
 }
 
@@ -282,7 +289,7 @@ export default function ProveedoresImportDetail() {
   // Financial engine — compute summary & cuadratura
   const financialSummary: FinancialSummary | null = useMemo(() => {
     if (!imp || lines.length === 0) return null;
-    return buildFinancialSummary(imp as ImportHeaderInput, lines as ImportLineInput[]);
+    return buildFinancialSummary(imp as unknown as ImportHeaderInput, lines as ImportLineInput[]);
   }, [imp, lines]);
 
   const isBalanced = financialSummary?.validation.is_balanced ?? false;
@@ -359,13 +366,13 @@ export default function ProveedoresImportDetail() {
         { field: "ila_destilados_total", label: "ILA Destilados 31,5%" },
       ];
       for (const tm of taxMapping) {
-        const amt = imp[tm.field] || 0;
+        const amt = (imp[tm.field] as number) || 0;
         if (amt > 0) {
           taxExpenseLines.push({
             purchase_id: purchaseId,
             expense_type: "tax_specific",
             description: `Impuesto específico: ${tm.label}`,
-            amount_net: amt,
+            amount_net: amt as number,
             vat_amount: 0,
           });
         }
@@ -382,7 +389,7 @@ export default function ProveedoresImportDetail() {
           supabase.from("products").select("cost_per_unit, capacity_ml, current_stock").eq("id", line.product_id!).single(),
           supabase.from("stock_balances").select("id, quantity")
             .eq("product_id", line.product_id!)
-            .eq("location_id", imp.location_id)
+            .eq("location_id", (imp as any).location_id)
             .maybeSingle(),
         ]);
 
@@ -434,10 +441,10 @@ export default function ProveedoresImportDetail() {
         } else {
           await supabase.from("stock_balances").insert({
             product_id: line.product_id!,
-            location_id: imp.location_id,
+            location_id: (imp as any).location_id,
             venue_id: venue.id,
             quantity: qtyToAdd,
-          });
+          } as any);
         }
 
         // 2. Update product CPP + current_stock AFTER stock_balances
