@@ -29,7 +29,7 @@ export function DatabaseExporter() {
         let hasMore = true;
 
         while (hasMore) {
-          const { data: rows, error } = await supabase
+          const { data: rows, error } = await (supabase as any)
             .from(table)
             .select('*')
             .range(from, from + pageSize - 1);
