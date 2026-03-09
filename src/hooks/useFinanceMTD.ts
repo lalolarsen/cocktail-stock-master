@@ -87,6 +87,17 @@ export interface ManualIncomeEntry {
   entry_date: string;
 }
 
+export interface PasslineSessionSummary {
+  id: string;
+  totem_number: string;
+  report_number: string;
+  session_date: string;
+  total_amount: number;
+  net_amount: number;
+  iva_amount: number;
+  cogs_total: number;
+}
+
 export interface FinanceMTD {
   // Sales
   salesGross: number;
@@ -103,6 +114,14 @@ export interface FinanceMTD {
   // Manual income entries (ingresos brutos declarados)
   manualIncomeTotal: number;
   manualIncomeEntries: ManualIncomeEntry[];
+
+  // Passline Totems (ventas por terceros)
+  passlineSalesGross: number;
+  passlineSalesNet: number;
+  passlineIva: number;
+  passlineCogs: number;
+  passlineMargin: number;
+  passlineSessions: PasslineSessionSummary[];
 
   // Waste (merma aprobada)
   wasteTotal: number;
@@ -179,6 +198,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   });
   const [manualIncomeEntries, setManualIncomeEntries] = useState<ManualIncomeEntry[]>([]);
   const [courtesyCogsItems, setCourtesyCogsItems] = useState<CourtesyCOGSItem[]>([]);
+  const [passlineSessions, setPasslineSessions] = useState<PasslineSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -190,7 +210,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes] = await Promise.all([
+      const [salesRes, cogsRes, opexRes, invoiceRes, importsRes, manualIncomeRes, passlineRes] = await Promise.all([
         // Sales — read columns directly
         supabase
           .from("sales")
@@ -245,6 +265,15 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .eq("source_type", "manual")
           .gte("created_at", `${start}T00:00:00`)
           .lte("created_at", `${end}T23:59:59`),
+
+        // Passline totem sessions (confirmed only)
+        supabase
+          .from("passline_audit_sessions" as never)
+          .select("id, totem_number, report_number, session_date, total_amount, net_amount, iva_amount, cogs_total")
+          .eq("venue_id", venueId)
+          .eq("status", "reconciled")
+          .gte("session_date", start)
+          .lte("session_date", end),
       ]);
 
       // ── Sales with fallback ──
@@ -414,7 +443,10 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         }))
       );
 
-      // ── Courtesy COGS (only redeemed QRs count as COGS) ──
+      // ── Passline totem sessions ──
+      const passlineRows = (passlineRes.data || []) as unknown as PasslineSessionSummary[];
+      setPasslineSessions(passlineRows);
+
       const { data: courtesyRedemptions } = await supabase
         .from("courtesy_redemptions")
         .select("courtesy_id, venue_id, courtesy_qr:courtesy_id(product_name, note, qty)")
@@ -510,6 +542,13 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
   const manualIncomeTotal = manualIncomeEntries.reduce((s, e) => s + e.amount, 0);
   const courtesyCogsTotal = courtesyCogsItems.reduce((s, i) => s + i.cost, 0);
 
+  // Passline totems
+  const passlineSalesGross = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.total_amount)), 0);
+  const passlineSalesNet = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.net_amount) || Math.round(Number(p.total_amount) / 1.19)), 0);
+  const passlineIva = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.iva_amount) || (Number(p.total_amount) - Math.round(Number(p.total_amount) / 1.19))), 0);
+  const passlineCogs = passlineSessions.reduce((s, p) => s + Math.abs(Number(p.cogs_total) || 0), 0);
+  const passlineMargin = passlineSalesNet - passlineCogs;
+
   // OPEX total = sum of all category totals (single source, no separate freight)
   const opexDetailSum = opexByCategory.reduce((s, c) => s + c.total, 0);
   const opexTotal = opexDetailSum;
@@ -556,6 +595,12 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     wasteItems,
     manualIncomeTotal,
     manualIncomeEntries,
+    passlineSalesGross,
+    passlineSalesNet,
+    passlineIva,
+    passlineCogs,
+    passlineMargin,
+    passlineSessions,
     specificTaxTotal,
     specificTaxFromInvoices,
     specificTaxFromOpex,
