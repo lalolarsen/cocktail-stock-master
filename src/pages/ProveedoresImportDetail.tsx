@@ -435,10 +435,10 @@ export default function ProveedoresImportDetail() {
         } else {
           await supabase.from("stock_balances").insert({
             product_id: line.product_id!,
-            location_id: imp.location_id,
+            location_id: (imp as any).location_id,
             venue_id: venue.id,
             quantity: qtyToAdd,
-          });
+          } as any);
         }
 
         // 2. Update product CPP + current_stock AFTER stock_balances

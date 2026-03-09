@@ -494,7 +494,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     opexPctForecast,
     salesTotal: salesBruto,
     loading,
-    error: fetchError,
+    fetchError,
     refresh: fetchData,
-  };
+  } as any;
 }
