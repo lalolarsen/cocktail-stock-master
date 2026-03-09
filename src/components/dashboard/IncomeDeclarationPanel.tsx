@@ -136,9 +136,8 @@ export function IncomeDeclarationPanel() {
           source_type: "manual",
           amount: Math.round(parseFloat(amount)),
           description: description.trim(),
-          entry_date: entryDate,
           created_by: user.id,
-        });
+        } as any);
 
       if (error) throw error;
 
