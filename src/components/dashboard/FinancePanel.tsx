@@ -314,7 +314,34 @@ export function FinancePanel() {
                   </>
                 )}
 
-                {/* Waste — always shown if > 0 */}
+                {/* Passline Totems — ventas por terceros */}
+                {hasPassline && (
+                  <>
+                    <div className="border-t my-2" />
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1 flex items-center gap-1.5">
+                      <Monitor className="h-3.5 w-3.5" />
+                      Ventas Totems Passline (terceros)
+                    </p>
+                    <StatementRow label="Ventas brutas totems (con IVA)" value={mtd.passlineSalesGross} indent />
+                    <StatementRow label="IVA débito totems" value={-mtd.passlineIva} indent />
+                    <StatementRow label="Ventas netas totems" value={mtd.passlineSalesNet} indent />
+                    <StatementRow label="COGS totems" value={-mtd.passlineCogs} indent negative />
+                    <StatementRow label="Margen totems" value={mtd.passlineMargin} indent negative={mtd.passlineMargin < 0} />
+                    {mtd.passlineSessions.length > 0 && (
+                      <div className="pl-8 space-y-0.5 mb-1">
+                        {mtd.passlineSessions.map((s) => (
+                          <div key={s.id} className="flex justify-between text-xs text-muted-foreground">
+                            <span className="truncate mr-2">
+                              Totem #{s.totem_number} — {s.report_number} ({s.session_date})
+                            </span>
+                            <span className="tabular-nums shrink-0">{formatCLP(s.total_amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
                 {displayWaste > 0 && (
                   <>
                     <div className="flex justify-between items-center py-1 pl-4 text-sm">
