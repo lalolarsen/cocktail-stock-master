@@ -12,6 +12,7 @@ export {
   findPrinter,
   getDefaultPrinter,
   forceHandshake,
+  invalidatePrinterCache,
   getQZDiagnostics,
   getPreferredPrinterStorageKey,
   getPreferredPaperWidthStorageKey,
