@@ -6,9 +6,11 @@
  *
  * RULES:
  * - connect: max 3 retries
- * - listPrinters: 3s hard timeout, fallback to getDefault
+ * - listPrinters: 3s hard timeout, single call only
  * - NO infinite loops, NO setInterval for printers
  * - All errors surface to caller
+ * - Certificate is cached to avoid repeated fetches
+ * - Printer results are cached to minimize QZ API calls / permission dialogs
  */
 
 declare const qz: any;
@@ -44,6 +46,14 @@ let diagnostics: QZDiagnostics = {
   lastAttemptAt: null,
   websocketState,
 };
+
+// Cache for certificate (fetched once per session)
+let cachedCertificate: string | null = null;
+
+// Cache for printer list (avoids redundant QZ API calls / dialogs)
+let cachedPrinters: string[] | null = null;
+const PRINTER_CACHE_TTL_MS = 30_000; // 30s
+let printerCacheTimestamp = 0;
 
 const COLS_58MM = 32;
 const COLS_80MM = 48;
@@ -89,19 +99,39 @@ function configureSecurity() {
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   if (!anonKey) throw new Error("Publishable key no configurada");
 
-  qz.security.setHashingAlgorithm?.("SHA256");
-  qz.security.setSignatureAlgorithm?.("SHA256");
+  // Set signature algorithm to SHA-256 (must match backend RSASSA-PKCS1-v1_5 SHA-256)
+  if (typeof qz.security.setSignatureAlgorithm === "function") {
+    qz.security.setSignatureAlgorithm("SHA256");
+  }
 
   qz.security.setCertificatePromise(async () => {
-    const res = await fetch(getFunctionUrl("qz-certificate"), {
-      method: "POST",
-      headers: { apikey: anonKey },
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Certificate HTTP ${res.status}${body ? ` - ${body}` : ""}`);
+    // Return cached certificate if available
+    if (cachedCertificate) {
+      return cachedCertificate;
     }
-    return (await res.text()).trim();
+
+    try {
+      const res = await fetch(getFunctionUrl("qz-certificate"), {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error("[QZ] Certificate fetch failed:", res.status, body);
+        throw new Error(`Certificate HTTP ${res.status}${body ? ` - ${body}` : ""}`);
+      }
+      const cert = (await res.text()).trim();
+      if (!cert || !cert.includes("BEGIN CERTIFICATE")) {
+        console.error("[QZ] Invalid certificate format, first 100 chars:", cert.substring(0, 100));
+        throw new Error("Certificado con formato inválido");
+      }
+      cachedCertificate = cert;
+      console.log("[QZ] Certificate fetched and cached successfully");
+      return cert;
+    } catch (err) {
+      console.error("[QZ] Certificate error:", err);
+      throw err;
+    }
   });
 
   qz.security.setSignaturePromise(async (toSign: string) => {
@@ -111,26 +141,34 @@ function configureSecurity() {
       lastError: null,
     });
 
-    const res = await fetch(getFunctionUrl("qz-sign"), {
-      method: "POST",
-      headers: { apikey: anonKey, "Content-Type": "text/plain" },
-      body: toSign,
-    });
+    try {
+      const res = await fetch(getFunctionUrl("qz-sign"), {
+        method: "POST",
+        headers: { apikey: anonKey, "Content-Type": "text/plain" },
+        body: toSign,
+      });
 
-    const responseText = await res.text();
-    if (!res.ok) {
-      const msg = `Firma falló (${res.status}): ${responseText}`;
-      updateDiagnostics({ lastError: msg });
-      throw new Error(msg);
-    }
+      const responseText = await res.text();
+      if (!res.ok) {
+        const msg = `Firma falló (${res.status}): ${responseText}`;
+        console.error("[QZ] Signing failed:", msg);
+        updateDiagnostics({ lastError: msg });
+        throw new Error(msg);
+      }
 
-    const signature = responseText.trim();
-    if (!signature) {
-      const msg = "Firma vacía";
+      const signature = responseText.trim();
+      if (!signature) {
+        const msg = "Firma vacía";
+        console.error("[QZ] Empty signature returned");
+        updateDiagnostics({ lastError: msg });
+        throw new Error(msg);
+      }
+      return signature;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error de firma desconocido";
       updateDiagnostics({ lastError: msg });
-      throw new Error(msg);
+      throw err;
     }
-    return signature;
   });
 
   securityConfigured = true;
@@ -209,12 +247,34 @@ export async function disconnectQZ(): Promise<void> {
   setWebsocketState("DISCONNECTED");
 }
 
+// ── Printer cache helpers ──
+
+function isPrinterCacheValid(): boolean {
+  return cachedPrinters !== null && (Date.now() - printerCacheTimestamp) < PRINTER_CACHE_TTL_MS;
+}
+
+function setCachedPrinters(printers: string[]) {
+  cachedPrinters = printers;
+  printerCacheTimestamp = Date.now();
+}
+
+/** Invalidate printer cache (e.g. after force handshake). */
+export function invalidatePrinterCache() {
+  cachedPrinters = null;
+  printerCacheTimestamp = 0;
+}
+
 // ── Printers ──
 
 /**
- * Get default printer (fast, triggers permission popup).
+ * Get default printer. Uses cache if available.
  */
 export async function getDefaultPrinter(): Promise<string | null> {
+  // If we have a cached list, return the first one
+  if (isPrinterCacheValid() && cachedPrinters && cachedPrinters.length > 0) {
+    return cachedPrinters[0];
+  }
+
   await ensureQZConnected();
   try {
     const printer = await withTimeout(
@@ -229,10 +289,16 @@ export async function getDefaultPrinter(): Promise<string | null> {
 }
 
 /**
- * List all printers. 3s hard timeout. 1 attempt only.
- * If find() fails/timeouts, falls back to getDefault().
+ * List all printers. 3s hard timeout. Single QZ API call only.
+ * Returns cached results if available (30s TTL).
+ * Does NOT fallback to getDefault() to avoid a second permission dialog.
  */
 export async function listPrinters(timeoutMs = LIST_PRINTERS_TIMEOUT_MS): Promise<string[]> {
+  // Return cached printers if still valid
+  if (isPrinterCacheValid() && cachedPrinters) {
+    return cachedPrinters;
+  }
+
   await ensureQZConnected();
   updateDiagnostics({ lastAttemptAt: new Date().toISOString(), lastError: null });
 
@@ -242,31 +308,26 @@ export async function listPrinters(timeoutMs = LIST_PRINTERS_TIMEOUT_MS): Promis
       timeoutMs,
       `No se pudo listar impresoras (timeout ${timeoutMs / 1000}s)`,
     );
-    return Array.isArray(printers) ? printers : [];
+    const result = Array.isArray(printers) ? printers : [];
+    setCachedPrinters(result);
+    return result;
   } catch (error) {
     const message = getErrorMessage(error);
-    console.warn("[QZ] find() failed, trying getDefault():", message);
-
-    // Fallback: try getDefault
-    try {
-      const defaultPrinter = await withTimeout(
-        qz.printers.getDefault(),
-        LIST_PRINTERS_TIMEOUT_MS,
-        "Timeout getDefault",
-      );
-      if (defaultPrinter) {
-        return [defaultPrinter as string];
-      }
-    } catch (fallbackErr) {
-      console.warn("[QZ] getDefault() also failed:", getErrorMessage(fallbackErr));
-    }
-
+    console.warn("[QZ] find() failed:", message);
     updateDiagnostics({ lastError: message });
     throw new Error(message);
   }
 }
 
 export async function findPrinter(nameContains: string): Promise<string | null> {
+  // Check cache first to avoid an extra QZ API call / dialog
+  if (isPrinterCacheValid() && cachedPrinters) {
+    const match = cachedPrinters.find(
+      (p) => p.toLowerCase().includes(nameContains.toLowerCase()),
+    );
+    if (match) return match;
+  }
+
   await ensureQZConnected();
   try {
     const printer = await qz.printers.find(nameContains);
@@ -277,30 +338,26 @@ export async function findPrinter(nameContains: string): Promise<string | null> 
 }
 
 /**
- * Force handshake: getDefault() then find() to trigger Site Manager permission popup.
+ * Force handshake: single find() call to trigger Site Manager permission popup
+ * and list all printers. Only makes ONE QZ API call instead of two.
  */
 export async function forceHandshake(): Promise<{ defaultPrinter: string | null; allPrinters: string[] }> {
   await ensureQZConnected();
 
-  // Step 1: getDefault triggers permission popup
-  let defaultPrinter: string | null = null;
-  try {
-    defaultPrinter = await withTimeout(qz.printers.getDefault(), LIST_PRINTERS_TIMEOUT_MS, "Timeout getDefault");
-  } catch (err) {
-    console.warn("[QZ] getDefault in handshake:", getErrorMessage(err));
-  }
+  // Invalidate cache so we make a fresh call
+  invalidatePrinterCache();
 
-  // Step 2: find() to list all
+  // Single call: find() lists all printers AND triggers the permission popup
   let allPrinters: string[] = [];
   try {
     const result = await withTimeout(qz.printers.find(), LIST_PRINTERS_TIMEOUT_MS, "Timeout find");
     allPrinters = Array.isArray(result) ? result : [];
+    setCachedPrinters(allPrinters);
   } catch (err) {
     console.warn("[QZ] find in handshake:", getErrorMessage(err));
-    if (defaultPrinter) allPrinters = [defaultPrinter];
   }
 
-  return { defaultPrinter, allPrinters };
+  return { defaultPrinter: allPrinters.length > 0 ? allPrinters[0] : null, allPrinters };
 }
 
 // ── Printing ──
@@ -372,12 +429,13 @@ export async function printRaw(
   try {
     await ensureQZConnected();
 
-    const printer = await findPrinter(printerName);
-    if (!printer) {
-      return { success: false, error: `Impresora "${printerName}" no encontrada` };
+    if (!printerName) {
+      return { success: false, error: "Nombre de impresora no proporcionado" };
     }
 
-    const config = qz.configs.create(printer, { encoding: "UTF-8" });
+    // Use printer name directly in config – avoids an extra qz.printers.find() call
+    // which would trigger another permission dialog
+    const config = qz.configs.create(printerName, { encoding: "UTF-8" });
 
     const cols =
       paperWidth === "58mm"
