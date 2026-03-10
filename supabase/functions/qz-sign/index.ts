@@ -43,7 +43,7 @@ serve(async (req) => {
       body: JSON.stringify({ secret_name: "QZ_PRIVATE_KEY" }),
     });
     const pemRaw = await res.text();
-    const pemKey = pemRaw.replace(/^"|"$/g, "");
+    const pemKey = pemRaw.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
     if (!pemKey || pemKey.includes("error")) {
       return new Response("QZ_PRIVATE_KEY not found", {
         status: 500,

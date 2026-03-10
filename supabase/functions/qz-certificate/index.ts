@@ -27,7 +27,7 @@ serve(async (req) => {
         status: 500, headers: corsHeaders,
       });
     }
-    return new Response(cert.replace(/^"|"$/g, ""), {
+    return new Response(cert.replace(/^"|"$/g, "").replace(/\\n/g, "\n"), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/plain" },
     });
