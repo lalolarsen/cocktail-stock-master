@@ -463,13 +463,11 @@ nQ==
             <li>Abre STOCKIA y presiona <strong>Conectar QZ</strong>.</li>
             <li>QZ mostrará un popup — haz clic en <strong>Allow</strong>.</li>
             <li>
-              <strong>Para que recuerde la decisión:</strong> descarga el certificado (.pem) desde el botón en el panel de impresión y cópialo a:
+              <strong>Para que recuerde la decisión:</strong> descarga <strong>override.crt</strong> desde el botón del panel y cópialo en la carpeta de instalación de QZ Tray.
               <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                <li><strong>Windows:</strong> <code className="bg-muted px-1 rounded text-xs">%APPDATA%\qz\override\</code></li>
-                <li><strong>Mac:</strong> <code className="bg-muted px-1 rounded text-xs">~/Library/Application Support/qz/override/</code></li>
-                <li><strong>Linux:</strong> <code className="bg-muted px-1 rounded text-xs">~/.qz/override/</code></li>
+                <li><strong>Windows (default):</strong> <code className="bg-muted px-1 rounded text-xs">C:\Program Files\QZ Tray\override.crt</code></li>
               </ul>
-              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo.</p>
+              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo (si no te deja escribir en Program Files, usa modo administrador).</p>
             </li>
             <li>Presiona <strong>Buscar impresoras</strong> para detectar las impresoras conectadas.</li>
             <li>Selecciona una impresora y pulsa <strong>Guardar impresora</strong>.</li>
