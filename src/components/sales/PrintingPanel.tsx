@@ -463,10 +463,18 @@ nQ==
           <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
             <li>Instala QZ Tray desde <strong>qz.io/download</strong>.</li>
             <li>Abre STOCKIA y presiona <strong>Conectar QZ</strong>.</li>
-            <li>Acepta el popup de autorización de QZ Tray.</li>
-            <li>Presiona <strong>Buscar impresoras</strong> o <strong>Forzar autorización</strong>.</li>
+            <li>QZ mostrará un popup — haz clic en <strong>Allow</strong>.</li>
+            <li>
+              <strong>Para que recuerde la decisión:</strong> descarga el certificado (.pem) desde el botón en el panel de impresión y cópialo a:
+              <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                <li><strong>Windows:</strong> <code className="bg-muted px-1 rounded text-xs">%APPDATA%\qz\override\</code></li>
+                <li><strong>Mac:</strong> <code className="bg-muted px-1 rounded text-xs">~/Library/Application Support/qz/override/</code></li>
+                <li><strong>Linux:</strong> <code className="bg-muted px-1 rounded text-xs">~/.qz/override/</code></li>
+              </ul>
+              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo.</p>
+            </li>
+            <li>Presiona <strong>Buscar impresoras</strong> para detectar las impresoras conectadas.</li>
             <li>Selecciona una impresora y pulsa <strong>Guardar impresora</strong>.</li>
-            <li>Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autorizar dominio.</li>
             <li>Imprime un ticket de prueba para verificar el tamaño correcto.</li>
           </ol>
         </DialogContent>
