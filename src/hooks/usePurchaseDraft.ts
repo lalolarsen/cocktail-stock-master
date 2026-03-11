@@ -107,7 +107,7 @@ export function usePurchaseDraft(): UsePurchaseDraftReturn {
   const [error, setError] = useState<DraftError | null>(null);
   
   // Debounce timer ref
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Pending save data ref (for debouncing)
   const pendingSaveRef = useRef<Partial<DraftData> | null>(null);
