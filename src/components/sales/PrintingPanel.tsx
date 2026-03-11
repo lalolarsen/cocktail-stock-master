@@ -250,6 +250,38 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
     }
   }, [paperWidth, refreshDiagnostics, selectedPrinter, venueName]);
 
+  // ── Download certificate for QZ Tray override ──
+  const downloadCertificate = useCallback(() => {
+    const certPem = `-----BEGIN CERTIFICATE-----
+MIIDLTCCAhWgAwIBAgIUXE87unDt1KqeznKmSHnTHsmcjbQwDQYJKoZIhvcNAQEL
+BQAwJjEQMA4GA1UEAwwHU1RPQ0tJQTESMBAGA1UECgwJSUFudGljaXBhMB4XDTI2
+MDMxMDE3MDIwM1oXDTM2MDMwNzE3MDIwM1owJjEQMA4GA1UEAwwHU1RPQ0tJQTES
+MBAGA1UECgwJSUFudGljaXBhMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
+AQEAoolkZaG56ReEkrsU6R+kkOVhxqF8+RW40/F3hGESDybG2dlzW64bHhCJbf0I
+pwrMrtl+8JvJpkQX0Hzq8aada6D4bSUbK0RnK86/u1ZWaRcverx+PS2I7evDYOD/
+wh699fI4ee97zgRZuNpk4UGXymXThaux8pXiv1JL2Uf2C4PssGNw20Su6P7fE88m
++QLENrL4V4Scuq07TEu/6waRgkfZw+bNOO+ORLEfM8xIuwXv5Yv7VADzONcYCuHE
+Gxxac4jwUL3Y5H7LazbZ/AA6HpxHa8ZLBqbh9Bwfd3eInLyYYt+f6rQfFQnBPVvj
+jb+gxIrx3qzIgXft43rP2hYrKQIDAQABo1MwUTAdBgNVHQ4EFgQUIR58Z9yWNKrB
+xquMryGF/lKUkVMwHwYDVR0jBBgwFoAUIR58Z9yWNKrBxquMryGF/lKUkVMwDwYD
+VR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAI4Y/1B/EkBBFjmCPb11q
+WxcS0qIoKmfufeMu3aPq1V7gYT65StrKeJmp4IhDbtkQPg/HHFbd6ZMgEjP4rMt7
+lYV3rHmWrgGrwSvx9Wwxe22uKL2fZXIh+iQrNutrcR9Q/JCBB215H5+Yjd9kH4/y
+kI7HtpHKv/r5H4JluJTicdRSHd/aAcjMAOoINsQfy0B5b3ga6t8jCxYTgRID8HmA
+l26P5wGvmq++zClhiN6BX6PWOybgViJx+NhzI+1e/uCNq0ae0FyhBO2X9ZwBNu8H
+gp4Kh7RF8Sl8lgNwWZs+p8nO2SMWz1z0jCZIQKhQokAX01KvrIOF7iYLobyeCTtE
+nQ==
+-----END CERTIFICATE-----`;
+    const blob = new Blob([certPem], { type: "application/x-pem-file" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "stockia-qz-cert.pem";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Certificado descargado. Sigue las instrucciones para instalarlo en QZ Tray.");
+  }, []);
+
   // ── Copy diagnostics ──
   const copyDiagnostics = useCallback(async () => {
     const content = [
