@@ -31,6 +31,8 @@ serve(async (req) => {
     if (!payload) {
       return new Response("Missing payload", { status: 400, headers: corsHeaders });
     }
+    console.log("[qz-sign] Payload preview:", JSON.stringify(payload.substring(0, 50)));
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const res = await fetch(`${supabaseUrl}/rest/v1/rpc/get_qz_secret`, {
@@ -52,13 +54,14 @@ serve(async (req) => {
     }
     const first50 = pemKey.substring(0, 50);
     const lastChars = pemKey.substring(pemKey.length - 30);
-    const hasCarriageReturn = pemKey.includes('\r');
-    const hasLiteralBackslashN = pemKey.includes('\\n');
+    const hasCarriageReturn = pemKey.includes("\r");
+    const hasLiteralBackslashN = pemKey.includes("\\n");
     console.log("[qz-sign] PEM first50:", JSON.stringify(first50));
     console.log("[qz-sign] PEM last30:", JSON.stringify(lastChars));
     console.log("[qz-sign] hasCarriageReturn:", hasCarriageReturn);
     console.log("[qz-sign] hasLiteralBackslashN:", hasLiteralBackslashN);
     console.log("[qz-sign] total length:", pemKey.length);
+
     const privateKey = await crypto.subtle.importKey(
       "pkcs8",
       pemToArrayBuffer(pemKey),
@@ -70,7 +73,20 @@ serve(async (req) => {
     const bytes = new Uint8Array(signature);
     let binary = "";
     for (const b of bytes) binary += String.fromCharCode(b);
-    return new Response(btoa(binary), {
+
+    const signatureBase64 = btoa(binary).replace(/\s+/g, "").trim();
+    if (!/^[A-Za-z0-9+/=]+$/.test(signatureBase64)) {
+      console.error("[qz-sign] Invalid base64 signature generated");
+      return new Response("Invalid signature format", {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
+
+    console.log("[qz-sign] Signature preview:", signatureBase64.substring(0, 50));
+    console.log("[qz-sign] Signature length:", signatureBase64.length);
+
+    return new Response(signatureBase64, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/plain" },
     });

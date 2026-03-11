@@ -48,7 +48,7 @@ let diagnostics: QZDiagnostics = {
 };
 
 // QZ Tray certificate (public – safe to embed in frontend)
-const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+const EMBEDDED_QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
 MIIDLTCCAhWgAwIBAgIUXE87unDt1KqeznKmSHnTHsmcjbQwDQYJKoZIhvcNAQEL
 BQAwJjEQMA4GA1UEAwwHU1RPQ0tJQTESMBAGA1UECgwJSUFudGljaXBhMB4XDTI2
 MDMxMDE3MDIwM1oXDTM2MDMwNzE3MDIwM1owJjEQMA4GA1UEAwwHU1RPQ0tJQTES
@@ -68,6 +68,69 @@ l26P5wGvmq++zClhiN6BX6PWOybgViJx+NhzI+1e/uCNq0ae0FyhBO2X9ZwBNu8H
 gp4Kh7RF8Sl8lgNwWZs+p8nO2SMWz1z0jCZIQKhQokAX01KvrIOF7iYLobyeCTtE
 nQ==
 -----END CERTIFICATE-----`;
+
+let certificateCache: string | null = null;
+let certificatePromise: Promise<string> | null = null;
+
+function normalizeCertificatePem(rawPem: string): string {
+  const normalized = rawPem
+    .replace(/^"|"$/g, "")
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  if (
+    !normalized.startsWith("-----BEGIN CERTIFICATE-----") ||
+    !normalized.endsWith("-----END CERTIFICATE-----")
+  ) {
+    throw new Error("Certificado QZ inválido");
+  }
+
+  return normalized;
+}
+
+async function resolveCertificatePem(anonKey: string): Promise<string> {
+  if (certificateCache) return certificateCache;
+  if (certificatePromise) return certificatePromise;
+
+  certificatePromise = (async () => {
+    const embeddedPem = normalizeCertificatePem(EMBEDDED_QZ_CERTIFICATE);
+
+    try {
+      const certRes = await fetch(getFunctionUrl("qz-certificate"), {
+        method: "GET",
+        headers: { apikey: anonKey },
+      });
+
+      if (!certRes.ok) {
+        console.warn("[QZ] qz-certificate failed, usando PEM embebido:", certRes.status);
+        certificateCache = embeddedPem;
+        return embeddedPem;
+      }
+
+      const backendPem = normalizeCertificatePem(await certRes.text());
+      if (backendPem !== embeddedPem) {
+        console.warn("[QZ] Certificado embebido distinto al backend; se usará backend.");
+      }
+
+      certificateCache = backendPem;
+      return backendPem;
+    } catch (error) {
+      console.warn("[QZ] Fallback a certificado embebido:", getErrorMessage(error));
+      certificateCache = embeddedPem;
+      return embeddedPem;
+    }
+  })().finally(() => {
+    certificatePromise = null;
+  });
+
+  return certificatePromise;
+}
 
 // Cache for printer list (avoids redundant QZ API calls / dialogs)
 let cachedPrinters: string[] | null = null;
@@ -123,9 +186,11 @@ function configureSecurity() {
     qz.security.setSignatureAlgorithm("SHA256");
   }
 
-  // Certificate is public (like a public key) – embedded directly to avoid
-  // network round-trip and edge-function deployment issues.
-  qz.security.setCertificatePromise(() => Promise.resolve(QZ_CERTIFICATE));
+  qz.security.setCertificatePromise(async () => {
+    const pem = await resolveCertificatePem(anonKey);
+    console.log("[QZ] Certificate loaded:", pem.substring(0, 50));
+    return pem;
+  });
 
   qz.security.setSignaturePromise(async (toSign: string) => {
     console.log("[QZ] Signing payload:", toSign.substring(0, 50));
@@ -140,7 +205,11 @@ function configureSecurity() {
       console.log("[QZ] Calling qz-sign at:", url);
       const res = await fetch(url, {
         method: "POST",
-        headers: { apikey: anonKey, "Content-Type": "text/plain" },
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+          "Content-Type": "text/plain",
+        },
         body: toSign,
       });
 
@@ -153,13 +222,21 @@ function configureSecurity() {
         throw new Error(msg);
       }
 
-      const signature = responseText.trim();
+      const signature = responseText.trim().replace(/^"|"$/g, "");
       if (!signature) {
         const msg = "Firma vacía";
         console.error("[QZ] Empty signature returned");
         updateDiagnostics({ lastError: msg });
         throw new Error(msg);
       }
+
+      if (!/^[A-Za-z0-9+/=]+$/.test(signature)) {
+        const msg = "Firma inválida (formato base64 incorrecto)";
+        console.error("[QZ] Invalid signature format");
+        updateDiagnostics({ lastError: msg });
+        throw new Error(msg);
+      }
+
       console.log("[QZ] Signature result:", signature.substring(0, 50));
       return signature;
     } catch (err) {
@@ -172,6 +249,7 @@ function configureSecurity() {
 
   securityConfigured = true;
 }
+
 
 // ── Connection ──
 

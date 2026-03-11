@@ -100,6 +100,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setVenue(null);
     setVenueError(null);
     setActiveJornadaId(null);
+    setJornadaLoading(false);
   }, []);
 
   // ── Active jornada fetch (declared early so auth effect can reference it) ──
@@ -125,8 +126,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       }
     } catch (err) {
       console.error("Error checking active jornada:", err);
+    } finally {
+      setJornadaLoading(false);
     }
-    setJornadaLoading(false);
   }, []);
 
   const initializeSession = useCallback(async () => {
@@ -136,7 +138,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchUserData(session.user.id);
-        await fetchActiveJornada();
       }
     } catch (error) {
       console.error("Error initializing session:", error);
@@ -144,7 +145,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchUserData, clearState, fetchActiveJornada]);
+  }, [fetchUserData, clearState]);
 
   const refreshSession = useCallback(async () => {
     if (user?.id) {
@@ -156,7 +157,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     let isMounted = true;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      (_event, newSession) => {
         if (!isMounted) return;
         setSession(newSession);
         setUser(newSession?.user ?? null);
@@ -164,8 +165,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
           setTimeout(() => {
             if (isMounted) {
               fetchUserData(newSession.user.id);
-              // Re-fetch jornada after auth state changes (RLS requires auth)
-              fetchActiveJornada();
             }
           }, 0);
         } else {
@@ -180,7 +179,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [initializeSession, fetchUserData, clearState, fetchActiveJornada]);
+  }, [initializeSession, fetchUserData, clearState]);
 
   const hasRole = useCallback((checkRole: AppRole) => roles.includes(checkRole), [roles]);
 
@@ -189,26 +188,46 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   // ── Active jornada realtime subscription ──
   useEffect(() => {
-    fetchActiveJornada();
+    if (!session?.user) {
+      setJornadaLoading(false);
+      setActiveJornadaId(null);
+      if (jornadaChannelRef.current) {
+        supabase.removeChannel(jornadaChannelRef.current);
+        jornadaChannelRef.current = null;
+      }
+      return;
+    }
+
+    let isMounted = true;
+    setJornadaLoading(true);
+    void fetchActiveJornada();
 
     const channel = supabase
       .channel("global-jornada-status")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "jornadas" },
-        () => fetchActiveJornada()
+        () => {
+          if (isMounted) void fetchActiveJornada();
+        }
       )
       .subscribe();
     jornadaChannelRef.current = channel;
 
-    const poll = setInterval(fetchActiveJornada, 15000);
+    // Fallback menos agresivo para reducir solicitudes
+    const poll = setInterval(() => {
+      if (isMounted) void fetchActiveJornada();
+    }, 60000);
 
     return () => {
+      isMounted = false;
       supabase.removeChannel(channel);
       clearInterval(poll);
-      jornadaChannelRef.current = null;
+      if (jornadaChannelRef.current === channel) {
+        jornadaChannelRef.current = null;
+      }
     };
-  }, [fetchActiveJornada]);
+  }, [fetchActiveJornada, session?.user?.id]);
 
   const value: AppSessionContextValue = {
     user,

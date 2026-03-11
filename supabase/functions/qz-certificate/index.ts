@@ -21,13 +21,21 @@ serve(async (req) => {
       },
       body: JSON.stringify({ secret_name: "QZ_CERTIFICATE" }),
     });
-    const cert = await res.text();
-    if (!cert || cert.includes("error")) {
+    const certRaw = await res.text();
+    if (!certRaw || certRaw.includes("error")) {
       return new Response("QZ_CERTIFICATE not found", {
         status: 500, headers: corsHeaders,
       });
     }
-    return new Response(cert.replace(/^"|"$/g, "").replace(/\\n/g, "\n"), {
+
+    const normalizedCert = certRaw
+      .replace(/^"|"$/g, "")
+      .replace(/\\\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\r/g, "")
+      .trim();
+
+    return new Response(normalizedCert, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/plain" },
     });
