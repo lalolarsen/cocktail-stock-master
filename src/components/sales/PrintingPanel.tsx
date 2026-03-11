@@ -367,9 +367,23 @@ nQ==
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autoriza este dominio.
-          </p>
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs space-y-1.5">
+            <p className="font-medium text-amber-700">¿QZ muestra "Untrusted website"?</p>
+            <p className="text-muted-foreground">
+              Descarga el certificado e instálalo en QZ Tray para que recuerde la autorización:
+            </p>
+            <Button variant="outline" size="sm" className="text-xs" onClick={downloadCertificate}>
+              <Download className="w-3 h-3 mr-1" />
+              Descargar certificado (.pem)
+            </Button>
+            <p className="text-muted-foreground">
+              Luego cópialo a la carpeta de QZ Tray:<br />
+              <strong>Windows:</strong> <code className="bg-muted px-1 rounded">%APPDATA%\qz\override\</code><br />
+              <strong>Mac:</strong> <code className="bg-muted px-1 rounded">~/Library/Application Support/qz/override/</code><br />
+              <strong>Linux:</strong> <code className="bg-muted px-1 rounded">~/.qz/override/</code><br />
+              Reinicia QZ Tray después de copiar el archivo.
+            </p>
+          </div>
 
           {/* Printer selection + settings */}
           {status === "CONNECTED" && (
