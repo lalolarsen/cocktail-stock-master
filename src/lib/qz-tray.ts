@@ -1,19 +1,11 @@
 /**
- * QZ Tray – Re-export from canonical module.
- * Kept for backward compatibility with older imports.
+ * QZ Tray – Legacy compatibility stubs.
+ * QZ Tray has been removed. Printing uses print-js (browser native).
+ * This file provides no-op stubs so any lingering imports won't break.
  */
+
 export {
-  initQZ as initQz,
-  ensureQZConnected as ensureQz,
-  ensureQZConnected as connectQz,
   isQZConnected as isQzConnected,
-  disconnectQZ as disconnectQz,
-  listPrinters as findPrinters,
-  findPrinter,
-  getDefaultPrinter,
-  forceHandshake,
-  invalidatePrinterCache,
-  getQZDiagnostics,
   getPreferredPrinterStorageKey,
   getPreferredPaperWidthStorageKey,
   printRaw as printReceipt,
@@ -21,7 +13,15 @@ export {
   type PaperWidth,
 } from "@/lib/printing/qz";
 
-// Re-export loadQzTray as no-op for compatibility
-export async function loadQzTray(): Promise<boolean> {
-  return typeof (globalThis as any).qz !== "undefined";
-}
+// No-op stubs for removed QZ Tray functions
+export async function initQz(): Promise<void> {}
+export async function ensureQz(): Promise<void> {}
+export async function connectQz(): Promise<void> {}
+export async function disconnectQz(): Promise<void> {}
+export async function findPrinters(): Promise<string[]> { return []; }
+export async function findPrinter(): Promise<string | null> { return null; }
+export async function getDefaultPrinter(): Promise<string | null> { return null; }
+export async function forceHandshake(): Promise<void> {}
+export function invalidatePrinterCache(): void {}
+export function getQZDiagnostics(): Record<string, unknown> { return {}; }
+export async function loadQzTray(): Promise<boolean> { return false; }
