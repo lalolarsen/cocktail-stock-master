@@ -9,6 +9,7 @@
  */
 
 import printJS from "print-js";
+import { generateQRSvgString } from "./qr-svg";
 
 export type PaperWidth = "58mm" | "80mm";
 
@@ -47,31 +48,33 @@ export interface ReceiptData {
   pickupToken?: string;
 }
 
+/** Fixed venue title for all receipts */
+const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
+
 // ── HTML receipt builder ──
 
 /**
  * Builds the print CSS with a paper-specific @page size rule.
- * When Chrome is launched with --kiosk-printing, the @page size is used
- * to send directly to the printer at the correct width (no dialog shown).
  */
 function buildReceiptCss(paperWidth: PaperWidth): string {
   return `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; }
-    .receipt { width: 100%; padding: 0 2px; }
-    .venue-name { font-size: 14pt; font-weight: bold; margin-bottom: 4px; text-align: center; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; }
-    .meta { text-align: center; font-size: 9pt; }
+    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
+    .receipt { width: 100%; padding: 0 2px; color: #000; }
+    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
+    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
+    .meta { text-align: center; font-size: 9pt; color: #000; }
     .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; }
-    .item-name { text-align: left; }
-    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; }
-    .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; }
-    .payment { text-align: center; margin: 4px 0; font-size: 9.5pt; }
-    .token-section { text-align: center; margin: 8px 0; }
-    .token-label { font-weight: bold; }
-    .token-value { font-size: 9pt; word-break: break-all; }
-    .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; }
+    .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; color: #000; }
+    .item-name { text-align: left; color: #000; }
+    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; color: #000; }
+    .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
+    .payment { text-align: center; margin: 4px 0; font-size: 9.5pt; color: #000; }
+    .qr-section { text-align: center; margin: 10px 0; }
+    .qr-section svg { display: inline-block; max-width: 85%; height: auto; }
+    .qr-label { font-size: 10pt; font-weight: bold; margin-bottom: 4px; color: #000; }
+    .qr-instruction { font-size: 9pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
+    .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -98,29 +101,37 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
     )
     .join("");
 
-  const tokenHtml = data.pickupToken
-    ? `<div class="token-section">
+  // Generate QR code SVG if pickup token exists
+  let qrHtml = "";
+  if (data.pickupToken) {
+    const qrContent = `PICKUP:${data.pickupToken}`;
+    const qrSize = paperWidth === "58mm" ? 180 : 220;
+    const qrSvg = generateQRSvgString(qrContent, qrSize);
+    qrHtml = `
+      <div class="qr-section">
         <div class="sep">${dash}</div>
-        <div class="token-label">--- CANJE QR ---</div>
-        <div class="token-value">Token: ${data.pickupToken}</div>
-      </div>`
-    : "";
+        <div class="qr-label">QR DE RETIRO</div>
+        ${qrSvg}
+        <div class="qr-instruction">
+          Presenta este QR en la barra para retirar tu pedido
+        </div>
+      </div>`;
+  }
 
   const paymentLabel = data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta";
 
   return `
     <div class="receipt">
-      <div class="venue-name">${data.venueName}</div>
+      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
-      <div class="meta">POS: ${data.posName}</div>
       <div class="meta">${data.dateTime}</div>
       <div class="sep">${sep}</div>
       <table class="items"><tbody>${itemsHtml}</tbody></table>
       <div class="sep">${dash}</div>
       <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
       <div class="payment">Pago: ${paymentLabel}</div>
-      ${tokenHtml}
+      ${qrHtml}
       <div class="footer">Gracias por tu compra</div>
     </div>
   `;
@@ -130,14 +141,6 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
 
 /**
  * Print a receipt via print-js (browser print dialog or kiosk-silent).
- *
- * Fire-and-forget: resolves immediately after dispatching the print command.
- * This works correctly in both modes:
- *   - Normal mode: the browser print dialog opens; user clicks Print.
- *   - Chrome --kiosk-printing: no dialog; prints silently to default printer.
- *
- * The `printerName` parameter is kept for API compatibility but is ignored –
- * printer selection is done in the browser dialog (or via OS default in kiosk).
  */
 export function printRaw(
   _printerName: string,

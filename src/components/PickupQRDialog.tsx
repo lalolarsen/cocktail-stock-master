@@ -19,6 +19,9 @@ export type PickupQRDialogProps = {
   embedded?: boolean;
 };
 
+/** Fixed venue title for all printed receipts */
+const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
+
 export default function PickupQRDialog({
   open,
   onClose,
@@ -32,13 +35,13 @@ export default function PickupQRDialog({
 }: PickupQRDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [showDebug, setShowDebug] = useState(false);
-  
+
   // The actual content encoded in the QR
   const qrContent = `PICKUP:${token}`;
 
   const handlePrint = () => {
-    const printContent = printRef.current;
-    if (!printContent) return;
+    const qrSvgEl = document.getElementById("qr-code-svg");
+    if (!qrSvgEl) return;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -52,6 +55,10 @@ export default function PickupQRDialog({
       minute: "2-digit",
     });
 
+    const itemsHtml = items
+      .map((item) => `<div class="item">${item.quantity}x ${item.name} — $${item.price.toLocaleString("es-CL")}</div>`)
+      .join("");
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -59,36 +66,45 @@ export default function PickupQRDialog({
           <title>QR Retiro - ${saleNumber}</title>
           <style>
             @page { size: 80mm auto; margin: 5mm; }
+            * { color: #000 !important; }
             body {
               font-family: 'Courier New', monospace;
               text-align: center;
               padding: 10px;
               max-width: 80mm;
               margin: 0 auto;
+              color: #000;
+              background: #fff;
             }
-            .qr-container { margin: 15px 0; }
-            .sale-number { font-size: 18px; font-weight: bold; margin: 10px 0; }
-            .items { text-align: left; margin: 10px 0; font-size: 12px; }
-            .total { font-size: 16px; font-weight: bold; margin: 10px 0; }
-            .expires { font-size: 10px; color: #666; margin-top: 10px; }
-            .instruction { 
-              font-size: 11px; 
-              margin-top: 15px; 
+            .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 8px; }
+            .sep { margin: 4px 0; font-size: 10pt; }
+            .sale-number { font-size: 14pt; font-weight: bold; margin: 6px 0; }
+            .items { text-align: left; margin: 8px 0; font-size: 11px; }
+            .item { margin: 2px 0; }
+            .total { font-size: 14pt; font-weight: bold; margin: 8px 0; }
+            .qr-container { margin: 12px 0; }
+            .qr-container svg { max-width: 85%; height: auto; }
+            .expires { font-size: 10px; margin-top: 8px; }
+            .instruction {
+              font-size: 11px;
+              margin-top: 12px;
               padding: 8px;
-              border: 1px dashed #333;
+              border: 1px dashed #000;
             }
-            svg { max-width: 100%; height: auto; }
           </style>
         </head>
         <body>
+          <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
+          <div class="sep">================================================</div>
           <div class="sale-number">${saleNumber}</div>
-          <div class="qr-container">
-            ${document.getElementById("qr-code-svg")?.outerHTML || ""}
-          </div>
-          <div class="items">
-            ${items.map((item) => `<div>${item.quantity}x ${item.name}</div>`).join("")}
-          </div>
+          <div class="sep">================================================</div>
+          <div class="items">${itemsHtml}</div>
           <div class="total">Total: ${formatCLP(total)}</div>
+          <div class="sep">------------------------------------------------</div>
+          <div style="font-weight:bold;margin-bottom:4px;">QR DE RETIRO</div>
+          <div class="qr-container">
+            ${qrSvgEl.outerHTML}
+          </div>
           <div class="expires">Válido hasta: ${formattedExpires}</div>
           <div class="instruction">
             Presenta este QR en la barra para retirar tu pedido
@@ -122,6 +138,8 @@ export default function PickupQRDialog({
           size={embedded ? 150 : 200}
           level="H"
           includeMargin
+          bgColor="#ffffff"
+          fgColor="#000000"
         />
       </div>
 
