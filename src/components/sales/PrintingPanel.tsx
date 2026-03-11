@@ -367,21 +367,19 @@ nQ==
             </div>
           )}
 
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs space-y-1.5">
-            <p className="font-medium text-amber-700">¿QZ muestra "Untrusted website"?</p>
+          <div className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs space-y-1.5">
+            <p className="font-medium text-foreground">¿QZ muestra "Untrusted website"?</p>
             <p className="text-muted-foreground">
-              Descarga el certificado e instálalo en QZ Tray para que recuerde la autorización:
+              Para que funcione <strong>Remember this decision</strong>, usa el certificado como <strong>override.crt</strong>.
             </p>
             <Button variant="outline" size="sm" className="text-xs" onClick={downloadCertificate}>
               <Download className="w-3 h-3 mr-1" />
-              Descargar certificado (.pem)
+              Descargar override.crt
             </Button>
             <p className="text-muted-foreground">
-              Luego cópialo a la carpeta de QZ Tray:<br />
-              <strong>Windows:</strong> <code className="bg-muted px-1 rounded">%APPDATA%\qz\override\</code><br />
-              <strong>Mac:</strong> <code className="bg-muted px-1 rounded">~/Library/Application Support/qz/override/</code><br />
-              <strong>Linux:</strong> <code className="bg-muted px-1 rounded">~/.qz/override/</code><br />
-              Reinicia QZ Tray después de copiar el archivo.
+              Copia el archivo en la carpeta de instalación de QZ Tray y reinicia QZ Tray.<br />
+              <strong>Windows (default):</strong> <code className="bg-muted px-1 rounded">C:\Program Files\QZ Tray\override.crt</code><br />
+              (si no te deja, abre el explorador como administrador o usa Site Manager → <strong>+</strong> → <strong>Create New</strong> → Yes/Yes/Yes).
             </p>
           </div>
 
