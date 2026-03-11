@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Download,
   Info,
   Loader2,
   Printer,
@@ -249,6 +250,38 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
     }
   }, [paperWidth, refreshDiagnostics, selectedPrinter, venueName]);
 
+  // ── Download certificate for QZ Tray override ──
+  const downloadCertificate = useCallback(() => {
+    const certPem = `-----BEGIN CERTIFICATE-----
+MIIDLTCCAhWgAwIBAgIUXE87unDt1KqeznKmSHnTHsmcjbQwDQYJKoZIhvcNAQEL
+BQAwJjEQMA4GA1UEAwwHU1RPQ0tJQTESMBAGA1UECgwJSUFudGljaXBhMB4XDTI2
+MDMxMDE3MDIwM1oXDTM2MDMwNzE3MDIwM1owJjEQMA4GA1UEAwwHU1RPQ0tJQTES
+MBAGA1UECgwJSUFudGljaXBhMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
+AQEAoolkZaG56ReEkrsU6R+kkOVhxqF8+RW40/F3hGESDybG2dlzW64bHhCJbf0I
+pwrMrtl+8JvJpkQX0Hzq8aada6D4bSUbK0RnK86/u1ZWaRcverx+PS2I7evDYOD/
+wh699fI4ee97zgRZuNpk4UGXymXThaux8pXiv1JL2Uf2C4PssGNw20Su6P7fE88m
++QLENrL4V4Scuq07TEu/6waRgkfZw+bNOO+ORLEfM8xIuwXv5Yv7VADzONcYCuHE
+Gxxac4jwUL3Y5H7LazbZ/AA6HpxHa8ZLBqbh9Bwfd3eInLyYYt+f6rQfFQnBPVvj
+jb+gxIrx3qzIgXft43rP2hYrKQIDAQABo1MwUTAdBgNVHQ4EFgQUIR58Z9yWNKrB
+xquMryGF/lKUkVMwHwYDVR0jBBgwFoAUIR58Z9yWNKrBxquMryGF/lKUkVMwDwYD
+VR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAI4Y/1B/EkBBFjmCPb11q
+WxcS0qIoKmfufeMu3aPq1V7gYT65StrKeJmp4IhDbtkQPg/HHFbd6ZMgEjP4rMt7
+lYV3rHmWrgGrwSvx9Wwxe22uKL2fZXIh+iQrNutrcR9Q/JCBB215H5+Yjd9kH4/y
+kI7HtpHKv/r5H4JluJTicdRSHd/aAcjMAOoINsQfy0B5b3ga6t8jCxYTgRID8HmA
+l26P5wGvmq++zClhiN6BX6PWOybgViJx+NhzI+1e/uCNq0ae0FyhBO2X9ZwBNu8H
+gp4Kh7RF8Sl8lgNwWZs+p8nO2SMWz1z0jCZIQKhQokAX01KvrIOF7iYLobyeCTtE
+nQ==
+-----END CERTIFICATE-----`;
+    const blob = new Blob([certPem], { type: "application/x-pem-file" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "stockia-qz-cert.pem";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Certificado descargado. Sigue las instrucciones para instalarlo en QZ Tray.");
+  }, []);
+
   // ── Copy diagnostics ──
   const copyDiagnostics = useCallback(async () => {
     const content = [
@@ -334,9 +367,23 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autoriza este dominio.
-          </p>
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs space-y-1.5">
+            <p className="font-medium text-amber-700">¿QZ muestra "Untrusted website"?</p>
+            <p className="text-muted-foreground">
+              Descarga el certificado e instálalo en QZ Tray para que recuerde la autorización:
+            </p>
+            <Button variant="outline" size="sm" className="text-xs" onClick={downloadCertificate}>
+              <Download className="w-3 h-3 mr-1" />
+              Descargar certificado (.pem)
+            </Button>
+            <p className="text-muted-foreground">
+              Luego cópialo a la carpeta de QZ Tray:<br />
+              <strong>Windows:</strong> <code className="bg-muted px-1 rounded">%APPDATA%\qz\override\</code><br />
+              <strong>Mac:</strong> <code className="bg-muted px-1 rounded">~/Library/Application Support/qz/override/</code><br />
+              <strong>Linux:</strong> <code className="bg-muted px-1 rounded">~/.qz/override/</code><br />
+              Reinicia QZ Tray después de copiar el archivo.
+            </p>
+          </div>
 
           {/* Printer selection + settings */}
           {status === "CONNECTED" && (
@@ -416,10 +463,18 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
           <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
             <li>Instala QZ Tray desde <strong>qz.io/download</strong>.</li>
             <li>Abre STOCKIA y presiona <strong>Conectar QZ</strong>.</li>
-            <li>Acepta el popup de autorización de QZ Tray.</li>
-            <li>Presiona <strong>Buscar impresoras</strong> o <strong>Forzar autorización</strong>.</li>
+            <li>QZ mostrará un popup — haz clic en <strong>Allow</strong>.</li>
+            <li>
+              <strong>Para que recuerde la decisión:</strong> descarga el certificado (.pem) desde el botón en el panel de impresión y cópialo a:
+              <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                <li><strong>Windows:</strong> <code className="bg-muted px-1 rounded text-xs">%APPDATA%\qz\override\</code></li>
+                <li><strong>Mac:</strong> <code className="bg-muted px-1 rounded text-xs">~/Library/Application Support/qz/override/</code></li>
+                <li><strong>Linux:</strong> <code className="bg-muted px-1 rounded text-xs">~/.qz/override/</code></li>
+              </ul>
+              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo.</p>
+            </li>
+            <li>Presiona <strong>Buscar impresoras</strong> para detectar las impresoras conectadas.</li>
             <li>Selecciona una impresora y pulsa <strong>Guardar impresora</strong>.</li>
-            <li>Si no aparecen impresoras: QZ Tray → Advanced → Site Manager → autorizar dominio.</li>
             <li>Imprime un ticket de prueba para verificar el tamaño correcto.</li>
           </ol>
         </DialogContent>
