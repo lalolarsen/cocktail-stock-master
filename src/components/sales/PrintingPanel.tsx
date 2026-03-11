@@ -272,14 +272,14 @@ l26P5wGvmq++zClhiN6BX6PWOybgViJx+NhzI+1e/uCNq0ae0FyhBO2X9ZwBNu8H
 gp4Kh7RF8Sl8lgNwWZs+p8nO2SMWz1z0jCZIQKhQokAX01KvrIOF7iYLobyeCTtE
 nQ==
 -----END CERTIFICATE-----`;
-    const blob = new Blob([certPem], { type: "application/x-pem-file" });
+    const blob = new Blob([certPem], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "stockia-qz-cert.pem";
+    a.download = "override.crt";
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Certificado descargado. Sigue las instrucciones para instalarlo en QZ Tray.");
+    toast.success("Certificado descargado como override.crt. Cópielo en la carpeta de instalación de QZ Tray y reinicie.");
   }, []);
 
   // ── Copy diagnostics ──
@@ -367,21 +367,19 @@ nQ==
             </div>
           )}
 
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs space-y-1.5">
-            <p className="font-medium text-amber-700">¿QZ muestra "Untrusted website"?</p>
+          <div className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs space-y-1.5">
+            <p className="font-medium text-foreground">¿QZ muestra "Untrusted website"?</p>
             <p className="text-muted-foreground">
-              Descarga el certificado e instálalo en QZ Tray para que recuerde la autorización:
+              Para que funcione <strong>Remember this decision</strong>, usa el certificado como <strong>override.crt</strong>.
             </p>
             <Button variant="outline" size="sm" className="text-xs" onClick={downloadCertificate}>
               <Download className="w-3 h-3 mr-1" />
-              Descargar certificado (.pem)
+              Descargar override.crt
             </Button>
             <p className="text-muted-foreground">
-              Luego cópialo a la carpeta de QZ Tray:<br />
-              <strong>Windows:</strong> <code className="bg-muted px-1 rounded">%APPDATA%\qz\override\</code><br />
-              <strong>Mac:</strong> <code className="bg-muted px-1 rounded">~/Library/Application Support/qz/override/</code><br />
-              <strong>Linux:</strong> <code className="bg-muted px-1 rounded">~/.qz/override/</code><br />
-              Reinicia QZ Tray después de copiar el archivo.
+              Copia el archivo en la carpeta de instalación de QZ Tray y reinicia QZ Tray.<br />
+              <strong>Windows (default):</strong> <code className="bg-muted px-1 rounded">C:\Program Files\QZ Tray\override.crt</code><br />
+              (si no te deja, abre el explorador como administrador o usa Site Manager → <strong>+</strong> → <strong>Create New</strong> → Yes/Yes/Yes).
             </p>
           </div>
 
@@ -465,13 +463,11 @@ nQ==
             <li>Abre STOCKIA y presiona <strong>Conectar QZ</strong>.</li>
             <li>QZ mostrará un popup — haz clic en <strong>Allow</strong>.</li>
             <li>
-              <strong>Para que recuerde la decisión:</strong> descarga el certificado (.pem) desde el botón en el panel de impresión y cópialo a:
+              <strong>Para que recuerde la decisión:</strong> descarga <strong>override.crt</strong> desde el botón del panel y cópialo en la carpeta de instalación de QZ Tray.
               <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                <li><strong>Windows:</strong> <code className="bg-muted px-1 rounded text-xs">%APPDATA%\qz\override\</code></li>
-                <li><strong>Mac:</strong> <code className="bg-muted px-1 rounded text-xs">~/Library/Application Support/qz/override/</code></li>
-                <li><strong>Linux:</strong> <code className="bg-muted px-1 rounded text-xs">~/.qz/override/</code></li>
+                <li><strong>Windows (default):</strong> <code className="bg-muted px-1 rounded text-xs">C:\Program Files\QZ Tray\override.crt</code></li>
               </ul>
-              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo.</p>
+              <p className="mt-1">Reinicia QZ Tray después de copiar el archivo (si no te deja escribir en Program Files, usa modo administrador).</p>
             </li>
             <li>Presiona <strong>Buscar impresoras</strong> para detectar las impresoras conectadas.</li>
             <li>Selecciona una impresora y pulsa <strong>Guardar impresora</strong>.</li>
