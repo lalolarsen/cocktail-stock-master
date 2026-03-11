@@ -181,7 +181,7 @@ export default function Bar() {
   const [lastParsedToken, setLastParsedToken] = useState("");
   const [debugStep, setDebugStep] = useState("idle");
   const debugTapRef = useRef(0);
-  const debugTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debugTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs
   const scannerInputRef = useRef<HTMLInputElement>(null);
@@ -192,9 +192,9 @@ export default function Bar() {
   const redeemInFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const checkBottlesRef = useRef<((t: string, o: { slot_index: number; product_id: string }[] | null) => Promise<void>) | null>(null);
-  const dismissRef = useRef<NodeJS.Timeout | null>(null);
-  const watchdogRef = useRef<NodeJS.Timeout | null>(null);
-  const hintRef = useRef<NodeJS.Timeout | null>(null);
+  const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Init ───────────────────────────────────────────────────────────────────
   useEffect(() => {
