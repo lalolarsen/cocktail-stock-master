@@ -9,7 +9,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isQZConnected, listPrinters } from "@/lib/printing/qz";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
@@ -70,39 +69,21 @@ type POSTerminal = {
 };
 
 function PrinterConfigPopover({
-  posId,
   autoPrintEnabled,
   printerName,
   onUpdate,
 }: {
-  posId: string;
   autoPrintEnabled: boolean;
   printerName: string;
   onUpdate: (field: "auto_print_enabled" | "printer_name", value: any) => void;
 }) {
-  const [qzStatus, setQzStatus] = useState<"checking" | "connected" | "disconnected">("checking");
-  const [detectedPrinters, setDetectedPrinters] = useState<string[]>([]);
-
-  useEffect(() => {
-    (async () => {
-      const connected = await isQZConnected();
-      setQzStatus(connected ? "connected" : "disconnected");
-      if (connected) {
-        try {
-          const p = await listPrinters();
-          setDetectedPrinters(p);
-        } catch { setDetectedPrinters([]); }
-      }
-    })();
-  }, []);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Impresión automática</p>
           <p className="text-xs text-muted-foreground">
-            {qzStatus === "connected" ? "QZ conectado ✓" : qzStatus === "disconnected" ? "QZ no detectado" : "Verificando…"}
+            Se abrirá el diálogo de impresión del navegador
           </p>
         </div>
         <Switch
@@ -112,9 +93,9 @@ function PrinterConfigPopover({
       </div>
       {autoPrintEnabled && (
         <div className="space-y-2">
-          <Label className="text-xs">Nombre de impresora</Label>
+          <Label className="text-xs">Etiqueta de impresora (opcional)</Label>
           <Input
-            placeholder="Ej: XP-58, Xprinter"
+            placeholder="Ej: Caja 1, Barra Norte"
             defaultValue={printerName}
             className="text-sm h-8"
             onBlur={(e) => {
@@ -124,23 +105,6 @@ function PrinterConfigPopover({
             }}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           />
-          {detectedPrinters.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground">Detectadas:</p>
-              <div className="flex flex-wrap gap-1">
-                {detectedPrinters.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className="text-[10px] px-2 py-0.5 rounded bg-secondary text-secondary-foreground hover:bg-primary/20 transition-colors"
-                    onClick={() => onUpdate("printer_name", p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -1021,7 +985,6 @@ export default function Sales() {
                 </PopoverTrigger>
                 <PopoverContent className="w-80" align="end">
                   <PrinterConfigPopover
-                    posId={selectedPosId}
                     autoPrintEnabled={selectedPosObj?.auto_print_enabled || false}
                     printerName={selectedPosObj?.printer_name || ""}
                     onUpdate={(field, value) => {
