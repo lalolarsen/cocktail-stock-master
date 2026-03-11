@@ -272,14 +272,14 @@ l26P5wGvmq++zClhiN6BX6PWOybgViJx+NhzI+1e/uCNq0ae0FyhBO2X9ZwBNu8H
 gp4Kh7RF8Sl8lgNwWZs+p8nO2SMWz1z0jCZIQKhQokAX01KvrIOF7iYLobyeCTtE
 nQ==
 -----END CERTIFICATE-----`;
-    const blob = new Blob([certPem], { type: "application/x-pem-file" });
+    const blob = new Blob([certPem], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "stockia-qz-cert.pem";
+    a.download = "override.crt";
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Certificado descargado. Sigue las instrucciones para instalarlo en QZ Tray.");
+    toast.success("Certificado descargado como override.crt. Cópielo en la carpeta de instalación de QZ Tray y reinicie.");
   }, []);
 
   // ── Copy diagnostics ──
