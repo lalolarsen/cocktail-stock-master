@@ -49,30 +49,35 @@ export interface ReceiptData {
 
 // ── HTML receipt builder ──
 
-const RECEIPT_CSS = `
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; }
-  .receipt { width: 100%; padding: 4px 2px; }
-  .center { text-align: center; }
-  .right { text-align: right; }
-  .venue-name { font-size: 14pt; font-weight: bold; margin-bottom: 4px; text-align: center; }
-  .sep { margin: 3px 0; white-space: pre; text-align: center; }
-  .meta { text-align: center; font-size: 9pt; }
-  .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-  .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; }
-  .item-name { text-align: left; }
-  .item-price { text-align: right; white-space: nowrap; padding-left: 4px; }
-  .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; }
-  .payment { text-align: center; margin: 4px 0; font-size: 9.5pt; }
-  .token-section { text-align: center; margin: 8px 0; }
-  .token-label { font-weight: bold; }
-  .token-value { font-size: 9pt; word-break: break-all; }
-  .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; }
-  @media print {
-    @page { margin: 0; size: auto; }
-    body { margin: 4mm; }
-  }
-`;
+/**
+ * Builds the print CSS with a paper-specific @page size rule.
+ * When Chrome is launched with --kiosk-printing, the @page size is used
+ * to send directly to the printer at the correct width (no dialog shown).
+ */
+function buildReceiptCss(paperWidth: PaperWidth): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; }
+    .receipt { width: 100%; padding: 0 2px; }
+    .venue-name { font-size: 14pt; font-weight: bold; margin-bottom: 4px; text-align: center; }
+    .sep { margin: 3px 0; white-space: pre; text-align: center; }
+    .meta { text-align: center; font-size: 9pt; }
+    .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
+    .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; }
+    .item-name { text-align: left; }
+    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; }
+    .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; }
+    .payment { text-align: center; margin: 4px 0; font-size: 9.5pt; }
+    .token-section { text-align: center; margin: 8px 0; }
+    .token-label { font-weight: bold; }
+    .token-value { font-size: 9pt; word-break: break-all; }
+    .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; }
+    @media print {
+      @page { margin: 0; size: ${paperWidth} auto; }
+      body { margin: 2mm; }
+    }
+  `;
+}
 
 function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   const sep58 = "================================";
@@ -124,36 +129,36 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
 // ── Main print function ──
 
 /**
- * Print a receipt using the browser's native print dialog via print-js.
- * The `printerName` parameter is accepted for API compatibility but ignored –
- * the user selects the printer in the browser dialog.
+ * Print a receipt via print-js (browser print dialog or kiosk-silent).
+ *
+ * Fire-and-forget: resolves immediately after dispatching the print command.
+ * This works correctly in both modes:
+ *   - Normal mode: the browser print dialog opens; user clicks Print.
+ *   - Chrome --kiosk-printing: no dialog; prints silently to default printer.
+ *
+ * The `printerName` parameter is kept for API compatibility but is ignored –
+ * printer selection is done in the browser dialog (or via OS default in kiosk).
  */
-export async function printRaw(
+export function printRaw(
   _printerName: string,
   data: ReceiptData,
   paperWidth: PaperWidth = "80mm",
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const html = buildReceiptHtml(data, paperWidth);
+    const css = buildReceiptCss(paperWidth);
 
-    await new Promise<void>((resolve, reject) => {
-      try {
-        printJS({
-          printable: html,
-          type: "raw-html",
-          style: RECEIPT_CSS,
-          onPrintDialogClose: () => resolve(),
-          onError: (err: any) => reject(new Error(String(err))),
-        });
-      } catch (err) {
-        reject(err);
-      }
+    printJS({
+      printable: html,
+      type: "raw-html",
+      style: css,
+      onError: (err: any) => console.error("[PrintJS] Error:", err),
     });
 
-    return { success: true };
+    return Promise.resolve({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error de impresión";
     console.error("[PrintJS] Error:", error);
-    return { success: false, error: message };
+    return Promise.resolve({ success: false, error: message });
   }
 }
