@@ -74,8 +74,10 @@ serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/plain" },
     });
-  } catch (err) {
-    return new Response(err.message || "Signing failed", {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Signing failed";
+    console.error("[qz-sign] Error:", message);
+    return new Response(message, {
       status: 500,
       headers: corsHeaders,
     });

@@ -128,6 +128,7 @@ function configureSecurity() {
   qz.security.setCertificatePromise(() => Promise.resolve(QZ_CERTIFICATE));
 
   qz.security.setSignaturePromise(async (toSign: string) => {
+    console.log("[QZ] Signing payload:", toSign.substring(0, 50));
     updateDiagnostics({
       lastPayloadToSign: toSign,
       lastAttemptAt: new Date().toISOString(),
@@ -135,13 +136,16 @@ function configureSecurity() {
     });
 
     try {
-      const res = await fetch(getFunctionUrl("qz-sign"), {
+      const url = getFunctionUrl("qz-sign");
+      console.log("[QZ] Calling qz-sign at:", url);
+      const res = await fetch(url, {
         method: "POST",
         headers: { apikey: anonKey, "Content-Type": "text/plain" },
         body: toSign,
       });
 
       const responseText = await res.text();
+      console.log("[QZ] qz-sign response status:", res.status, "length:", responseText.length);
       if (!res.ok) {
         const msg = `Firma falló (${res.status}): ${responseText}`;
         console.error("[QZ] Signing failed:", msg);
@@ -156,9 +160,11 @@ function configureSecurity() {
         updateDiagnostics({ lastError: msg });
         throw new Error(msg);
       }
+      console.log("[QZ] Signature result:", signature.substring(0, 50));
       return signature;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error de firma desconocido";
+      console.error("[QZ] Signature promise error:", msg);
       updateDiagnostics({ lastError: msg });
       throw err;
     }

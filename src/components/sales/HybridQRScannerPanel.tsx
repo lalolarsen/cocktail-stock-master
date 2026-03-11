@@ -74,8 +74,8 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
   const lastTimeRef = useRef(0);
 
   // Timers & abort
-  const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const watchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const processingRef = useRef(false);
 

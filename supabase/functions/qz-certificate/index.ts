@@ -31,8 +31,9 @@ serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/plain" },
     });
-  } catch (err) {
-    return new Response(err.message || "Error", {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error";
+    return new Response(message, {
       status: 500, headers: corsHeaders,
     });
   }
