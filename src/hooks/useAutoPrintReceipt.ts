@@ -1,7 +1,5 @@
 /**
  * useAutoPrintReceipt – auto-print a receipt via print-js (browser print dialog).
- *
- * QZ Tray removed. Printing is handled through the browser's native dialog.
  */
 
 import { useState, useCallback, useRef } from "react";
