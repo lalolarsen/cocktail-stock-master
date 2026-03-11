@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Download,
   Info,
   Loader2,
   Printer,
