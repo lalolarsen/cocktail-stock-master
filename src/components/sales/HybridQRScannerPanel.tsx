@@ -395,6 +395,38 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
           )}
         </div>
       </CollapsibleContent>
+
+      {/* ── Manual entry dialog ── */}
+      <Dialog open={showManualEntry} onOpenChange={(v) => { if (!v) closeManualEntry(); }}>
+        <DialogContent className="max-w-xs" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle className="text-sm">Ingreso manual de código</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Ingresa el código de 6 dígitos impreso en la boleta
+            </p>
+            <Input
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              inputMode="numeric"
+              maxLength={6}
+              className="text-center text-2xl font-bold tracking-[0.3em] font-mono"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleManualSubmit(); }}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" size="sm" onClick={closeManualEntry}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={manualCode.length !== 6} onClick={handleManualSubmit}>
+              Canjear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   );
 }
