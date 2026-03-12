@@ -46,6 +46,7 @@ export interface ReceiptData {
   total: number;
   paymentMethod: string;
   pickupToken?: string;
+  shortCode?: string;
 }
 
 /** Fixed venue title for all receipts */
