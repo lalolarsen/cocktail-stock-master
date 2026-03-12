@@ -378,7 +378,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
             icon={QrCode}
           />
 
-          {/* Barras */}
+          {/* Barras activas */}
           <Card className="relative overflow-hidden">
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-2">
@@ -391,23 +391,15 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
                 <p className="text-xs text-muted-foreground mt-3">Sin barras configuradas</p>
               ) : (
                 <ul className="mt-3 space-y-1.5">
-                  {barStatuses.map((bar) => (
+                  {barStatuses.filter(b => b.is_active).map((bar) => (
                     <li key={bar.id} className="flex items-center gap-2 text-sm">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${
-                          bar.status === "operational"
-                            ? "bg-primary"
-                            : "bg-destructive"
-                        }`}
-                      />
+                      <span className="w-2 h-2 rounded-full shrink-0 bg-primary" />
                       <span className="truncate">{bar.name}</span>
-                      {bar.status === "low" && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
-                          {bar.lowCount} bajos
-                        </Badge>
-                      )}
                     </li>
                   ))}
+                  {barStatuses.filter(b => b.is_active).length === 0 && (
+                    <p className="text-xs text-muted-foreground">Ninguna barra activa</p>
+                  )}
                 </ul>
               )}
             </CardContent>
