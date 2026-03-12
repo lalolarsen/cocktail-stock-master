@@ -646,6 +646,7 @@ export default function Sales() {
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
           pickupToken: pickupData?.token,
+          shortCode: pickupData?.shortCode,
         };
         // Fire-and-forget with toast feedback
         autoPrintReceipt(receiptData, sale.id).then((result) => {
