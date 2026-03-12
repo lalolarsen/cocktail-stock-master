@@ -245,6 +245,29 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     focusInput();
   }, [resetToIdle, focusInput]);
 
+  // ── Manual entry handlers ─────────────────────────────────────────────────
+  const openManualEntry = useCallback(() => {
+    setManualCode("");
+    setShowManualEntry(true);
+  }, []);
+
+  const handleManualSubmit = useCallback(() => {
+    const code = manualCode.trim();
+    if (!code) return;
+    const parsed = parseQRToken(code);
+    if (parsed.valid) {
+      setShowManualEntry(false);
+      setManualCode("");
+      processToken(parsed.token);
+    }
+  }, [manualCode, processToken]);
+
+  const closeManualEntry = useCallback(() => {
+    setShowManualEntry(false);
+    setManualCode("");
+    focusInput();
+  }, [focusInput]);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const summary = deliverSummary(result);
 
