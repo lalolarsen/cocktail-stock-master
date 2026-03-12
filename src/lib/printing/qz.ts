@@ -75,6 +75,8 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .qr-section svg { display: inline-block; max-width: 85%; height: auto; }
     .qr-label { font-size: 10pt; font-weight: bold; margin-bottom: 4px; color: #000; }
     .qr-instruction { font-size: 9pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
+    .short-code { text-align: center; margin-top: 8px; font-size: 18pt; font-weight: bold; letter-spacing: 6px; color: #000; }
+    .short-code-label { text-align: center; font-size: 9pt; color: #000; margin-top: 2px; }
     .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
