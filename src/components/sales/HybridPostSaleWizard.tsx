@@ -376,6 +376,7 @@ export function HybridPostSaleWizard({
           items={items}
           total={total}
           barName={barName}
+          shortCode={pickupShortCode}
         />
       )}
     </div>
