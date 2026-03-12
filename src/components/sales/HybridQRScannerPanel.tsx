@@ -1,15 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  QrCode, ChevronDown, CheckCircle2, XCircle, Loader2,
-  Package, Scan, Keyboard,
+  Keyboard, ChevronDown, CheckCircle2, XCircle, Loader2,
+  Package,
 } from "lucide-react";
-import { parseQRToken } from "@/lib/qr";
 import { logAuditEvent } from "@/lib/monitoring";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -26,12 +24,10 @@ interface RedemptionResult {
     quantity?: number;
     items?: DeliverItem[];
   };
-  // RPC returns `missing` (confirmed from migration SQL)
   missing?: Array<{ product_name: string; required_qty: number; available_qty?: number; unit: string }>;
 }
 
 export interface HybridQRScannerPanelProps {
-  /** Bar location ID configured in the hybrid POS terminal */
   barLocationId: string;
   barName: string;
 }
@@ -48,7 +44,7 @@ function errorLabel(code: string | undefined, fallback?: string): string {
     case "TOKEN_EXPIRED":           return "QR vencido";
     case "PAYMENT_NOT_CONFIRMED":   return "Pago no confirmado";
     case "SALE_CANCELLED":          return "Venta cancelada";
-    case "TOKEN_NOT_FOUND":         return "QR no encontrado";
+    case "TOKEN_NOT_FOUND":         return "Código no encontrado";
     case "INSUFFICIENT_BAR_STOCK":  return "Sin stock en barra";
     default:                        return fallback || "Error al canjear";
   }
@@ -68,16 +64,11 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
-  const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualCode, setManualCode] = useState("");
 
-  // USB scanner: hidden input + keyboard buffer (mirrors Bar.tsx pattern)
   const inputRef = useRef<HTMLInputElement>(null);
-  const bufferRef = useRef("");
   const lastTokenRef = useRef("");
   const lastTimeRef = useRef(0);
-
-  // Timers & abort
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -90,58 +81,29 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     if (watchdogRef.current)   { clearTimeout(watchdogRef.current);   watchdogRef.current   = null; }
   }, []);
 
-  const focusInput = useCallback(() => {
-    setTimeout(() => inputRef.current?.focus(), 80);
-  }, []);
-
   const resetToIdle = useCallback((opts?: { clearDedup?: boolean }) => {
     clearTimers();
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     processingRef.current = false;
     if (opts?.clearDedup) { lastTokenRef.current = ""; lastTimeRef.current = 0; }
-    bufferRef.current = "";
-    if (inputRef.current) inputRef.current.value = "";
+    setManualCode("");
     setScanState("idle");
     setResult(null);
+    setTimeout(() => inputRef.current?.focus(), 80);
   }, [clearTimers]);
-
-  // ── Lifecycle: unmount cleanup ────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      clearTimers();
-      if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-    };
-  }, [clearTimers]);
-
-  // ── Lifecycle: open/close cleanup ─────────────────────────────────────────
-  useEffect(() => {
-    if (!open) {
-      // Abort in-flight request, clear timers, clear partial buffer
-      resetToIdle();
-    } else {
-      focusInput();
-    }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Lifecycle: focus when idle + open ────────────────────────────────────
-  useEffect(() => {
-    if (open && scanState === "idle") focusInput();
-  }, [open, scanState, focusInput]);
 
   // ── scheduleReset ─────────────────────────────────────────────────────────
   const scheduleReset = useCallback(() => {
     clearTimers();
     resetTimerRef.current = setTimeout(() => {
       resetToIdle({ clearDedup: false });
-      if (open) focusInput();
     }, AUTO_RESET_MS);
-  }, [clearTimers, resetToIdle, open, focusInput]);
+  }, [clearTimers, resetToIdle]);
 
   // ── processToken ──────────────────────────────────────────────────────────
   const processToken = useCallback(async (token: string) => {
     if (processingRef.current) return;
 
-    // Deduplicate rapid double-scans of same token
     const now = Date.now();
     if (token === lastTokenRef.current && now - lastTimeRef.current < DEDUPE_MS) return;
     lastTokenRef.current = token;
@@ -151,10 +113,8 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     setScanState("processing");
     setResult(null);
 
-    // Watchdog: force-reset if RPC hangs beyond WATCHDOG_MS
     watchdogRef.current = setTimeout(() => {
       resetToIdle({ clearDedup: true });
-      if (open) focusInput();
     }, WATCHDOG_MS);
 
     abortRef.current = new AbortController();
@@ -175,7 +135,6 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
 
       const r = data as unknown as RedemptionResult;
 
-      // Silently swallow TOO_FAST (server-side dedupe)
       if (r.error_code === "TOO_FAST") {
         processingRef.current = false;
         setScanState("idle");
@@ -186,10 +145,10 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
         action: "redeem_pickup_token",
         status: r.success ? "success" : "fail",
         metadata: {
-          token: token.slice(0, 8) + "...",
+          token: token.slice(0, 8),
           error_code: r.error_code,
           bar_id: barLocationId,
-          source: "hybrid_pos_scanner",
+          source: "hybrid_pos_manual",
         },
       });
 
@@ -202,7 +161,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       logAuditEvent({
         action: "redeem_pickup_token",
         status: "fail",
-        metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: barLocationId, source: "hybrid_pos_scanner" },
+        metadata: { token: token.slice(0, 8), error: err?.message, bar_id: barLocationId, source: "hybrid_pos_manual" },
       });
       setResult({ success: false, message: err?.message || "Error inesperado" });
       setScanState("error");
@@ -211,62 +170,19 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       processingRef.current = false;
       abortRef.current = null;
     }
-  }, [barLocationId, clearTimers, resetToIdle, scheduleReset, open, focusInput]);
+  }, [barLocationId, clearTimers, resetToIdle, scheduleReset]);
 
-  // ── Keyboard handler (USB scanner: buffer chars → dispatch on Enter) ──────
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      const raw = bufferRef.current.trim();
-      bufferRef.current = "";
-      if (inputRef.current) inputRef.current.value = "";
-      if (!raw || scanState !== "idle") return;
-      const parsed = parseQRToken(raw);
-      if (parsed.valid) processToken(parsed.token);
-    } else {
-      bufferRef.current += e.key;
-    }
-  }, [scanState, processToken]);
+  // ── Manual submit ─────────────────────────────────────────────────────────
+  const handleManualSubmit = useCallback(() => {
+    const code = manualCode.trim();
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) return;
+    processToken(code);
+  }, [manualCode, processToken]);
 
-  // ── onBlur: re-focus input if nothing meaningful stole focus ─────────────
-  const handleBlur = useCallback(() => {
-    if (!open) return;
-    setTimeout(() => {
-      const active = document.activeElement;
-      if (active === document.body || active === null) {
-        inputRef.current?.focus();
-      }
-    }, 200);
-  }, [open]);
-
-  // ── Manual dismiss ────────────────────────────────────────────────────────
   const handleDismiss = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     resetToIdle({ clearDedup: true });
-    focusInput();
-  }, [resetToIdle, focusInput]);
-
-  // ── Manual entry handlers ─────────────────────────────────────────────────
-  const openManualEntry = useCallback(() => {
-    setManualCode("");
-    setShowManualEntry(true);
-  }, []);
-
-  const handleManualSubmit = useCallback(() => {
-    const code = manualCode.trim();
-    if (!code) return;
-    const parsed = parseQRToken(code);
-    if (parsed.valid) {
-      setShowManualEntry(false);
-      setManualCode("");
-      processToken(parsed.token);
-    }
-  }, [manualCode, processToken]);
-
-  const closeManualEntry = useCallback(() => {
-    setShowManualEntry(false);
-    setManualCode("");
-    focusInput();
-  }, [focusInput]);
+  }, [resetToIdle]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const summary = deliverSummary(result);
@@ -276,9 +192,9 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     <Collapsible open={open} onOpenChange={setOpen} className="shrink-0 border-t border-amber-500/30 bg-amber-500/5">
       <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-amber-500/10 transition-colors">
         <div className="flex items-center gap-2">
-          <QrCode className="w-3.5 h-3.5 text-amber-600" />
+          <Keyboard className="w-3.5 h-3.5 text-amber-600" />
           <span className="text-[11px] font-semibold tracking-wide text-amber-700">
-            Escáner QR
+            Canjear código
           </span>
           {scanState === "success" && (
             <Badge className="h-4 text-[9px] bg-green-600/20 text-green-700 border-green-600/30 px-1.5">
@@ -298,42 +214,33 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        {/* Hidden input — captures USB scanner keystrokes (mirrors Bar.tsx pattern) */}
-        <input
-          ref={inputRef}
-          className="fixed -left-[9999px] w-px h-px opacity-0 pointer-events-none"
-          onKeyDown={handleKeyDown}
-          onChange={e => { bufferRef.current = e.target.value; }}
-          onBlur={handleBlur}
-          autoComplete="off"
-          inputMode="none"
-          aria-hidden="true"
-          tabIndex={open ? 0 : -1}
-        />
-
-        <div
-          className="px-3 pb-3 space-y-2"
-          onClick={() => { if (scanState === "idle") inputRef.current?.focus(); }}
-        >
-          {/* ── Idle ── */}
+        <div className="px-3 pb-3 space-y-2">
+          {/* ── Idle: inline code input ── */}
           {scanState === "idle" && (
-            <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400/40 py-4 cursor-default select-none">
-              <Scan className="w-6 h-6 text-amber-500/60" />
-              <p className="text-[11px] text-amber-700/70 font-medium">
-                Escanea un QR con el lector USB
+            <div className="space-y-2">
+              <p className="text-[10px] text-muted-foreground text-center">
+                Ingresa el código de 6 dígitos de la boleta · Barra: <span className="font-semibold text-foreground">{barName}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground">
-                Descuenta desde: <span className="font-semibold text-foreground">{barName}</span>
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-1 h-7 text-[10px] gap-1"
-                onClick={(e) => { e.stopPropagation(); openManualEntry(); }}
-              >
-                <Keyboard className="w-3 h-3" />
-                Ingreso manual
-              </Button>
+              <div className="flex gap-1.5">
+                <Input
+                  ref={inputRef}
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  inputMode="numeric"
+                  maxLength={6}
+                  className="text-center text-lg font-bold tracking-[0.3em] font-mono h-9"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleManualSubmit(); }}
+                />
+                <Button
+                  size="sm"
+                  className="h-9 px-4 text-xs shrink-0"
+                  disabled={manualCode.length !== 6}
+                  onClick={handleManualSubmit}
+                >
+                  Canjear
+                </Button>
+              </div>
             </div>
           )}
 
@@ -390,43 +297,11 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
               className="w-full h-7 text-[10px] text-muted-foreground"
               onClick={handleDismiss}
             >
-              Listo — seguir escaneando
+              Listo — ingresar otro código
             </Button>
           )}
         </div>
       </CollapsibleContent>
-
-      {/* ── Manual entry dialog ── */}
-      <Dialog open={showManualEntry} onOpenChange={(v) => { if (!v) closeManualEntry(); }}>
-        <DialogContent className="max-w-xs" onClick={(e) => e.stopPropagation()}>
-          <DialogHeader>
-            <DialogTitle className="text-sm">Ingreso manual de código</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Ingresa el código de 6 dígitos impreso en la boleta
-            </p>
-            <Input
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              inputMode="numeric"
-              maxLength={6}
-              className="text-center text-2xl font-bold tracking-[0.3em] font-mono"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleManualSubmit(); }}
-            />
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="ghost" size="sm" onClick={closeManualEntry}>
-              Cancelar
-            </Button>
-            <Button size="sm" disabled={manualCode.length !== 6} onClick={handleManualSubmit}>
-              Canjear
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Collapsible>
   );
 }
