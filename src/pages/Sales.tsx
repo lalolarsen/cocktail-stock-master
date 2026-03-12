@@ -1322,6 +1322,7 @@ export default function Sales() {
             items={pickupQRData.items}
             total={pickupQRData.total}
             barName={pickupQRData.barName}
+            shortCode={pickupQRData.shortCode}
           />
         )}
 
