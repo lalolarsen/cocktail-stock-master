@@ -246,23 +246,23 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
 
           {/* ── Processing ── */}
           {scanState === "processing" && (
-            <div className="flex flex-col items-center justify-center gap-2 py-4">
-              <Loader2 className="w-7 h-7 animate-spin text-amber-600" />
-              <p className="text-[11px] text-amber-700 font-medium">Canjeando...</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-8">
+              <Loader2 className="w-10 h-10 animate-spin text-amber-600" />
+              <p className="text-sm text-amber-700 font-medium">Canjeando...</p>
             </div>
           )}
 
           {/* ── Success ── */}
           {scanState === "success" && result && (
-            <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-3 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-                <span className="text-xs font-bold text-green-700">ENTREGAR</span>
+            <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                <span className="text-sm font-bold text-green-700">ENTREGAR</span>
               </div>
               {summary && (
-                <div className="flex items-center gap-1.5 pl-5">
-                  <Package className="w-3 h-3 text-green-600/70" />
-                  <p className="text-[11px] text-green-800 font-medium">{summary}</p>
+                <div className="flex items-center gap-2 pl-7">
+                  <Package className="w-4 h-4 text-green-600/70" />
+                  <p className="text-sm text-green-800 font-medium">{summary}</p>
                 </div>
               )}
             </div>
@@ -270,17 +270,17 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
 
           {/* ── Error ── */}
           {scanState === "error" && result && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <XCircle className="w-4 h-4 text-destructive shrink-0" />
-                <span className="text-xs font-semibold text-destructive">
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-destructive shrink-0" />
+                <span className="text-sm font-semibold text-destructive">
                   {errorLabel(result.error_code, result.message)}
                 </span>
               </div>
               {result.missing && result.missing.length > 0 && (
-                <div className="pl-5 space-y-0.5">
+                <div className="pl-7 space-y-1">
                   {result.missing.map((m, i) => (
-                    <p key={i} className="text-[10px] text-destructive/80">
+                    <p key={i} className="text-xs text-destructive/80">
                       {m.product_name}: {m.available_qty ?? 0}/{m.required_qty} {m.unit}
                     </p>
                   ))}
