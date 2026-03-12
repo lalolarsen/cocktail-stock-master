@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   QrCode, ChevronDown, CheckCircle2, XCircle, Loader2,
-  Package, Scan,
+  Package, Scan, Keyboard,
 } from "lucide-react";
 import { parseQRToken } from "@/lib/qr";
 import { logAuditEvent } from "@/lib/monitoring";
@@ -66,6 +68,8 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualCode, setManualCode] = useState("");
 
   // USB scanner: hidden input + keyboard buffer (mirrors Bar.tsx pattern)
   const inputRef = useRef<HTMLInputElement>(null);
@@ -241,6 +245,29 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     focusInput();
   }, [resetToIdle, focusInput]);
 
+  // ── Manual entry handlers ─────────────────────────────────────────────────
+  const openManualEntry = useCallback(() => {
+    setManualCode("");
+    setShowManualEntry(true);
+  }, []);
+
+  const handleManualSubmit = useCallback(() => {
+    const code = manualCode.trim();
+    if (!code) return;
+    const parsed = parseQRToken(code);
+    if (parsed.valid) {
+      setShowManualEntry(false);
+      setManualCode("");
+      processToken(parsed.token);
+    }
+  }, [manualCode, processToken]);
+
+  const closeManualEntry = useCallback(() => {
+    setShowManualEntry(false);
+    setManualCode("");
+    focusInput();
+  }, [focusInput]);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const summary = deliverSummary(result);
 
@@ -298,6 +325,15 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
               <p className="text-[10px] text-muted-foreground">
                 Descuenta desde: <span className="font-semibold text-foreground">{barName}</span>
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1 h-7 text-[10px] gap-1"
+                onClick={(e) => { e.stopPropagation(); openManualEntry(); }}
+              >
+                <Keyboard className="w-3 h-3" />
+                Ingreso manual
+              </Button>
             </div>
           )}
 
@@ -359,6 +395,38 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
           )}
         </div>
       </CollapsibleContent>
+
+      {/* ── Manual entry dialog ── */}
+      <Dialog open={showManualEntry} onOpenChange={(v) => { if (!v) closeManualEntry(); }}>
+        <DialogContent className="max-w-xs" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle className="text-sm">Ingreso manual de código</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Ingresa el código de 6 dígitos impreso en la boleta
+            </p>
+            <Input
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              inputMode="numeric"
+              maxLength={6}
+              className="text-center text-2xl font-bold tracking-[0.3em] font-mono"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleManualSubmit(); }}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" size="sm" onClick={closeManualEntry}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={manualCode.length !== 6} onClick={handleManualSubmit}>
+              Canjear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   );
 }

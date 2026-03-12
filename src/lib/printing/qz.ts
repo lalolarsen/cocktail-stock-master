@@ -46,6 +46,7 @@ export interface ReceiptData {
   total: number;
   paymentMethod: string;
   pickupToken?: string;
+  shortCode?: string;
 }
 
 /** Fixed venue title for all receipts */
@@ -74,6 +75,8 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .qr-section svg { display: inline-block; max-width: 85%; height: auto; }
     .qr-label { font-size: 10pt; font-weight: bold; margin-bottom: 4px; color: #000; }
     .qr-instruction { font-size: 9pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
+    .short-code { text-align: center; margin-top: 8px; font-size: 18pt; font-weight: bold; letter-spacing: 6px; color: #000; }
+    .short-code-label { text-align: center; font-size: 9pt; color: #000; margin-top: 2px; }
     .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
@@ -107,13 +110,18 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
     const qrContent = `PICKUP:${data.pickupToken}`;
     const qrSize = paperWidth === "58mm" ? 180 : 220;
     const qrSvg = generateQRSvgString(qrContent, qrSize);
+    const shortCodeHtml = data.shortCode
+      ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
+         <div class="short-code-label">CÓDIGO DE RETIRO</div>`
+      : "";
     qrHtml = `
       <div class="qr-section">
         <div class="sep">${dash}</div>
         <div class="qr-label">QR DE RETIRO</div>
         ${qrSvg}
+        ${shortCodeHtml}
         <div class="qr-instruction">
-          Presenta este QR en la barra para retirar tu pedido
+          Presenta este QR o dicta el código en la barra
         </div>
       </div>`;
   }

@@ -177,6 +177,7 @@ export default function Sales() {
     barName?: string;
     pickupData?: {
       token: string;
+      shortCode?: string;
       expiresAt: string;
       items: Array<{ name: string; quantity: number; price: number }>;
       barName?: string;
@@ -593,10 +594,11 @@ export default function Sales() {
       );
 
       if (!tokenError && tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; bar_name?: string };
+        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string };
         if (result.success && result.token) {
           pickupData = {
             token: result.token,
+            shortCode: result.short_code || undefined,
             expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             items: cartItemsForQR,
             barName: undefined, // Bar determined at redemption
@@ -644,6 +646,7 @@ export default function Sales() {
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
           pickupToken: pickupData?.token,
+          shortCode: pickupData?.shortCode,
         };
         // Fire-and-forget with toast feedback
         autoPrintReceipt(receiptData, sale.id).then((result) => {

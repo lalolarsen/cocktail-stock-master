@@ -2179,6 +2179,7 @@ export type Database = {
           redeemed_at: string | null
           redeemed_by: string | null
           sale_id: string | null
+          short_code: string
           source_type: string | null
           status: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id: string | null
@@ -2198,6 +2199,7 @@ export type Database = {
           redeemed_at?: string | null
           redeemed_by?: string | null
           sale_id?: string | null
+          short_code?: string
           source_type?: string | null
           status?: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id?: string | null
@@ -2217,6 +2219,7 @@ export type Database = {
           redeemed_at?: string | null
           redeemed_by?: string | null
           sale_id?: string | null
+          short_code?: string
           source_type?: string | null
           status?: Database["public"]["Enums"]["pickup_token_status"]
           ticket_sale_id?: string | null
