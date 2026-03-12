@@ -195,49 +195,20 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchBarStatuses = async () => {
     const { data: bars } = await supabase
       .from("stock_locations")
-      .select("id, name")
+      .select("id, name, is_active")
       .eq("type", "bar")
-      .eq("is_active", true);
+      .order("name");
 
     if (!bars?.length) {
       setBarStatuses([]);
       return;
     }
 
-    const { data: products } = await supabase
-      .from("products")
-      .select("id, minimum_stock");
-
-    const productMinMap = new Map(
-      products?.map((p) => [p.id, p.minimum_stock]) || []
-    );
-
-    const { data: balances } = await supabase
-      .from("stock_balances")
-      .select("location_id, product_id, quantity")
-      .in(
-        "location_id",
-        bars.map((b) => b.id)
-      );
-
-    const statuses: BarStatus[] = bars.map((bar) => {
-      const barBalances =
-        balances?.filter((b) => b.location_id === bar.id) || [];
-      const lowCount = barBalances.filter((b) => {
-        const minStock = productMinMap.get(b.product_id) || 0;
-        return Number(b.quantity) < minStock * 0.5;
-      }).length;
-
-      return {
-        id: bar.id,
-        name: bar.name,
-        status: lowCount > 3 ? "low" : "operational",
-        lowCount,
-        totalProducts: barBalances.length,
-      };
-    });
-
-    setBarStatuses(statuses);
+    setBarStatuses(bars.map((bar) => ({
+      id: bar.id,
+      name: bar.name,
+      is_active: bar.is_active,
+    })));
   };
 
   /* ─── Loading skeleton ─── */
