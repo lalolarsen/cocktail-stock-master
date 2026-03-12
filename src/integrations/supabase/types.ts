@@ -2441,6 +2441,8 @@ export type Database = {
           is_active: boolean | null
           name: string
           price_modifier: number
+          product_id: string | null
+          quantity_ml: number | null
           updated_at: string | null
           venue_id: string
         }
@@ -2451,6 +2453,8 @@ export type Database = {
           is_active?: boolean | null
           name: string
           price_modifier?: number
+          product_id?: string | null
+          quantity_ml?: number | null
           updated_at?: string | null
           venue_id: string
         }
@@ -2461,6 +2465,8 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           price_modifier?: number
+          product_id?: string | null
+          quantity_ml?: number | null
           updated_at?: string | null
           venue_id?: string
         }
