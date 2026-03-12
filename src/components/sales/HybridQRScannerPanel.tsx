@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   QrCode, ChevronDown, CheckCircle2, XCircle, Loader2,
-  Package, Scan,
+  Package, Scan, Keyboard,
 } from "lucide-react";
 import { parseQRToken } from "@/lib/qr";
 import { logAuditEvent } from "@/lib/monitoring";
