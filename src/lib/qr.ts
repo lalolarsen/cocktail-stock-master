@@ -4,6 +4,12 @@
  */
 export function parseQRToken(raw: string): { valid: boolean; token: string } {
   const trimmed = raw.trim();
+
+  // 6-digit numeric short code (manual entry)
+  if (/^\d{6}$/.test(trimmed)) {
+    return { valid: true, token: trimmed };
+  }
+
   let token = "";
   if (trimmed.includes("token=")) {
     const m = trimmed.match(/[?&]token=([a-f0-9]+)/i); if (m) token = m[1];

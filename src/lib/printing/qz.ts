@@ -110,13 +110,18 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
     const qrContent = `PICKUP:${data.pickupToken}`;
     const qrSize = paperWidth === "58mm" ? 180 : 220;
     const qrSvg = generateQRSvgString(qrContent, qrSize);
+    const shortCodeHtml = data.shortCode
+      ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
+         <div class="short-code-label">CÓDIGO DE RETIRO</div>`
+      : "";
     qrHtml = `
       <div class="qr-section">
         <div class="sep">${dash}</div>
         <div class="qr-label">QR DE RETIRO</div>
         ${qrSvg}
+        ${shortCodeHtml}
         <div class="qr-instruction">
-          Presenta este QR en la barra para retirar tu pedido
+          Presenta este QR o dicta el código en la barra
         </div>
       </div>`;
   }
