@@ -40,9 +40,7 @@ interface TodayStats {
 interface BarStatus {
   id: string;
   name: string;
-  status: "operational" | "low";
-  lowCount: number;
-  totalProducts: number;
+  is_active: boolean;
 }
 
 interface Props {
