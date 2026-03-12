@@ -177,6 +177,7 @@ export default function Sales() {
     barName?: string;
     pickupData?: {
       token: string;
+      shortCode?: string;
       expiresAt: string;
       items: Array<{ name: string; quantity: number; price: number }>;
       barName?: string;
