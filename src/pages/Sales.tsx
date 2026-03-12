@@ -706,6 +706,7 @@ export default function Sales() {
             items,
             total: sale.total_amount,
             barName: result.bar_name,
+            shortCode: result.short_code,
           });
           setShowPickupQR(true);
         } else {
