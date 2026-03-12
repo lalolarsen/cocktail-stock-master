@@ -38,6 +38,7 @@ interface HybridPostSaleWizardProps {
   venueId?: string;
   pickupToken?: string;
   pickupExpiresAt?: string;
+  pickupShortCode?: string;
   onComplete: () => void;
 }
 

@@ -691,7 +691,7 @@ export default function Sales() {
       if (tokenError) throw tokenError;
       
       if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; bar_name?: string; message?: string };
+        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
         if (result.success && result.token) {
           const items = (sale.sale_items || []).map((item: any) => ({
             name: item.cocktails?.name || "Item",
