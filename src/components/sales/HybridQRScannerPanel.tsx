@@ -325,6 +325,15 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
               <p className="text-[10px] text-muted-foreground">
                 Descuenta desde: <span className="font-semibold text-foreground">{barName}</span>
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1 h-7 text-[10px] gap-1"
+                onClick={(e) => { e.stopPropagation(); openManualEntry(); }}
+              >
+                <Keyboard className="w-3 h-3" />
+                Ingreso manual
+              </Button>
             </div>
           )}
 
