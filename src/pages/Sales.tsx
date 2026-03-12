@@ -194,6 +194,7 @@ export default function Sales() {
     items: Array<{ name: string; quantity: number; price: number }>;
     total: number;
     barName?: string;
+    shortCode?: string;
   } | null>(null);
   
   const navigate = useNavigate();
