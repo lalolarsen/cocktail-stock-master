@@ -748,7 +748,7 @@ function StockSection({
             product={product}
             unit={unit}
             borderClass={borderClass}
-            onAdjustMin={() => onAdjustMin(product)}
+            onAdjustMin={onAdjustMin ? () => onAdjustMin(product) : undefined}
           />
         ))}
       </CollapsibleContent>
