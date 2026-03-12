@@ -548,7 +548,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
               accent="destructive"
               products={outOfStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
           {lowStock.length > 0 && (
@@ -560,7 +560,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
               accent="warning"
               products={lowStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
           {normalStock.length > 0 && (
@@ -572,7 +572,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
               accent="primary"
               products={normalStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
         </div>
