@@ -5,7 +5,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { BulkStockIntakeGrid } from "./BulkStockIntakeGrid";
 
 interface Product {
