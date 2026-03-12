@@ -38,22 +38,20 @@ export function ManualStockEntryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-full max-h-[95vh] p-0 gap-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+      <DialogContent className="max-w-[95vw] w-full h-[95vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <DialogTitle className="text-lg">Ingreso manual a bodega</DialogTitle>
           <DialogDescription className="text-sm">
             Ingresa varios productos tipo Excel. IVA (19%) e impuesto específico se calculan automáticamente.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[calc(95vh-120px)]">
-          <div className="p-6">
-            <BulkStockIntakeGrid
-              warehouseId={warehouseId}
-              products={products}
-              onStockUpdated={handleStockUpdated}
-            />
-          </div>
-        </ScrollArea>
+        <div className="flex-1 min-h-0 overflow-auto p-6">
+          <BulkStockIntakeGrid
+            warehouseId={warehouseId}
+            products={products}
+            onStockUpdated={handleStockUpdated}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );
