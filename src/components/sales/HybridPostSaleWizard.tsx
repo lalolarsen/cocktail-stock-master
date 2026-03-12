@@ -256,6 +256,7 @@ export function HybridPostSaleWizard({
             expiresAt={pickupExpiresAt || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()}
             items={items}
             total={total}
+            shortCode={pickupShortCode}
           />
         )}
       </div>
