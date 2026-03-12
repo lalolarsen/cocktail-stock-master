@@ -906,6 +906,7 @@ export default function Sales() {
                 items={lastSaleData.pickupData.items}
                 total={lastSaleData.total}
                 barName={lastSaleData.pickupData.barName}
+                shortCode={lastSaleData.pickupData.shortCode}
                 embedded
               />
             </div>
