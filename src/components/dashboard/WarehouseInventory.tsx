@@ -120,7 +120,7 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 };
 
 // ─── Component ──────────────────────────────────────────────
-export function WarehouseInventory() {
+export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue } = useActiveVenue();
   
 
