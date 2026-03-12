@@ -15,6 +15,7 @@ export type PickupQRDialogProps = {
   items: Array<{ name: string; quantity: number; price: number }>;
   total: number;
   barName?: string;
+  shortCode?: string;
   /** Render inline without dialog wrapper (for success screens) */
   embedded?: boolean;
 };
@@ -31,6 +32,7 @@ export default function PickupQRDialog({
   items,
   total,
   barName,
+  shortCode,
   embedded = false,
 }: PickupQRDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
@@ -59,6 +61,11 @@ export default function PickupQRDialog({
       .map((item) => `<div class="item">${item.quantity}x ${item.name} — $${item.price.toLocaleString("es-CL")}</div>`)
       .join("");
 
+    const shortCodeHtml = shortCode
+      ? `<div class="short-code">${shortCode.split("").join(" ")}</div>
+         <div class="short-code-label">CÓDIGO DE RETIRO</div>`
+      : "";
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -84,6 +91,8 @@ export default function PickupQRDialog({
             .total { font-size: 14pt; font-weight: bold; margin: 8px 0; }
             .qr-container { margin: 12px 0; }
             .qr-container svg { max-width: 85%; height: auto; }
+            .short-code { font-size: 18pt; font-weight: bold; letter-spacing: 6px; margin-top: 8px; }
+            .short-code-label { font-size: 9pt; margin-top: 2px; }
             .expires { font-size: 10px; margin-top: 8px; }
             .instruction {
               font-size: 11px;
@@ -105,9 +114,10 @@ export default function PickupQRDialog({
           <div class="qr-container">
             ${qrSvgEl.outerHTML}
           </div>
+          ${shortCodeHtml}
           <div class="expires">Válido hasta: ${formattedExpires}</div>
           <div class="instruction">
-            Presenta este QR en la barra para retirar tu pedido
+            Presenta este QR o dicta el código en la barra
           </div>
         </body>
       </html>
@@ -143,6 +153,18 @@ export default function PickupQRDialog({
         />
       </div>
 
+      {/* Short code display */}
+      {shortCode && (
+        <div className="text-center space-y-0.5">
+          <p className="text-2xl font-bold font-mono tracking-[0.3em]">
+            {shortCode}
+          </p>
+          <p className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wide">
+            Código de retiro
+          </p>
+        </div>
+      )}
+
       <div className="text-center space-y-1">
         {items.map((item, index) => (
           <p key={index} className="text-sm text-muted-foreground">
@@ -159,7 +181,7 @@ export default function PickupQRDialog({
         {barName ? (
           <>Retiro en <strong>{barName}</strong></>
         ) : (
-          "Presenta en barra"
+          "Presenta en barra o dicta el código"
         )}
       </div>
 
@@ -184,7 +206,7 @@ export default function PickupQRDialog({
               variant="ghost"
               className="h-6 text-xs"
               onClick={() => {
-                navigator.clipboard.writeText(`TOKEN: ${token}\nQR_CONTENT: ${qrContent}`);
+                navigator.clipboard.writeText(`TOKEN: ${token}\nSHORT_CODE: ${shortCode || "N/A"}\nQR_CONTENT: ${qrContent}`);
                 toast.success("Debug info copiado");
               }}
             >
@@ -194,6 +216,7 @@ export default function PickupQRDialog({
           </div>
           <div className="text-xs font-mono space-y-1">
             <p><span className="text-muted-foreground">TOKEN:</span> {token}</p>
+            {shortCode && <p><span className="text-muted-foreground">SHORT_CODE:</span> {shortCode}</p>}
             <p><span className="text-muted-foreground">QR:</span> {qrContent}</p>
           </div>
         </div>
