@@ -1,102 +1,345 @@
 
 
-# Plan: Carga Completa de Inventario Definitivo — Berlín Valdivia
+# Plan de Implementacion: Modulo Lector de Facturas (Proveedores)
 
-## Resumen
+## Resumen Ejecutivo
 
-Cargar el inventario exacto del Excel `Definitivo_Decimales.xlsx` en la base de datos, creando 3 productos faltantes, actualizando costos, y estableciendo los balances por ubicación.
+El documento define especificaciones tecnicas y reglas de negocio para sistematizar la conversion de facturas de proveedores en registros de inventario y gastos. La implementacion actual cubre parcialmente estos requisitos pero requiere mejoras significativas en varias areas.
 
-## Ubicaciones (todas existen)
+## Estado Actual vs. Requisitos del Documento
 
-| Excel | ID en DB |
-|---|---|
-| Bodega | `d89d6a6a-173e-47df-a160-349e1bfd077b` |
-| Terraza | `a1000000-...-0005` |
-| Pista | `a1000000-...-0003` |
-| Club | `a1000000-...-0004` |
-| VIP Pista | `a1000000-...-0001` |
-| VIP Terraza | `a1000000-...-0002` |
+| Requisito | Estado Actual | Accion Requerida |
+|-----------|---------------|------------------|
+| Acceso Restringido (Feature Flag) | Implementado | Sin cambios |
+| Estados de Documento (DRAFT, PARSED, etc.) | Parcialmente | Expandir matriz de estados |
+| Validacion de Cabecera (Neto/IVA/Total) | No implementado | Agregar campos y validacion |
+| UoM y Factor de Conversion | No implementado | Agregar logica de conversion |
+| CPP (Costo Promedio Ponderado) | Simple average actual | Implementar formula correcta |
+| Clasificacion de Items (Inventario/Gasto) | Implementado | Sin cambios mayores |
+| Auditoria de Cambios | Basica | Expandir trazabilidad |
+| Checklist Pre-Confirmacion | No implementado | Agregar validaciones |
+| Estados de Linea de Item | No implementado | Agregar columna status |
 
-## Productos a crear (3)
+---
 
-| Producto | capacity_ml | unit | is_mixer | cost_per_unit |
-|---|---|---|---|---|
-| Olmeca Dark Chocolate | 700 | ml | false | 5000 |
-| Gin House | 700 | ml | false | 5000 |
-| K. Lager Blanc | NULL | unidad | false | 5000 |
+## Fase 1: Modelo de Datos (Migracion SQL)
 
-"Coca Cola 1,5" del Excel → crear como **Coca Cola 1.5L** (capacity_ml=1500, is_mixer=true, cost=5000). No existe en la DB (solo existe Coca Cola Zero 1.5L).
+### 1.1 Expandir `purchase_documents`
 
-**Total: 4 productos nuevos.**
+Agregar campos faltantes segun especificacion:
 
-## Mapeo de nombres Excel → DB
+```text
+- net_amount NUMERIC          -- Monto neto
+- iva_amount NUMERIC          -- IVA
+- total_amount_gross NUMERIC  -- Total bruto
+- status (expandir valores)   -- DRAFT, PARSED, IN_REVIEW, CONFIRMED, VOID, ERROR
+- audit_trail JSONB           -- Bitacora de cambios
+```
 
-Mapeos no triviales:
-- Jagermesiter L → Jagermeister L (`5974feda`)
-- Jagermesiter → Jagermeister (`e440d8e3`)
-- Havna Especial → Havana Especial (`a7ab9dc2`)
-- Havna Especial L → Havana Especial L (`05cc30ab`)
-- Havana Blanco3años L → Havana Blanco 3 años L (`f9c5a2c4`)
-- Havana Blanco 3 años → (`48ea6154`)
-- BullDog → Bulldog (`e06d490d`)
-- Chivas 12años → Chivas 12 años (`d697e399`)
-- Chivas 18a → Chivas 18 años (`4dd9164d`)
-- K. Sin Alcohol → Kunstmann Sin Alcohol (`1147f8b4`)
-- K. Torobayo → Kunstmann Torobayo (`cd7d1884`)
-- K. Gran Torobayo → Kunstmann Gran Torobayo (`dd7815e4`)
-- K. Arándano → Kunstmann Arándano (`de6bf4bf`)
-- K. VPL → Kunstmann VPL (`21954231`)
-- K. Lager Blanc → **CREAR**
-- Kunstman VPL Lata → Kunstmann VPL Lata (`44472963`)
-- Redbull → Red Bull (`a88002a5`)
-- Redbull Sin Azucar → Red Bull Sin Azucar (`ddcd5ec3`)
-- Redbull Sandia → Red Bull Sandía (`2e86930c`)
-- Redbull Acai → Red Bull Acai (`45cd0cf2`)
-- Redbull Arandanos → Red Bull Arándanos (`c3bc3648`)
-- Redbull Flor de Sauco → Red Bull Flor de Saúco (`2f20b349`)
-- Redbull Fruta del Dragon → Red Bull Fruta del Dragón (`41ea7a19`)
-- Redbull Pomelo S/A → Red Bull Pomelo S/A (`90d39567`)
-- Redbull Yellow → Red Bull Yellow (`acff7a9b`)
-- Mineral con Gas → Agua Mineral con Gas 600ml (`44efea75`)
-- Mineral sin Gas → Agua Mineral sin Gas 600ml (`17f6cf32`)
-- Agua Mineral 1,5 → Agua Mineral 1.5L (`62e19955`)
-- Nectar Naranja → Néctar Naranja 1.5L (`a7ae9b0d`)
-- Nectar Piña → Néctar Piña 1.5L (`7d4ccc65`)
-- Ginger → Ginger Ale 220ml (`e55310d9`)
-- Ginger Zero → Ginger Ale Zero 220ml (`33cd0d9b`)
-- Ginger 1,5 → Ginger Ale 1.5L (`7a3058e0`)
-- Coca Cola → Coca Cola 220ml (`1e162028`)
-- Coca Cola Zero → Coca Cola Zero 220ml (`24b3a365`)
-- Coca Cola 1,5 → **CREAR** Coca Cola 1.5L
-- Pepsi → Pepsi 220ml (`a3c160e9`)
-- Pepsi Zero → Pepsi Zero 220ml (`d38279a6`)
-- Tonica → Tónica 220ml (`7b0b47df`)
-- Tonica 1,5 → Tónica 1.5L (`4dfbb5f6`)
-- Sprite → Sprite 220ml (`60566cf7`)
-- gin house → **CREAR**
-- Olmeca dark chocolate → **CREAR**
+### 1.2 Expandir `purchase_items`
 
-## Conversión de cantidades
+Agregar campos para UoM y estados:
 
-- **Botellas (capacity_ml > 0)**: `stock_ml = fracción_botella × capacity_ml`
-  - Ej: Beefeater Pink, Bodega=3.0 → 3.0 × 750 = 2250 ml
-- **Unidades (capacity_ml = NULL)**: cantidad directa
-  - Ej: Heineken, Bodega=11 → 11 unidades
-- **Aguas 600ml**: Estas tienen capacity_ml=NULL y unit=unidad, así que van como unidades directas
+```text
+- extracted_uom TEXT              -- Unidad extraida (Unidad, Caja, Pack)
+- conversion_factor NUMERIC       -- Factor de conversion
+- normalized_quantity NUMERIC     -- Cantidad normalizada
+- normalized_unit_cost NUMERIC    -- Costo normalizado
+- classification TEXT             -- inventory | expense
+- status TEXT                     -- PENDING_MATCH, MATCHED, MARKED_AS_EXPENSE, READY, APPLIED
+- expense_category TEXT           -- Categoria de gasto si aplica
+```
 
-## Costos
+### 1.3 Crear tabla `purchase_import_audit`
 
-- Productos con "Costo Neto ($)" en el Excel → UPDATE `cost_per_unit` con ese valor
-- Productos sin costo neto → SET `cost_per_unit = 5000`
+Para trazabilidad completa:
 
-## Pasos de ejecución
+```text
+- id UUID
+- purchase_document_id UUID
+- action TEXT (uploaded, parsed, item_matched, item_reclassified, confirmed, etc.)
+- user_id UUID
+- previous_state JSONB
+- new_state JSONB
+- created_at TIMESTAMPTZ
+```
 
-1. **Crear 4 productos** nuevos via INSERT
-2. **UPDATE costos** de todos los productos existentes (con dato del Excel o $5000 default)
-3. **DELETE stock_balances** existentes del venue completo
-4. **INSERT stock_balances** — una fila por cada combinación producto×ubicación donde cantidad > 0
-5. **UPDATE products.current_stock** = suma de todos los balances de cada producto
+---
 
-## No se modifican archivos de código
-Solo operaciones de datos en las tablas `products` y `stock_balances`.
+## Fase 2: Logica de CPP (Costo Promedio Ponderado)
+
+### Formula Financiera
+
+```text
+Nuevo CPP = (Stock Existente * CPP Actual + Cantidad Ingresada * Costo Inventario Unitario) 
+            / (Stock Existente + Cantidad Ingresada)
+```
+
+### Costo Inventario Unitario (REGLA ACTUALIZADA 2026-02-09)
+
+```text
+net_line = real_units * unit_price_after_discount
+specific_tax_amount = net_line * tax_rate  (IABA 10/18%, ILA 20.5/31.5%)
+inventory_cost_line = net_line + specific_tax_amount
+inventory_unit_cost = inventory_cost_line / real_units  ← USAR PARA CPP
+```
+
+**IMPORTANTE**: ILA e IABA se CAPITALIZAN al costo de inventario (NO son gastos operacionales).
+El IVA sigue siendo informativo y NO entra al costo.
+
+### Casos Especiales
+
+1. **Stock Cero**: CPP = inventory_unit_cost directamente
+2. **Exclusion de Gastos**: Items marcados como GASTO no afectan CPP
+3. **Factor de Conversion**: Normalizar cantidad y costo antes del calculo
+
+### Modificacion de Funcion `confirm_purchase_intake`
+
+```text
+-- Usar inventory_unit_cost (incluye ILA/IABA)
+cost_per_unit = CASE 
+  WHEN current_stock = 0 OR cost_per_unit IS NULL OR cost_per_unit = 0 THEN v_inventory_unit_cost
+  ELSE ((current_stock * cost_per_unit) + (v_real_units * v_inventory_unit_cost)) 
+       / (current_stock + v_real_units)
+END
+```
+
+---
+
+## Fase 3: Edge Function `parse-invoice`
+
+### Mejoras al Prompt de IA
+
+Extraer campos adicionales:
+
+```text
+{
+  "provider_name": "...",
+  "provider_rut": "...",
+  "document_number": "...",
+  "document_date": "YYYY-MM-DD",
+  "net_amount": number,        // NUEVO
+  "iva_amount": number,        // NUEVO  
+  "total_amount": number,      // NUEVO
+  "line_items": [
+    {
+      "raw_product_name": "...",
+      "quantity": number,
+      "uom": "string",         // NUEVO: Unidad, Caja, Pack
+      "unit_price": number,
+      "total": number
+    }
+  ]
+}
+```
+
+### Validacion de Coherencia Tributaria
+
+Agregar verificacion post-extraccion:
+
+```text
+- Verificar: Neto + IVA ≈ Total (tolerancia < 1.0)
+- Verificar: Suma de lineas ≈ Neto (tolerancia < 1.0)
+- Marcar discrepancias para revision manual
+```
+
+---
+
+## Fase 4: Frontend - PurchasesImport.tsx
+
+### 4.1 Expandir Validacion de Cabecera
+
+Agregar campos editables:
+
+```text
+- Monto Neto
+- IVA
+- Total Bruto
+- Indicador de coherencia (check verde/rojo)
+```
+
+### 4.2 Agregar Manejo de UoM por Linea
+
+Permitir configurar:
+
+```text
+- UoM original (extraido)
+- Factor de conversion (ej: 1 caja = 12 unidades)
+- Cantidad normalizada (calculada automaticamente)
+- Costo unitario normalizado (calculado automaticamente)
+```
+
+### 4.3 Checklist Pre-Confirmacion Visual
+
+Mostrar antes de confirmar:
+
+```text
+[ ] Venue_id coincide con contexto de usuario
+[ ] Usuario tiene privilegios ADMIN/MANAGER
+[ ] 100% items de inventario tienen product_id
+[ ] Sumatoria coincide con total (tolerancia < 1.0)
+[ ] No existen folios duplicados para el proveedor
+```
+
+### 4.4 Expandir Estados de Item
+
+Mostrar estado de cada linea:
+
+```text
+- PENDING_MATCH (amarillo)
+- MATCHED (verde)
+- MARKED_AS_EXPENSE (naranja)
+- READY (azul)
+- APPLIED (gris, bloqueado)
+```
+
+---
+
+## Fase 5: Auditoria y Trazabilidad
+
+### Eventos a Registrar
+
+```text
+- document_uploaded: Carga inicial del archivo
+- document_parsed: Extraccion completada
+- header_edited: Cambio en datos de cabecera
+- item_matched: Producto asociado a linea
+- item_reclassified: Cambio inventario <-> gasto
+- uom_adjusted: Factor de conversion modificado
+- document_confirmed: Confirmacion final
+- document_voided: Anulacion
+```
+
+### Visualizacion de Historial
+
+Agregar panel colapsable mostrando timeline de cambios por documento.
+
+---
+
+## Secuencia de Implementacion
+
+```text
+1. Migracion SQL (schema + funcion CPP)
+   |
+2. Actualizar Edge Function parse-invoice
+   |
+3. Actualizar Frontend PurchasesImport.tsx
+   |-- Campos de cabecera expandidos
+   |-- Manejo de UoM y conversiones
+   |-- Checklist pre-confirmacion
+   |-- Estados de linea visuales
+   |
+4. Agregar tabla y logica de auditoria
+   |
+5. Testing integral
+```
+
+---
+
+## Seccion Tecnica: Detalles de Implementacion
+
+### Migracion SQL Detallada
+
+```sql
+-- 1. Expandir purchase_documents
+ALTER TABLE purchase_documents 
+ADD COLUMN IF NOT EXISTS net_amount NUMERIC,
+ADD COLUMN IF NOT EXISTS iva_amount NUMERIC,
+ADD COLUMN IF NOT EXISTS total_amount_gross NUMERIC,
+ADD COLUMN IF NOT EXISTS audit_trail JSONB DEFAULT '[]';
+
+-- Expandir valores de status (CHECK constraint si existe)
+-- Valores: pending, processing, ready, parsed, in_review, confirmed, void, error
+
+-- 2. Expandir purchase_items  
+ALTER TABLE purchase_items
+ADD COLUMN IF NOT EXISTS extracted_uom TEXT DEFAULT 'Unidad',
+ADD COLUMN IF NOT EXISTS conversion_factor NUMERIC DEFAULT 1.0,
+ADD COLUMN IF NOT EXISTS normalized_quantity NUMERIC,
+ADD COLUMN IF NOT EXISTS normalized_unit_cost NUMERIC,
+ADD COLUMN IF NOT EXISTS classification TEXT DEFAULT 'inventory',
+ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending_match',
+ADD COLUMN IF NOT EXISTS expense_category TEXT;
+
+-- 3. Crear tabla de auditoria
+CREATE TABLE purchase_import_audit (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purchase_document_id UUID REFERENCES purchase_documents(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users(id),
+  previous_state JSONB,
+  new_state JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. RLS para auditoria
+ALTER TABLE purchase_import_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view audit for their venue docs"
+ON purchase_import_audit FOR SELECT
+USING (EXISTS (
+  SELECT 1 FROM purchase_documents pd 
+  WHERE pd.id = purchase_document_id 
+  AND pd.venue_id = get_user_venue_id()
+));
+```
+
+### Funcion CPP Corregida
+
+```sql
+-- Dentro de confirm_purchase_intake, reemplazar:
+UPDATE products 
+SET 
+  current_stock = current_stock + v_normalized_qty,
+  cost_per_unit = CASE 
+    WHEN current_stock = 0 OR cost_per_unit IS NULL OR cost_per_unit = 0 
+      THEN v_normalized_cost
+    ELSE ROUND(
+      ((current_stock * cost_per_unit) + (v_normalized_qty * v_normalized_cost)) 
+      / (current_stock + v_normalized_qty), 
+      2
+    )
+  END,
+  updated_at = now()
+WHERE id = v_product_id;
+```
+
+### Interfaz TypeScript Actualizada
+
+```typescript
+interface EditableItem extends PurchaseItem {
+  // ... campos existentes ...
+  
+  // Nuevos campos UoM
+  extracted_uom: string;
+  conversion_factor: number;
+  normalized_quantity: number;
+  normalized_unit_cost: number;
+  
+  // Estados expandidos
+  item_status: 'pending_match' | 'matched' | 'marked_as_expense' | 'ready' | 'applied';
+}
+```
+
+---
+
+## Archivos a Modificar/Crear
+
+| Archivo | Accion | Descripcion |
+|---------|--------|-------------|
+| `supabase/migrations/XXXX_invoice_reader_v2.sql` | Crear | Schema expandido + CPP |
+| `supabase/functions/parse-invoice/index.ts` | Modificar | Extraer campos adicionales |
+| `src/pages/PurchasesImport.tsx` | Modificar | UI expandida completa |
+| `src/components/purchase/UoMConversionDialog.tsx` | Crear | Dialog para conversion |
+| `src/components/purchase/PreConfirmChecklist.tsx` | Crear | Checklist visual |
+| `src/components/purchase/ImportAuditTimeline.tsx` | Crear | Timeline de auditoria |
+
+---
+
+## Consideraciones de Multi-Tenancy
+
+Todas las nuevas tablas y consultas mantendran el aislamiento por `venue_id`:
+
+- `purchase_import_audit` hereda venue via `purchase_document_id`
+- RLS policies aplicadas en todas las tablas
+- Consultas en Edge Function filtradas por venue del documento
 
