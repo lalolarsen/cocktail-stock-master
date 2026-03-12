@@ -873,6 +873,7 @@ export default function Sales() {
           venueId={venue?.id}
           pickupToken={lastSaleData.pickupData?.token}
           pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
+          pickupShortCode={lastSaleData.pickupData?.shortCode}
           onComplete={handleNewSale}
         />
       );
