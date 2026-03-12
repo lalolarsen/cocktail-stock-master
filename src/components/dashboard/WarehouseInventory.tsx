@@ -714,7 +714,7 @@ function StockSection({
   accent: string;
   products: EnrichedProduct[];
   unit: (cat: string, u: string) => string;
-  onAdjustMin: (p: EnrichedProduct) => void;
+  onAdjustMin?: (p: EnrichedProduct) => void;
 }) {
   const badgeClass =
     accent === "destructive"
