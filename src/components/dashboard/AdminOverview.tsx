@@ -40,9 +40,7 @@ interface TodayStats {
 interface BarStatus {
   id: string;
   name: string;
-  status: "operational" | "low";
-  lowCount: number;
-  totalProducts: number;
+  is_active: boolean;
 }
 
 interface Props {
@@ -197,49 +195,20 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchBarStatuses = async () => {
     const { data: bars } = await supabase
       .from("stock_locations")
-      .select("id, name")
+      .select("id, name, is_active")
       .eq("type", "bar")
-      .eq("is_active", true);
+      .order("name");
 
     if (!bars?.length) {
       setBarStatuses([]);
       return;
     }
 
-    const { data: products } = await supabase
-      .from("products")
-      .select("id, minimum_stock");
-
-    const productMinMap = new Map(
-      products?.map((p) => [p.id, p.minimum_stock]) || []
-    );
-
-    const { data: balances } = await supabase
-      .from("stock_balances")
-      .select("location_id, product_id, quantity")
-      .in(
-        "location_id",
-        bars.map((b) => b.id)
-      );
-
-    const statuses: BarStatus[] = bars.map((bar) => {
-      const barBalances =
-        balances?.filter((b) => b.location_id === bar.id) || [];
-      const lowCount = barBalances.filter((b) => {
-        const minStock = productMinMap.get(b.product_id) || 0;
-        return Number(b.quantity) < minStock * 0.5;
-      }).length;
-
-      return {
-        id: bar.id,
-        name: bar.name,
-        status: lowCount > 3 ? "low" : "operational",
-        lowCount,
-        totalProducts: barBalances.length,
-      };
-    });
-
-    setBarStatuses(statuses);
+    setBarStatuses(bars.map((bar) => ({
+      id: bar.id,
+      name: bar.name,
+      is_active: bar.is_active,
+    })));
   };
 
   /* ─── Loading skeleton ─── */
@@ -409,7 +378,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
             icon={QrCode}
           />
 
-          {/* Barras */}
+          {/* Barras activas */}
           <Card className="relative overflow-hidden">
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-2">
@@ -422,23 +391,15 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
                 <p className="text-xs text-muted-foreground mt-3">Sin barras configuradas</p>
               ) : (
                 <ul className="mt-3 space-y-1.5">
-                  {barStatuses.map((bar) => (
+                  {barStatuses.filter(b => b.is_active).map((bar) => (
                     <li key={bar.id} className="flex items-center gap-2 text-sm">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${
-                          bar.status === "operational"
-                            ? "bg-primary"
-                            : "bg-destructive"
-                        }`}
-                      />
+                      <span className="w-2 h-2 rounded-full shrink-0 bg-primary" />
                       <span className="truncate">{bar.name}</span>
-                      {bar.status === "low" && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
-                          {bar.lowCount} bajos
-                        </Badge>
-                      )}
                     </li>
                   ))}
+                  {barStatuses.filter(b => b.is_active).length === 0 && (
+                    <p className="text-xs text-muted-foreground">Ninguna barra activa</p>
+                  )}
                 </ul>
               )}
             </CardContent>

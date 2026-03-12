@@ -209,7 +209,7 @@ export default function Admin() {
 
             {activeView === "inventory" && (
               <div className="space-y-6">
-                <WarehouseInventory />
+                <WarehouseInventory isReadOnly={isReadOnly} />
               </div>
             )}
 

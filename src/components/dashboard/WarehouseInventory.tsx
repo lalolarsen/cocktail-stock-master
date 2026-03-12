@@ -120,7 +120,7 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 };
 
 // ─── Component ──────────────────────────────────────────────
-export function WarehouseInventory() {
+export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue } = useActiveVenue();
   
 
@@ -379,7 +379,7 @@ export function WarehouseInventory() {
       </div>
 
       {/* ━━━ STOCK INTAKE ACTION ━━━ */}
-      {warehouseLocation && (
+      {warehouseLocation && !isReadOnly && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
             <CardContent className="flex items-start gap-4 p-5">
@@ -548,7 +548,7 @@ export function WarehouseInventory() {
               accent="destructive"
               products={outOfStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
           {lowStock.length > 0 && (
@@ -560,7 +560,7 @@ export function WarehouseInventory() {
               accent="warning"
               products={lowStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
           {normalStock.length > 0 && (
@@ -572,7 +572,7 @@ export function WarehouseInventory() {
               accent="primary"
               products={normalStock}
               unit={getUnitDisplay}
-              onAdjustMin={handleOpenAdjustMin}
+              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
             />
           )}
         </div>
@@ -714,7 +714,7 @@ function StockSection({
   accent: string;
   products: EnrichedProduct[];
   unit: (cat: string, u: string) => string;
-  onAdjustMin: (p: EnrichedProduct) => void;
+  onAdjustMin?: (p: EnrichedProduct) => void;
 }) {
   const badgeClass =
     accent === "destructive"
@@ -748,7 +748,7 @@ function StockSection({
             product={product}
             unit={unit}
             borderClass={borderClass}
-            onAdjustMin={() => onAdjustMin(product)}
+            onAdjustMin={onAdjustMin ? () => onAdjustMin(product) : undefined}
           />
         ))}
       </CollapsibleContent>
@@ -765,7 +765,7 @@ function ProductRow({
   product: EnrichedProduct;
   unit: (cat: string, u: string) => string;
   borderClass: string;
-  onAdjustMin: () => void;
+  onAdjustMin?: () => void;
 }) {
   const unitLabel = unit(product.category, product.unit);
   const isVolumetric = !!(product.capacity_ml && product.capacity_ml > 0); // source of truth: capacity_ml
@@ -885,15 +885,17 @@ function ProductRow({
           )}
         </div>
         {statusBadge}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
-          title="Ajustar mínimo"
-          onClick={(e) => { e.stopPropagation(); onAdjustMin(); }}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-        </Button>
+        {onAdjustMin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            title="Ajustar mínimo"
+            onClick={(e) => { e.stopPropagation(); onAdjustMin(); }}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );
