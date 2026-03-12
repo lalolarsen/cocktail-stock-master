@@ -885,15 +885,17 @@ function ProductRow({
           )}
         </div>
         {statusBadge}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
-          title="Ajustar mínimo"
-          onClick={(e) => { e.stopPropagation(); onAdjustMin(); }}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-        </Button>
+        {onAdjustMin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            title="Ajustar mínimo"
+            onClick={(e) => { e.stopPropagation(); onAdjustMin(); }}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );
