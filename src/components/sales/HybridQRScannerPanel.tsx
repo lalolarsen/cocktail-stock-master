@@ -68,6 +68,8 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualCode, setManualCode] = useState("");
 
   // USB scanner: hidden input + keyboard buffer (mirrors Bar.tsx pattern)
   const inputRef = useRef<HTMLInputElement>(null);
