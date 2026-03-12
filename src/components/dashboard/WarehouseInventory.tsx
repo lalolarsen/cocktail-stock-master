@@ -379,7 +379,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
       </div>
 
       {/* ━━━ STOCK INTAKE ACTION ━━━ */}
-      {warehouseLocation && (
+      {warehouseLocation && !isReadOnly && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
             <CardContent className="flex items-start gap-4 p-5">
