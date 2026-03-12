@@ -33,7 +33,7 @@ export interface HybridQRScannerPanelProps {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const AUTO_RESET_MS = 3500;
+const AUTO_RESET_MS = 6000;
 const DEDUPE_MS = 5000;
 const WATCHDOG_MS = 10000;
 
