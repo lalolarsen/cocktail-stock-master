@@ -194,6 +194,7 @@ export default function Sales() {
     items: Array<{ name: string; quantity: number; price: number }>;
     total: number;
     barName?: string;
+    shortCode?: string;
   } | null>(null);
   
   const navigate = useNavigate();
@@ -690,7 +691,7 @@ export default function Sales() {
       if (tokenError) throw tokenError;
       
       if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; expires_at?: string; bar_name?: string; message?: string };
+        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
         if (result.success && result.token) {
           const items = (sale.sale_items || []).map((item: any) => ({
             name: item.cocktails?.name || "Item",
@@ -705,6 +706,7 @@ export default function Sales() {
             items,
             total: sale.total_amount,
             barName: result.bar_name,
+            shortCode: result.short_code,
           });
           setShowPickupQR(true);
         } else {
@@ -871,6 +873,7 @@ export default function Sales() {
           venueId={venue?.id}
           pickupToken={lastSaleData.pickupData?.token}
           pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
+          pickupShortCode={lastSaleData.pickupData?.shortCode}
           onComplete={handleNewSale}
         />
       );
@@ -903,6 +906,7 @@ export default function Sales() {
                 items={lastSaleData.pickupData.items}
                 total={lastSaleData.total}
                 barName={lastSaleData.pickupData.barName}
+                shortCode={lastSaleData.pickupData.shortCode}
                 embedded
               />
             </div>
@@ -1318,6 +1322,7 @@ export default function Sales() {
             items={pickupQRData.items}
             total={pickupQRData.total}
             barName={pickupQRData.barName}
+            shortCode={pickupQRData.shortCode}
           />
         )}
 

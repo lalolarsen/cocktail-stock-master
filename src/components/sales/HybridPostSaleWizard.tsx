@@ -38,6 +38,7 @@ interface HybridPostSaleWizardProps {
   venueId?: string;
   pickupToken?: string;
   pickupExpiresAt?: string;
+  pickupShortCode?: string;
   onComplete: () => void;
 }
 
@@ -52,6 +53,7 @@ export function HybridPostSaleWizard({
   venueId = "",
   pickupToken,
   pickupExpiresAt,
+  pickupShortCode,
   onComplete,
 }: HybridPostSaleWizardProps) {
   const [step, setStep] = useState<WizardStep>("checking_mixer");
@@ -254,6 +256,7 @@ export function HybridPostSaleWizard({
             expiresAt={pickupExpiresAt || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()}
             items={items}
             total={total}
+            shortCode={pickupShortCode}
           />
         )}
       </div>
@@ -373,6 +376,7 @@ export function HybridPostSaleWizard({
           items={items}
           total={total}
           barName={barName}
+          shortCode={pickupShortCode}
         />
       )}
     </div>
