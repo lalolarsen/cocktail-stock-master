@@ -246,23 +246,23 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
 
           {/* ── Processing ── */}
           {scanState === "processing" && (
-            <div className="flex flex-col items-center justify-center gap-2 py-4">
-              <Loader2 className="w-7 h-7 animate-spin text-amber-600" />
-              <p className="text-[11px] text-amber-700 font-medium">Canjeando...</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-8">
+              <Loader2 className="w-10 h-10 animate-spin text-amber-600" />
+              <p className="text-sm text-amber-700 font-medium">Canjeando...</p>
             </div>
           )}
 
           {/* ── Success ── */}
           {scanState === "success" && result && (
-            <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-3 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-                <span className="text-xs font-bold text-green-700">ENTREGAR</span>
+            <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                <span className="text-sm font-bold text-green-700">ENTREGAR</span>
               </div>
               {summary && (
-                <div className="flex items-center gap-1.5 pl-5">
-                  <Package className="w-3 h-3 text-green-600/70" />
-                  <p className="text-[11px] text-green-800 font-medium">{summary}</p>
+                <div className="flex items-center gap-2 pl-7">
+                  <Package className="w-4 h-4 text-green-600/70" />
+                  <p className="text-sm text-green-800 font-medium">{summary}</p>
                 </div>
               )}
             </div>
