@@ -765,7 +765,7 @@ function ProductRow({
   product: EnrichedProduct;
   unit: (cat: string, u: string) => string;
   borderClass: string;
-  onAdjustMin: () => void;
+  onAdjustMin?: () => void;
 }) {
   const unitLabel = unit(product.category, product.unit);
   const isVolumetric = !!(product.capacity_ml && product.capacity_ml > 0); // source of truth: capacity_ml
