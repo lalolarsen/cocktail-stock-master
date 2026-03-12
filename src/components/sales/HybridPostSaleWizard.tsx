@@ -53,6 +53,7 @@ export function HybridPostSaleWizard({
   venueId = "",
   pickupToken,
   pickupExpiresAt,
+  pickupShortCode,
   onComplete,
 }: HybridPostSaleWizardProps) {
   const [step, setStep] = useState<WizardStep>("checking_mixer");
