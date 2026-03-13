@@ -3,11 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import {
   Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard,
-  RefreshCw, MapPin, Package, Trash2, History, QrCode, Bluetooth, Users,
+  RefreshCw, MapPin, Package, Trash2, History, QrCode, Bluetooth, Users, X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -19,13 +20,13 @@ import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
-import { BartenderSetupDialog, type BarWorker } from "@/components/bar/BartenderSetupDialog";
-import { DeliveredByDialog } from "@/components/bar/DeliveredByDialog";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+type BarWorker = { id: string; full_name: string | null };
 
 interface SaleItemWithIngredients {
   quantity: number;
@@ -61,10 +62,9 @@ type ScanHistoryEntry = {
   label: string;
   tokenShort: string;
 };
-type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection" | "delivered_by_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const MAX_BARTENDERS = 3;
 const MAX_HISTORY_ENTRIES = 20;
 const DEDUPE_WINDOW_MS = 5000;
 const AUTO_RESET_MS = 2500;
@@ -157,16 +157,10 @@ export default function Bar() {
   // Bartender auditing
   const [barWorkers, setBarWorkers] = useState<BarWorker[]>([]);
   const [barWorkersLoading, setBarWorkersLoading] = useState(true);
-  const [activeBartenders, setActiveBartenders] = useState<BarWorker[]>([]);
-  const [showBartenderSetup, setShowBartenderSetup] = useState(true);
-  const [deliveredByWorkerId, setDeliveredByWorkerIdState] = useState<string | null>(null);
-  const deliveredByWorkerIdRef = useRef<string | null>(null);
-  const setDeliveredByWorkerId = useCallback((id: string | null) => {
-    deliveredByWorkerIdRef.current = id;
-    setDeliveredByWorkerIdState(id);
-  }, []);
-  // Pending redeem data for delivered-by flow
-  const pendingRedeemRef = useRef<{ token: string; mixerOverrides: { slot_index: number; product_id: string }[] | null; bottleChecks: BottleCheckResult[] | null } | null>(null);
+  const [headBartender, setHeadBartender] = useState<BarWorker | null>(null);
+  const [secondBartender, setSecondBartender] = useState<BarWorker | null>(null);
+  const [showAddBartender, setShowAddBartender] = useState(false);
+  const [addBartenderSelectedId, setAddBartenderSelectedId] = useState("");
 
   // Bottles
   const openBottlesHook = useOpenBottles(currentVenueId, selectedBarId || null);
@@ -201,9 +195,13 @@ export default function Bar() {
     supabase.from("stock_locations").select("*").eq("type", "bar").eq("is_active", true).order("name").then(({ data }) => {
       if (!data) return;
       setBarLocations(data);
+      // Pre-select saved bar but always show the selection screen
       const saved = localStorage.getItem("bartenderBarId");
-      if (saved && data.some((b: BarLocation) => b.id === saved)) { setSelectedBarId(saved); setShowBarSelection(false); }
-      else if (data.length === 1) { setSelectedBarId(data[0].id); setShowBarSelection(false); }
+      if (saved && data.some((b: BarLocation) => b.id === saved)) {
+        setSelectedBarId(saved);
+      } else if (data.length === 1) {
+        setSelectedBarId(data[0].id);
+      }
     });
   }, []);
 
@@ -246,18 +244,38 @@ export default function Bar() {
     return () => { if (hintRef.current) { clearTimeout(hintRef.current); hintRef.current = null; } };
   }, [scanState]);
 
+  // ── Confirm bar selection and auto-set head bartender ──────────────────────
+  const confirmBarSelection = useCallback(() => {
+    if (!selectedBarId) return;
+    setShowBarSelection(false);
+    // Auto-set the logged-in user as head bartender
+    const found = barWorkers.find(w => w.id === currentUserId);
+    const jefe: BarWorker = found ?? { id: currentUserId, full_name: userName || "Bartender" };
+    setHeadBartender(jefe);
+    setSecondBartender(null);
+  }, [selectedBarId, barWorkers, currentUserId, userName]);
+
+  // Also set head bartender when barWorkers loads after bar selection is already confirmed
+  useEffect(() => {
+    if (showBarSelection || !currentUserId || barWorkersLoading) return;
+    if (headBartender) return; // already set
+    const found = barWorkers.find(w => w.id === currentUserId);
+    const jefe: BarWorker = found ?? { id: currentUserId, full_name: userName || "Bartender" };
+    setHeadBartender(jefe);
+  }, [barWorkers, barWorkersLoading, currentUserId, userName, showBarSelection, headBartender]);
+
   // ── Focus ──────────────────────────────────────────────────────────────────
   const focusInput = useCallback(() => {
     setTimeout(() => {
-      if (!showManualEntry && !showBarSelection && !showWasteDialog && !showBartenderSetup) {
+      if (!showManualEntry && !showBarSelection && !showWasteDialog && !showAddBartender) {
         scannerInputRef.current?.focus();
       }
     }, 80);
-  }, [showManualEntry, showBarSelection, showWasteDialog, showBartenderSetup]);
+  }, [showManualEntry, showBarSelection, showWasteDialog, showAddBartender]);
 
   useEffect(() => {
-    if (!showBarSelection && !showManualEntry && !showWasteDialog && !showBartenderSetup && scanState === "idle") focusInput();
-  }, [showBarSelection, showManualEntry, showWasteDialog, showBartenderSetup, scanState, focusInput]);
+    if (!showBarSelection && !showManualEntry && !showWasteDialog && !showAddBartender && scanState === "idle") focusInput();
+  }, [showBarSelection, showManualEntry, showWasteDialog, showAddBartender, scanState, focusInput]);
 
   // ── Lock helpers ───────────────────────────────────────────────────────────
   const clearTimers = useCallback(() => {
@@ -306,9 +324,7 @@ export default function Bar() {
   const redeemToken = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    workerIdOverride?: string | null
   ): Promise<RedemptionResult | undefined> => {
-    const workerId = workerIdOverride ?? deliveredByWorkerIdRef.current;
     abortRef.current = new AbortController();
     setDebugStep("redeem");
     try {
@@ -317,7 +333,7 @@ export default function Bar() {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
         p_mixer_overrides: mixerOverrides || null,
-        p_delivered_by_worker_id: workerId || null,
+        p_delivered_by_worker_id: null,
       });
       if (abortRef.current?.signal.aborted) return undefined;
       if (error) throw error;
@@ -325,7 +341,7 @@ export default function Bar() {
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
       setDebugStep(r.success ? "done-success" : "done-error");
       setResult(r);
-      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId, delivered_by: workerId } });
+      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
       const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: r.success ? "SUCCESS" : mapStatus(r.error_code), label: historyLabel(r), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks(r.success ? "success" : "error");
@@ -487,24 +503,6 @@ export default function Bar() {
         releaseLocks("error"); scheduleAutoReset(); return;
       }
 
-      // ── Gate: delivered-by selection ──
-      const proceedWithRedeem = async (t: string, mo: { slot_index: number; product_id: string }[] | null) => {
-        if (activeBartenders.length === 1) {
-          setDeliveredByWorkerId(activeBartenders[0].id);
-          if (selectedBarId) { await checkBottlesRef.current?.(t, mo); return; }
-          await redeemToken(t, mo, activeBartenders[0].id);
-        } else if (activeBartenders.length > 1) {
-          // Pause and show delivered-by dialog
-          pendingRedeemRef.current = { token: t, mixerOverrides: mo, bottleChecks: null };
-          if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-          setScanState("delivered_by_selection");
-        } else {
-          // No bartenders (shouldn't happen due to gate)
-          if (selectedBarId) { await checkBottlesRef.current?.(t, mo); return; }
-          await redeemToken(t, mo);
-        }
-      };
-
       if (mr.requires_mixer_selection && mr.mixer_slots?.length) {
         setDebugStep("mixer-needed");
         setMixerSlots(mr.mixer_slots);
@@ -513,7 +511,12 @@ export default function Bar() {
         setScanState("mixer_selection"); return;
       }
 
-      await proceedWithRedeem(token, null);
+      // Direct redeem — no delivered-by gate
+      if (selectedBarId) {
+        await checkBottlesRef.current?.(token, null);
+      } else {
+        await redeemToken(token, null);
+      }
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return;
       const msg = err?.message || "Error al procesar el código";
@@ -523,7 +526,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [selectedBarId, scannerFrozen, redeemToken, releaseLocks, scheduleAutoReset, activeBartenders]);
+  }, [selectedBarId, scannerFrozen, redeemToken, releaseLocks, scheduleAutoReset]);
 
   // ── Mixer handlers ─────────────────────────────────────────────────────────
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
@@ -532,23 +535,13 @@ export default function Bar() {
     const token = pendingToken;
     setPendingToken("");
     try {
-      // Gate through delivered-by if multiple bartenders
-      if (activeBartenders.length > 1) {
-        pendingRedeemRef.current = { token, mixerOverrides: selections, bottleChecks: null };
-        setScanState("delivered_by_selection");
-        setIsRedeemingWithMixer(false);
-        return;
-      }
-      // Single bartender: auto-set
-      if (activeBartenders.length === 1) setDeliveredByWorkerId(activeBartenders[0].id);
-
       if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
-      else await redeemToken(token, selections, activeBartenders.length === 1 ? activeBartenders[0].id : undefined);
+      else await redeemToken(token, selections);
     } catch (err: any) {
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
       releaseLocks("error"); scheduleAutoReset();
     } finally { setIsRedeemingWithMixer(false); }
-  }, [pendingToken, selectedBarId, checkAndProceedWithBottles, redeemToken, releaseLocks, scheduleAutoReset, activeBartenders]);
+  }, [pendingToken, selectedBarId, checkAndProceedWithBottles, redeemToken, releaseLocks, scheduleAutoReset]);
 
   const handleMixerCancel = useCallback(() => {
     if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
@@ -597,32 +590,74 @@ export default function Bar() {
   // ── Derived ────────────────────────────────────────────────────────────────
   const delivery = getDelivery(result?.deliver);
   const barName = barLocations.find(b => b.id === selectedBarId)?.name;
+  const availableSecondBartenders = barWorkers.filter(w => w.id !== headBartender?.id);
 
   // ── Render: PIN ────────────────────────────────────────────────────────────
   if (showPinDialog) {
     return <WorkerPinDialog open={showPinDialog} onVerified={() => { setShowPinDialog(false); setIsVerified(true); }} onCancel={() => navigate("/")} />;
   }
 
-  // ── Render: Bar selection ──────────────────────────────────────────────────
-  if (showBarSelection && barLocations.length > 1) {
+  // ── Render: Configurar Barra ───────────────────────────────────────────────
+  if (showBarSelection) {
     return (
       <VenueGuard>
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <Card className="p-6 w-full max-w-sm space-y-4">
+        <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+          <div className="max-w-lg mx-auto space-y-6 pt-12">
+            <div className="text-center space-y-2">
+              <MapPin className="w-16 h-16 mx-auto text-primary" />
+              <h1 className="text-3xl font-bold">Configurar Barra</h1>
+              <p className="text-muted-foreground">Selecciona tu barra</p>
+            </div>
+
+            <Card className="p-6 space-y-6">
+              <div className="space-y-3">
+                <p className="flex items-center gap-2 text-lg font-medium">
+                  <MapPin className="w-5 h-5" />
+                  Barra
+                </p>
+                {barLocations.length === 0 ? (
+                  <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
+                    No hay barras disponibles. Contacta al administrador.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {barLocations.map((bar) => (
+                      <Card
+                        key={bar.id}
+                        onClick={() => setSelectedBarId(bar.id)}
+                        className={`p-4 cursor-pointer transition-all hover:scale-105 ${
+                          selectedBarId === bar.id
+                            ? "border-primary bg-primary/10 ring-2 ring-primary"
+                            : "hover:border-primary/50"
+                        }`}
+                      >
+                        <div className="text-center">
+                          <MapPin className={`w-8 h-8 mx-auto mb-2 ${selectedBarId === bar.id ? "text-primary" : "text-muted-foreground"}`} />
+                          <p className="font-semibold">{bar.name}</p>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={confirmBarSelection}
+                disabled={!selectedBarId}
+                className="w-full"
+                size="lg"
+              >
+                Comenzar
+              </Button>
+            </Card>
+
             <div className="text-center">
-              <MapPin className="w-10 h-10 text-primary mx-auto mb-2" />
-              <h2 className="text-xl font-bold">Seleccionar Barra</h2>
-              <p className="text-sm text-muted-foreground">¿Desde qué barra estás canjeando?</p>
+              <Button variant="ghost" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Salir
+              </Button>
             </div>
-            <div className="space-y-2">
-              {barLocations.map(bar => (
-                <Button key={bar.id} variant="outline" className="w-full justify-start h-14 text-base" onClick={() => { setSelectedBarId(bar.id); setShowBarSelection(false); }}>
-                  <MapPin className="w-5 h-5 mr-3" />{bar.name}
-                </Button>
-              ))}
-            </div>
-            <Button variant="ghost" className="w-full text-sm" onClick={() => setShowBarSelection(false)}>Continuar sin barra</Button>
-          </Card>
+          </div>
         </div>
       </VenueGuard>
     );
@@ -630,15 +665,13 @@ export default function Bar() {
 
   // ── Status badge config ────────────────────────────────────────────────────
   const badgeCfg: Record<ScanState, { ring: string; dot: string; label: string; pulse: boolean }> = {
-    idle:                   { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",       pulse: true  },
-    processing:             { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",            pulse: true  },
-    mixer_selection:        { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",        pulse: false },
-    delivered_by_selection: { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "¿Quién entrega?",         pulse: false },
-    success:                { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",           pulse: false },
-    error:                  { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
+    idle:            { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",  pulse: true  },
+    processing:      { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",       pulse: true  },
+    mixer_selection: { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",   pulse: false },
+    success:         { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",      pulse: false },
+    error:           { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
   };
   const badge = badgeCfg[scanState];
-  const deliveredByName = deliveredByWorkerId ? (barWorkers.find(w => w.id === deliveredByWorkerId)?.full_name || null) : null;
 
   // ── Render: Main ───────────────────────────────────────────────────────────
   return (
@@ -670,7 +703,15 @@ export default function Bar() {
           <div className="flex items-center gap-3" onClick={handleDebugTap}>
             <Bluetooth className="w-4 h-4 text-primary" />
             <span className="font-semibold text-sm">Lector QR Bar</span>
-            {barName && <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{barName}</span>}
+            {barName && (
+              <button
+                className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium hover:bg-primary/20 transition-colors"
+                onClick={() => setShowBarSelection(true)}
+              >
+                {barName}
+                <span className="text-[10px] opacity-60 ml-0.5">cambiar</span>
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <VenueIndicator />
@@ -722,11 +763,6 @@ export default function Bar() {
                 <h1 className="text-3xl font-black leading-tight">{delivery.name}</h1>
                 <p className="text-6xl font-black text-primary leading-none">×{delivery.quantity}</p>
                 {result.deliver?.source && <p className="text-sm text-muted-foreground">{getSourceLabel(result.deliver.source)}</p>}
-                {deliveredByName && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Entregado por: <span className="font-semibold text-foreground">{deliveredByName}</span>
-                  </p>
-                )}
                 {result.deliver?.type === "menu_items" && result.deliver.items && result.deliver.items.length > 1 && (
                   <div className="bg-muted rounded-xl p-3 text-left space-y-2 mt-2">
                     {result.deliver.items.map((item, i) => (
@@ -736,12 +772,6 @@ export default function Bar() {
                     ))}
                   </div>
                 )}
-              </>
-            )}
-            {scanState === "delivered_by_selection" && (
-              <>
-                <h1 className="text-xl font-semibold">¿Quién entrega?</h1>
-                <p className="text-muted-foreground text-sm">Selecciona el bartender responsable</p>
               </>
             )}
             {scanState === "error" && (
@@ -790,7 +820,7 @@ export default function Bar() {
         </main>
 
         {/* ── Footer: secondary controls ── */}
-        <footer className="flex items-center justify-center gap-1 px-4 py-3 border-t border-border/50" onClick={e => e.stopPropagation()}>
+        <footer className="flex items-center justify-center gap-1 px-4 py-3 border-t border-border/50 flex-wrap" onClick={e => e.stopPropagation()}>
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowManualEntry(true)}>
             <Keyboard className="w-3.5 h-3.5" />Ingreso manual
           </Button>
@@ -802,9 +832,31 @@ export default function Bar() {
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowWasteDialog(true)}>
             <Trash2 className="w-3.5 h-3.5" />Registrar merma
           </Button>
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowBartenderSetup(true)}>
-            <Users className="w-3.5 h-3.5" />Bartenders ({activeBartenders.length})
-          </Button>
+
+          {/* Second bartender control */}
+          {secondBartender ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium h-9">
+              <Users className="w-3.5 h-3.5" />
+              <span>{secondBartender.full_name || "Bartender"}</span>
+              <button
+                className="ml-1 hover:text-destructive transition-colors"
+                onClick={() => { setSecondBartender(null); focusInput(); }}
+                aria-label="Quitar segundo bartender"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground gap-1.5 h-9"
+              onClick={() => { setAddBartenderSelectedId(""); setShowAddBartender(true); }}
+              disabled={availableSecondBartenders.length === 0}
+            >
+              <Users className="w-3.5 h-3.5" />+ Agregar Bartender
+            </Button>
+          )}
         </footer>
 
         {/* ── Debug overlay ── */}
@@ -852,43 +904,38 @@ export default function Bar() {
         {/* ── Waste dialog ── */}
         <WasteRegistrationDialog open={showWasteDialog} onOpenChange={setShowWasteDialog} onWasteRegistered={() => setShowWasteDialog(false)} />
 
-        {/* ── Bartender setup dialog ── */}
-        <BartenderSetupDialog
-          open={showBartenderSetup}
-          workers={barWorkers}
-          loading={barWorkersLoading}
-          maxBartenders={MAX_BARTENDERS}
-          onConfirm={(selected) => {
-            setActiveBartenders(selected);
-            setShowBartenderSetup(false);
-            if (selected.length === 1) setDeliveredByWorkerId(selected[0].id);
-            else setDeliveredByWorkerId(null);
-            focusInput();
-          }}
-        />
-
-        {/* ── Delivered-by dialog ── */}
-        <DeliveredByDialog
-          open={scanState === "delivered_by_selection"}
-          bartenders={activeBartenders}
-          onConfirm={async (workerId) => {
-            setDeliveredByWorkerId(workerId);
-            const pending = pendingRedeemRef.current;
-            pendingRedeemRef.current = null;
-            if (!pending) { releaseLocks("idle"); return; }
-            setScanState("processing");
-            if (selectedBarId) {
-              await checkAndProceedWithBottles(pending.token, pending.mixerOverrides);
-            } else {
-              await redeemToken(pending.token, pending.mixerOverrides, workerId);
-            }
-          }}
-          onCancel={() => {
-            pendingRedeemRef.current = null;
-            releaseLocks("idle");
-            focusInput();
-          }}
-        />
+        {/* ── Add second bartender dialog ── */}
+        <Dialog open={showAddBartender} onOpenChange={open => { setShowAddBartender(open); if (!open) { setAddBartenderSelectedId(""); setTimeout(focusInput, 200); } }}>
+          <DialogContent className="max-w-sm" onClick={e => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Users className="w-4 h-4" />Agregar Bartender</DialogTitle>
+              <DialogDescription>Selecciona el segundo bartender en turno</DialogDescription>
+            </DialogHeader>
+            <RadioGroup value={addBartenderSelectedId} onValueChange={setAddBartenderSelectedId} className="space-y-2 py-2">
+              {availableSecondBartenders.map(w => (
+                <label key={w.id} className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50">
+                  <RadioGroupItem value={w.id} />
+                  <span className="text-sm font-medium">{w.full_name || "Sin nombre"}</span>
+                </label>
+              ))}
+            </RadioGroup>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowAddBartender(false); setAddBartenderSelectedId(""); }}>Cancelar</Button>
+              <Button
+                disabled={!addBartenderSelectedId}
+                onClick={() => {
+                  const selected = availableSecondBartenders.find(w => w.id === addBartenderSelectedId);
+                  if (selected) setSecondBartender(selected);
+                  setShowAddBartender(false);
+                  setAddBartenderSelectedId("");
+                  focusInput();
+                }}
+              >
+                Agregar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </VenueGuard>
   );
