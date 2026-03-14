@@ -129,6 +129,20 @@ export function MixerSelectionDialog({
   // One selection per slot
   const [selectedId, setSelectedId] = useState<string>("");
 
+  // Auto-skip: if only 1 product in the required category, auto-confirm
+  useEffect(() => {
+    if (loading || autoSkipped || isLoading) return;
+    const candidates = isRedbullRequired ? visibleRedbull : isTradicionalRequired ? visibleTradicionales : [];
+    if (candidates.length === 1 && candidates[0].stock !== 0) {
+      setAutoSkipped(true);
+      const selections = mixerSlots.map(slot => ({
+        slot_index: slot.slot_index,
+        product_id: candidates[0].id,
+      }));
+      onConfirm(selections);
+    }
+  }, [loading, autoSkipped, isLoading, visibleRedbull, visibleTradicionales, isRedbullRequired, isTradicionalRequired]);
+
   const handleConfirm = () => {
     if (!selectedId) return;
     const selections = mixerSlots.map(slot => ({
