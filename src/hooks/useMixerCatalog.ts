@@ -46,6 +46,7 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
           .from("products")
           .select("id, name, category, subcategory, unit")
           .eq("venue_id", venueId)
+          .eq("is_active_in_sales", true)
           .order("name");
 
         if (prodErr) throw prodErr;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -108,6 +108,7 @@ export function MixerSelectionDialog({
   isLoading = false,
 }: MixerSelectionDialogProps) {
   const { tradicionales, redbull, loading } = useMixerCatalog(locationId, venueId);
+  const [autoSkipped, setAutoSkipped] = useState(false);
 
   // Determine which category the recipe requires from mixer_category
   const requiredCategory = mixerSlots.length > 0
@@ -127,6 +128,20 @@ export function MixerSelectionDialog({
 
   // One selection per slot
   const [selectedId, setSelectedId] = useState<string>("");
+
+  // Auto-skip: if only 1 product in the required category, auto-confirm
+  useEffect(() => {
+    if (loading || autoSkipped || isLoading) return;
+    const candidates = isRedbullRequired ? visibleRedbull : isTradicionalRequired ? visibleTradicionales : [];
+    if (candidates.length === 1 && candidates[0].stock !== 0) {
+      setAutoSkipped(true);
+      const selections = mixerSlots.map(slot => ({
+        slot_index: slot.slot_index,
+        product_id: candidates[0].id,
+      }));
+      onConfirm(selections);
+    }
+  }, [loading, autoSkipped, isLoading, visibleRedbull, visibleTradicionales, isRedbullRequired, isTradicionalRequired]);
 
   const handleConfirm = () => {
     if (!selectedId) return;
