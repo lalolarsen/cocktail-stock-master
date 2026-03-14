@@ -108,6 +108,7 @@ export function MixerSelectionDialog({
   isLoading = false,
 }: MixerSelectionDialogProps) {
   const { tradicionales, redbull, loading } = useMixerCatalog(locationId, venueId);
+  const [autoSkipped, setAutoSkipped] = useState(false);
 
   // Determine which category the recipe requires from mixer_category
   const requiredCategory = mixerSlots.length > 0
