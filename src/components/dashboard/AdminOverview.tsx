@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,6 +13,8 @@ import {
   TrendingUp,
   Play,
   AlertTriangle,
+  Hash,
+  Clock,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
@@ -35,6 +36,9 @@ interface TodayStats {
   transactionsToday: number;
   qrsRedeemed: number;
   grossIncome: number;
+  avgTicket: number;
+  cashSales: number;
+  cardSales: number;
 }
 
 interface BarStatus {
@@ -48,45 +52,35 @@ interface Props {
   onNavigate?: (view: string) => void;
 }
 
-/* ─── Small metric card ─── */
-function StatCard({
+/* ─── Metric cell (inline, no card wrapper) ─── */
+function MetricCell({
   label,
   value,
   sub,
   icon: Icon,
-  negative,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: React.ElementType;
-  negative?: boolean;
 }) {
   return (
-    <Card className="relative overflow-hidden">
-      <CardContent className="p-5 flex items-start justify-between gap-3">
-        <div className="space-y-1 min-w-0">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
-            {label}
-          </p>
-          <p
-            className={`text-2xl font-bold tabular-nums leading-tight ${
-              negative ? "text-destructive" : "text-foreground"
-            }`}
-          >
-            {value}
-          </p>
-          {sub && (
-            <p className="text-xs text-muted-foreground">{sub}</p>
-          )}
-        </div>
-        <Icon
-          className={`w-5 h-5 shrink-0 mt-0.5 opacity-20 ${
-            negative ? "text-destructive" : "text-muted-foreground"
-          }`}
-        />
-      </CardContent>
-    </Card>
+    <div className="flex items-start gap-3 p-3 sm:p-4">
+      <div className="p-2 rounded-lg bg-muted/60 shrink-0">
+        <Icon className="w-4 h-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-medium leading-none">
+          {label}
+        </p>
+        <p className="text-lg sm:text-xl font-bold tabular-nums leading-tight text-foreground">
+          {value}
+        </p>
+        {sub && (
+          <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{sub}</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -98,11 +92,13 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     transactionsToday: 0,
     qrsRedeemed: 0,
     grossIncome: 0,
+    avgTicket: 0,
+    cashSales: 0,
+    cardSales: 0,
   });
   const [barStatuses, setBarStatuses] = useState<BarStatus[]>([]);
   const [orphanSalesCount, setOrphanSalesCount] = useState(0);
   const [showOrphanDialog, setShowOrphanDialog] = useState(false);
-
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   useEffect(() => {
@@ -153,7 +149,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
     const { data: salesData } = await supabase
       .from("sales")
-      .select("total_amount")
+      .select("total_amount, payment_method")
       .gte("created_at", `${today}T00:00:00`)
       .eq("payment_status", "paid")
       .eq("is_cancelled", false);
@@ -175,20 +171,24 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .select("amount")
       .gte("created_at", `${today}T00:00:00`);
 
-    const barSalesTotal =
-      salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
-    const ticketSalesTotal =
-      ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
-    const transactionsCount =
-      (salesData?.length || 0) + (ticketData?.length || 0);
-    const grossIncomeTotal =
-      incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
+    const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
+    const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
+    const transactionsCount = (salesData?.length || 0) + (ticketData?.length || 0);
+    const grossIncomeTotal = incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
+    const totalSales = barSalesTotal + ticketSalesTotal;
+    const avgTicket = transactionsCount > 0 ? Math.round(totalSales / transactionsCount) : 0;
+
+    const cashSales = salesData?.filter(s => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
+    const cardSales = salesData?.filter(s => s.payment_method !== "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
 
     setTodayStats({
-      salesToday: barSalesTotal + ticketSalesTotal,
+      salesToday: totalSales,
       transactionsToday: transactionsCount,
       qrsRedeemed: qrCount || 0,
       grossIncome: grossIncomeTotal,
+      avgTicket,
+      cashSales,
+      cardSales,
     });
   };
 
@@ -199,30 +199,21 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .eq("type", "bar")
       .order("name");
 
-    if (!bars?.length) {
-      setBarStatuses([]);
-      return;
-    }
-
-    setBarStatuses(bars.map((bar) => ({
+    setBarStatuses(bars?.map((bar) => ({
       id: bar.id,
       name: bar.name,
       is_active: bar.is_active,
-    })));
+    })) || []);
   };
 
   /* ─── Loading skeleton ─── */
   if (loading) {
     return (
-      <div className="space-y-10">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
-          ))}
-        </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="space-y-6">
+        <Skeleton className="h-40 rounded-lg" />
+        <div className="grid grid-cols-2 gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-56 rounded-lg" />
+            <Skeleton key={i} className="h-24 rounded-lg" />
           ))}
         </div>
       </div>
@@ -230,67 +221,64 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   }
 
   const jornadaActive = jornada?.estado === "activa";
-  const noSales = todayStats.salesToday === 0 && todayStats.transactionsToday === 0;
+  const activeBars = barStatuses.filter(b => b.is_active);
 
   return (
-    <div className="space-y-10">
-      {/* ── No-jornada banner for admin/gerencia ── */}
+    <div className="space-y-5 sm:space-y-8">
+      {/* ── Alerts (compact on mobile) ── */}
       {!jornadaActive && !isReadOnly && (
-        <Alert className="border-amber-500/50 bg-amber-500/10">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="flex items-center justify-between">
-            <span className="text-amber-700 dark:text-amber-200">
-              <strong>Sin jornada activa</strong> — abre una para que el equipo pueda operar.
+        <Alert className="border-amber-500/30 bg-amber-500/5">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-amber-400 text-sm">
+              <strong>Sin jornada activa</strong>
             </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => onNavigate?.("jornadas")}
-              className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
+              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 h-7 text-xs w-fit"
             >
               <Play className="w-3 h-3 mr-1" />
-              Abrir jornada
+              Abrir
             </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {/* ── Orphan Sales Alert ── */}
       {!isReadOnly && orphanSalesCount > 0 && (
-        <Alert className="border-amber-500/50 bg-amber-500/10">
-          <ShieldAlert className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="flex items-center justify-between">
-            <span className="text-amber-700">
-              Hay <strong>{orphanSalesCount}</strong> ventas sin jornada.
-              Debes reasignarlas para que entren al estado de resultados.
+        <Alert className="border-amber-500/30 bg-amber-500/5">
+          <ShieldAlert className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-amber-400 text-sm">
+              <strong>{orphanSalesCount}</strong> ventas sin jornada
             </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowOrphanDialog(true)}
-              className="ml-4 border-amber-500/50 text-amber-700 hover:bg-amber-500/20"
+              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 h-7 text-xs w-fit"
             >
-              Reasignar ventas
+              Reasignar
             </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {/* ── Pending Review Alert ── */}
       {pendingReviewCount > 0 && (
-        <Alert className="border-destructive/50 bg-destructive/10">
+        <Alert className="border-destructive/30 bg-destructive/5">
           <AlertTriangle className="h-4 w-4 text-destructive" />
-          <AlertDescription className="flex items-center justify-between">
-            <span className="text-destructive">
-              <strong>{pendingReviewCount} jornada{pendingReviewCount > 1 ? "s" : ""}</strong> con cierre forzado pendiente{pendingReviewCount > 1 ? "s" : ""} de revisión.
+          <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-destructive text-sm">
+              <strong>{pendingReviewCount}</strong> jornada{pendingReviewCount > 1 ? "s" : ""} pendiente{pendingReviewCount > 1 ? "s" : ""}
             </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => onNavigate?.("jornadas")}
-              className="ml-4 border-destructive/50 text-destructive hover:bg-destructive/10"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 h-7 text-xs w-fit"
             >
-              Ver jornadas
+              Revisar
             </Button>
           </AlertDescription>
         </Alert>
@@ -307,114 +295,89 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       />
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-           BLOQUE 1 — Operación en vivo
+           BLOQUE 1 — Operación en vivo (single card, grid inside)
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+      <section>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Operación en vivo
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Jornada */}
-          {jornadaActive ? (
-            <StatCard
-              label="Jornada"
-              value={`#${jornada!.numero_jornada}`}
-              sub={jornada!.hora_apertura ? `Desde las ${jornada!.hora_apertura}` : undefined}
-              icon={Calendar}
-            />
-          ) : (
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center gap-2 min-h-[112px]">
-                <Calendar className="w-6 h-6 text-muted-foreground opacity-30" />
-                <p className="text-xs text-muted-foreground">
-                  No hay jornada activa.
-                </p>
-                {!isReadOnly && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-1 h-7 text-xs"
-                    onClick={() => onNavigate?.("jornadas")}
-                  >
-                    <Play className="w-3 h-3 mr-1" />
-                    Iniciar jornada
-                  </Button>
+        <Card className="overflow-hidden">
+          {/* Jornada header strip */}
+          <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-border bg-muted/30">
+            {jornadaActive ? (
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="w-3.5 h-3.5 text-primary" />
+                <span className="font-semibold">Jornada #{jornada!.numero_jornada}</span>
+                {jornada!.hora_apertura && (
+                  <span className="text-muted-foreground text-xs flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {jornada!.hora_apertura}
+                  </span>
                 )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Ingresos */}
-          <StatCard
-            label="Ingresos brutos"
-            value={formatCLP(todayStats.grossIncome)}
-            icon={TrendingUp}
-          />
-
-          {/* Ventas */}
-          {noSales ? (
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center gap-1 min-h-[112px]">
-                <DollarSign className="w-5 h-5 text-muted-foreground opacity-30" />
-                <p className="text-xs text-muted-foreground">
-                  Aún no hay ventas en esta jornada.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <StatCard
-              label="Ventas"
-              value={formatCLP(todayStats.salesToday)}
-              sub={`${todayStats.transactionsToday} transacciones`}
-              icon={DollarSign}
-            />
-          )}
-
-          {/* QRs */}
-          <StatCard
-            label="QRs canjeados"
-            value={todayStats.qrsRedeemed}
-            icon={QrCode}
-          />
-
-          {/* Barras activas */}
-          <Card className="relative overflow-hidden">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
-                  Barras
-                </p>
-                <Store className="w-5 h-5 text-muted-foreground opacity-20 shrink-0" />
               </div>
-              {barStatuses.length === 0 ? (
-                <p className="text-xs text-muted-foreground mt-3">Sin barras configuradas</p>
-              ) : (
-                <ul className="mt-3 space-y-1.5">
-                  {barStatuses.filter(b => b.is_active).map((bar) => (
-                    <li key={bar.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-2 h-2 rounded-full shrink-0 bg-primary" />
-                      <span className="truncate">{bar.name}</span>
-                    </li>
-                  ))}
-                  {barStatuses.filter(b => b.is_active).length === 0 && (
-                    <p className="text-xs text-muted-foreground">Ninguna barra activa</p>
-                  )}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Sin jornada activa</span>
+              </div>
+            )}
+            {activeBars.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Store className="w-3 h-3" />
+                <span>{activeBars.length} barra{activeBars.length > 1 ? "s" : ""}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              </div>
+            )}
+          </div>
+
+          {/* Metrics grid */}
+          <CardContent className="p-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border">
+              <MetricCell
+                label="Ingresos brutos"
+                value={formatCLP(todayStats.grossIncome)}
+                icon={TrendingUp}
+              />
+              <MetricCell
+                label="Ventas"
+                value={formatCLP(todayStats.salesToday)}
+                sub={`${todayStats.transactionsToday} tx`}
+                icon={DollarSign}
+              />
+              <MetricCell
+                label="Ticket prom."
+                value={todayStats.avgTicket > 0 ? formatCLP(todayStats.avgTicket) : "—"}
+                icon={Hash}
+              />
+              <MetricCell
+                label="QRs canjeados"
+                value={todayStats.qrsRedeemed}
+                icon={QrCode}
+              />
+              <MetricCell
+                label="Efectivo"
+                value={formatCLP(todayStats.cashSales)}
+                icon={DollarSign}
+              />
+              <MetricCell
+                label="Tarjeta"
+                value={formatCLP(todayStats.cardSales)}
+                icon={DollarSign}
+              />
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
            BLOQUE 2 — KPIs de la jornada
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+      <section>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           KPIs de la jornada
         </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <LiveSalesChart />
           <TopProductsChart />
           <COGSBreakdownPanel compact />
@@ -424,13 +387,11 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
            BLOQUE 3 — Alertas y estado
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+      <section>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Alertas y estado
         </h2>
-        <div className="grid md:grid-cols-1 lg:grid-cols-1 gap-3">
-          <StockAlertsPanel onNavigate={onNavigate} />
-        </div>
+        <StockAlertsPanel onNavigate={onNavigate} />
       </section>
     </div>
   );

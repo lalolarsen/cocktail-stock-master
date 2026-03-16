@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, AlertTriangle, TrendingDown, DollarSign, Warehouse, Wine } from "lucide-react";
+import { Package, AlertTriangle, DollarSign, Warehouse } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStockData } from "@/hooks/useStockData";
 import { formatCLP } from "@/lib/currency";
@@ -16,16 +16,14 @@ export const StatsCards = () => {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-32 rounded-xl" />
+          <Skeleton key={i} className="h-24 rounded-lg" />
         ))}
       </div>
     );
   }
 
-  // Correct valuation: for bottles, stock is in ml and cost_per_unit is per full bottle
-  // → use cost_per_ml = cost_per_unit / capacity_ml
   const calcValue = (stock: number, p: typeof products[number]) => {
     const cap = p.capacity_ml;
     const costPerBase = isBottle(p) && cap && cap > 0 ? p.cost_per_unit / cap : p.cost_per_unit;
@@ -36,69 +34,62 @@ export const StatsCards = () => {
 
   const cards = [
     {
-      title: "Total Productos",
+      title: "Productos",
       value: stats.totalProducts,
       icon: Package,
-      gradient: "primary-gradient",
-      iconColor: "text-primary-foreground",
-      tooltip: "Cantidad de productos registrados en el sistema",
+      tooltip: "Productos registrados en el sistema",
     },
     {
-      title: "Stock Bodega Bajo",
+      title: "Stock bajo",
       value: stats.lowStockProducts,
-      subtitle: "bajo mínimo",
+      sub: "bajo mínimo",
       icon: Warehouse,
-      gradient: "alert-gradient",
-      iconColor: "text-white",
-      tooltip: "Productos con stock en bodega igual o menor al mínimo (para planificar reposición)",
+      alert: stats.lowStockProducts > 0,
+      tooltip: "Productos con stock en bodega bajo el mínimo",
     },
     {
-      title: "Alertas Activas",
+      title: "Alertas",
       value: stats.criticalAlerts,
       icon: AlertTriangle,
-      gradient: "alert-gradient",
-      iconColor: "text-white",
-      pulse: stats.criticalAlerts > 0,
+      alert: stats.criticalAlerts > 0,
       tooltip: "Alertas no leídas de stock bajo o crítico",
     },
     {
-      title: "Valor Inventario Total",
+      title: "Valor inventario",
       value: formatCLP(stats.totalValue),
-      subtitle: `Bodega: ${formatCLP(warehouseTotal)} | Barras: ${formatCLP(barTotal)}`,
+      sub: `Bod ${formatCLP(warehouseTotal)} · Bar ${formatCLP(barTotal)}`,
       icon: DollarSign,
-      gradient: "secondary-gradient",
-      iconColor: "text-secondary-foreground",
-      tooltip: "Valor total del inventario en bodega + barras",
+      tooltip: "Valor total del inventario (bodega + barras)",
     },
   ];
 
   return (
     <TooltipProvider>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
         {cards.map((card, index) => (
           <Tooltip key={index}>
             <TooltipTrigger asChild>
-              <Card
-                className={`${card.gradient} border-0 hover-lift cursor-help ${
-                  card.pulse ? "pulse-glow" : ""
-                }`}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium opacity-90 text-white">
+              <Card className="cursor-help border-border hover:border-muted-foreground/20 transition-colors">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                         {card.title}
                       </p>
-                      <p className="text-3xl font-bold mt-2 text-white">
+                      <p className={`text-lg sm:text-xl font-bold tabular-nums leading-tight ${
+                        card.alert ? "text-amber-400" : "text-foreground"
+                      }`}>
                         {card.value}
                       </p>
-                      {card.subtitle && (
-                        <p className="text-xs opacity-75 mt-1 text-white">
-                          {card.subtitle}
+                      {card.sub && (
+                        <p className="text-[10px] text-muted-foreground leading-tight truncate">
+                          {card.sub}
                         </p>
                       )}
                     </div>
-                    <card.icon className={`h-12 w-12 ${card.iconColor} opacity-80`} />
+                    <card.icon className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      card.alert ? "text-amber-400/60" : "text-muted-foreground/20"
+                    }`} />
                   </div>
                 </CardContent>
               </Card>
