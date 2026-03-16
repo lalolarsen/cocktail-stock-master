@@ -566,7 +566,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [selectedBarId, scannerFrozen, redeemToken, releaseLocks, scheduleAutoReset]);
+  }, [selectedBarId, scannerFrozen, redeemToken, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
 
   // ── Mixer handlers ─────────────────────────────────────────────────────────
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
