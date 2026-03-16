@@ -62,7 +62,7 @@ type ScanHistoryEntry = {
   label: string;
   tokenShort: string;
 };
-type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection" | "delivered_by_selection";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_HISTORY_ENTRIES = 20;
@@ -148,6 +148,9 @@ export default function Bar() {
   const [pendingToken, setPendingToken] = useState("");
   const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
   const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
+
+  // Delivered-by gate
+  const [pendingDeliveredBy, setPendingDeliveredBy] = useState<{ token: string; mixerOverrides: { slot_index: number; product_id: string }[] | null } | null>(null);
 
   // Bar selection
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
@@ -320,10 +323,19 @@ export default function Bar() {
     }, AUTO_RESET_MS);
   }, [clearTimers, focusInput]);
 
+  // ── Resolve delivered-by worker ──────────────────────────────────────────
+  const getActiveBartenders = useCallback((): BarWorker[] => {
+    const list: BarWorker[] = [];
+    if (headBartender) list.push(headBartender);
+    if (secondBartender) list.push(secondBartender);
+    return list;
+  }, [headBartender, secondBartender]);
+
   // ── Redeem token ───────────────────────────────────────────────────────────
   const redeemToken = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
+    deliveredByWorkerId?: string | null,
   ): Promise<RedemptionResult | undefined> => {
     abortRef.current = new AbortController();
     setDebugStep("redeem");
@@ -333,7 +345,7 @@ export default function Bar() {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
         p_mixer_overrides: mixerOverrides || null,
-        p_delivered_by_worker_id: null,
+        p_delivered_by_worker_id: deliveredByWorkerId || null,
       });
       if (abortRef.current?.signal.aborted) return undefined;
       if (error) throw error;
@@ -341,7 +353,7 @@ export default function Bar() {
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
       setDebugStep(r.success ? "done-success" : "done-error");
       setResult(r);
-      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
+      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId, delivered_by: deliveredByWorkerId } });
       const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: r.success ? "SUCCESS" : mapStatus(r.error_code), label: historyLabel(r), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks(r.success ? "success" : "error");
@@ -358,25 +370,53 @@ export default function Bar() {
     }
   }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
-  // ── Best-effort bottle deduction ───────────────────────────────────────────
-  const redeemWithBottleDeduction = useCallback(async (
+  // ── Resolve delivered-by then redeem ────────────────────────────────────────
+  const resolveDeliveredByAndRedeem = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    checks: BottleCheckResult[]
+    bottleChecks?: BottleCheckResult[],
   ) => {
-    const r = await redeemToken(token, mixerOverrides);
-    if (r?.success !== true) return;
-    for (const c of checks) {
-      if (c.required_ml <= 0) continue;
-      try {
-        await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-      } catch (e: any) {
-        console.error("[Bar] Bottle deduction non-blocking:", e);
-        logAuditEvent({ action: "bottle_deduction_failed", status: "fail", metadata: { token: token.slice(-6), product_id: c.product_id, required_ml: c.required_ml, error: e?.message || String(e) } });
-        toast.warning("Canje OK, pero no se pudo registrar consumo de botella (revisar).");
+    const bartenders = getActiveBartenders();
+    if (bartenders.length <= 1) {
+      // Auto-assign: single bartender or none
+      const workerId = bartenders[0]?.id || null;
+      if (bottleChecks?.length) {
+        const r = await redeemToken(token, mixerOverrides, workerId);
+        if (r?.success === true) {
+          for (const c of bottleChecks) {
+            if (c.required_ml <= 0) continue;
+            try {
+              await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
+            } catch (e: any) {
+              console.error("[Bar] Bottle deduction non-blocking:", e);
+              toast.warning("Canje OK, pero no se pudo registrar consumo de botella.");
+            }
+          }
+        }
+      } else {
+        await redeemToken(token, mixerOverrides, workerId);
       }
+    } else {
+      // Multiple bartenders: show picker
+      setPendingDeliveredBy({ token, mixerOverrides });
+      if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      setScanState("delivered_by_selection");
     }
-  }, [redeemToken, openBottlesHook, currentUserId]);
+  }, [getActiveBartenders, redeemToken, openBottlesHook, currentUserId]);
+
+  // ── Handle delivered-by selection ──────────────────────────────────────────
+  const handleDeliveredBySelect = useCallback(async (workerId: string) => {
+    if (!pendingDeliveredBy) return;
+    const { token, mixerOverrides } = pendingDeliveredBy;
+    setPendingDeliveredBy(null);
+    setScanState("processing");
+    await redeemToken(token, mixerOverrides, workerId);
+  }, [pendingDeliveredBy, redeemToken]);
+
+  const handleDeliveredByCancel = useCallback(() => {
+    setPendingDeliveredBy(null);
+    setDebugStep("idle"); releaseLocks("idle"); focusInput();
+  }, [releaseLocks, focusInput]);
 
   // ── Check & auto-open bottles ──────────────────────────────────────────────
   const checkAndProceedWithBottles = useCallback(async (
@@ -385,11 +425,11 @@ export default function Bar() {
   ) => {
     setDebugStep("bottle-check");
     try {
-      if (!selectedBarId) { await redeemToken(token, mixerOverrides); return; }
+      if (!selectedBarId) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const { data: td, error: te } = await supabase.from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
       if (te) throw te;
-      if (!td?.sale_id) { await redeemToken(token, mixerOverrides); return; }
+      if (!td?.sale_id) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const { data: si, error: se } = await supabase.from("sale_items")
         .select("quantity, cocktail_id, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))")
@@ -410,7 +450,7 @@ export default function Bar() {
         }
       }
 
-      if (mlMap.size === 0) { await redeemToken(token, mixerOverrides); return; }
+      if (mlMap.size === 0) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const ingredients = Array.from(mlMap.values());
       const checks = openBottlesHook.checkBottlesForIngredients(ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml })));
@@ -449,7 +489,7 @@ export default function Bar() {
 
       setDebugStep("redeem");
       const forDeduction: BottleCheckResult[] = ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml, available_ml: i.required_ml, sufficient: true, open_bottles: [] }));
-      await redeemWithBottleDeduction(token, mixerOverrides, forDeduction);
+      await resolveDeliveredByAndRedeem(token, mixerOverrides, forDeduction);
     } catch (err: any) {
       const msg = err?.message || "Error al verificar botellas";
       console.error("[Bar][bottles]", err);
@@ -459,7 +499,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, selectedBarId, currentVenueId, currentUserId, releaseLocks, scheduleAutoReset]);
+  }, [openBottlesHook, resolveDeliveredByAndRedeem, selectedBarId, currentVenueId, currentUserId, releaseLocks, scheduleAutoReset]);
 
   checkBottlesRef.current = checkAndProceedWithBottles;
 
@@ -511,11 +551,11 @@ export default function Bar() {
         setScanState("mixer_selection"); return;
       }
 
-      // Direct redeem — no delivered-by gate
+      // Direct redeem — with delivered-by gate
       if (selectedBarId) {
         await checkBottlesRef.current?.(token, null);
       } else {
-        await redeemToken(token, null);
+        await resolveDeliveredByAndRedeem(token, null);
       }
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return;
@@ -526,7 +566,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [selectedBarId, scannerFrozen, redeemToken, releaseLocks, scheduleAutoReset]);
+  }, [selectedBarId, scannerFrozen, redeemToken, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
 
   // ── Mixer handlers ─────────────────────────────────────────────────────────
   const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
@@ -536,7 +576,7 @@ export default function Bar() {
     setPendingToken("");
     try {
       if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
-      else await redeemToken(token, selections);
+      else await resolveDeliveredByAndRedeem(token, selections);
     } catch (err: any) {
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
       releaseLocks("error"); scheduleAutoReset();
@@ -665,11 +705,12 @@ export default function Bar() {
 
   // ── Status badge config ────────────────────────────────────────────────────
   const badgeCfg: Record<ScanState, { ring: string; dot: string; label: string; pulse: boolean }> = {
-    idle:            { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",  pulse: true  },
-    processing:      { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",       pulse: true  },
-    mixer_selection: { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",   pulse: false },
-    success:         { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",      pulse: false },
-    error:           { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
+    idle:                    { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",     pulse: true  },
+    processing:              { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",          pulse: true  },
+    mixer_selection:         { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",      pulse: false },
+    delivered_by_selection:  { ring: "border-amber-400/40 text-amber-400 bg-amber-500/5",    dot: "bg-amber-400",   label: "¿Quién entrega?",       pulse: false },
+    success:                 { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",         pulse: false },
+    error:                   { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
   };
   const badge = badgeCfg[scanState];
 
@@ -741,6 +782,7 @@ export default function Bar() {
               ? <AlertCircle className="w-28 h-28 text-yellow-500" />
               : <XCircle className="w-28 h-28 text-destructive" />)}
             {scanState === "mixer_selection" && <Package className="w-28 h-28 text-primary" />}
+            {scanState === "delivered_by_selection" && <Users className="w-28 h-28 text-amber-500" />}
           </div>
 
           {/* State text */}
@@ -787,6 +829,33 @@ export default function Bar() {
               <>
                 <h1 className="text-xl font-semibold">Seleccionando mixer</h1>
                 <p className="text-muted-foreground text-sm">Elige el tipo de mixer para continuar</p>
+              </>
+            )}
+            {scanState === "delivered_by_selection" && (
+              <>
+                <h1 className="text-2xl font-bold">¿Quién entrega?</h1>
+                <p className="text-muted-foreground text-sm">Selecciona el bartender que entrega</p>
+                <div className="flex flex-col gap-3 mt-4 w-full">
+                  {getActiveBartenders().map(w => (
+                    <Button
+                      key={w.id}
+                      size="lg"
+                      className="h-16 text-lg font-semibold gap-3"
+                      onClick={e => { e.stopPropagation(); handleDeliveredBySelect(w.id); }}
+                    >
+                      <Users className="w-5 h-5" />
+                      {w.full_name || "Bartender"}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground mt-2"
+                    onClick={e => { e.stopPropagation(); handleDeliveredByCancel(); }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
               </>
             )}
           </div>
