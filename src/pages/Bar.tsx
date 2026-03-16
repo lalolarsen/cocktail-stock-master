@@ -782,6 +782,7 @@ export default function Bar() {
               ? <AlertCircle className="w-28 h-28 text-yellow-500" />
               : <XCircle className="w-28 h-28 text-destructive" />)}
             {scanState === "mixer_selection" && <Package className="w-28 h-28 text-primary" />}
+            {scanState === "delivered_by_selection" && <Users className="w-28 h-28 text-amber-500" />}
           </div>
 
           {/* State text */}
