@@ -551,11 +551,11 @@ export default function Bar() {
         setScanState("mixer_selection"); return;
       }
 
-      // Direct redeem — no delivered-by gate
+      // Direct redeem — with delivered-by gate
       if (selectedBarId) {
         await checkBottlesRef.current?.(token, null);
       } else {
-        await redeemToken(token, null);
+        await resolveDeliveredByAndRedeem(token, null);
       }
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return;
