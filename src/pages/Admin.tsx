@@ -24,7 +24,6 @@ import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 
-
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -55,7 +54,7 @@ function HeaderGreeting() {
   if (!name) return null;
 
   return (
-    <span className="text-sm text-muted-foreground">
+    <span className="text-sm text-muted-foreground hidden sm:inline">
       Hola, <span className="font-medium text-foreground">{name}</span>
     </span>
   );
@@ -111,23 +110,23 @@ export default function Admin() {
       case "menu": return "Carta";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
-      case "expenses": return "Declaración de Gastos";
+      case "expenses": return "Gastos";
       case "reports": return "Reportes";
-      case "documents": return "Documentos Electrónicos";
+      case "documents": return "Documentos";
       case "pos": return "Barras y POS";
-      case "inventory": return "Inventario en Tiempo Real";
-      case "replenishment": return "Reposición de Stock";
+      case "inventory": return "Inventario";
+      case "replenishment": return "Reposición";
       case "notifications": return "Notificaciones";
-      case "tickets": return "Tipos de Entrada";
+      case "tickets": return "Entradas";
       case "finance": return "Finanzas";
-      case "income": return "Ingresos Brutos";
+      case "income": return "Ingresos";
       case "proveedores": return "Proveedores";
-      case "courtesy-qr": return "QR de Cortesía";
-      case "waste": return "Merma / Pérdida";
-      case "botellas": return "Botellas Abiertas";
-      case "settings": return "Configuración";
-      case "passline-audit": return "Auditoría Totems Passline";
-      default: return "Panel de Administración";
+      case "courtesy-qr": return "QR Cortesía";
+      case "waste": return "Merma";
+      case "botellas": return "Botellas";
+      case "settings": return "Config";
+      case "passline-audit": return "Passline";
+      default: return "Admin";
     }
   };
 
@@ -137,147 +136,51 @@ export default function Admin() {
         <div className="min-h-screen flex w-full bg-background">
           <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
           
-          <main className="flex-1 overflow-auto">
-            <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3">
+          <main className="flex-1 overflow-auto min-w-0">
+            <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-3 sm:px-6 py-2.5 sm:py-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <SidebarTrigger className="p-2 hover:bg-muted rounded-lg">
+                <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                  <SidebarTrigger className="p-2 hover:bg-muted rounded-lg shrink-0">
                     <Menu className="w-5 h-5" />
                   </SidebarTrigger>
-                  <h1 className="text-lg font-semibold text-foreground tracking-tight">{getViewTitle()}</h1>
+                  <h1 className="text-base sm:text-lg font-semibold text-foreground tracking-tight truncate">{getViewTitle()}</h1>
                 </div>
                 <HeaderGreeting />
               </div>
             </header>
 
-          <div className="p-6 space-y-6 animate-fade-in">
+          <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 animate-fade-in">
             {activeView === "overview" && (
-              <div className="space-y-6">
-                <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
-              </div>
+              <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
             )}
 
-            {activeView === "products" && (
-              <div className="space-y-6">
-                <ProductsList isReadOnly={isReadOnly} />
-              </div>
-            )}
-
-
-            {activeView === "menu" && (
-              <div className="space-y-6">
-                <MenuWrapper isReadOnly={isReadOnly} />
-              </div>
-            )}
+            {activeView === "products" && <ProductsList isReadOnly={isReadOnly} />}
+            {activeView === "menu" && <MenuWrapper isReadOnly={isReadOnly} />}
 
             {activeView === "workers" && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 <WorkersManagementNew isReadOnly={isReadOnly} />
                 {!isReadOnly && <ActivityPanel />}
               </div>
             )}
 
-            {activeView === "jornadas" && !isReadOnly && (
-              <div className="space-y-6">
-                <JornadaManagement />
-              </div>
-            )}
-
-            {activeView === "expenses" && (
-              <div className="space-y-6">
-                <ExpenseDeclaration />
-              </div>
-            )}
-
-            {activeView === "reports" && (
-              <div className="space-y-6">
-                <ReportsPanel />
-              </div>
-            )}
-
-            {activeView === "documents" && (
-              <div className="space-y-6">
-                <DocumentsRetryPanel />
-              </div>
-            )}
-
-            {activeView === "pos" && !isReadOnly && (
-              <div className="space-y-6">
-                <POSBarsManagement />
-              </div>
-            )}
-
-            {activeView === "inventory" && (
-              <div className="space-y-6">
-                <WarehouseInventory isReadOnly={isReadOnly} />
-              </div>
-            )}
-
-            {activeView === "replenishment" && !isReadOnly && (
-              <div className="space-y-6">
-                <BarReplenishment />
-              </div>
-            )}
-
-            {activeView === "notifications" && !isReadOnly && (
-              <div className="space-y-6">
-                <NotificationsManagement />
-              </div>
-            )}
-
-            {activeView === "tickets" && !isReadOnly && (
-              <div className="space-y-6">
-                <TicketTypesManagement />
-              </div>
-            )}
-
-            {activeView === "finance" && (
-              <div className="space-y-6">
-                <FinancePanel />
-              </div>
-            )}
-
-            {activeView === "income" && (
-              <div className="space-y-6">
-                <IncomeDeclarationPanel />
-              </div>
-            )}
-
-            {activeView === "proveedores" && !isReadOnly && (
-              <div className="space-y-6">
-                <ProveedoresPanel />
-              </div>
-            )}
-
-            {activeView === "courtesy-qr" && (
-              <div className="space-y-6">
-                <CourtesyQR />
-              </div>
-            )}
-
-            {activeView === "waste" && !isReadOnly && (
-              <div className="space-y-6">
-                <WasteManagement />
-              </div>
-            )}
-
-            {activeView === "botellas" && (
-              <div className="space-y-6">
-                <OpenBottlesMonitor />
-              </div>
-            )}
-
-            {activeView === "settings" && (
-              <div className="space-y-6">
-                <ReceiptSettingsCard />
-              </div>
-            )}
-
-            {activeView === "passline-audit" && !isReadOnly && (
-              <div className="slide-in-up">
-                <PasslineAuditPanel />
-              </div>
-            )}
+            {activeView === "jornadas" && !isReadOnly && <JornadaManagement />}
+            {activeView === "expenses" && <ExpenseDeclaration />}
+            {activeView === "reports" && <ReportsPanel />}
+            {activeView === "documents" && <DocumentsRetryPanel />}
+            {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
+            {activeView === "inventory" && <WarehouseInventory isReadOnly={isReadOnly} />}
+            {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
+            {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
+            {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
+            {activeView === "finance" && <FinancePanel />}
+            {activeView === "income" && <IncomeDeclarationPanel />}
+            {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
+            {activeView === "courtesy-qr" && <CourtesyQR />}
+            {activeView === "waste" && !isReadOnly && <WasteManagement />}
+            {activeView === "botellas" && <OpenBottlesMonitor />}
+            {activeView === "settings" && <ReceiptSettingsCard />}
+            {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
           </div>
         </main>
       </div>
