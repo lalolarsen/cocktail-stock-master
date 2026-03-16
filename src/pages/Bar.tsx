@@ -149,6 +149,9 @@ export default function Bar() {
   const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
   const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
 
+  // Delivered-by gate
+  const [pendingDeliveredBy, setPendingDeliveredBy] = useState<{ token: string; mixerOverrides: { slot_index: number; product_id: string }[] | null } | null>(null);
+
   // Bar selection
   const [barLocations, setBarLocations] = useState<BarLocation[]>([]);
   const [selectedBarId, setSelectedBarId] = useState("");
