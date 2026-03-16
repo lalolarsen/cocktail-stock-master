@@ -705,11 +705,12 @@ export default function Bar() {
 
   // ── Status badge config ────────────────────────────────────────────────────
   const badgeCfg: Record<ScanState, { ring: string; dot: string; label: string; pulse: boolean }> = {
-    idle:            { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",  pulse: true  },
-    processing:      { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",       pulse: true  },
-    mixer_selection: { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",   pulse: false },
-    success:         { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",      pulse: false },
-    error:           { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
+    idle:                    { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",     pulse: true  },
+    processing:              { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",          pulse: true  },
+    mixer_selection:         { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",      pulse: false },
+    delivered_by_selection:  { ring: "border-amber-400/40 text-amber-400 bg-amber-500/5",    dot: "bg-amber-400",   label: "¿Quién entrega?",       pulse: false },
+    success:                 { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",         pulse: false },
+    error:                   { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
   };
   const badge = badgeCfg[scanState];
 
