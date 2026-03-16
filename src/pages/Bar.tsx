@@ -576,7 +576,7 @@ export default function Bar() {
     setPendingToken("");
     try {
       if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
-      else await redeemToken(token, selections);
+      else await resolveDeliveredByAndRedeem(token, selections);
     } catch (err: any) {
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
       releaseLocks("error"); scheduleAutoReset();
