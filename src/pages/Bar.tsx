@@ -323,10 +323,19 @@ export default function Bar() {
     }, AUTO_RESET_MS);
   }, [clearTimers, focusInput]);
 
+  // ── Resolve delivered-by worker ──────────────────────────────────────────
+  const getActiveBartenders = useCallback((): BarWorker[] => {
+    const list: BarWorker[] = [];
+    if (headBartender) list.push(headBartender);
+    if (secondBartender) list.push(secondBartender);
+    return list;
+  }, [headBartender, secondBartender]);
+
   // ── Redeem token ───────────────────────────────────────────────────────────
   const redeemToken = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
+    deliveredByWorkerId?: string | null,
   ): Promise<RedemptionResult | undefined> => {
     abortRef.current = new AbortController();
     setDebugStep("redeem");
@@ -336,7 +345,7 @@ export default function Bar() {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
         p_mixer_overrides: mixerOverrides || null,
-        p_delivered_by_worker_id: null,
+        p_delivered_by_worker_id: deliveredByWorkerId || null,
       });
       if (abortRef.current?.signal.aborted) return undefined;
       if (error) throw error;
@@ -344,7 +353,7 @@ export default function Bar() {
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
       setDebugStep(r.success ? "done-success" : "done-error");
       setResult(r);
-      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
+      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId, delivered_by: deliveredByWorkerId } });
       const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: r.success ? "SUCCESS" : mapStatus(r.error_code), label: historyLabel(r), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks(r.success ? "success" : "error");
