@@ -89,8 +89,8 @@ export default function CourtesyQR() {
 
   const SOCIOS = [
     { key: "socio_md", label: "Socio: Mauricio Duque" },
-    { key: "socio_gh", label: "Socio: Gabriel Hidalgo" },
     { key: "socio_cs", label: "Socio: Carlos Sinning" },
+    { key: "rrhh_gh", label: "RRHH: Gabriel Hidalgo" },
   ];
 
   // Fetch cocktails for product selection
