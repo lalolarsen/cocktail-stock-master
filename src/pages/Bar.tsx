@@ -370,25 +370,53 @@ export default function Bar() {
     }
   }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
-  // ── Best-effort bottle deduction ───────────────────────────────────────────
-  const redeemWithBottleDeduction = useCallback(async (
+  // ── Resolve delivered-by then redeem ────────────────────────────────────────
+  const resolveDeliveredByAndRedeem = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    checks: BottleCheckResult[]
+    bottleChecks?: BottleCheckResult[],
   ) => {
-    const r = await redeemToken(token, mixerOverrides);
-    if (r?.success !== true) return;
-    for (const c of checks) {
-      if (c.required_ml <= 0) continue;
-      try {
-        await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-      } catch (e: any) {
-        console.error("[Bar] Bottle deduction non-blocking:", e);
-        logAuditEvent({ action: "bottle_deduction_failed", status: "fail", metadata: { token: token.slice(-6), product_id: c.product_id, required_ml: c.required_ml, error: e?.message || String(e) } });
-        toast.warning("Canje OK, pero no se pudo registrar consumo de botella (revisar).");
+    const bartenders = getActiveBartenders();
+    if (bartenders.length <= 1) {
+      // Auto-assign: single bartender or none
+      const workerId = bartenders[0]?.id || null;
+      if (bottleChecks?.length) {
+        const r = await redeemToken(token, mixerOverrides, workerId);
+        if (r?.success === true) {
+          for (const c of bottleChecks) {
+            if (c.required_ml <= 0) continue;
+            try {
+              await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
+            } catch (e: any) {
+              console.error("[Bar] Bottle deduction non-blocking:", e);
+              toast.warning("Canje OK, pero no se pudo registrar consumo de botella.");
+            }
+          }
+        }
+      } else {
+        await redeemToken(token, mixerOverrides, workerId);
       }
+    } else {
+      // Multiple bartenders: show picker
+      setPendingDeliveredBy({ token, mixerOverrides });
+      if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      setScanState("delivered_by_selection");
     }
-  }, [redeemToken, openBottlesHook, currentUserId]);
+  }, [getActiveBartenders, redeemToken, openBottlesHook, currentUserId]);
+
+  // ── Handle delivered-by selection ──────────────────────────────────────────
+  const handleDeliveredBySelect = useCallback(async (workerId: string) => {
+    if (!pendingDeliveredBy) return;
+    const { token, mixerOverrides } = pendingDeliveredBy;
+    setPendingDeliveredBy(null);
+    setScanState("processing");
+    await redeemToken(token, mixerOverrides, workerId);
+  }, [pendingDeliveredBy, redeemToken]);
+
+  const handleDeliveredByCancel = useCallback(() => {
+    setPendingDeliveredBy(null);
+    setDebugStep("idle"); releaseLocks("idle"); focusInput();
+  }, [releaseLocks, focusInput]);
 
   // ── Check & auto-open bottles ──────────────────────────────────────────────
   const checkAndProceedWithBottles = useCallback(async (
@@ -397,11 +425,11 @@ export default function Bar() {
   ) => {
     setDebugStep("bottle-check");
     try {
-      if (!selectedBarId) { await redeemToken(token, mixerOverrides); return; }
+      if (!selectedBarId) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const { data: td, error: te } = await supabase.from("pickup_tokens").select("id, sale_id").eq("token", token).maybeSingle();
       if (te) throw te;
-      if (!td?.sale_id) { await redeemToken(token, mixerOverrides); return; }
+      if (!td?.sale_id) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const { data: si, error: se } = await supabase.from("sale_items")
         .select("quantity, cocktail_id, cocktails:cocktail_id(cocktail_ingredients(quantity, products:product_id(id, name, capacity_ml)))")
@@ -422,7 +450,7 @@ export default function Bar() {
         }
       }
 
-      if (mlMap.size === 0) { await redeemToken(token, mixerOverrides); return; }
+      if (mlMap.size === 0) { await resolveDeliveredByAndRedeem(token, mixerOverrides); return; }
 
       const ingredients = Array.from(mlMap.values());
       const checks = openBottlesHook.checkBottlesForIngredients(ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml })));
@@ -461,7 +489,7 @@ export default function Bar() {
 
       setDebugStep("redeem");
       const forDeduction: BottleCheckResult[] = ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml, available_ml: i.required_ml, sufficient: true, open_bottles: [] }));
-      await redeemWithBottleDeduction(token, mixerOverrides, forDeduction);
+      await resolveDeliveredByAndRedeem(token, mixerOverrides, forDeduction);
     } catch (err: any) {
       const msg = err?.message || "Error al verificar botellas";
       console.error("[Bar][bottles]", err);
@@ -471,7 +499,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [openBottlesHook, redeemToken, redeemWithBottleDeduction, selectedBarId, currentVenueId, currentUserId, releaseLocks, scheduleAutoReset]);
+  }, [openBottlesHook, resolveDeliveredByAndRedeem, selectedBarId, currentVenueId, currentUserId, releaseLocks, scheduleAutoReset]);
 
   checkBottlesRef.current = checkAndProceedWithBottles;
 
