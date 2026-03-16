@@ -830,6 +830,33 @@ export default function Bar() {
                 <p className="text-muted-foreground text-sm">Elige el tipo de mixer para continuar</p>
               </>
             )}
+            {scanState === "delivered_by_selection" && (
+              <>
+                <h1 className="text-2xl font-bold">¿Quién entrega?</h1>
+                <p className="text-muted-foreground text-sm">Selecciona el bartender que entrega</p>
+                <div className="flex flex-col gap-3 mt-4 w-full">
+                  {getActiveBartenders().map(w => (
+                    <Button
+                      key={w.id}
+                      size="lg"
+                      className="h-16 text-lg font-semibold gap-3"
+                      onClick={e => { e.stopPropagation(); handleDeliveredBySelect(w.id); }}
+                    >
+                      <Users className="w-5 h-5" />
+                      {w.full_name || "Bartender"}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground mt-2"
+                    onClick={e => { e.stopPropagation(); handleDeliveredByCancel(); }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Status badge */}
