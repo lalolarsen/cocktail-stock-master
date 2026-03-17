@@ -380,7 +380,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <LiveSalesChart />
           <TopProductsChart />
-          <COGSBreakdownPanel compact />
+          <COGSBreakdownPanel compact jornadaId={jornada?.id} />
         </div>
       </section>
 
