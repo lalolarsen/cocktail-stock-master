@@ -43,12 +43,13 @@ import {
   X,
   Loader2,
   PackageX,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
 import { WasteRegistrationDialog } from "./WasteRegistrationDialog";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────
 interface StockLocation {
@@ -122,7 +123,6 @@ const getStockStatus = (current: number, minimum: number): StockStatus => {
 // ─── Component ──────────────────────────────────────────────
 export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const { venue } = useActiveVenue();
-  
 
   // Data state
   const [locations, setLocations] = useState<StockLocation[]>([]);
@@ -140,10 +140,10 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [showWasteDialog, setShowWasteDialog] = useState(false);
 
-  // Collapsible sections
-  const [outOfStockOpen, setOutOfStockOpen] = useState(true);
-  const [lowStockOpen, setLowStockOpen] = useState(true);
-  const [normalStockOpen, setNormalStockOpen] = useState(false);
+  // Collapsible sections — Admin: OK open first, low/out collapsed
+  const [okStockOpen, setOkStockOpen] = useState(true);
+  const [lowStockOpen, setLowStockOpen] = useState(false);
+  const [outOfStockOpen, setOutOfStockOpen] = useState(false);
 
   // Adjust minimum modal
   const [adjustMinProduct, setAdjustMinProduct] = useState<EnrichedProduct | null>(null);
@@ -177,7 +177,6 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
       setBalances(balResult.data || []);
       setLocationMinimums((minResult.data || []) as LocationMinimum[]);
 
-      // Default to warehouse if exists
       const warehouse = locs.find((l) => l.type === "warehouse");
       if (warehouse && selectedLocationId === "all_bars") {
         setSelectedLocationId(warehouse.id);
@@ -200,7 +199,6 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
     [locations]
   );
 
-  // Location IDs to aggregate for selected filter
   const activeLocationIds = useMemo(() => {
     if (selectedLocationId === "all_bars") {
       return barLocations.map((l) => l.id);
@@ -210,12 +208,10 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
 
   const enrichedProducts: EnrichedProduct[] = useMemo(() => {
     return products.map((product) => {
-      // Sum balances for active locations
       const quantity = balances
         .filter((b) => b.product_id === product.id && activeLocationIds.includes(b.location_id))
         .reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
 
-      // Get effective minimum: per-location if set, else global
       let effectiveMinimum = product.minimum_stock;
       if (activeLocationIds.length === 1) {
         const locMin = locationMinimums.find(
@@ -225,7 +221,6 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
       }
 
       const status: StockStatus = getStockStatus(quantity, effectiveMinimum);
-      // value: for bottles qty is in ml, cost_per_unit is per bottle → use cost_per_ml
       const bottle = isBottle(product);
       const cap = product.capacity_ml;
       const costPerBase = bottle && cap && cap > 0
@@ -254,9 +249,9 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
   }, [enrichedProducts, categoryFilter, chipFilter, searchTerm]);
 
   // Grouped by status
-  const outOfStock = useMemo(() => filteredProducts.filter((p) => p.status === "out"), [filteredProducts]);
+  const okStock = useMemo(() => filteredProducts.filter((p) => p.status === "ok"), [filteredProducts]);
   const lowStock = useMemo(() => filteredProducts.filter((p) => p.status === "low"), [filteredProducts]);
-  const normalStock = useMemo(() => filteredProducts.filter((p) => p.status === "ok"), [filteredProducts]);
+  const outOfStock = useMemo(() => filteredProducts.filter((p) => p.status === "out"), [filteredProducts]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -265,6 +260,31 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
     outOfStock: enrichedProducts.filter((p) => p.status === "out").length,
     totalValue: enrichedProducts.reduce((sum, p) => sum + p.value, 0),
   }), [enrichedProducts]);
+
+  // Per-location value breakdown for Gerencia
+  const valueByLocation = useMemo(() => {
+    const map = new Map<string, { name: string; type: string; value: number; productCount: number }>();
+    locations.forEach((loc) => {
+      const locProducts = products.map((product) => {
+        const qty = balances
+          .filter((b) => b.product_id === product.id && b.location_id === loc.id)
+          .reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+        const bottle = isBottle(product);
+        const cap = product.capacity_ml;
+        const costPerBase = bottle && cap && cap > 0
+          ? (product.cost_per_unit || 0) / cap
+          : (product.cost_per_unit || 0);
+        return { value: qty * costPerBase, hasStock: qty > 0 };
+      });
+      map.set(loc.id, {
+        name: loc.name,
+        type: loc.type,
+        value: locProducts.reduce((s, p) => s + p.value, 0),
+        productCount: locProducts.filter((p) => p.hasStock).length,
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.value - a.value);
+  }, [locations, products, balances]);
 
   // Available subcategories
   const availableSubcategories = useMemo(() => {
@@ -317,13 +337,13 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
     }
   };
 
-  // ─── Render helpers ─────────────────────────────────────
+  // ─── Loading state ─────────────────────────────────────
   if (loading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-24 w-full" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16" />)}
         </div>
         <Skeleton className="h-64 w-full" />
       </div>
@@ -342,140 +362,188 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* ━━━ HEADER ━━━ */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Inventario</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Control de stock por ubicación
-        </p>
-      </div>
-
-      {/* Info hint */}
-      <p className="text-xs text-muted-foreground">
-        Los mínimos y alertas se calculan por ubicación (Bodega / Barras).
-      </p>
-
-      {/* ━━━ INFO BANNER ━━━ */}
-      <div className="border border-border rounded-lg px-4 py-2.5 flex items-start gap-3">
-        <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Los terminales POS no requieren ubicación. El inventario se descuenta al redimir el QR en barra.
-          </p>
-          {infoBannerOpen && (
-            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-              IVA pagado se registra como IVA crédito fiscal. Impuesto específico se registra como impuesto específico (no parte del costo neto). Cada ingreso de stock exige costo neto + IVA + impuesto específico para trazabilidad legal.
-            </p>
-          )}
+  // ═══════════════════════════════════════════════════════════
+  // GERENCIA VIEW — Simplified: value overview + per-location
+  // ═══════════════════════════════════════════════════════════
+  if (isReadOnly) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
         </div>
-        <button
-          onClick={() => setInfoBannerOpen(!infoBannerOpen)}
-          className="text-xs text-primary hover:underline shrink-0"
-        >
-          {infoBannerOpen ? "Ocultar" : "Ver más"}
-        </button>
+
+        {/* Total value KPI */}
+        <Card className="bg-card">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor total inventario</p>
+                <p className="text-2xl sm:text-3xl font-bold tabular-nums mt-1">{formatCLP(stats.totalValue)}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <DollarSign className="h-6 w-6 text-muted-foreground" />
+              </div>
+            </div>
+            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+              <span>{stats.withStock} productos con stock</span>
+              <span>{products.length} productos totales</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Per-location breakdown */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Valor por ubicación
+          </h3>
+          {valueByLocation.map((loc) => {
+            const pct = stats.totalValue > 0 ? (loc.value / stats.totalValue) * 100 : 0;
+            return (
+              <Card key={loc.name} className="bg-card">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {loc.type === "warehouse" ? (
+                        <Warehouse className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="font-medium text-sm">{loc.name}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {loc.type === "warehouse" ? "Bodega" : "Barra"}
+                      </Badge>
+                    </div>
+                    <span className="font-bold tabular-nums text-sm">{formatCLP(loc.value)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Progress value={pct} className="h-1.5 flex-1" />
+                    <span className="text-[11px] text-muted-foreground tabular-nums w-10 text-right">
+                      {pct.toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    {loc.productCount} productos con stock
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // ADMIN VIEW — Full inventory management
+  // ═══════════════════════════════════════════════════════════
+  return (
+    <div className="space-y-4">
+      {/* ━━━ HEADER ━━━ */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Control de stock por ubicación</p>
+        </div>
       </div>
 
-      {/* ━━━ STOCK INTAKE ACTION ━━━ */}
-      {warehouseLocation && !isReadOnly && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="border-border hover:border-primary/40 transition-colors cursor-pointer group" onClick={() => setShowManualEntry(true)}>
-            <CardContent className="flex items-start gap-4 p-5">
-              <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
-                <Plus className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm">Ingreso manual</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Agrega productos a Bodega Principal</p>
-                <Button size="sm" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowManualEntry(true); }}>
-                  Ingresar stock
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border hover:border-destructive/40 transition-colors cursor-pointer group" onClick={() => setShowWasteDialog(true)}>
-            <CardContent className="flex items-start gap-4 p-5">
-              <div className="rounded-lg bg-destructive/10 p-3 group-hover:bg-destructive/20 transition-colors">
-                <Trash2 className="h-6 w-6 text-destructive" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm">Registrar merma</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Botella rota, derrame, producto botado</p>
-                <Button size="sm" variant="destructive" className="mt-3" onClick={(e) => { e.stopPropagation(); setShowWasteDialog(true); }}>
-                  Registrar merma
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      {/* ━━━ STOCK INTAKE ACTIONS ━━━ */}
+      {warehouseLocation && (
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            className="h-auto py-3 px-4 justify-start gap-3"
+            onClick={() => setShowManualEntry(true)}
+          >
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <Plus className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-left">
+              <span className="text-sm font-medium block">Ingreso manual</span>
+              <span className="text-[11px] text-muted-foreground">Agregar a bodega</span>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-auto py-3 px-4 justify-start gap-3"
+            onClick={() => setShowWasteDialog(true)}
+          >
+            <div className="p-1.5 rounded-md bg-destructive/10">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </div>
+            <div className="text-left">
+              <span className="text-sm font-medium block">Registrar merma</span>
+              <span className="text-[11px] text-muted-foreground">Botella rota, derrame</span>
+            </div>
+          </Button>
         </div>
       )}
 
-      {/* ━━━ LOCATION SELECTOR + KPIs ━━━ */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground shrink-0">Ubicación</Label>
-          <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {warehouseLocation && (
-                <SelectItem value={warehouseLocation.id}>
-                  {warehouseLocation.name} (Bodega)
-                </SelectItem>
-              )}
-              {barLocations.length > 0 && (
-                <SelectItem value="all_bars">Todas las barras</SelectItem>
-              )}
-              {barLocations.map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Badge variant="outline" className="text-xs">
-            {selectedLocationName}
-          </Badge>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KPICard
-            icon={<Boxes className="h-4 w-4 text-primary" />}
-            value={stats.withStock}
-            label="Con stock"
-            accent="primary"
-          />
-          <KPICard
-            icon={<TrendingDown className="h-4 w-4 text-warning" />}
-            value={stats.lowStock}
-            label="Bajo mínimo"
-            accent="warning"
-          />
-          <KPICard
-            icon={<PackageX className="h-4 w-4 text-destructive" />}
-            value={stats.outOfStock}
-            label="Sin stock"
-            accent="destructive"
-          />
-          <KPICard
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-            value={formatCLP(stats.totalValue)}
-            label="Valor inventario"
-            accent="muted"
-          />
-        </div>
+      {/* ━━━ LOCATION SELECTOR ━━━ */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+          <SelectTrigger className="w-[200px] h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {warehouseLocation && (
+              <SelectItem value={warehouseLocation.id}>
+                {warehouseLocation.name} (Bodega)
+              </SelectItem>
+            )}
+            {barLocations.length > 0 && (
+              <SelectItem value="all_bars">Todas las barras</SelectItem>
+            )}
+            {barLocations.map((b) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
+      {/* ━━━ KPI STRIP ━━━ */}
+      <div className="grid grid-cols-4 gap-2">
+        <MiniKPI label="Con stock" value={stats.withStock} className="text-primary" />
+        <MiniKPI label="Bajo mín." value={stats.lowStock} className="text-warning" />
+        <MiniKPI label="Sin stock" value={stats.outOfStock} className="text-destructive" />
+        <MiniKPI label="Valor" value={formatCLP(stats.totalValue)} className="text-foreground" />
+      </div>
+
+      {/* Info hint (collapsed) */}
+      <Collapsible open={infoBannerOpen} onOpenChange={setInfoBannerOpen}>
+        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <Info className="h-3 w-3" />
+          <span>Acerca del inventario</span>
+          {infoBannerOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 text-xs text-muted-foreground bg-muted/30 rounded-lg p-3 space-y-1">
+          <p>Los mínimos y alertas se calculan por ubicación (Bodega / Barras).</p>
+          <p>El inventario se descuenta al redimir el QR en barra. IVA pagado se registra como crédito fiscal.</p>
+        </CollapsibleContent>
+      </Collapsible>
+
       {/* ━━━ FILTERS ━━━ */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Buscar..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-8 h-8 text-sm"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              <X className="h-3 w-3 text-muted-foreground" />
+            </button>
+          )}
+        </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[150px] h-8 text-xs">
             <SelectValue placeholder="Categoría" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas las categorías</SelectItem>
+            <SelectItem value="all">Todas</SelectItem>
             <SelectItem value="sin_categoria">Sin categoría</SelectItem>
             {availableSubcategories.map((sub) => (
               <SelectItem key={sub} value={sub}>
@@ -484,43 +552,29 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
             ))}
           </SelectContent>
         </Select>
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar producto..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          )}
-        </div>
-        <div className="flex gap-1.5">
-          {(["all", "out", "low", "ok"] as FilterChip[]).map((chip) => (
+        <div className="flex gap-1">
+          {(["all", "ok", "low", "out"] as FilterChip[]).map((chip) => (
             <button
               key={chip}
               onClick={() => setChipFilter(chip)}
-              className={`px-3 py-1.5 text-xs rounded-md border transition-fast ${
+              className={`px-2.5 py-1 text-[11px] rounded-md border transition-colors ${
                 chipFilter === chip
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-card text-muted-foreground border-border hover:bg-muted"
               }`}
             >
-              {chip === "all" ? "Todos" : chip === "out" ? "Sin stock" : chip === "low" ? "Bajo mínimo" : "Con stock"}
+              {chip === "all" ? "Todos" : chip === "ok" ? "OK" : chip === "low" ? "Bajo" : "Sin"}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ━━━ PRODUCT LIST (Collapsible sections) ━━━ */}
+      {/* ━━━ PRODUCT LIST — Order: OK → Low → Out ━━━ */}
       {filteredProducts.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-muted-foreground">
+          <CardContent className="py-8 text-center">
+            <Package className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground">
               {searchTerm || chipFilter !== "all" || categoryFilter !== "all"
                 ? "Sin resultados para los filtros aplicados"
                 : "No hay productos en el catálogo"}
@@ -529,7 +583,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-3"
+                className="mt-2"
                 onClick={() => { setSearchTerm(""); setChipFilter("all"); setCategoryFilter("all"); }}
               >
                 Limpiar filtros
@@ -538,19 +592,21 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {outOfStock.length > 0 && (
+        <div className="space-y-2">
+          {/* 1. Con stock (OK) — open by default */}
+          {okStock.length > 0 && (
             <StockSection
-              title="Sin Stock"
-              count={outOfStock.length}
-              open={outOfStockOpen}
-              onToggle={setOutOfStockOpen}
-              accent="destructive"
-              products={outOfStock}
+              title="Con Stock"
+              count={okStock.length}
+              open={okStockOpen}
+              onToggle={setOkStockOpen}
+              accent="primary"
+              products={okStock}
               unit={getUnitDisplay}
-              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
+              onAdjustMin={handleOpenAdjustMin}
             />
           )}
+          {/* 2. Bajo mínimo */}
           {lowStock.length > 0 && (
             <StockSection
               title="Bajo Mínimo"
@@ -560,19 +616,20 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
               accent="warning"
               products={lowStock}
               unit={getUnitDisplay}
-              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
+              onAdjustMin={handleOpenAdjustMin}
             />
           )}
-          {normalStock.length > 0 && (
+          {/* 3. Sin stock */}
+          {outOfStock.length > 0 && (
             <StockSection
-              title="Stock Normal"
-              count={normalStock.length}
-              open={normalStockOpen}
-              onToggle={setNormalStockOpen}
-              accent="primary"
-              products={normalStock}
+              title="Sin Stock"
+              count={outOfStock.length}
+              open={outOfStockOpen}
+              onToggle={setOutOfStockOpen}
+              accent="destructive"
+              products={outOfStock}
               unit={getUnitDisplay}
-              onAdjustMin={isReadOnly ? undefined : handleOpenAdjustMin}
+              onAdjustMin={handleOpenAdjustMin}
             />
           )}
         </div>
@@ -627,6 +684,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* ━━━ MANUAL STOCK ENTRY DIALOG ━━━ */}
       {warehouseLocation && (
         <ManualStockEntryDialog
@@ -637,6 +695,7 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
           onStockUpdated={fetchData}
         />
       )}
+
       {/* ━━━ WASTE REGISTRATION DIALOG ━━━ */}
       {selectedLocationId !== "all_bars" && (
         <WasteRegistrationDialog
@@ -662,38 +721,12 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
 
 // ─── Sub-components ─────────────────────────────────────────
 
-
-function KPICard({
-  icon,
-  value,
-  label,
-  accent,
-}: {
-  icon: React.ReactNode;
-  value: number | string;
-  label: string;
-  accent: string;
-}) {
-  const textColor =
-    accent === "destructive"
-      ? "text-destructive"
-      : accent === "warning"
-      ? "text-warning"
-      : accent === "primary"
-      ? "text-primary"
-      : "text-foreground";
+function MiniKPI({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
-    <Card className="bg-card">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-muted">{icon}</div>
-          <div>
-            <p className={`text-2xl font-bold tabular-nums ${textColor}`}>{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-border bg-card p-2.5 text-center">
+      <p className={`text-base sm:text-lg font-bold tabular-nums ${className}`}>{value}</p>
+      <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
+    </div>
   );
 }
 
@@ -723,31 +756,24 @@ function StockSection({
       ? "bg-warning/15 text-warning border-warning/30"
       : "bg-primary/15 text-primary border-primary/30";
 
-  const borderClass =
-    accent === "destructive"
-      ? "border-l-destructive"
-      : accent === "warning"
-      ? "border-l-warning"
-      : "border-l-transparent";
-
   return (
     <Collapsible open={open} onOpenChange={onToggle}>
-      <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-2.5 bg-card border border-border rounded-lg hover:bg-muted/50 transition-fast">
+      <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-2 bg-card border border-border rounded-lg hover:bg-muted/50 transition-colors">
         <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
           <span className="font-semibold text-sm">{title}</span>
-          <Badge variant="outline" className={`text-xs ${badgeClass}`}>
+          <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>
             {count}
           </Badge>
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 space-y-1">
+      <CollapsibleContent className="mt-1 space-y-0.5">
         {products.map((product) => (
           <ProductRow
             key={product.id}
             product={product}
             unit={unit}
-            borderClass={borderClass}
+            accent={accent}
             onAdjustMin={onAdjustMin ? () => onAdjustMin(product) : undefined}
           />
         ))}
@@ -759,18 +785,17 @@ function StockSection({
 function ProductRow({
   product,
   unit,
-  borderClass,
+  accent,
   onAdjustMin,
 }: {
   product: EnrichedProduct;
   unit: (cat: string, u: string) => string;
-  borderClass: string;
+  accent: string;
   onAdjustMin?: () => void;
 }) {
   const unitLabel = unit(product.category, product.unit);
-  const isVolumetric = !!(product.capacity_ml && product.capacity_ml > 0); // source of truth: capacity_ml
-  
-  // Bottle calculation for volumetric products
+  const isVolumetric = !!(product.capacity_ml && product.capacity_ml > 0);
+
   const bottleDisplay = useMemo(() => {
     if (!isVolumetric) return null;
     const stockMl = product.quantity;
@@ -788,113 +813,68 @@ function ProductRow({
       ? 100
       : 0;
 
-  const statusBadge =
-    product.status === "out" ? (
-      <Badge variant="destructive" className="text-[10px] px-2 py-0.5">Agotado</Badge>
-    ) : product.status === "low" ? (
-      <Badge className="bg-warning/15 text-warning border border-warning/30 text-[10px] px-2 py-0.5">Bajo mínimo</Badge>
-    ) : (
-      <Badge variant="secondary" className="text-[10px] px-2 py-0.5">OK</Badge>
-    );
+  const borderColor =
+    accent === "destructive"
+      ? "border-l-destructive"
+      : accent === "warning"
+      ? "border-l-warning"
+      : "border-l-primary/30";
 
-  // Cost display: for bottles → per-bottle + per-ml; for units → per-unit
   const costDisplay = useMemo(() => {
     const cost = product.cost_per_unit;
     if (!cost || cost <= 0) return null;
     if (isVolumetric && product.capacity_ml) {
-      const perMl = cost / product.capacity_ml;
-      return {
-        bottle: formatCLP(cost),
-        perMl: `≈ ${formatCLP(Math.round(perMl * 100) / 100)}/ml`,
-      };
+      return formatCLP(cost) + "/bot.";
     }
-    return { unit: formatCLP(cost) };
+    return formatCLP(cost) + "/ud";
   }, [isVolumetric, product.cost_per_unit, product.capacity_ml]);
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg border-l-2 ${borderClass} hover:bg-muted/30 transition-fast`}>
-      {/* Left: Name + SKU + Badge */}
+    <div className={`flex items-center gap-2 px-3 py-2 bg-card border border-border rounded-md border-l-2 ${borderColor} hover:bg-muted/20 transition-colors`}>
+      {/* Name + meta */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-medium text-sm truncate">{product.name}</h4>
-          <span className="text-[10px] text-muted-foreground font-mono">{product.code}</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-medium text-sm truncate">{product.name}</span>
           {product.subcategory && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            <span className="text-[10px] text-muted-foreground">
               {subcategoryLabels[product.subcategory] || product.subcategory}
-            </Badge>
-          )}
-          {isVolumetric && product.capacity_ml && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-              {product.capacity_ml}ml
-            </Badge>
+            </span>
           )}
         </div>
-        {/* Stock display */}
-        <div className="flex items-center gap-3 mt-1.5">
-          <Progress value={pct} className="h-1.5 w-20" />
-          {bottleDisplay ? (
-            <span className="text-[11px] text-muted-foreground">
-              <span className="font-semibold text-foreground">
+        <div className="flex items-center gap-2 mt-1">
+          <Progress value={pct} className="h-1 w-16" />
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {bottleDisplay ? (
+              <>
                 {bottleDisplay.fullBottles} bot.
-                {bottleDisplay.openPercent > 0 && ` + ${bottleDisplay.openPercent}%`}
-              </span>
-              {" "}
-              <span className="text-muted-foreground">({product.quantity.toLocaleString()} ml)</span>
-              {" / Mín: "}
-              {product.effectiveMinimum} {unitLabel}
-            </span>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">
-              {product.quantity.toLocaleString()} {unitLabel} / Mín: {product.effectiveMinimum} {unitLabel}
-            </span>
-          )}
-        </div>
-        {/* Cost display */}
-        {costDisplay && (
-          <div className="mt-1 text-[11px]">
-            {'bottle' in costDisplay ? (
-              <span className="text-muted-foreground">
-                CPP: <span className="font-medium text-foreground">{costDisplay.bottle}/bot.</span>
-                {" "}
-                <span className="text-muted-foreground/70">{costDisplay.perMl}</span>
-              </span>
+                {bottleDisplay.openPercent > 0 && ` +${bottleDisplay.openPercent}%`}
+                {" · "}Mín {product.effectiveMinimum} {unitLabel}
+              </>
             ) : (
-              <span className="text-muted-foreground">
-                CPP: <span className="font-medium text-foreground">{costDisplay.unit}/ud</span>
-              </span>
+              <>
+                {product.quantity.toLocaleString()} {unitLabel} · Mín {product.effectiveMinimum}
+              </>
             )}
-          </div>
-        )}
+          </span>
+        </div>
       </div>
 
-      {/* Right: Quantity + Value + Status + Actions */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Right: value + cost + actions */}
+      <div className="flex items-center gap-2 shrink-0">
         <div className="text-right">
-          {bottleDisplay ? (
-            <>
-              <p className="text-sm font-bold tabular-nums">
-                {bottleDisplay.fullBottles}{bottleDisplay.openPercent > 0 ? `+${bottleDisplay.openPercent}%` : ""}
-              </p>
-              <p className="text-[10px] text-muted-foreground">{formatCLP(product.value)}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-bold tabular-nums">{product.quantity.toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground">{formatCLP(product.value)}</p>
-            </>
+          <p className="text-sm font-bold tabular-nums">{formatCLP(product.value)}</p>
+          {costDisplay && (
+            <p className="text-[10px] text-muted-foreground">{costDisplay}</p>
           )}
         </div>
-        {statusBadge}
         {onAdjustMin && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
+          <button
+            className="p-1.5 rounded-md hover:bg-muted transition-colors"
             title="Ajustar mínimo"
             onClick={(e) => { e.stopPropagation(); onAdjustMin(); }}
           >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-          </Button>
+            <SlidersHorizontal className="h-3 w-3 text-muted-foreground" />
+          </button>
         )}
       </div>
     </div>
