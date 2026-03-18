@@ -61,11 +61,6 @@ interface IncomeBreakdown {
   total: number;
 }
 
-interface CostOfSales {
-  total_cost: number;
-  products_count: number;
-  items_count: number;
-}
 
 interface Expense {
   id: string;
@@ -97,10 +92,12 @@ export default function IncomeStatement() {
 
   // Data
   const [incomeBreakdown, setIncomeBreakdown] = useState<IncomeBreakdown>({ sale: 0, ticket: 0, manual: 0, total: 0 });
-  const [costOfSales, setCostOfSales] = useState<CostOfSales>({ total_cost: 0, products_count: 0, items_count: 0 });
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomeEntries, setIncomeEntries] = useState<any[]>([]);
   const [frozenSummary, setFrozenSummary] = useState<FrozenSummary | null>(null);
+
+  // COGS from useCOGSData hook — single source of truth
+  const { summary: cogsSummary, byProduct: cogsByProduct, byCategory: cogsByCategory, loading: cogsLoading } = useCOGSData(dateRange, selectedJornadaId || undefined);
 
   // Collapsible sections
   const [incomeOpen, setIncomeOpen] = useState(false);
@@ -161,7 +158,7 @@ export default function IncomeStatement() {
             
             // Set breakdown from frozen data
             setIncomeBreakdown({ sale: 0, ticket: 0, manual: 0, total: summary.gross_sales_total });
-            setCostOfSales({ total_cost: 0, products_count: 0, items_count: 0 });
+            // COGS handled by hook
             setExpenses([{ 
               id: 'frozen', 
               description: 'Gastos (snapshot)', 
@@ -201,21 +198,7 @@ export default function IncomeStatement() {
       });
       setIncomeBreakdown(breakdown);
 
-      // Fetch cost of sales using the function
-      const { data: costData } = await supabase.rpc("get_cost_of_sales_by_date_range", {
-        p_from_date: fromDate,
-        p_to_date: toDate,
-      });
-      
-      if (costData && costData.length > 0) {
-        setCostOfSales({
-          total_cost: costData[0].total_cost || 0,
-          products_count: costData[0].products_count || 0,
-          items_count: costData[0].items_count || 0,
-        });
-      } else {
-        setCostOfSales({ total_cost: 0, products_count: 0, items_count: 0 });
-      }
+      // COGS is now handled by useCOGSData hook (reactive to dateRange/jornadaId)
 
       // Fetch expenses
       let expensesQuery = supabase
@@ -238,9 +221,10 @@ export default function IncomeStatement() {
     }
   };
 
-  // Calculated values
+  // Calculated values — COGS comes from useCOGSData hook
+  const liveCogs = cogsSummary.total_cogs;
   const totalExpenses = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
-  const grossProfit = useMemo(() => incomeBreakdown.total - costOfSales.total_cost, [incomeBreakdown, costOfSales]);
+  const grossProfit = useMemo(() => incomeBreakdown.total - liveCogs, [incomeBreakdown, liveCogs]);
   const grossMargin = useMemo(() => 
     incomeBreakdown.total > 0 ? (grossProfit / incomeBreakdown.total) * 100 : 0,
   [grossProfit, incomeBreakdown]);
@@ -248,12 +232,11 @@ export default function IncomeStatement() {
 
   // Use frozen data if available for display
   const displayIngresos = frozenSummary ? frozenSummary.gross_sales_total : incomeBreakdown.total;
-  const displayCosto = frozenSummary ? (frozenSummary.gross_sales_total - frozenSummary.net_sales_total) : costOfSales.total_cost;
+  const frozenCogs = (frozenSummary as any)?.cogs_total;
+  const displayCosto = frozenSummary ? (frozenCogs ?? liveCogs) : liveCogs;
   const displayGastos = frozenSummary ? frozenSummary.expenses_total : totalExpenses;
-  const displayUtilidad = frozenSummary ? frozenSummary.net_sales_total : grossProfit;
-  const displayMargen = frozenSummary 
-    ? (frozenSummary.gross_sales_total > 0 ? ((frozenSummary.net_sales_total / frozenSummary.gross_sales_total) * 100) : 0) 
-    : grossMargin;
+  const displayUtilidad = frozenSummary ? (frozenSummary.gross_sales_total - (frozenCogs ?? 0)) : grossProfit;
+  const displayMargen = displayIngresos > 0 ? (displayUtilidad / displayIngresos) * 100 : 0;
   const displayResultado = frozenSummary ? frozenSummary.net_operational_result : netResult;
 
   // Presets
@@ -561,7 +544,10 @@ export default function IncomeStatement() {
                 dateRange={dateRange}
                 jornadaId={selectedJornadaId}
                 displayCosto={displayCosto}
-                costOfSales={costOfSales}
+                cogsSummary={cogsSummary}
+                cogsByProduct={cogsByProduct}
+                cogsByCategory={cogsByCategory}
+                cogsLoading={cogsLoading}
                 costOpen={costOpen}
                 setCostOpen={setCostOpen}
                 frozenSummary={frozenSummary}
@@ -670,22 +656,25 @@ interface COGSDetailSectionProps {
   dateRange?: DateRange;
   jornadaId?: string;
   displayCosto: number;
-  costOfSales: CostOfSales;
+  cogsSummary: import("@/hooks/useCOGSData").COGSSummary;
+  cogsByProduct: import("@/hooks/useCOGSData").COGSByProduct[];
+  cogsByCategory: import("@/hooks/useCOGSData").COGSByCategory[];
+  cogsLoading: boolean;
   costOpen: boolean;
   setCostOpen: (open: boolean) => void;
   frozenSummary: FrozenSummary | null;
 }
 
 function COGSDetailSection({
-  dateRange,
-  jornadaId,
   displayCosto,
-  costOfSales,
+  cogsSummary: summary,
+  cogsByProduct: byProduct,
+  cogsByCategory: byCategory,
+  cogsLoading: loading,
   costOpen,
   setCostOpen,
   frozenSummary,
 }: COGSDetailSectionProps) {
-  const { summary, byProduct, byCategory, loading } = useCOGSData(dateRange, jornadaId);
 
   return (
     <Collapsible open={costOpen} onOpenChange={setCostOpen}>
