@@ -203,21 +203,7 @@ export default function IncomeStatement() {
       });
       setIncomeBreakdown(breakdown);
 
-      // Fetch cost of sales using the function
-      const { data: costData } = await supabase.rpc("get_cost_of_sales_by_date_range", {
-        p_from_date: fromDate,
-        p_to_date: toDate,
-      });
-      
-      if (costData && costData.length > 0) {
-        setCostOfSales({
-          total_cost: costData[0].total_cost || 0,
-          products_count: costData[0].products_count || 0,
-          items_count: costData[0].items_count || 0,
-        });
-      } else {
-        setCostOfSales({ total_cost: 0, products_count: 0, items_count: 0 });
-      }
+      // COGS is now handled by useCOGSData hook (reactive to dateRange/jornadaId)
 
       // Fetch expenses
       let expensesQuery = supabase
