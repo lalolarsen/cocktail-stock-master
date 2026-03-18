@@ -18,10 +18,8 @@ import {
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
-import { LiveSalesChart } from "./overview/LiveSalesChart";
-import { TopProductsChart } from "./overview/TopProductsChart";
+import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
-import { COGSBreakdownPanel } from "./overview/COGSBreakdownPanel";
 
 interface Jornada {
   id: string;
@@ -377,11 +375,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           KPIs de la jornada
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <LiveSalesChart />
-          <TopProductsChart />
-          <COGSBreakdownPanel compact jornadaId={jornada?.id} />
-        </div>
+        <JornadaKPIPanel jornadaId={jornada?.id} />
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
