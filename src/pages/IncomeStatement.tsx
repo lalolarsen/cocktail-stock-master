@@ -97,10 +97,12 @@ export default function IncomeStatement() {
 
   // Data
   const [incomeBreakdown, setIncomeBreakdown] = useState<IncomeBreakdown>({ sale: 0, ticket: 0, manual: 0, total: 0 });
-  const [costOfSales, setCostOfSales] = useState<CostOfSales>({ total_cost: 0, products_count: 0, items_count: 0 });
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomeEntries, setIncomeEntries] = useState<any[]>([]);
   const [frozenSummary, setFrozenSummary] = useState<FrozenSummary | null>(null);
+
+  // COGS from useCOGSData hook — single source of truth
+  const { summary: cogsSummary, byProduct: cogsByProduct, byCategory: cogsByCategory, loading: cogsLoading } = useCOGSData(dateRange, selectedJornadaId || undefined);
 
   // Collapsible sections
   const [incomeOpen, setIncomeOpen] = useState(false);
