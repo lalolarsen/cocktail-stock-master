@@ -226,9 +226,10 @@ export default function IncomeStatement() {
     }
   };
 
-  // Calculated values
+  // Calculated values — COGS comes from useCOGSData hook
+  const liveCogs = cogsSummary.total_cogs;
   const totalExpenses = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
-  const grossProfit = useMemo(() => incomeBreakdown.total - costOfSales.total_cost, [incomeBreakdown, costOfSales]);
+  const grossProfit = useMemo(() => incomeBreakdown.total - liveCogs, [incomeBreakdown, liveCogs]);
   const grossMargin = useMemo(() => 
     incomeBreakdown.total > 0 ? (grossProfit / incomeBreakdown.total) * 100 : 0,
   [grossProfit, incomeBreakdown]);
@@ -236,12 +237,11 @@ export default function IncomeStatement() {
 
   // Use frozen data if available for display
   const displayIngresos = frozenSummary ? frozenSummary.gross_sales_total : incomeBreakdown.total;
-  const displayCosto = frozenSummary ? (frozenSummary.gross_sales_total - frozenSummary.net_sales_total) : costOfSales.total_cost;
+  const frozenCogs = (frozenSummary as any)?.cogs_total;
+  const displayCosto = frozenSummary ? (frozenCogs ?? liveCogs) : liveCogs;
   const displayGastos = frozenSummary ? frozenSummary.expenses_total : totalExpenses;
-  const displayUtilidad = frozenSummary ? frozenSummary.net_sales_total : grossProfit;
-  const displayMargen = frozenSummary 
-    ? (frozenSummary.gross_sales_total > 0 ? ((frozenSummary.net_sales_total / frozenSummary.gross_sales_total) * 100) : 0) 
-    : grossMargin;
+  const displayUtilidad = frozenSummary ? (frozenSummary.gross_sales_total - (frozenCogs ?? 0)) : grossProfit;
+  const displayMargen = displayIngresos > 0 ? (displayUtilidad / displayIngresos) * 100 : 0;
   const displayResultado = frozenSummary ? frozenSummary.net_operational_result : netResult;
 
   // Presets
