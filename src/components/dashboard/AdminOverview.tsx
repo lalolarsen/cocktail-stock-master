@@ -18,10 +18,8 @@ import {
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
-import { LiveSalesChart } from "./overview/LiveSalesChart";
-import { TopProductsChart } from "./overview/TopProductsChart";
+import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
-import { COGSBreakdownPanel } from "./overview/COGSBreakdownPanel";
 
 interface Jornada {
   id: string;
