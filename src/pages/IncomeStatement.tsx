@@ -549,7 +549,10 @@ export default function IncomeStatement() {
                 dateRange={dateRange}
                 jornadaId={selectedJornadaId}
                 displayCosto={displayCosto}
-                costOfSales={costOfSales}
+                cogsSummary={cogsSummary}
+                cogsByProduct={cogsByProduct}
+                cogsByCategory={cogsByCategory}
+                cogsLoading={cogsLoading}
                 costOpen={costOpen}
                 setCostOpen={setCostOpen}
                 frozenSummary={frozenSummary}
