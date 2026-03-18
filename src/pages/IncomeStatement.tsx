@@ -661,22 +661,25 @@ interface COGSDetailSectionProps {
   dateRange?: DateRange;
   jornadaId?: string;
   displayCosto: number;
-  costOfSales: CostOfSales;
+  cogsSummary: import("@/hooks/useCOGSData").COGSSummary;
+  cogsByProduct: import("@/hooks/useCOGSData").COGSByProduct[];
+  cogsByCategory: import("@/hooks/useCOGSData").COGSByCategory[];
+  cogsLoading: boolean;
   costOpen: boolean;
   setCostOpen: (open: boolean) => void;
   frozenSummary: FrozenSummary | null;
 }
 
 function COGSDetailSection({
-  dateRange,
-  jornadaId,
   displayCosto,
-  costOfSales,
+  cogsSummary: summary,
+  cogsByProduct: byProduct,
+  cogsByCategory: byCategory,
+  cogsLoading: loading,
   costOpen,
   setCostOpen,
   frozenSummary,
 }: COGSDetailSectionProps) {
-  const { summary, byProduct, byCategory, loading } = useCOGSData(dateRange, jornadaId);
 
   return (
     <Collapsible open={costOpen} onOpenChange={setCostOpen}>
