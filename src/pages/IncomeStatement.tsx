@@ -61,11 +61,6 @@ interface IncomeBreakdown {
   total: number;
 }
 
-interface CostOfSales {
-  total_cost: number;
-  products_count: number;
-  items_count: number;
-}
 
 interface Expense {
   id: string;
