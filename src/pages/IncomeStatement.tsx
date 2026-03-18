@@ -163,7 +163,7 @@ export default function IncomeStatement() {
             
             // Set breakdown from frozen data
             setIncomeBreakdown({ sale: 0, ticket: 0, manual: 0, total: summary.gross_sales_total });
-            setCostOfSales({ total_cost: 0, products_count: 0, items_count: 0 });
+            // COGS handled by hook
             setExpenses([{ 
               id: 'frozen', 
               description: 'Gastos (snapshot)', 
