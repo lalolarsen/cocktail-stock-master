@@ -887,17 +887,6 @@ export default function Bar() {
           </div>
         )}
 
-        {/* ── Mixer dialog ── */}
-        {scanState === "mixer_selection" && (
-          <MixerSelectionDialog
-            mixerSlots={mixerSlots}
-            locationId={selectedBarId}
-            venueId={currentVenueId}
-            isLoading={isRedeemingWithMixer}
-            onConfirm={handleMixerConfirm}
-            onCancel={handleMixerCancel}
-          />
-        )}
 
         {/* ── Manual entry dialog ── */}
         <Dialog open={showManualEntry} onOpenChange={open => { setShowManualEntry(open); if (!open) { setManualToken(""); setTimeout(focusInput, 200); } }}>
