@@ -168,8 +168,6 @@ export const CategoryRecipeEditor = ({
             updateEntry(i, {
               product_id: v === "__placeholder__" ? "" : v,
               ingredient_type: "UD",
-              is_mixer_slot: false,
-              mixer_category: undefined,
             })
           }
         >
