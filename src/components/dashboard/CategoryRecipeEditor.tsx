@@ -90,7 +90,7 @@ export const CategoryRecipeEditor = ({
   const addMlIngredient = () => {
     onChange([
       ...ingredients,
-      { product_id: "", quantity: 0, ingredient_type: "ML", is_mixer_slot: false },
+      { product_id: "", quantity: 0, ingredient_type: "ML" },
     ]);
   };
 
