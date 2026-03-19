@@ -314,12 +314,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     }
   };
 
-  /** Map UI mixer_category → DB string expected by cocktail_ingredients */
-  const toDBMixerCategory = (cat: string | undefined): string => {
-    if (cat === "REDBULL") return "redbull";
-    return "latas";
-  };
-
   const handleSave = async () => {
     if (!selectedCocktail) return;
 
