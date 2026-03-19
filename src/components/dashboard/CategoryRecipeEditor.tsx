@@ -269,63 +269,55 @@ export const CategoryRecipeEditor = ({
     ));
 
   const renderMixerRows = () =>
-    mixerEntries.map(({ ing, i }) => {
-      const isTrad = ing.mixer_category !== "REDBULL";
-      const availableProducts = isTrad ? mixerTrad : mixerRedbull;
-      const accentClass = isTrad
-        ? "border-blue-200 bg-blue-50/50"
-        : "border-yellow-200 bg-yellow-50/50";
-
-      return (
-        <div
-          key={i}
-          className={`flex gap-2 items-center p-2 rounded-lg border ${accentClass}`}
+    mixerEntries.map(({ ing, i }) => (
+      <div
+        key={i}
+        className="flex gap-2 items-center p-2 rounded-lg border border-cyan-200 bg-cyan-50/50"
+      >
+        <Badge variant="outline" className="shrink-0 text-[10px]">
+          🥤 Lata/RB
+        </Badge>
+        <Select
+          value={ing.product_id || "__any__"}
+          onValueChange={(v) =>
+            updateEntry(i, { product_id: v === "__any__" ? "" : v })
+          }
         >
-          <Badge variant="outline" className="shrink-0 text-[10px]">
-            {isTrad ? "🥤 Trad." : "⚡ RB"}
-          </Badge>
-          <Select
-            value={ing.product_id || "__any__"}
-            onValueChange={(v) =>
-              updateEntry(i, { product_id: v === "__any__" ? "" : v })
-            }
-          >
-            <SelectTrigger className="flex-1 bg-background">
-              <SelectValue placeholder="Cualquiera (variable)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__any__">
-                Cualquiera (elegido en barra)
+          <SelectTrigger className="flex-1 bg-background">
+            <SelectValue placeholder="Cualquiera (variable)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__any__">
+              Cualquiera (elegido en barra)
+            </SelectItem>
+            {mixerProducts.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
               </SelectItem>
-              {availableProducts.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="number"
-            className="w-20 bg-background"
-            placeholder="ud"
-            value={ing.quantity || ""}
-            onChange={(e) =>
-              updateEntry(i, { quantity: Number(e.target.value) })
-            }
-          />
-          <span className="text-xs text-muted-foreground w-5">ud</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => removeEntry(i)}
-            className="h-9 w-9 text-destructive"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      );
-    });
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          className="w-20 bg-background"
+          placeholder="ud"
+          value={ing.quantity || ""}
+          onChange={(e) =>
+            updateEntry(i, { quantity: Number(e.target.value) })
+          }
+        />
+        <span className="text-xs text-muted-foreground w-5">ud</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => removeEntry(i)}
+          className="h-9 w-9 text-destructive"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    ));
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
