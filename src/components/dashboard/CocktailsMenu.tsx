@@ -248,17 +248,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     setExpandedCategories(newExpanded);
   };
 
-  /**
-   * Map DB mixer_category ('latas'|'redbull'|'MIXER_TRADICIONAL'|'REDBULL')
-   * to the canonical UI values used by CategoryRecipeEditor.
-   */
-  const toUIMixerCategory = (raw: string | null | undefined): "MIXER_TRADICIONAL" | "REDBULL" | undefined => {
-    if (!raw) return "MIXER_TRADICIONAL";
-    const n = raw.toUpperCase();
-    if (n === "REDBULL" || n.includes("REDBULL")) return "REDBULL";
-    return "MIXER_TRADICIONAL";
-  };
-
   const handleEditClick = (cocktail: CocktailWithIngredients) => {
     setSelectedCocktail(cocktail);
     setEditForm({
@@ -267,12 +256,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       price: cocktail.price,
       category: cocktail.category,
       ingredients: cocktail.ingredients.map((ing: any) => {
-        const isMixer = ing.is_mixer_slot || false;
-        // Determine ingredient_type explicitly from DB data
-        let ingredient_type: "ML" | "UD" | "MIXER" = "UD";
-        if (isMixer) {
-          ingredient_type = "MIXER";
-        } else if ((ing.product_capacity_ml ?? 0) > 0) {
+        let ingredient_type: "ML" | "UD" = "UD";
+        if ((ing.product_capacity_ml ?? 0) > 0) {
           ingredient_type = "ML";
         } else if (ing.product_unit === "ml" || (ing.product_category ?? "").toLowerCase().includes("botella")) {
           ingredient_type = "ML";
@@ -281,8 +266,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           product_id: ing.product_id || "",
           quantity: ing.quantity,
           ingredient_type,
-          is_mixer_slot: isMixer,
-          mixer_category: isMixer ? toUIMixerCategory(ing.mixer_category) : undefined,
+          is_mixer_slot: false,
         } as IngredientEntry;
       }),
     });
