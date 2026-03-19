@@ -390,34 +390,18 @@ export const CategoryRecipeEditor = ({
             </p>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addMixerTrad}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            🥤 Mixer Tradicional
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addMixerRedbull}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            ⚡ Red Bull
-          </Button>
-        </div>
-        {(mixerTrad.length === 0 || mixerRedbull.length === 0) && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addMixer}
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          🥤 Agregar Lata/Redbull
+        </Button>
+        {mixerProducts.length === 0 && (
           <p className="text-[11px] text-muted-foreground">
-            {mixerTrad.length === 0 && (
-              <span>Sin productos en "Mixers tradicionales" en /Productos. </span>
-            )}
-            {mixerRedbull.length === 0 && (
-              <span>Sin productos en "Redbull" en /Productos.</span>
-            )}
+            Sin productos en "Latas/Redbull" en /Productos.
           </p>
         )}
       </div>
