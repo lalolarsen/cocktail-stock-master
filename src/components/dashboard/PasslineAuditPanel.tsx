@@ -103,7 +103,6 @@ interface Jornada {
 interface CocktailIngredient {
   product_id: string;
   quantity: number;
-  is_mixer_slot: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
