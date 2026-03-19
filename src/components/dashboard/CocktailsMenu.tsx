@@ -208,8 +208,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             id,
             product_id,
             quantity,
-            is_mixer_slot,
-            mixer_category,
             products (
               name,
               category,
@@ -219,26 +217,15 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           `)
           .eq("cocktail_id", cocktail.id);
 
-        const ingredients = (ingredientsData || []).map((ing: any) => {
-          const isMixer = ing.is_mixer_slot || false;
-          let displayName = ing.products?.name || "";
-          if (isMixer) {
-            displayName = ing.mixer_category === "redbull"
-              ? "Mixer Red Bull (variable)"
-              : "Mixer Latas (variable)";
-          }
-          return {
-            id: ing.id,
-            product_id: ing.product_id,
-            quantity: ing.quantity,
-            is_mixer_slot: isMixer,
-            mixer_category: ing.mixer_category || null,
-            product_name: displayName,
-            product_category: ing.products?.category || "",
-            product_unit: ing.products?.unit || "",
-            product_capacity_ml: ing.products?.capacity_ml ?? null,
-          };
-        });
+        const ingredients = (ingredientsData || []).map((ing: any) => ({
+          id: ing.id,
+          product_id: ing.product_id,
+          quantity: ing.quantity,
+          product_name: ing.products?.name || "",
+          product_category: ing.products?.category || "",
+          product_unit: ing.products?.unit || "",
+          product_capacity_ml: ing.products?.capacity_ml ?? null,
+        }));
 
         return {
           ...cocktail,
