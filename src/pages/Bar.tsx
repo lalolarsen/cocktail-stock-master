@@ -733,7 +733,7 @@ export default function Bar() {
             {scanState === "error" && (result?.error_code === "ALREADY_REDEEMED"
               ? <AlertCircle className="w-28 h-28 text-yellow-500" />
               : <XCircle className="w-28 h-28 text-destructive" />)}
-            {scanState === "mixer_selection" && <Package className="w-28 h-28 text-primary" />}
+            
             {scanState === "delivered_by_selection" && <Users className="w-28 h-28 text-amber-500" />}
           </div>
 
