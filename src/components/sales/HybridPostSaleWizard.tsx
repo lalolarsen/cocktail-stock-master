@@ -55,54 +55,17 @@ export function HybridPostSaleWizard({
   pickupShortCode,
   onComplete,
 }: HybridPostSaleWizardProps) {
-  const [step, setStep] = useState<WizardStep>("checking_mixer");
-  const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
-  const [mixerSelections, setMixerSelections] = useState<{ slot_index: number; product_id: string }[] | null>(null);
+  const [step, setStep] = useState<WizardStep>("processing");
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [missingItems, setMissingItems] = useState<Array<{ product_name: string; required: number; available: number; unit: string }>>([]);
   const [consumedIngredients, setConsumedIngredients] = useState<Array<{ product_name: string; quantity: number }>>([]);
   const [showReprintQR, setShowReprintQR] = useState(false);
 
-  // Step 1: Check if mixer selection is needed
+  // Auto-redeem on mount
   useEffect(() => {
-    checkMixerRequirements();
+    executeAutoRedeem();
   }, [saleId]);
-
-  const checkMixerRequirements = async () => {
-    try {
-      const { data, error } = await supabase.rpc("check_sale_mixer_requirements", {
-        p_sale_id: saleId,
-      });
-
-      if (error) throw error;
-
-      const result = data as unknown as { success: boolean; requires_mixer: boolean; mixer_slots?: MixerSlot[] };
-
-      if (result.success && result.requires_mixer && result.mixer_slots && result.mixer_slots.length > 0) {
-        setMixerSlots(result.mixer_slots);
-        setStep("mixer_selection");
-      } else {
-        // No mixer needed, go straight to auto-redeem
-        executeAutoRedeem(null);
-      }
-    } catch (err: any) {
-      console.error("Mixer check error:", err);
-      // If check fails, proceed without mixer (non-blocking)
-      executeAutoRedeem(null);
-    }
-  };
-
-  // Handle mixer confirmation
-  const handleMixerConfirm = useCallback((selections: { slot_index: number; product_id: string }[]) => {
-    setMixerSelections(selections);
-    executeAutoRedeem(selections);
-  }, [saleId, barLocationId, sellerId]);
-
-  // Handle mixer cancel - proceed without mixer override
-  const handleMixerCancel = useCallback(() => {
-    executeAutoRedeem(null);
-  }, [saleId, barLocationId, sellerId]);
 
   // Execute auto-redeem
   const executeAutoRedeem = async (overrides: { slot_index: number; product_id: string }[] | null) => {
