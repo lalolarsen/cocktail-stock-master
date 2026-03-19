@@ -73,7 +73,6 @@ interface Ingredient {
   product_name: string;
   product_category: string;
   product_unit: string;
-  is_mixer_slot: boolean;
 }
 
 interface CocktailWithIngredients extends Cocktail {
