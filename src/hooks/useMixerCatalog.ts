@@ -10,25 +10,21 @@ export interface MixerProduct {
 }
 
 export interface MixerCatalog {
-  tradicionales: MixerProduct[];
-  redbull: MixerProduct[];
+  latas: MixerProduct[];
   loading: boolean;
   error: string | null;
+  /** @deprecated kept for legacy compat */
+  tradicionales: MixerProduct[];
+  /** @deprecated kept for legacy compat */
+  redbull: MixerProduct[];
 }
 
 /**
- * Fetches mixer products based on CATEGORY (source of truth), live from DB.
- *
- * Source of truth: products.category (case-insensitive match).
- *   - "Mixers tradicionales": category ILIKE 'mixers_tradicionales' | 'mixers tradicionales'
- *   - "Redbull":              category ILIKE 'redbull' | 'mixers_redbull'
- *
- * Stock is pulled from stock_balances for the given locationId.
- * If locationId is empty, stock is shown as -1 (unknown).
+ * Fetches mixer products from the unified "latas_redbull" category.
+ * Also matches legacy categories for backward compatibility.
  */
 export function useMixerCatalog(locationId: string, venueId: string): MixerCatalog {
-  const [tradicionales, setTradicionales] = useState<MixerProduct[]>([]);
-  const [redbull, setRedbull] = useState<MixerProduct[]>([]);
+  const [latas, setLatas] = useState<MixerProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +37,6 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
       setLoading(true);
       setError(null);
       try {
-        // Fetch products from mixer categories scoped to this venue
         const { data: products, error: prodErr } = await supabase
           .from("products")
           .select("id, name, category, subcategory, unit")
@@ -54,19 +49,21 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
 
         const allProducts = products || [];
 
-        // ── Category matching (source of truth) ──────────────────────────────
         const normalise = (s: string | null | undefined) =>
           (s ?? "").trim().toLowerCase().replace(/\s+/g, "_");
 
-        const TRAD_CATS  = new Set(["mixers_tradicionales", "mixer_tradicional"]);
-        const RBULL_CATS = new Set(["redbull", "mixers_redbull"]);
+        const MIXER_CATS = new Set([
+          "latas_redbull",
+          "mixers_tradicionales",
+          "mixer_tradicional",
+          "redbull",
+          "mixers_redbull",
+        ]);
 
-        const tradProducts  = allProducts.filter(p => TRAD_CATS.has(normalise(p.category)));
-        const redbullProducts = allProducts.filter(p => RBULL_CATS.has(normalise(p.category)));
+        const mixerProducts = allProducts.filter(p => MIXER_CATS.has(normalise(p.category)));
 
-        const allIds = [...tradProducts, ...redbullProducts].map(p => p.id);
+        const allIds = mixerProducts.map(p => p.id);
 
-        // ── Stock balances for selected location ──────────────────────────────
         let stockMap = new Map<string, number>();
         if (locationId && allIds.length > 0) {
           const { data: balances } = await supabase
@@ -93,8 +90,7 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
           stock: locationId ? (stockMap.get(p.id) ?? 0) : -1,
         });
 
-        setTradicionales(tradProducts.map(toMixerProduct));
-        setRedbull(redbullProducts.map(toMixerProduct));
+        setLatas(mixerProducts.map(toMixerProduct));
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? "Error cargando mixers");
       } finally {
@@ -106,5 +102,6 @@ export function useMixerCatalog(locationId: string, venueId: string): MixerCatal
     return () => { cancelled = true; };
   }, [locationId, venueId]);
 
-  return { tradicionales, redbull, loading, error };
+  // Legacy compat: both point to latas
+  return { latas, tradicionales: latas, redbull: [], loading, error };
 }

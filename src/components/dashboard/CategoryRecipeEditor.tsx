@@ -44,12 +44,14 @@ export interface IngredientEntry {
 // ── Category normalisation helpers ────────────────────────────────────────────
 
 const MIXER_TRAD_CATS = new Set([
+  "latas_redbull",
   "mixers_tradicionales",
   "mixer_tradicional",
   "mixers tradicionales",
 ]);
 
 const MIXER_REDBULL_CATS = new Set([
+  "latas_redbull",
   "redbull",
   "mixers_redbull",
   "red bull",
