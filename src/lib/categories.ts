@@ -46,7 +46,8 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   sin_alcohol:   { label: "Sin Alcohol",    order: 8,  icon: GlassWater, chipColor: "bg-green-500/10 text-green-700 border-green-200" },
   bebidas:       { label: "Bebidas",        order: 9,  icon: GlassWater, chipColor: "bg-blue-500/10 text-blue-700 border-blue-200" },
   snacks:        { label: "Snacks",         order: 10, icon: Package,    chipColor: "bg-orange-500/10 text-orange-700 border-orange-200" },
-  promociones:   { label: "Promociones",    order: 11, icon: Tag,        chipColor: "bg-pink-500/10 text-pink-700 border-pink-200" },
+  latas_redbull:  { label: "Latas/Redbull",  order: 11, icon: Package,    chipColor: "bg-cyan-500/10 text-cyan-700 border-cyan-200" },
+  promociones:   { label: "Promociones",    order: 12, icon: Tag,        chipColor: "bg-pink-500/10 text-pink-700 border-pink-200" },
   otros:         { label: "Otros",          order: 99, icon: Package,    chipColor: "bg-muted text-muted-foreground border-border" },
 };
 

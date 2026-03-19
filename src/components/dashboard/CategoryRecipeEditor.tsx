@@ -43,26 +43,18 @@ export interface IngredientEntry {
 
 // ── Category normalisation helpers ────────────────────────────────────────────
 
-const MIXER_TRAD_CATS = new Set([
+const MIXER_CATS = new Set([
   "latas_redbull",
   "mixers_tradicionales",
   "mixer_tradicional",
   "mixers tradicionales",
-]);
-
-const MIXER_REDBULL_CATS = new Set([
-  "latas_redbull",
   "redbull",
   "mixers_redbull",
   "red bull",
 ]);
 
-function isMixerTradicional(cat: string) {
-  return MIXER_TRAD_CATS.has(normalizeCategory(cat));
-}
-
-function isMixerRedbull(cat: string) {
-  return MIXER_REDBULL_CATS.has(normalizeCategory(cat));
+function isMixerProduct(cat: string) {
+  return MIXER_CATS.has(normalizeCategory(cat));
 }
 
 function isBottleProduct(p: Product | undefined) {
@@ -106,27 +98,23 @@ export const CategoryRecipeEditor = ({
   products,
   onChange,
 }: CategoryRecipeEditorProps) => {
-  const [mixerTrad, setMixerTrad] = useState<Product[]>([]);
-  const [mixerRedbull, setMixerRedbull] = useState<Product[]>([]);
+  const [mixerProducts, setMixerProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    setMixerTrad(products.filter((p) => isMixerTradicional(p.category)));
-    setMixerRedbull(products.filter((p) => isMixerRedbull(p.category)));
+    setMixerProducts(products.filter((p) => isMixerProduct(p.category)));
   }, [products]);
 
   // Products available per section (exclude mixer categories)
   const bottleProducts = products.filter(
     (p) =>
       isBottleProduct(p) &&
-      !isMixerTradicional(p.category) &&
-      !isMixerRedbull(p.category)
+      !isMixerProduct(p.category)
   );
 
   const unitProducts = products.filter(
     (p) =>
       !isBottleProduct(p) &&
-      !isMixerTradicional(p.category) &&
-      !isMixerRedbull(p.category)
+      !isMixerProduct(p.category)
   );
 
   // ── Mutators ──────────────────────────────────────────────────────────────
@@ -157,7 +145,7 @@ export const CategoryRecipeEditor = ({
     ]);
   };
 
-  const addMixerTrad = () => {
+  const addMixer = () => {
     onChange([
       ...ingredients,
       {
@@ -165,19 +153,6 @@ export const CategoryRecipeEditor = ({
         quantity: 1,
         ingredient_type: "MIXER",
         mixer_category: "MIXER_TRADICIONAL",
-        is_mixer_slot: true,
-      },
-    ]);
-  };
-
-  const addMixerRedbull = () => {
-    onChange([
-      ...ingredients,
-      {
-        product_id: "",
-        quantity: 1,
-        ingredient_type: "MIXER",
-        mixer_category: "REDBULL",
         is_mixer_slot: true,
       },
     ]);
@@ -294,63 +269,55 @@ export const CategoryRecipeEditor = ({
     ));
 
   const renderMixerRows = () =>
-    mixerEntries.map(({ ing, i }) => {
-      const isTrad = ing.mixer_category !== "REDBULL";
-      const availableProducts = isTrad ? mixerTrad : mixerRedbull;
-      const accentClass = isTrad
-        ? "border-blue-200 bg-blue-50/50"
-        : "border-yellow-200 bg-yellow-50/50";
-
-      return (
-        <div
-          key={i}
-          className={`flex gap-2 items-center p-2 rounded-lg border ${accentClass}`}
+    mixerEntries.map(({ ing, i }) => (
+      <div
+        key={i}
+        className="flex gap-2 items-center p-2 rounded-lg border border-cyan-200 bg-cyan-50/50"
+      >
+        <Badge variant="outline" className="shrink-0 text-[10px]">
+          🥤 Lata/RB
+        </Badge>
+        <Select
+          value={ing.product_id || "__any__"}
+          onValueChange={(v) =>
+            updateEntry(i, { product_id: v === "__any__" ? "" : v })
+          }
         >
-          <Badge variant="outline" className="shrink-0 text-[10px]">
-            {isTrad ? "🥤 Trad." : "⚡ RB"}
-          </Badge>
-          <Select
-            value={ing.product_id || "__any__"}
-            onValueChange={(v) =>
-              updateEntry(i, { product_id: v === "__any__" ? "" : v })
-            }
-          >
-            <SelectTrigger className="flex-1 bg-background">
-              <SelectValue placeholder="Cualquiera (variable)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__any__">
-                Cualquiera (elegido en barra)
+          <SelectTrigger className="flex-1 bg-background">
+            <SelectValue placeholder="Cualquiera (variable)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__any__">
+              Cualquiera (elegido en barra)
+            </SelectItem>
+            {mixerProducts.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
               </SelectItem>
-              {availableProducts.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="number"
-            className="w-20 bg-background"
-            placeholder="ud"
-            value={ing.quantity || ""}
-            onChange={(e) =>
-              updateEntry(i, { quantity: Number(e.target.value) })
-            }
-          />
-          <span className="text-xs text-muted-foreground w-5">ud</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => removeEntry(i)}
-            className="h-9 w-9 text-destructive"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      );
-    });
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          className="w-20 bg-background"
+          placeholder="ud"
+          value={ing.quantity || ""}
+          onChange={(e) =>
+            updateEntry(i, { quantity: Number(e.target.value) })
+          }
+        />
+        <span className="text-xs text-muted-foreground w-5">ud</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => removeEntry(i)}
+          className="h-9 w-9 text-destructive"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    ));
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -423,34 +390,18 @@ export const CategoryRecipeEditor = ({
             </p>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addMixerTrad}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            🥤 Mixer Tradicional
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addMixerRedbull}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            ⚡ Red Bull
-          </Button>
-        </div>
-        {(mixerTrad.length === 0 || mixerRedbull.length === 0) && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addMixer}
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          🥤 Agregar Lata/Redbull
+        </Button>
+        {mixerProducts.length === 0 && (
           <p className="text-[11px] text-muted-foreground">
-            {mixerTrad.length === 0 && (
-              <span>Sin productos en "Mixers tradicionales" en /Productos. </span>
-            )}
-            {mixerRedbull.length === 0 && (
-              <span>Sin productos en "Redbull" en /Productos.</span>
-            )}
+            Sin productos en "Latas/Redbull" en /Productos.
           </p>
         )}
       </div>
