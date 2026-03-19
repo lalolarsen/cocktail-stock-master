@@ -372,14 +372,16 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-           BLOQUE 2 — KPIs de la jornada
+           BLOQUE 2 — KPIs de la jornada (solo cuando hay jornada activa)
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          KPIs de la jornada
-        </h2>
-        <JornadaKPIPanel jornadaId={jornada?.id} />
-      </section>
+      {jornadaActive && (
+        <section>
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            KPIs de la jornada
+          </h2>
+          <JornadaKPIPanel jornadaId={jornada?.id} />
+        </section>
+      )}
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
            BLOQUE 3 — Alertas y estado
