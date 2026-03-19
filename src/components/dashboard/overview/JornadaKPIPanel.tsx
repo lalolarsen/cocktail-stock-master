@@ -157,7 +157,7 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
     } catch (e) {
       console.error("KPI fetch error:", e);
     } finally {
-      setLoading(false);
+      setInitialLoad(false);
     }
   };
 
