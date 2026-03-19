@@ -67,10 +67,11 @@ const CATEGORY_CONFIG: Record<string, {
   botellas_750:  { label: "Botellas 750ml",  icon: Wine,    order: 3,  description: "Venta directa o coctelería.", isVolumetric: true,  defaultCapacityMl: 750  },
   botellas_700:  { label: "Botellas 700ml",  icon: Wine,    order: 4,  description: "Venta directa o coctelería.", isVolumetric: true,  defaultCapacityMl: 700  },
   botellines:           { label: "Botellines",          icon: Package, order: 5,  description: "Cervezas y botellines individuales.", isVolumetric: false },
-  mixers_tradicionales: { label: "Mixers Tradicionales", icon: Droplet, order: 6,  description: "Coca-Cola, Sprite, Ginger Ale y similares.", isVolumetric: false },
-  redbull:              { label: "Red Bull",             icon: Droplet, order: 7,  description: "Red Bull en todas sus variedades.", isVolumetric: false },
+  latas_redbull:        { label: "Latas/Redbull",        icon: Droplet, order: 6,  description: "Latas de bebidas, Red Bull y similares.", isVolumetric: false },
   // compatibilidad con valores legacy
-  mixers_redbull:       { label: "Red Bull",             icon: Droplet, order: 7,  description: "Red Bull en todas sus variedades.", isVolumetric: false },
+  mixers_tradicionales: { label: "Latas/Redbull",        icon: Droplet, order: 6,  description: "Latas de bebidas, Red Bull y similares.", isVolumetric: false },
+  redbull:              { label: "Latas/Redbull",        icon: Droplet, order: 6,  description: "Latas de bebidas, Red Bull y similares.", isVolumetric: false },
+  mixers_redbull:       { label: "Latas/Redbull",        icon: Droplet, order: 6,  description: "Latas de bebidas, Red Bull y similares.", isVolumetric: false },
   ml:                   { label: "Volumétrico (ml)",     icon: Wine,    order: 8,  description: "Productos volumétricos sin categoría específica.", isVolumetric: true  },
   unidades:             { label: "Unitario (ud)",        icon: Package, order: 9,  description: "Productos unitarios sin categoría específica.", isVolumetric: false },
   sin_categoria:        { label: "Sin Categoría",        icon: Package, order: 99, description: "Pendientes de clasificación.", isVolumetric: false },
@@ -82,8 +83,7 @@ const CATEGORY_OPTIONS = [
   { value: "botellas_750",         label: "Botellas 750ml (volumétrico)" },
   { value: "botellas_700",         label: "Botellas 700ml (volumétrico)" },
   { value: "botellines",           label: "Botellines (unitario)" },
-  { value: "mixers_tradicionales", label: "Mixers Tradicionales (unitario)" },
-  { value: "redbull",              label: "Red Bull (unitario)" },
+  { value: "latas_redbull",        label: "Latas/Redbull (unitario)" },
 ];
 
 const getCategoryConfig = (category: string | null) => {
