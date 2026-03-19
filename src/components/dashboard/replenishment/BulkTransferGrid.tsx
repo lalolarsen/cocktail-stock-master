@@ -151,7 +151,7 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
       const cap = product.isVolumetric && product.capacity_ml ? product.capacity_ml : null;
       const qtyBase = cap ? qtyInput * cap : qtyInput; // ml or units
 
-      const barId = row.barId || defaultBarId;
+      const barId = useDefaultBar ? defaultBarId : (row.barId || defaultBarId);
       if (!barId) {
         toast.error("Selecciona barra destino para todas las filas");
         return null;
