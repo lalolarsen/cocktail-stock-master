@@ -45,6 +45,7 @@ import {
   PackageX,
   Plus,
   Trash2,
+  Download,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
@@ -337,6 +338,62 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
     }
   };
 
+  // ─── Export CSV ──────────────────────────────────────────
+  const handleExportCSV = () => {
+    const headers = ["Código", "Producto", "Categoría", "Subcategoría", "Ubicación", "Stock Actual", "Unidad", "Mínimo", "Estado", "Costo Unitario", "Valor Total"];
+    const rows: string[][] = [];
+
+    // For each product, output one row per active location with stock or zero
+    const targetLocs = selectedLocationId === "all_bars" ? barLocations : locations.filter(l => l.id === selectedLocationId);
+
+    products.forEach((product) => {
+      targetLocs.forEach((loc) => {
+        const qty = balances
+          .filter((b) => b.product_id === product.id && b.location_id === loc.id)
+          .reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+
+        const locMin = locationMinimums.find(
+          (m) => m.product_id === product.id && m.location_id === loc.id
+        );
+        const effectiveMin = locMin ? Number(locMin.minimum_stock) : product.minimum_stock;
+        const status = getStockStatus(qty, effectiveMin);
+        const bottle = isBottle(product);
+        const cap = product.capacity_ml;
+        const costPerBase = bottle && cap && cap > 0
+          ? (product.cost_per_unit || 0) / cap
+          : (product.cost_per_unit || 0);
+        const value = qty * costPerBase;
+
+        rows.push([
+          product.code,
+          product.name,
+          product.category,
+          product.subcategory || "",
+          loc.name,
+          qty.toString(),
+          product.unit,
+          effectiveMin.toString(),
+          status === "ok" ? "OK" : status === "low" ? "Bajo" : "Sin Stock",
+          (product.cost_per_unit || 0).toString(),
+          Math.round(value).toString(),
+        ]);
+      });
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map((c) => `"${c}"`).join(",")),
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0, 10);
+    link.download = `inventario_${selectedLocationName.replace(/\s+/g, "_")}_${today}.csv`;
+    link.click();
+    toast.success("Inventario exportado a CSV");
+  };
+
   // ─── Loading state ─────────────────────────────────────
   if (loading) {
     return (
@@ -368,9 +425,15 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
   if (isReadOnly) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
+          </div>
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={handleExportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            CSV
+          </Button>
         </div>
 
         {/* Total value KPI */}
@@ -445,6 +508,10 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
           <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
           <p className="text-xs text-muted-foreground mt-0.5">Control de stock por ubicación</p>
         </div>
+        <Button variant="outline" size="sm" className="text-xs h-8" onClick={handleExportCSV}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          Exportar CSV
+        </Button>
       </div>
 
       {/* ━━━ STOCK INTAKE ACTIONS ━━━ */}
