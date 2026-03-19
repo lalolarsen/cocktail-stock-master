@@ -777,12 +777,6 @@ export default function Bar() {
                 </Button>
               </>
             )}
-            {scanState === "mixer_selection" && (
-              <>
-                <h1 className="text-xl font-semibold">Seleccionando mixer</h1>
-                <p className="text-muted-foreground text-sm">Elige el tipo de mixer para continuar</p>
-              </>
-            )}
             {scanState === "delivered_by_selection" && (
               <>
                 <h1 className="text-2xl font-bold">¿Quién entrega?</h1>
