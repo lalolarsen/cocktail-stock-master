@@ -43,26 +43,18 @@ export interface IngredientEntry {
 
 // ── Category normalisation helpers ────────────────────────────────────────────
 
-const MIXER_TRAD_CATS = new Set([
+const MIXER_CATS = new Set([
   "latas_redbull",
   "mixers_tradicionales",
   "mixer_tradicional",
   "mixers tradicionales",
-]);
-
-const MIXER_REDBULL_CATS = new Set([
-  "latas_redbull",
   "redbull",
   "mixers_redbull",
   "red bull",
 ]);
 
-function isMixerTradicional(cat: string) {
-  return MIXER_TRAD_CATS.has(normalizeCategory(cat));
-}
-
-function isMixerRedbull(cat: string) {
-  return MIXER_REDBULL_CATS.has(normalizeCategory(cat));
+function isMixerProduct(cat: string) {
+  return MIXER_CATS.has(normalizeCategory(cat));
 }
 
 function isBottleProduct(p: Product | undefined) {
