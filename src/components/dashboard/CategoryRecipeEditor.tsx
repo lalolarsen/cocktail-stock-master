@@ -145,7 +145,7 @@ export const CategoryRecipeEditor = ({
     ]);
   };
 
-  const addMixerTrad = () => {
+  const addMixer = () => {
     onChange([
       ...ingredients,
       {
@@ -153,19 +153,6 @@ export const CategoryRecipeEditor = ({
         quantity: 1,
         ingredient_type: "MIXER",
         mixer_category: "MIXER_TRADICIONAL",
-        is_mixer_slot: true,
-      },
-    ]);
-  };
-
-  const addMixerRedbull = () => {
-    onChange([
-      ...ingredients,
-      {
-        product_id: "",
-        quantity: 1,
-        ingredient_type: "MIXER",
-        mixer_category: "REDBULL",
         is_mixer_slot: true,
       },
     ]);
