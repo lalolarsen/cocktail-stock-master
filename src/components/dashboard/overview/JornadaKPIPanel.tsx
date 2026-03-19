@@ -58,7 +58,7 @@ function HBar({ label, value, max, sub, color = "bg-primary" }: {
 }
 
 export function JornadaKPIPanel({ jornadaId }: Props) {
-  const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [salesByPOS, setSalesByPOS] = useState<SalesByPOS[]>([]);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -66,15 +66,20 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
   const { summary: cogsSummary, byCategory, loading: cogsLoading } = useCOGSData(undefined, jornadaId);
 
   useEffect(() => {
+    if (!jornadaId) {
+      setSalesByPOS([]);
+      setTopProducts([]);
+      setInitialLoad(false);
+      return;
+    }
+    setInitialLoad(true);
     fetchAll();
     const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
   }, [jornadaId]);
 
   const fetchAll = async () => {
-    setLoading(true);
     try {
-      // Resolve jornada
       let jId = jornadaId;
       if (!jId) {
         const { data: j } = await supabase
@@ -152,7 +157,7 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
     } catch (e) {
       console.error("KPI fetch error:", e);
     } finally {
-      setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -166,7 +171,7 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
     bebidas: "Bebidas", mezcladores: "Mezcladores", otros: "Otros", insumos: "Insumos",
   };
 
-  const isLoading = loading || cogsLoading;
+  const isLoading = initialLoad || cogsLoading;
 
   if (isLoading) {
     return <Skeleton className="h-56 rounded-lg" />;
