@@ -98,27 +98,23 @@ export const CategoryRecipeEditor = ({
   products,
   onChange,
 }: CategoryRecipeEditorProps) => {
-  const [mixerTrad, setMixerTrad] = useState<Product[]>([]);
-  const [mixerRedbull, setMixerRedbull] = useState<Product[]>([]);
+  const [mixerProducts, setMixerProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    setMixerTrad(products.filter((p) => isMixerTradicional(p.category)));
-    setMixerRedbull(products.filter((p) => isMixerRedbull(p.category)));
+    setMixerProducts(products.filter((p) => isMixerProduct(p.category)));
   }, [products]);
 
   // Products available per section (exclude mixer categories)
   const bottleProducts = products.filter(
     (p) =>
       isBottleProduct(p) &&
-      !isMixerTradicional(p.category) &&
-      !isMixerRedbull(p.category)
+      !isMixerProduct(p.category)
   );
 
   const unitProducts = products.filter(
     (p) =>
       !isBottleProduct(p) &&
-      !isMixerTradicional(p.category) &&
-      !isMixerRedbull(p.category)
+      !isMixerProduct(p.category)
   );
 
   // ── Mutators ──────────────────────────────────────────────────────────────
