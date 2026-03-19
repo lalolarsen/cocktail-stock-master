@@ -393,7 +393,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       if (cocktailError) throw cocktailError;
 
       const validIngredients = editForm.ingredients.filter(ing =>
-        ing.is_mixer_slot || (ing.product_id && ing.product_id.trim() !== "")
+        ing.product_id && ing.product_id.trim() !== ""
       );
 
       if (validIngredients.length > 0) {
@@ -402,11 +402,11 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           .insert(
             validIngredients.map(ing => ({
               cocktail_id: cocktailData.id,
-              product_id: ing.is_mixer_slot ? null : ing.product_id,
+              product_id: ing.product_id,
               quantity: ing.quantity,
               venue_id: venue.id,
-              is_mixer_slot: ing.is_mixer_slot ?? false,
-              mixer_category: ing.is_mixer_slot ? toDBMixerCategory(ing.mixer_category) : null,
+              is_mixer_slot: false,
+              mixer_category: null,
             }))
           );
         if (ingredientsError) throw ingredientsError;
