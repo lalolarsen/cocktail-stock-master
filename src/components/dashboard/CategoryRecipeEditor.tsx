@@ -1,8 +1,5 @@
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -10,8 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, GlassWater, Zap, FlaskConical } from "lucide-react";
-import { normalizeCategory } from "@/lib/categories";
+import { Plus, Trash2, GlassWater, FlaskConical } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -25,36 +21,18 @@ interface Product {
 
 /**
  * ingredient_type is the explicit source of truth for which section an ingredient belongs to.
- * We NEVER infer section from product data alone (product may be unselected / empty).
  *
- * - "ML"    → Botellas section
- * - "UD"    → Unidades section
- * - "MIXER" → Mixers section (is_mixer_slot = true)
+ * - "ML" → Botellas section
+ * - "UD" → Unidades section (includes Latas/Redbull)
  */
 export interface IngredientEntry {
   product_id: string;
   quantity: number;
-  ingredient_type: "ML" | "UD" | "MIXER";
-  /** Only present when ingredient_type === "MIXER" */
-  mixer_category?: "MIXER_TRADICIONAL" | "REDBULL";
-  /** Kept for DB compatibility */
+  ingredient_type: "ML" | "UD";
+  /** @deprecated kept for DB backward compat, always false */
   is_mixer_slot?: boolean;
-}
-
-// ── Category normalisation helpers ────────────────────────────────────────────
-
-const MIXER_CATS = new Set([
-  "latas_redbull",
-  "mixers_tradicionales",
-  "mixer_tradicional",
-  "mixers tradicionales",
-  "redbull",
-  "mixers_redbull",
-  "red bull",
-]);
-
-function isMixerProduct(cat: string) {
-  return MIXER_CATS.has(normalizeCategory(cat));
+  /** @deprecated kept for DB backward compat */
+  mixer_category?: string;
 }
 
 function isBottleProduct(p: Product | undefined) {
@@ -98,24 +76,8 @@ export const CategoryRecipeEditor = ({
   products,
   onChange,
 }: CategoryRecipeEditorProps) => {
-  const [mixerProducts, setMixerProducts] = useState<Product[]>([]);
-
-  useEffect(() => {
-    setMixerProducts(products.filter((p) => isMixerProduct(p.category)));
-  }, [products]);
-
-  // Products available per section (exclude mixer categories)
-  const bottleProducts = products.filter(
-    (p) =>
-      isBottleProduct(p) &&
-      !isMixerProduct(p.category)
-  );
-
-  const unitProducts = products.filter(
-    (p) =>
-      !isBottleProduct(p) &&
-      !isMixerProduct(p.category)
-  );
+  const bottleProducts = products.filter((p) => isBottleProduct(p));
+  const unitProducts = products.filter((p) => !isBottleProduct(p));
 
   // ── Mutators ──────────────────────────────────────────────────────────────
 
@@ -128,8 +90,6 @@ export const CategoryRecipeEditor = ({
   const removeEntry = (index: number) => {
     onChange(ingredients.filter((_, i) => i !== index));
   };
-
-  // ── Add helpers ────────────────────────────────────────────────────────────
 
   const addMlIngredient = () => {
     onChange([
@@ -145,19 +105,6 @@ export const CategoryRecipeEditor = ({
     ]);
   };
 
-  const addMixer = () => {
-    onChange([
-      ...ingredients,
-      {
-        product_id: "",
-        quantity: 1,
-        ingredient_type: "MIXER",
-        mixer_category: "MIXER_TRADICIONAL",
-        is_mixer_slot: true,
-      },
-    ]);
-  };
-
   // ── Derived lists by explicit type ────────────────────────────────────────
 
   const mlEntries = ingredients
@@ -166,11 +113,7 @@ export const CategoryRecipeEditor = ({
 
   const udEntries = ingredients
     .map((ing, i) => ({ ing, i }))
-    .filter(({ ing }) => ing.ingredient_type === "UD");
-
-  const mixerEntries = ingredients
-    .map((ing, i) => ({ ing, i }))
-    .filter(({ ing }) => ing.ingredient_type === "MIXER");
+    .filter(({ ing }) => ing.ingredient_type === "UD" || ing.ingredient_type === ("MIXER" as string));
 
   // ── Row renderers ─────────────────────────────────────────────────────────
 
@@ -180,9 +123,7 @@ export const CategoryRecipeEditor = ({
         <Select
           value={ing.product_id || "__placeholder__"}
           onValueChange={(v) =>
-            updateEntry(i, {
-              product_id: v === "__placeholder__" ? "" : v,
-            })
+            updateEntry(i, { product_id: v === "__placeholder__" ? "" : v })
           }
         >
           <SelectTrigger className="flex-1">
@@ -230,6 +171,9 @@ export const CategoryRecipeEditor = ({
           onValueChange={(v) =>
             updateEntry(i, {
               product_id: v === "__placeholder__" ? "" : v,
+              ingredient_type: "UD",
+              is_mixer_slot: false,
+              mixer_category: undefined,
             })
           }
         >
@@ -254,57 +198,6 @@ export const CategoryRecipeEditor = ({
           placeholder="ud"
           value={ing.quantity || ""}
           onChange={(e) => updateEntry(i, { quantity: Number(e.target.value) })}
-        />
-        <span className="text-xs text-muted-foreground w-5">ud</span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => removeEntry(i)}
-          className="h-9 w-9 text-destructive"
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      </div>
-    ));
-
-  const renderMixerRows = () =>
-    mixerEntries.map(({ ing, i }) => (
-      <div
-        key={i}
-        className="flex gap-2 items-center p-2 rounded-lg border border-cyan-200 bg-cyan-50/50"
-      >
-        <Badge variant="outline" className="shrink-0 text-[10px]">
-          🥤 Lata/RB
-        </Badge>
-        <Select
-          value={ing.product_id || "__any__"}
-          onValueChange={(v) =>
-            updateEntry(i, { product_id: v === "__any__" ? "" : v })
-          }
-        >
-          <SelectTrigger className="flex-1 bg-background">
-            <SelectValue placeholder="Cualquiera (variable)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__any__">
-              Cualquiera (elegido en barra)
-            </SelectItem>
-            {mixerProducts.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="number"
-          className="w-20 bg-background"
-          placeholder="ud"
-          value={ing.quantity || ""}
-          onChange={(e) =>
-            updateEntry(i, { quantity: Number(e.target.value) })
-          }
         />
         <span className="text-xs text-muted-foreground w-5">ud</span>
         <Button
@@ -349,12 +242,12 @@ export const CategoryRecipeEditor = ({
         </Button>
       </div>
 
-      {/* ── SECTION 2: UD (Unidades) ──────────────────────────────────────── */}
+      {/* ── SECTION 2: UD (Unidades — incluye Latas/Redbull) ──────────────── */}
       <div className="space-y-2">
         <SectionHeader
           icon={GlassWater}
           title="Ingredientes (Unidades — UD)"
-          subtitle="opcional"
+          subtitle="incluye Latas/Redbull"
         />
         <div className="space-y-2">
           {renderUdRows()}
@@ -373,37 +266,6 @@ export const CategoryRecipeEditor = ({
           <Plus className="w-3 h-3 mr-1" />
           Agregar unidad (UD)
         </Button>
-      </div>
-
-      {/* ── SECTION 3: Mixers (opcional) ──────────────────────────────────── */}
-      <div className="space-y-2">
-        <SectionHeader
-          icon={Zap}
-          title="Mixers (Opcional)"
-          subtitle="desde categorías en /Productos"
-        />
-        <div className="space-y-2">
-          {renderMixerRows()}
-          {mixerEntries.length === 0 && (
-            <p className="text-xs text-muted-foreground py-1">
-              Sin mixers. La receta no pedirá selección en barra.
-            </p>
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addMixer}
-        >
-          <Plus className="w-3 h-3 mr-1" />
-          🥤 Agregar Lata/Redbull
-        </Button>
-        {mixerProducts.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">
-            Sin productos en "Latas/Redbull" en /Productos.
-          </p>
-        )}
       </div>
     </div>
   );

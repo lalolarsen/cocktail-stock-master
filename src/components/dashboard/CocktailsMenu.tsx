@@ -73,7 +73,6 @@ interface Ingredient {
   product_name: string;
   product_category: string;
   product_unit: string;
-  is_mixer_slot: boolean;
 }
 
 interface CocktailWithIngredients extends Cocktail {
@@ -209,8 +208,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
             id,
             product_id,
             quantity,
-            is_mixer_slot,
-            mixer_category,
             products (
               name,
               category,
@@ -220,26 +217,15 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           `)
           .eq("cocktail_id", cocktail.id);
 
-        const ingredients = (ingredientsData || []).map((ing: any) => {
-          const isMixer = ing.is_mixer_slot || false;
-          let displayName = ing.products?.name || "";
-          if (isMixer) {
-            displayName = ing.mixer_category === "redbull"
-              ? "Mixer Red Bull (variable)"
-              : "Mixer Latas (variable)";
-          }
-          return {
-            id: ing.id,
-            product_id: ing.product_id,
-            quantity: ing.quantity,
-            is_mixer_slot: isMixer,
-            mixer_category: ing.mixer_category || null,
-            product_name: displayName,
-            product_category: ing.products?.category || "",
-            product_unit: ing.products?.unit || "",
-            product_capacity_ml: ing.products?.capacity_ml ?? null,
-          };
-        });
+        const ingredients = (ingredientsData || []).map((ing: any) => ({
+          id: ing.id,
+          product_id: ing.product_id,
+          quantity: ing.quantity,
+          product_name: ing.products?.name || "",
+          product_category: ing.products?.category || "",
+          product_unit: ing.products?.unit || "",
+          product_capacity_ml: ing.products?.capacity_ml ?? null,
+        }));
 
         return {
           ...cocktail,
@@ -262,17 +248,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     setExpandedCategories(newExpanded);
   };
 
-  /**
-   * Map DB mixer_category ('latas'|'redbull'|'MIXER_TRADICIONAL'|'REDBULL')
-   * to the canonical UI values used by CategoryRecipeEditor.
-   */
-  const toUIMixerCategory = (raw: string | null | undefined): "MIXER_TRADICIONAL" | "REDBULL" | undefined => {
-    if (!raw) return "MIXER_TRADICIONAL";
-    const n = raw.toUpperCase();
-    if (n === "REDBULL" || n.includes("REDBULL")) return "REDBULL";
-    return "MIXER_TRADICIONAL";
-  };
-
   const handleEditClick = (cocktail: CocktailWithIngredients) => {
     setSelectedCocktail(cocktail);
     setEditForm({
@@ -281,12 +256,8 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       price: cocktail.price,
       category: cocktail.category,
       ingredients: cocktail.ingredients.map((ing: any) => {
-        const isMixer = ing.is_mixer_slot || false;
-        // Determine ingredient_type explicitly from DB data
-        let ingredient_type: "ML" | "UD" | "MIXER" = "UD";
-        if (isMixer) {
-          ingredient_type = "MIXER";
-        } else if ((ing.product_capacity_ml ?? 0) > 0) {
+        let ingredient_type: "ML" | "UD" = "UD";
+        if ((ing.product_capacity_ml ?? 0) > 0) {
           ingredient_type = "ML";
         } else if (ing.product_unit === "ml" || (ing.product_category ?? "").toLowerCase().includes("botella")) {
           ingredient_type = "ML";
@@ -295,8 +266,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           product_id: ing.product_id || "",
           quantity: ing.quantity,
           ingredient_type,
-          is_mixer_slot: isMixer,
-          mixer_category: isMixer ? toUIMixerCategory(ing.mixer_category) : undefined,
+          is_mixer_slot: false,
         } as IngredientEntry;
       }),
     });
@@ -344,12 +314,6 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
     }
   };
 
-  /** Map UI mixer_category → DB string expected by cocktail_ingredients */
-  const toDBMixerCategory = (cat: string | undefined): string => {
-    if (cat === "REDBULL") return "redbull";
-    return "latas";
-  };
-
   const handleSave = async () => {
     if (!selectedCocktail) return;
 
@@ -376,9 +340,9 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
         .delete()
         .eq("cocktail_id", selectedCocktail.id);
 
-      // Insert new ingredients (mixer slots need product_id=null, others need a real id)
+      // Insert new ingredients
       const validIngredients = editForm.ingredients.filter(ing =>
-        ing.is_mixer_slot || (ing.product_id && ing.product_id.trim() !== "")
+        ing.product_id && ing.product_id.trim() !== ""
       );
 
       if (validIngredients.length > 0 && venue?.id) {
@@ -387,11 +351,11 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           .insert(
             validIngredients.map(ing => ({
               cocktail_id: selectedCocktail.id,
-              product_id: ing.is_mixer_slot ? null : ing.product_id,
+              product_id: ing.product_id,
               quantity: ing.quantity,
               venue_id: venue.id,
-              is_mixer_slot: ing.is_mixer_slot ?? false,
-              mixer_category: ing.is_mixer_slot ? toDBMixerCategory(ing.mixer_category) : null,
+              is_mixer_slot: false,
+              mixer_category: null,
             }))
           );
         if (ingredientsError) throw ingredientsError;
@@ -429,7 +393,7 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
       if (cocktailError) throw cocktailError;
 
       const validIngredients = editForm.ingredients.filter(ing =>
-        ing.is_mixer_slot || (ing.product_id && ing.product_id.trim() !== "")
+        ing.product_id && ing.product_id.trim() !== ""
       );
 
       if (validIngredients.length > 0) {
@@ -438,11 +402,11 @@ export const CocktailsMenu = ({ isReadOnly = false }: CocktailsMenuProps) => {
           .insert(
             validIngredients.map(ing => ({
               cocktail_id: cocktailData.id,
-              product_id: ing.is_mixer_slot ? null : ing.product_id,
+              product_id: ing.product_id,
               quantity: ing.quantity,
               venue_id: venue.id,
-              is_mixer_slot: ing.is_mixer_slot ?? false,
-              mixer_category: ing.is_mixer_slot ? toDBMixerCategory(ing.mixer_category) : null,
+              is_mixer_slot: false,
+              mixer_category: null,
             }))
           );
         if (ingredientsError) throw ingredientsError;

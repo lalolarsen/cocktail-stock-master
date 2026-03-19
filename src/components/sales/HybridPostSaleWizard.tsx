@@ -16,10 +16,9 @@ import {
   Package,
   ArrowRight,
 } from "lucide-react";
-import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 import PickupQRDialog from "@/components/PickupQRDialog";
 
-type WizardStep = "checking_mixer" | "mixer_selection" | "processing" | "deliver" | "error";
+type WizardStep = "processing" | "deliver" | "error";
 
 interface CartItemInfo {
   name: string;
@@ -56,57 +55,20 @@ export function HybridPostSaleWizard({
   pickupShortCode,
   onComplete,
 }: HybridPostSaleWizardProps) {
-  const [step, setStep] = useState<WizardStep>("checking_mixer");
-  const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
-  const [mixerSelections, setMixerSelections] = useState<{ slot_index: number; product_id: string }[] | null>(null);
+  const [step, setStep] = useState<WizardStep>("processing");
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [missingItems, setMissingItems] = useState<Array<{ product_name: string; required: number; available: number; unit: string }>>([]);
   const [consumedIngredients, setConsumedIngredients] = useState<Array<{ product_name: string; quantity: number }>>([]);
   const [showReprintQR, setShowReprintQR] = useState(false);
 
-  // Step 1: Check if mixer selection is needed
+  // Auto-redeem on mount
   useEffect(() => {
-    checkMixerRequirements();
+    executeAutoRedeem();
   }, [saleId]);
 
-  const checkMixerRequirements = async () => {
-    try {
-      const { data, error } = await supabase.rpc("check_sale_mixer_requirements", {
-        p_sale_id: saleId,
-      });
-
-      if (error) throw error;
-
-      const result = data as unknown as { success: boolean; requires_mixer: boolean; mixer_slots?: MixerSlot[] };
-
-      if (result.success && result.requires_mixer && result.mixer_slots && result.mixer_slots.length > 0) {
-        setMixerSlots(result.mixer_slots);
-        setStep("mixer_selection");
-      } else {
-        // No mixer needed, go straight to auto-redeem
-        executeAutoRedeem(null);
-      }
-    } catch (err: any) {
-      console.error("Mixer check error:", err);
-      // If check fails, proceed without mixer (non-blocking)
-      executeAutoRedeem(null);
-    }
-  };
-
-  // Handle mixer confirmation
-  const handleMixerConfirm = useCallback((selections: { slot_index: number; product_id: string }[]) => {
-    setMixerSelections(selections);
-    executeAutoRedeem(selections);
-  }, [saleId, barLocationId, sellerId]);
-
-  // Handle mixer cancel - proceed without mixer override
-  const handleMixerCancel = useCallback(() => {
-    executeAutoRedeem(null);
-  }, [saleId, barLocationId, sellerId]);
-
   // Execute auto-redeem
-  const executeAutoRedeem = async (overrides: { slot_index: number; product_id: string }[] | null) => {
+  const executeAutoRedeem = async () => {
     setStep("processing");
     setIsRedeeming(true);
 
@@ -115,7 +77,7 @@ export function HybridPostSaleWizard({
         p_sale_id: saleId,
         p_bar_location_id: barLocationId,
         p_seller_id: sellerId,
-        p_mixer_overrides: overrides || null,
+        p_mixer_overrides: null,
       });
 
       if (error) throw error;
@@ -149,35 +111,6 @@ export function HybridPostSaleWizard({
       setIsRedeeming(false);
     }
   };
-
-  // ═══ STEP: Checking mixer requirements ═══
-  if (step === "checking_mixer") {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-16 h-16 animate-spin text-primary mb-6" />
-        <h2 className="text-2xl font-bold text-foreground">Preparando auto-canje...</h2>
-        <p className="text-muted-foreground mt-2">Verificando si requiere selección de mixer</p>
-        <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-          <MapPin className="w-4 h-4" />
-          <span>Descuenta desde: <span className="font-medium text-foreground">{barName}</span></span>
-        </div>
-      </div>
-    );
-  }
-
-  // ═══ STEP: Mixer Selection ═══
-  if (step === "mixer_selection" && mixerSlots.length > 0) {
-    return (
-      <MixerSelectionDialog
-        mixerSlots={mixerSlots}
-        locationId={barLocationId}
-        venueId={venueId}
-        onConfirm={handleMixerConfirm}
-        onCancel={handleMixerCancel}
-        isLoading={isRedeeming}
-      />
-    );
-  }
 
   // ═══ STEP: Processing auto-redeem ═══
   if (step === "processing") {
@@ -312,25 +245,6 @@ export function HybridPostSaleWizard({
               ))}
             </div>
 
-            {/* Mixer selection display */}
-            {mixerSelections && mixerSelections.length > 0 && (
-              <div className="mt-4 pt-3 border-t">
-                <div className="flex items-center gap-2 mb-2">
-                  <GlassWater className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-semibold text-muted-foreground">Mixer elegido</span>
-                </div>
-                {mixerSelections.map((sel, idx) => {
-                  const slot = mixerSlots.find(s => s.slot_index === sel.slot_index);
-                  const option = slot?.available_options.find(o => o.id === sel.product_id);
-                  return (
-                    <div key={idx} className="flex items-center gap-2 text-sm ml-6">
-                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                      <span className="font-medium">{option?.name || slot?.default_product_name || "Mixer"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </Card>
 
           {/* Bar info */}

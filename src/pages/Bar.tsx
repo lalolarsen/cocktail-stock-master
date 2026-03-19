@@ -19,7 +19,6 @@ import { parseQRToken } from "@/lib/qr";
 import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
-import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
@@ -62,7 +61,7 @@ type ScanHistoryEntry = {
   label: string;
   tokenShort: string;
 };
-type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection" | "delivered_by_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "delivered_by_selection";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_HISTORY_ENTRIES = 20;
@@ -142,12 +141,6 @@ export default function Bar() {
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
   const [scannerFrozen, setScannerFrozen] = useState(false);
   const [processingHint, setProcessingHint] = useState(false);
-
-  // Mixer
-  const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
-  const [pendingToken, setPendingToken] = useState("");
-  const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
-  const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
 
   // Delivered-by gate
   const [pendingDeliveredBy, setPendingDeliveredBy] = useState<{ token: string; mixerOverrides: { slot_index: number; product_id: string }[] | null } | null>(null);
@@ -530,26 +523,6 @@ export default function Bar() {
 
     try {
       setDebugStep("fetch-token");
-      const { data: mc, error: me } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
-      if (me) throw me;
-      const mr = mc as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
-
-      if (!mr.success) {
-        const code = mr.error || "TOKEN_NOT_FOUND";
-        setDebugStep("done-error");
-        setResult({ success: false, error_code: code, message: "Token no encontrado o ya procesado" });
-        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: mapStatus(code), label: getErrorTitle(code), tokenShort: token.slice(-6) };
-        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-        releaseLocks("error"); scheduleAutoReset(); return;
-      }
-
-      if (mr.requires_mixer_selection && mr.mixer_slots?.length) {
-        setDebugStep("mixer-needed");
-        setMixerSlots(mr.mixer_slots);
-        setPendingToken(token);
-        if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-        setScanState("mixer_selection"); return;
-      }
 
       // Direct redeem — with delivered-by gate
       if (selectedBarId) {
@@ -567,27 +540,6 @@ export default function Bar() {
       releaseLocks("error"); scheduleAutoReset();
     }
   }, [selectedBarId, scannerFrozen, redeemToken, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
-
-  // ── Mixer handlers ─────────────────────────────────────────────────────────
-  const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
-    setIsRedeemingWithMixer(true);
-    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-    const token = pendingToken;
-    setPendingToken("");
-    try {
-      if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
-      else await resolveDeliveredByAndRedeem(token, selections);
-    } catch (err: any) {
-      setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
-      releaseLocks("error"); scheduleAutoReset();
-    } finally { setIsRedeemingWithMixer(false); }
-  }, [pendingToken, selectedBarId, checkAndProceedWithBottles, redeemToken, releaseLocks, scheduleAutoReset]);
-
-  const handleMixerCancel = useCallback(() => {
-    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-    setPendingToken(""); setMixerSlots([]);
-    setDebugStep("idle"); releaseLocks("idle"); focusInput();
-  }, [releaseLocks, focusInput]);
 
   // ── Bluetooth HID keyboard input ───────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -707,7 +659,7 @@ export default function Bar() {
   const badgeCfg: Record<ScanState, { ring: string; dot: string; label: string; pulse: boolean }> = {
     idle:                    { ring: "border-primary/30 text-primary bg-primary/5",         dot: "bg-primary",     label: "Bluetooth activo",     pulse: true  },
     processing:              { ring: "border-yellow-500/40 text-yellow-400 bg-yellow-500/5", dot: "bg-yellow-400",  label: "Validando...",          pulse: true  },
-    mixer_selection:         { ring: "border-blue-400/40 text-blue-400 bg-blue-500/5",       dot: "bg-blue-400",    label: "Selecciona mixer",      pulse: false },
+    
     delivered_by_selection:  { ring: "border-amber-400/40 text-amber-400 bg-amber-500/5",    dot: "bg-amber-400",   label: "¿Quién entrega?",       pulse: false },
     success:                 { ring: "border-primary/40 text-primary bg-primary/10",         dot: "bg-primary",     label: "Canje exitoso",         pulse: false },
     error:                   { ring: "border-destructive/40 text-destructive bg-destructive/5", dot: "bg-destructive", label: getErrorTitle(result?.error_code), pulse: false },
@@ -781,7 +733,7 @@ export default function Bar() {
             {scanState === "error" && (result?.error_code === "ALREADY_REDEEMED"
               ? <AlertCircle className="w-28 h-28 text-yellow-500" />
               : <XCircle className="w-28 h-28 text-destructive" />)}
-            {scanState === "mixer_selection" && <Package className="w-28 h-28 text-primary" />}
+            
             {scanState === "delivered_by_selection" && <Users className="w-28 h-28 text-amber-500" />}
           </div>
 
@@ -823,12 +775,6 @@ export default function Bar() {
                 <Button variant="outline" size="lg" onClick={e => { e.stopPropagation(); resumeScanning(); }} className="mt-2 gap-2 h-12 px-6">
                   <RefreshCw className="w-4 h-4" />Reintentar
                 </Button>
-              </>
-            )}
-            {scanState === "mixer_selection" && (
-              <>
-                <h1 className="text-xl font-semibold">Seleccionando mixer</h1>
-                <p className="text-muted-foreground text-sm">Elige el tipo de mixer para continuar</p>
               </>
             )}
             {scanState === "delivered_by_selection" && (
@@ -941,17 +887,6 @@ export default function Bar() {
           </div>
         )}
 
-        {/* ── Mixer dialog ── */}
-        {scanState === "mixer_selection" && (
-          <MixerSelectionDialog
-            mixerSlots={mixerSlots}
-            locationId={selectedBarId}
-            venueId={currentVenueId}
-            isLoading={isRedeemingWithMixer}
-            onConfirm={handleMixerConfirm}
-            onCancel={handleMixerCancel}
-          />
-        )}
 
         {/* ── Manual entry dialog ── */}
         <Dialog open={showManualEntry} onOpenChange={open => { setShowManualEntry(open); if (!open) { setManualToken(""); setTimeout(focusInput, 200); } }}>
