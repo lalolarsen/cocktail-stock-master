@@ -171,7 +171,7 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
     bebidas: "Bebidas", mezcladores: "Mezcladores", otros: "Otros", insumos: "Insumos",
   };
 
-  const isLoading = loading || cogsLoading;
+  const isLoading = initialLoad || cogsLoading;
 
   if (isLoading) {
     return <Skeleton className="h-56 rounded-lg" />;
