@@ -425,9 +425,15 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
   if (isReadOnly) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
+          </div>
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={handleExportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            CSV
+          </Button>
         </div>
 
         {/* Total value KPI */}
