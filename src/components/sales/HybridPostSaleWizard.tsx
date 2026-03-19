@@ -245,25 +245,6 @@ export function HybridPostSaleWizard({
               ))}
             </div>
 
-            {/* Mixer selection display */}
-            {mixerSelections && mixerSelections.length > 0 && (
-              <div className="mt-4 pt-3 border-t">
-                <div className="flex items-center gap-2 mb-2">
-                  <GlassWater className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-semibold text-muted-foreground">Mixer elegido</span>
-                </div>
-                {mixerSelections.map((sel, idx) => {
-                  const slot = mixerSlots.find(s => s.slot_index === sel.slot_index);
-                  const option = slot?.available_options.find(o => o.id === sel.product_id);
-                  return (
-                    <div key={idx} className="flex items-center gap-2 text-sm ml-6">
-                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                      <span className="font-medium">{option?.name || slot?.default_product_name || "Mixer"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </Card>
 
           {/* Bar info */}
