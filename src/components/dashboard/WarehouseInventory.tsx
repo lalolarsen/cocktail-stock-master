@@ -45,6 +45,7 @@ import {
   PackageX,
   Plus,
   Trash2,
+  Download,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { ManualStockEntryDialog } from "./ManualStockEntryDialog";
