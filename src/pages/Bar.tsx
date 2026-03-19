@@ -19,7 +19,7 @@ import { parseQRToken } from "@/lib/qr";
 import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
-import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
+import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
