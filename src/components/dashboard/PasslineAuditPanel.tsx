@@ -493,11 +493,11 @@ export function PasslineAuditPanel() {
             // Cocktail — get recipe and deduct each ingredient
             const { data: ingredients } = await supabase
               .from("cocktail_ingredients")
-              .select("product_id, quantity, is_mixer_slot")
+              .select("product_id, quantity")
               .eq("cocktail_id", item.cocktail_id)
               .eq("venue_id", venue!.id);
 
-            for (const ing of (ingredients || []).filter((i: any) => i.product_id && !i.is_mixer_slot)) {
+            for (const ing of (ingredients || []).filter((i: any) => i.product_id)) {
               const { data: prod } = await supabase
                 .from("products")
                 .select("cost_per_unit, capacity_ml")
