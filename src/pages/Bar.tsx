@@ -61,7 +61,7 @@ type ScanHistoryEntry = {
   label: string;
   tokenShort: string;
 };
-type ScanState = "idle" | "processing" | "success" | "error" | "mixer_selection" | "delivered_by_selection";
+type ScanState = "idle" | "processing" | "success" | "error" | "delivered_by_selection";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_HISTORY_ENTRIES = 20;
