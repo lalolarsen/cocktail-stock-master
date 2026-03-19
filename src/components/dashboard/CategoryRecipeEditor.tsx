@@ -29,10 +29,6 @@ export interface IngredientEntry {
   product_id: string;
   quantity: number;
   ingredient_type: "ML" | "UD";
-  /** @deprecated kept for DB backward compat, always false */
-  is_mixer_slot?: boolean;
-  /** @deprecated kept for DB backward compat */
-  mixer_category?: string;
 }
 
 function isBottleProduct(p: Product | undefined) {
