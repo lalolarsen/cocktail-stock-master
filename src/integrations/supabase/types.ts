@@ -5524,6 +5524,7 @@ export type Database = {
         | "botellas_750"
         | "botellas_700"
         | "botellines"
+        | "latas_redbull"
       redemption_result:
         | "success"
         | "already_redeemed"
@@ -5702,6 +5703,7 @@ export const Constants = {
         "botellas_750",
         "botellas_700",
         "botellines",
+        "latas_redbull",
       ],
       redemption_result: [
         "success",
