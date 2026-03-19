@@ -29,10 +29,6 @@ export interface IngredientEntry {
   product_id: string;
   quantity: number;
   ingredient_type: "ML" | "UD";
-  /** @deprecated kept for DB backward compat, always false */
-  is_mixer_slot?: boolean;
-  /** @deprecated kept for DB backward compat */
-  mixer_category?: string;
 }
 
 function isBottleProduct(p: Product | undefined) {
@@ -94,14 +90,14 @@ export const CategoryRecipeEditor = ({
   const addMlIngredient = () => {
     onChange([
       ...ingredients,
-      { product_id: "", quantity: 0, ingredient_type: "ML", is_mixer_slot: false },
+      { product_id: "", quantity: 0, ingredient_type: "ML" },
     ]);
   };
 
   const addUdIngredient = () => {
     onChange([
       ...ingredients,
-      { product_id: "", quantity: 1, ingredient_type: "UD", is_mixer_slot: false },
+      { product_id: "", quantity: 1, ingredient_type: "UD" },
     ]);
   };
 
@@ -172,8 +168,6 @@ export const CategoryRecipeEditor = ({
             updateEntry(i, {
               product_id: v === "__placeholder__" ? "" : v,
               ingredient_type: "UD",
-              is_mixer_slot: false,
-              mixer_category: undefined,
             })
           }
         >

@@ -327,7 +327,7 @@ export default function Bar() {
   // ── Redeem token ───────────────────────────────────────────────────────────
   const redeemToken = useCallback(async (
     token: string,
-    mixerOverrides: { slot_index: number; product_id: string }[] | null,
+    _mixerOverrides: { slot_index: number; product_id: string }[] | null,
     deliveredByWorkerId?: string | null,
   ): Promise<RedemptionResult | undefined> => {
     abortRef.current = new AbortController();
@@ -337,7 +337,7 @@ export default function Bar() {
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
         p_token: token,
         p_bartender_bar_id: selectedBarId || null,
-        p_mixer_overrides: mixerOverrides || null,
+        p_mixer_overrides: null,
         p_delivered_by_worker_id: deliveredByWorkerId || null,
       });
       if (abortRef.current?.signal.aborted) return undefined;

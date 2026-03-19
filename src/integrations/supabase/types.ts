@@ -5088,10 +5088,6 @@ export type Database = {
         Args: { p_sale_id: string }
         Returns: Json
       }
-      check_token_mixer_requirements: {
-        Args: { p_token: string }
-        Returns: Json
-      }
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       clean_berlin_demo_data: { Args: never; Returns: Json }
       close_jornada_manual: {
