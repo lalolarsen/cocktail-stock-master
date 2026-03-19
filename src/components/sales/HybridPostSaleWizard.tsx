@@ -68,7 +68,7 @@ export function HybridPostSaleWizard({
   }, [saleId]);
 
   // Execute auto-redeem
-  const executeAutoRedeem = async (overrides: { slot_index: number; product_id: string }[] | null) => {
+  const executeAutoRedeem = async () => {
     setStep("processing");
     setIsRedeeming(true);
 
@@ -77,7 +77,7 @@ export function HybridPostSaleWizard({
         p_sale_id: saleId,
         p_bar_location_id: barLocationId,
         p_seller_id: sellerId,
-        p_mixer_overrides: overrides || null,
+        p_mixer_overrides: null,
       });
 
       if (error) throw error;
@@ -111,35 +111,6 @@ export function HybridPostSaleWizard({
       setIsRedeeming(false);
     }
   };
-
-  // ═══ STEP: Checking mixer requirements ═══
-  if (step === "checking_mixer") {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-16 h-16 animate-spin text-primary mb-6" />
-        <h2 className="text-2xl font-bold text-foreground">Preparando auto-canje...</h2>
-        <p className="text-muted-foreground mt-2">Verificando si requiere selección de mixer</p>
-        <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-          <MapPin className="w-4 h-4" />
-          <span>Descuenta desde: <span className="font-medium text-foreground">{barName}</span></span>
-        </div>
-      </div>
-    );
-  }
-
-  // ═══ STEP: Mixer Selection ═══
-  if (step === "mixer_selection" && mixerSlots.length > 0) {
-    return (
-      <MixerSelectionDialog
-        mixerSlots={mixerSlots}
-        locationId={barLocationId}
-        venueId={venueId}
-        onConfirm={handleMixerConfirm}
-        onCancel={handleMixerCancel}
-        isLoading={isRedeeming}
-      />
-    );
-  }
 
   // ═══ STEP: Processing auto-redeem ═══
   if (step === "processing") {
