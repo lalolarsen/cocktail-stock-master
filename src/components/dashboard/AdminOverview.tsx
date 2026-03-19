@@ -131,11 +131,12 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   };
 
   const fetchJornada = async () => {
-    const today = new Date().toISOString().split("T")[0];
+    // Use Chile timezone for "today" to avoid UTC midnight shift
+    const todayChile = new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
     const { data } = await supabase
       .from("jornadas")
       .select("id, numero_jornada, fecha, hora_apertura, estado")
-      .or(`estado.eq.activa,fecha.eq.${today}`)
+      .or(`estado.eq.activa,fecha.eq.${todayChile}`)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
