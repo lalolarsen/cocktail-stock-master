@@ -523,26 +523,6 @@ export default function Bar() {
 
     try {
       setDebugStep("fetch-token");
-      const { data: mc, error: me } = await supabase.rpc("check_token_mixer_requirements", { p_token: token });
-      if (me) throw me;
-      const mr = mc as unknown as { success: boolean; requires_mixer_selection: boolean; mixer_slots?: MixerSlot[]; error?: string };
-
-      if (!mr.success) {
-        const code = mr.error || "TOKEN_NOT_FOUND";
-        setDebugStep("done-error");
-        setResult({ success: false, error_code: code, message: "Token no encontrado o ya procesado" });
-        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: mapStatus(code), label: getErrorTitle(code), tokenShort: token.slice(-6) };
-        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-        releaseLocks("error"); scheduleAutoReset(); return;
-      }
-
-      if (mr.requires_mixer_selection && mr.mixer_slots?.length) {
-        setDebugStep("mixer-needed");
-        setMixerSlots(mr.mixer_slots);
-        setPendingToken(token);
-        if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-        setScanState("mixer_selection"); return;
-      }
 
       // Direct redeem — with delivered-by gate
       if (selectedBarId) {
@@ -560,27 +540,6 @@ export default function Bar() {
       releaseLocks("error"); scheduleAutoReset();
     }
   }, [selectedBarId, scannerFrozen, redeemToken, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
-
-  // ── Mixer handlers ─────────────────────────────────────────────────────────
-  const handleMixerConfirm = useCallback(async (selections: { slot_index: number; product_id: string }[]) => {
-    setIsRedeemingWithMixer(true);
-    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-    const token = pendingToken;
-    setPendingToken("");
-    try {
-      if (selectedBarId) { setPendingMixerOverrides(selections); await checkAndProceedWithBottles(token, selections); }
-      else await resolveDeliveredByAndRedeem(token, selections);
-    } catch (err: any) {
-      setResult({ success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error con mixer" });
-      releaseLocks("error"); scheduleAutoReset();
-    } finally { setIsRedeemingWithMixer(false); }
-  }, [pendingToken, selectedBarId, checkAndProceedWithBottles, redeemToken, releaseLocks, scheduleAutoReset]);
-
-  const handleMixerCancel = useCallback(() => {
-    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
-    setPendingToken(""); setMixerSlots([]);
-    setDebugStep("idle"); releaseLocks("idle"); focusInput();
-  }, [releaseLocks, focusInput]);
 
   // ── Bluetooth HID keyboard input ───────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
