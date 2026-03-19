@@ -133,7 +133,10 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
       movements.forEach((m: any) => {
         const qty = Math.abs(Number(m.quantity));
         const capacityMl = Number(m.products?.capacity_ml) || 0;
-        const unitCost = Number(m.unit_cost) || 0;
+      // Fallback: if unit_cost on movement is missing, use product catalog cost
+      const rawUnitCost = Number(m.unit_cost) || 0;
+      const catalogCost = Number(m.products?.cost_per_unit) || 0;
+      const unitCost = rawUnitCost > 0 ? rawUnitCost : catalogCost;
 
         // Regla determinística:
         //   BOTELLA (capacity_ml > 0): quantity en ml, unit_cost por botella

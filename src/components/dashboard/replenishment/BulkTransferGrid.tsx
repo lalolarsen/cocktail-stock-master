@@ -46,10 +46,10 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
 
   const productsWithStock = useMemo(() => products.filter(p => p.warehouseStock > 0), [products]);
 
-  // Sync default bar to new rows
+  // Sync default bar to ALL rows when useDefaultBar is on
   useEffect(() => {
     if (useDefaultBar && defaultBarId) {
-      setRows(prev => prev.map(r => r.barId ? r : { ...r, barId: defaultBarId }));
+      setRows(prev => prev.map(r => ({ ...r, barId: defaultBarId })));
     }
   }, [defaultBarId, useDefaultBar]);
 
@@ -151,7 +151,7 @@ export function BulkTransferGrid({ products, barLocations, getBalance, onConfirm
       const cap = product.isVolumetric && product.capacity_ml ? product.capacity_ml : null;
       const qtyBase = cap ? qtyInput * cap : qtyInput; // ml or units
 
-      const barId = row.barId || defaultBarId;
+      const barId = useDefaultBar ? defaultBarId : (row.barId || defaultBarId);
       if (!barId) {
         toast.error("Selecciona barra destino para todas las filas");
         return null;
