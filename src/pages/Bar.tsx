@@ -142,12 +142,6 @@ export default function Bar() {
   const [scannerFrozen, setScannerFrozen] = useState(false);
   const [processingHint, setProcessingHint] = useState(false);
 
-  // Mixer
-  const [mixerSlots, setMixerSlots] = useState<MixerSlot[]>([]);
-  const [pendingToken, setPendingToken] = useState("");
-  const [pendingMixerOverrides, setPendingMixerOverrides] = useState<{ slot_index: number; product_id: string }[] | null>(null);
-  const [isRedeemingWithMixer, setIsRedeemingWithMixer] = useState(false);
-
   // Delivered-by gate
   const [pendingDeliveredBy, setPendingDeliveredBy] = useState<{ token: string; mixerOverrides: { slot_index: number; product_id: string }[] | null } | null>(null);
 
