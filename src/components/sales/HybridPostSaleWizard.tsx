@@ -16,10 +16,9 @@ import {
   Package,
   ArrowRight,
 } from "lucide-react";
-import { MixerSelectionDialog, type MixerSlot } from "@/components/bar/MixerSelectionDialog";
 import PickupQRDialog from "@/components/PickupQRDialog";
 
-type WizardStep = "checking_mixer" | "mixer_selection" | "processing" | "deliver" | "error";
+type WizardStep = "processing" | "deliver" | "error";
 
 interface CartItemInfo {
   name: string;
