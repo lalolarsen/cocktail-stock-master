@@ -171,7 +171,12 @@ export default function Admin() {
             {activeView === "reports" && <ReportsPanel />}
             {activeView === "documents" && <DocumentsRetryPanel />}
             {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
-            {activeView === "inventory" && <WarehouseInventory isReadOnly={isReadOnly} />}
+            {activeView === "inventory" && (
+              <>
+                <InventoryFreezeBanner />
+                <WarehouseInventory isReadOnly={isReadOnly} />
+              </>
+            )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
