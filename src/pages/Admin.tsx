@@ -186,7 +186,12 @@ export default function Admin() {
             {activeView === "courtesy-qr" && <CourtesyQR />}
             {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
-            {activeView === "settings" && <ReceiptSettingsCard />}
+            {activeView === "settings" && (
+              <>
+                <ReceiptSettingsCard />
+                {!isReadOnly && <InventoryFreezeToggle />}
+              </>
+            )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
           </div>
         </main>
