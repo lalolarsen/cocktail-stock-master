@@ -105,17 +105,22 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
         return;
       }
 
+      // If no stock movements (e.g. inventory freeze mode), estimate COGS from recipes
       if (!movements || movements.length === 0) {
-        setSummary({
-          total_cogs: 0,
-          total_items: 0,
-          products_count: 0,
-          avg_cost_per_redemption: 0,
-          redemptions_count: 0,
-        });
-        setByProduct([]);
-        setByCategory([]);
-        setByCocktail([]);
+        if (jornadaId) {
+          await fetchEstimatedCOGS(jornadaId);
+        } else {
+          setSummary({
+            total_cogs: 0,
+            total_items: 0,
+            products_count: 0,
+            avg_cost_per_redemption: 0,
+            redemptions_count: 0,
+          });
+          setByProduct([]);
+          setByCategory([]);
+          setByCocktail([]);
+        }
         return;
       }
 
