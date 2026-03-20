@@ -111,10 +111,10 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const activeJornada = await fetchJornada();
       await Promise.all([
-        fetchJornada(),
-        fetchTodayStats(),
-        fetchBarStatuses(),
+        fetchTodayStats(activeJornada?.id),
+        fetchBarStatuses(activeJornada?.id),
         fetchOrphanSalesCount(),
       ]);
     } finally {
