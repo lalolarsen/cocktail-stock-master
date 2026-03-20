@@ -58,6 +58,176 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
   const [byCocktail, setByCocktail] = useState<COGSByCocktail[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * Fallback: estimate COGS from sale_items + cocktail recipes when no stock_movements exist
+   * (e.g. inventory freeze / marcha blanca mode)
+   */
+  const fetchEstimatedCOGS = async (jId: string) => {
+    try {
+      // Get all paid, non-cancelled sales for this jornada
+      const { data: sales } = await supabase
+        .from("sales")
+        .select("id")
+        .eq("jornada_id", jId)
+        .eq("payment_status", "paid")
+        .eq("is_cancelled", false);
+
+      const saleIds = sales?.map(s => s.id) || [];
+      if (saleIds.length === 0) {
+        setSummary({ total_cogs: 0, total_items: 0, products_count: 0, avg_cost_per_redemption: 0, redemptions_count: 0 });
+        setByProduct([]);
+        setByCategory([]);
+        setByCocktail([]);
+        return;
+      }
+
+      // Get sale items with cocktail info
+      const { data: saleItems } = await supabase
+        .from("sale_items")
+        .select("quantity, cocktail_id, cocktails(id, name)")
+        .in("sale_id", saleIds);
+
+      if (!saleItems || saleItems.length === 0) {
+        setSummary({ total_cogs: 0, total_items: 0, products_count: 0, avg_cost_per_redemption: 0, redemptions_count: 0 });
+        setByProduct([]);
+        setByCategory([]);
+        setByCocktail([]);
+        return;
+      }
+
+      // Aggregate cocktail quantities
+      const cocktailQty = new Map<string, { name: string; qty: number }>();
+      saleItems.forEach((si: any) => {
+        const c = si.cocktails as { id: string; name: string } | null;
+        if (!c) return;
+        const existing = cocktailQty.get(c.id);
+        if (existing) {
+          existing.qty += Number(si.quantity);
+        } else {
+          cocktailQty.set(c.id, { name: c.name, qty: Number(si.quantity) });
+        }
+      });
+
+      const cocktailIds = Array.from(cocktailQty.keys());
+      if (cocktailIds.length === 0) {
+        setSummary({ total_cogs: 0, total_items: 0, products_count: 0, avg_cost_per_redemption: 0, redemptions_count: 0 });
+        setByProduct([]);
+        setByCategory([]);
+        setByCocktail([]);
+        return;
+      }
+
+      // Get recipe ingredients with product costs
+      const { data: ingredients } = await supabase
+        .from("cocktail_ingredients")
+        .select("cocktail_id, product_id, quantity, products(name, category, subcategory, unit, cost_per_unit, capacity_ml)")
+        .in("cocktail_id", cocktailIds);
+
+      if (!ingredients) {
+        setSummary({ total_cogs: 0, total_items: 0, products_count: 0, avg_cost_per_redemption: 0, redemptions_count: 0 });
+        setByProduct([]);
+        setByCategory([]);
+        setByCocktail([]);
+        return;
+      }
+
+      // Calculate per-cocktail recipe cost, then multiply by sold qty
+      let totalCogs = 0;
+      const productMap = new Map<string, COGSByProduct>();
+      const categoryMap = new Map<string, { total_cost: number; products: Set<string>; items: number }>();
+      const cocktailCosts: COGSByCocktail[] = [];
+      const uniqueProducts = new Set<string>();
+      let totalItems = 0;
+
+      cocktailIds.forEach(cocktailId => {
+        const recipeIngredients = ingredients.filter(i => i.cocktail_id === cocktailId);
+        const soldQty = cocktailQty.get(cocktailId)?.qty || 0;
+        const cocktailName = cocktailQty.get(cocktailId)?.name || "Unknown";
+        let recipeCost = 0;
+
+        recipeIngredients.forEach((ing: any) => {
+          const p = ing.products;
+          if (!p) return;
+          const ingQtyMl = Number(ing.quantity); // ml per serving
+          const capacityMl = Number(p.capacity_ml) || 0;
+          const costPerUnit = Number(p.cost_per_unit) || 0;
+
+          // Cost of this ingredient per serving
+          const costPerServing = capacityMl > 0
+            ? (ingQtyMl / capacityMl) * costPerUnit
+            : ingQtyMl * costPerUnit;
+
+          const totalIngCost = costPerServing * soldQty;
+          recipeCost += costPerServing;
+          totalCogs += totalIngCost;
+          totalItems += soldQty;
+          uniqueProducts.add(ing.product_id);
+
+          // By product
+          const displayQty = capacityMl > 0 ? (ingQtyMl * soldQty) / capacityMl : ingQtyMl * soldQty;
+          const existing = productMap.get(ing.product_id);
+          if (existing) {
+            existing.total_quantity += displayQty;
+            existing.total_cost += totalIngCost;
+          } else {
+            productMap.set(ing.product_id, {
+              product_id: ing.product_id,
+              product_name: p.name,
+              category: p.category || "otros",
+              subcategory: p.subcategory || null,
+              total_quantity: displayQty,
+              unit: capacityMl > 0 ? "bot." : (p.unit || "u"),
+              unit_cost: costPerUnit,
+              total_cost: totalIngCost,
+            });
+          }
+
+          // By category
+          const cat = p.category || "otros";
+          const catData = categoryMap.get(cat);
+          if (catData) {
+            catData.total_cost += totalIngCost;
+            catData.products.add(ing.product_id);
+            catData.items += soldQty;
+          } else {
+            categoryMap.set(cat, { total_cost: totalIngCost, products: new Set([ing.product_id]), items: soldQty });
+          }
+        });
+
+        cocktailCosts.push({
+          cocktail_name: cocktailName,
+          redemptions_count: soldQty,
+          total_cost: recipeCost * soldQty,
+          avg_cost_per_unit: recipeCost,
+        });
+      });
+
+      const totalRedemptions = Array.from(cocktailQty.values()).reduce((s, c) => s + c.qty, 0);
+
+      setSummary({
+        total_cogs: totalCogs,
+        total_items: totalItems,
+        products_count: uniqueProducts.size,
+        avg_cost_per_redemption: totalRedemptions > 0 ? totalCogs / totalRedemptions : 0,
+        redemptions_count: totalRedemptions,
+      });
+      setByProduct(Array.from(productMap.values()).sort((a, b) => b.total_cost - a.total_cost));
+      setByCategory(
+        Array.from(categoryMap.entries())
+          .map(([category, data]) => ({
+            category,
+            total_cost: data.total_cost,
+            product_count: data.products.size,
+            items_count: data.items,
+          }))
+          .sort((a, b) => b.total_cost - a.total_cost)
+      );
+      setByCocktail(cocktailCosts.sort((a, b) => b.total_cost - a.total_cost));
+    } catch (err) {
+      console.error("Error estimating COGS from recipes:", err);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
 
