@@ -21,7 +21,7 @@ export function InventoryFreezeToggle() {
     setUpdating(true);
     try {
       const newValue = !frozen;
-      const { error } = await supabase.rpc("set_inventory_freeze_mode", {
+      const { error } = await (supabase.rpc as any)("set_inventory_freeze_mode", {
         p_enabled: newValue,
         p_venue_id: venue.id,
       });
