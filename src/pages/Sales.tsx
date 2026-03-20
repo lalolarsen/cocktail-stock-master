@@ -36,7 +36,6 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
 import { PrintingPanel } from "@/components/sales/PrintingPanel";
-import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import {
   Select,
   SelectContent,
