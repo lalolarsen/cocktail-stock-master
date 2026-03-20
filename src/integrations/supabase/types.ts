@@ -5407,6 +5407,10 @@ export type Database = {
         Returns: undefined
       }
       seed_demo_data: { Args: never; Returns: Json }
+      set_inventory_freeze_mode: {
+        Args: { p_enabled: boolean; p_venue_id?: string }
+        Returns: undefined
+      }
       set_venue_flag: {
         Args: { p_enabled: boolean; p_flag_key: string; p_venue_id: string }
         Returns: undefined
