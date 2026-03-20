@@ -2,14 +2,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Snowflake, Loader2 } from "lucide-react";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
-import { useFlagsAdmin, isEnabled } from "@/lib/flags";
+import { useFlags, isEnabled } from "@/lib/flags";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function InventoryFreezeToggle() {
   const { venue } = useActiveVenue();
-  const { flags, isLoading, setFlag } = useFlagsAdmin(venue?.id);
+  const { flags, isLoading } = useFlags(venue?.id);
   const [updating, setUpdating] = useState(false);
+  const queryClient = useQueryClient();
 
   const frozen = isEnabled(flags, "inventory_freeze_mode");
 
@@ -17,9 +20,33 @@ export function InventoryFreezeToggle() {
     if (!venue?.id) return;
     setUpdating(true);
     try {
-      await setFlag("inventory_freeze_mode", !frozen);
+      const newValue = !frozen;
+
+      // Upsert directly into feature_flags (no developer-only RPC)
+      const { data: existing } = await supabase
+        .from("feature_flags")
+        .select("id")
+        .eq("venue_id", venue.id)
+        .eq("feature_key", "inventory_freeze_mode")
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from("feature_flags")
+          .update({ enabled: newValue, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("feature_flags")
+          .insert({ venue_id: venue.id, feature_key: "inventory_freeze_mode", enabled: newValue });
+        if (error) throw error;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["effective-flags", venue.id] });
       toast.success(frozen ? "Inventario reactivado" : "Inventario congelado (marcha blanca)");
-    } catch {
+    } catch (err) {
+      console.error("Error toggling freeze:", err);
       toast.error("Error al cambiar modo de inventario");
     } finally {
       setUpdating(false);
