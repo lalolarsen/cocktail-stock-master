@@ -23,6 +23,8 @@ import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
+import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
+import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -169,7 +171,12 @@ export default function Admin() {
             {activeView === "reports" && <ReportsPanel />}
             {activeView === "documents" && <DocumentsRetryPanel />}
             {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
-            {activeView === "inventory" && <WarehouseInventory isReadOnly={isReadOnly} />}
+            {activeView === "inventory" && (
+              <>
+                <InventoryFreezeBanner />
+                <WarehouseInventory isReadOnly={isReadOnly} />
+              </>
+            )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
@@ -179,7 +186,12 @@ export default function Admin() {
             {activeView === "courtesy-qr" && <CourtesyQR />}
             {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
-            {activeView === "settings" && <ReceiptSettingsCard />}
+            {activeView === "settings" && (
+              <>
+                <ReceiptSettingsCard />
+                {!isReadOnly && <InventoryFreezeToggle />}
+              </>
+            )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
           </div>
         </main>
