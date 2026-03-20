@@ -111,10 +111,10 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const activeJornada = await fetchJornada();
       await Promise.all([
-        fetchJornada(),
-        fetchTodayStats(),
-        fetchBarStatuses(),
+        fetchTodayStats(activeJornada?.id),
+        fetchBarStatuses(activeJornada?.id),
         fetchOrphanSalesCount(),
       ]);
     } finally {
@@ -130,8 +130,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     if (!error) setOrphanSalesCount(count || 0);
   };
 
-  const fetchJornada = async () => {
-    // Use Chile timezone for "today" to avoid UTC midnight shift
+  const fetchJornada = async (): Promise<Jornada | null> => {
     const todayChile = new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
     const { data } = await supabase
       .from("jornadas")
@@ -141,36 +140,42 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .limit(1)
       .maybeSingle();
     setJornada(data);
+    return data;
   };
 
-  const fetchTodayStats = async () => {
-    // Use Chile timezone to avoid UTC midnight shift issues
-    const todayChile = new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
-    const todayStart = `${todayChile}T00:00:00-04:00`; // Chile offset (CLT=-4, CLST=-3)
+  const fetchTodayStats = async (jornadaId?: string) => {
+    if (!jornadaId) return;
 
-    const { data: salesData } = await supabase
-      .from("sales")
-      .select("total_amount, payment_method")
-      .gte("created_at", todayStart)
-      .eq("payment_status", "paid")
-      .eq("is_cancelled", false);
+    const [{ data: salesData }, { data: ticketData }, { data: incomeData }] = await Promise.all([
+      supabase
+        .from("sales")
+        .select("id, total_amount, payment_method")
+        .eq("jornada_id", jornadaId)
+        .eq("payment_status", "paid")
+        .eq("is_cancelled", false),
+      supabase
+        .from("ticket_sales")
+        .select("total")
+        .eq("jornada_id", jornadaId)
+        .eq("payment_status", "paid"),
+      supabase
+        .from("gross_income_entries")
+        .select("amount")
+        .eq("jornada_id", jornadaId),
+    ]);
 
-    const { data: ticketData } = await supabase
-      .from("ticket_sales")
-      .select("total")
-      .gte("created_at", todayStart)
-      .eq("payment_status", "paid");
+    // Count QR redemptions linked to this jornada's sales
+    const saleIds = salesData?.map(s => s.id) || [];
+    let qrCount = 0;
+    if (saleIds.length > 0) {
+      const { count } = await supabase
+        .from("pickup_redemptions_log")
+        .select("*", { count: "exact", head: true })
+        .in("sale_id", saleIds)
+        .eq("result", "success");
+      qrCount = count || 0;
+    }
 
-    const { count: qrCount } = await supabase
-      .from("pickup_redemptions_log")
-      .select("*", { count: "exact", head: true })
-      .gte("redeemed_at", todayStart)
-      .eq("result", "success");
-
-    const { data: incomeData } = await supabase
-      .from("gross_income_entries")
-      .select("amount")
-      .gte("created_at", todayStart);
 
     const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
     const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
@@ -193,18 +198,26 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     });
   };
 
-  const fetchBarStatuses = async () => {
-    const { data: bars } = await supabase
-      .from("stock_locations")
-      .select("id, name, is_active")
-      .eq("type", "bar")
-      .order("name");
+  const fetchBarStatuses = async (jornadaId?: string) => {
+    if (!jornadaId) {
+      setBarStatuses([]);
+      return;
+    }
 
-    setBarStatuses(bars?.map((bar) => ({
-      id: bar.id,
-      name: bar.name,
-      is_active: bar.is_active,
-    })) || []);
+    // Only show bars assigned to the current jornada
+    const { data: assignments } = await supabase
+      .from("jornada_bar_assignments")
+      .select("location_id, stock_locations:location_id(id, name, is_active)")
+      .eq("jornada_id", jornadaId);
+
+    const bars = assignments
+      ?.map((a) => {
+        const loc = a.stock_locations as unknown as { id: string; name: string; is_active: boolean } | null;
+        return loc ? { id: loc.id, name: loc.name, is_active: loc.is_active } : null;
+      })
+      .filter(Boolean) as BarStatus[] || [];
+
+    setBarStatuses(bars);
   };
 
   /* ─── Loading skeleton ─── */
