@@ -124,6 +124,12 @@ const GERENCIA_SECTIONS: MenuSection[] = [
       { title: "Finanzas", value: "finance", icon: Landmark },
     ],
   },
+  {
+    label: "Sistema",
+    items: [
+      { title: "Configuración", value: "settings", icon: Settings },
+    ],
+  },
 ];
 
 export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: AppSidebarProps) {
