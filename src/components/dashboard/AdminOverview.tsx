@@ -176,10 +176,6 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       qrCount = count || 0;
     }
 
-    const { data: incomeData } = await supabase
-      .from("gross_income_entries")
-      .select("amount")
-      .eq("jornada_id", jornadaId);
 
     const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
     const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
