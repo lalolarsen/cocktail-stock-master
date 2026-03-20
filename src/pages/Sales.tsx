@@ -1023,7 +1023,6 @@ export default function Sales() {
               Ventas bloqueadas — No hay jornada activa.
             </div>
           )}
-          <InventoryFreezeBanner />
         </div>
 
         {/* Main content — fills remaining height, 2 columns */}
