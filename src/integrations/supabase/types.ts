@@ -5067,15 +5067,24 @@ export type Database = {
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
-      auto_redeem_sale_token: {
-        Args: {
-          p_bar_location_id: string
-          p_mixer_overrides?: Json
-          p_sale_id: string
-          p_seller_id: string
-        }
-        Returns: Json
-      }
+      auto_redeem_sale_token:
+        | {
+            Args: {
+              p_bar_location_id: string
+              p_sale_id: string
+              p_seller_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_bar_location_id: string
+              p_mixer_overrides?: Json
+              p_sale_id: string
+              p_seller_id: string
+            }
+            Returns: Json
+          }
       check_jornada_cost_completeness: {
         Args: { p_jornada_id: string }
         Returns: {
@@ -5319,6 +5328,7 @@ export type Database = {
         Returns: boolean
       }
       is_feature_enabled: { Args: { flag_key: string }; Returns: boolean }
+      is_inventory_frozen: { Args: { p_venue_id: string }; Returns: boolean }
       is_product_sellable: { Args: { p_product_id: string }; Returns: boolean }
       list_bar_workers: {
         Args: { p_venue_id: string }

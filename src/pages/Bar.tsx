@@ -22,6 +22,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
+import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -714,6 +715,8 @@ export default function Bar() {
             </Button>
           </div>
         </header>
+
+        <InventoryFreezeBanner />
 
         {/* ── Main ── */}
         <main className="flex-1 flex flex-col items-center justify-center gap-8 p-6">

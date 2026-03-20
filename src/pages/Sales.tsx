@@ -36,6 +36,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
 import { PrintingPanel } from "@/components/sales/PrintingPanel";
+import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import {
   Select,
   SelectContent,
@@ -1023,6 +1024,7 @@ export default function Sales() {
               Ventas bloqueadas — No hay jornada activa.
             </div>
           )}
+          <InventoryFreezeBanner />
         </div>
 
         {/* Main content — fills remaining height, 2 columns */}
