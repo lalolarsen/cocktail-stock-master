@@ -146,24 +146,35 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchTodayStats = async (jornadaId?: string) => {
     if (!jornadaId) return;
 
-    const { data: salesData } = await supabase
-      .from("sales")
-      .select("total_amount, payment_method")
-      .eq("jornada_id", jornadaId)
-      .eq("payment_status", "paid")
-      .eq("is_cancelled", false);
+    const [{ data: salesData }, { data: ticketData }, { data: incomeData }] = await Promise.all([
+      supabase
+        .from("sales")
+        .select("id, total_amount, payment_method")
+        .eq("jornada_id", jornadaId)
+        .eq("payment_status", "paid")
+        .eq("is_cancelled", false),
+      supabase
+        .from("ticket_sales")
+        .select("total")
+        .eq("jornada_id", jornadaId)
+        .eq("payment_status", "paid"),
+      supabase
+        .from("gross_income_entries")
+        .select("amount")
+        .eq("jornada_id", jornadaId),
+    ]);
 
-    const { data: ticketData } = await supabase
-      .from("ticket_sales")
-      .select("total")
-      .eq("jornada_id", jornadaId)
-      .eq("payment_status", "paid");
-
-    const { count: qrCount } = await supabase
-      .from("pickup_redemptions_log")
-      .select("*", { count: "exact", head: true })
-      .eq("jornada_id", jornadaId)
-      .eq("result", "success");
+    // Count QR redemptions linked to this jornada's sales
+    const saleIds = salesData?.map(s => s.id) || [];
+    let qrCount = 0;
+    if (saleIds.length > 0) {
+      const { count } = await supabase
+        .from("pickup_redemptions_log")
+        .select("*", { count: "exact", head: true })
+        .in("sale_id", saleIds)
+        .eq("result", "success");
+      qrCount = count || 0;
+    }
 
     const { data: incomeData } = await supabase
       .from("gross_income_entries")
