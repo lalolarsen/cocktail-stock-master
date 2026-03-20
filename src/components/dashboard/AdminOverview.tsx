@@ -295,103 +295,92 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         }}
       />
 
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-           BLOQUE 1 — Operación en vivo (single card, grid inside)
-         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Operación en vivo
-        </h2>
-
-        <Card className="overflow-hidden">
-          {/* Jornada header strip */}
-          <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-border bg-muted/30">
-            {jornadaActive ? (
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="w-3.5 h-3.5 text-primary" />
-                <span className="font-semibold">Jornada #{jornada!.numero_jornada}</span>
-                {jornada!.hora_apertura && (
-                  <span className="text-muted-foreground text-xs flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {jornada!.hora_apertura}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Sin jornada activa</span>
-              </div>
-            )}
-            {activeBars.length > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Store className="w-3 h-3" />
-                <span>{activeBars.length} barra{activeBars.length > 1 ? "s" : ""}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              </div>
-            )}
-          </div>
-
-          {/* Metrics grid */}
-          <CardContent className="p-0">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border">
-              <MetricCell
-                label="Ingresos brutos"
-                value={formatCLP(todayStats.grossIncome)}
-                icon={TrendingUp}
-              />
-              <MetricCell
-                label="Ventas"
-                value={formatCLP(todayStats.salesToday)}
-                sub={`${todayStats.transactionsToday} tx`}
-                icon={DollarSign}
-              />
-              <MetricCell
-                label="Ticket prom."
-                value={todayStats.avgTicket > 0 ? formatCLP(todayStats.avgTicket) : "—"}
-                icon={Hash}
-              />
-              <MetricCell
-                label="QRs canjeados"
-                value={todayStats.qrsRedeemed}
-                icon={QrCode}
-              />
-              <MetricCell
-                label="Efectivo"
-                value={formatCLP(todayStats.cashSales)}
-                icon={DollarSign}
-              />
-              <MetricCell
-                label="Tarjeta"
-                value={formatCLP(todayStats.cardSales)}
-                icon={DollarSign}
-              />
+      {/* ━━━ Sin jornada → empty state ━━━ */}
+      {!jornadaActive && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
+            <div className="p-3 rounded-full bg-muted">
+              <Calendar className="w-6 h-6 text-muted-foreground" />
             </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">No hay jornada activa</p>
+              <p className="text-xs text-muted-foreground max-w-xs">
+                Abre una jornada para ver métricas de operación en vivo, KPIs y alertas de stock.
+              </p>
+            </div>
+            {!isReadOnly && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onNavigate?.("jornadas")}
+                className="mt-2"
+              >
+                <Play className="w-3.5 h-3.5 mr-1.5" />
+                Abrir jornada
+              </Button>
+            )}
           </CardContent>
         </Card>
-      </section>
-
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-           BLOQUE 2 — KPIs de la jornada (solo cuando hay jornada activa)
-         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {jornadaActive && (
-        <section>
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            KPIs de la jornada
-          </h2>
-          <JornadaKPIPanel jornadaId={jornada?.id} />
-        </section>
       )}
 
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-           BLOQUE 3 — Alertas y estado
-         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Alertas y estado
-        </h2>
-        <StockAlertsPanel onNavigate={onNavigate} />
-      </section>
+      {/* ━━━ Con jornada activa → contenido completo ━━━ */}
+      {jornadaActive && (
+        <>
+          {/* BLOQUE 1 — Operación en vivo */}
+          <section>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Operación en vivo
+            </h2>
+            <Card className="overflow-hidden">
+              <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-border bg-muted/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="w-3.5 h-3.5 text-primary" />
+                  <span className="font-semibold">Jornada #{jornada!.numero_jornada}</span>
+                  {jornada!.hora_apertura && (
+                    <span className="text-muted-foreground text-xs flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {jornada!.hora_apertura}
+                    </span>
+                  )}
+                </div>
+                {activeBars.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Store className="w-3 h-3" />
+                    <span>{activeBars.length} barra{activeBars.length > 1 ? "s" : ""}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  </div>
+                )}
+              </div>
+              <CardContent className="p-0">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border">
+                  <MetricCell label="Ingresos brutos" value={formatCLP(todayStats.grossIncome)} icon={TrendingUp} />
+                  <MetricCell label="Ventas" value={formatCLP(todayStats.salesToday)} sub={`${todayStats.transactionsToday} tx`} icon={DollarSign} />
+                  <MetricCell label="Ticket prom." value={todayStats.avgTicket > 0 ? formatCLP(todayStats.avgTicket) : "—"} icon={Hash} />
+                  <MetricCell label="QRs canjeados" value={todayStats.qrsRedeemed} icon={QrCode} />
+                  <MetricCell label="Efectivo" value={formatCLP(todayStats.cashSales)} icon={DollarSign} />
+                  <MetricCell label="Tarjeta" value={formatCLP(todayStats.cardSales)} icon={DollarSign} />
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* BLOQUE 2 — KPIs de la jornada */}
+          <section>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              KPIs de la jornada
+            </h2>
+            <JornadaKPIPanel jornadaId={jornada?.id} />
+          </section>
+
+          {/* BLOQUE 3 — Alertas y estado */}
+          <section>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Alertas y estado
+            </h2>
+            <StockAlertsPanel onNavigate={onNavigate} />
+          </section>
+        </>
+      )}
     </div>
   );
 }
