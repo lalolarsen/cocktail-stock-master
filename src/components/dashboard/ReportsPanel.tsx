@@ -7,8 +7,9 @@ import {
   Download, Calendar, ChevronDown, ChevronRight,
   TrendingUp, ShoppingCart, Ticket, Clock, DollarSign,
   XCircle, CreditCard, Banknote, RefreshCw, FileText,
-  Loader2, PieChart
+  Loader2, PieChart, Printer
 } from "lucide-react";
+import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
