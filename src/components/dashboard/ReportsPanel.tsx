@@ -7,8 +7,9 @@ import {
   Download, Calendar, ChevronDown, ChevronRight,
   TrendingUp, ShoppingCart, Ticket, Clock, DollarSign,
   XCircle, CreditCard, Banknote, RefreshCw, FileText,
-  Loader2, PieChart
+  Loader2, PieChart, Printer
 } from "lucide-react";
+import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
@@ -526,6 +527,7 @@ function JornadaRow({
                   Ver EERR
                 </Button>
               )}
+              <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
             </div>
 
             {/* Sales table */}
@@ -621,5 +623,83 @@ function KPICell({
       </div>
       <p className={`font-semibold text-xs ${destructive ? "text-destructive" : color || ""}`}>{value}</p>
     </div>
+  );
+}
+
+/* ── POS Report Button ── */
+
+function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const handlePrint = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      const { data: sales, error } = await supabase
+        .from("sales")
+        .select("total_amount, payment_method, point_of_sale, is_cancelled")
+        .eq("jornada_id", jornadaId)
+        .eq("is_cancelled", false);
+
+      if (error) throw error;
+      if (!sales || sales.length === 0) {
+        const { toast } = await import("sonner");
+        toast.info("No hay ventas en esta jornada");
+        return;
+      }
+
+      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
+
+      for (const s of sales) {
+        const pos = s.point_of_sale || "Sin POS";
+        const entry = posMap.get(pos) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
+        const amt = Number(s.total_amount);
+        if (s.payment_method === "cash") { entry.cash += amt; entry.cashN++; }
+        else if (s.payment_method === "card") { entry.card += amt; entry.cardN++; }
+        else { entry.other += amt; entry.otherN++; }
+        posMap.set(pos, entry);
+      }
+
+      const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
+        .map(([posName, d]) => ({
+          posName,
+          cashTotal: d.cash,
+          cashCount: d.cashN,
+          cardTotal: d.card,
+          cardCount: d.cardN,
+          otherTotal: d.other,
+          otherCount: d.otherN,
+          total: d.cash + d.card + d.other,
+          totalCount: d.cashN + d.cardN + d.otherN,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      const reportData: POSSalesData = {
+        jornadaNumber,
+        fecha,
+        horario,
+        posSummary,
+        grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
+        grandCash: posSummary.reduce((s, p) => s + p.cashTotal, 0),
+        grandCard: posSummary.reduce((s, p) => s + p.cardTotal, 0),
+        grandOther: posSummary.reduce((s, p) => s + p.otherTotal, 0),
+        grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
+      };
+
+      printPOSSalesReport(reportData);
+    } catch (err) {
+      console.error("Error generating POS report:", err);
+      const { toast } = await import("sonner");
+      toast.error("Error al generar reporte");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" className="text-xs h-7" onClick={handlePrint} disabled={loading}>
+      {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Printer className="h-3 w-3 mr-1" />}
+      Reporte POS
+    </Button>
   );
 }
