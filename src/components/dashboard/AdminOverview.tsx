@@ -130,8 +130,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     if (!error) setOrphanSalesCount(count || 0);
   };
 
-  const fetchJornada = async () => {
-    // Use Chile timezone for "today" to avoid UTC midnight shift
+  const fetchJornada = async (): Promise<Jornada | null> => {
     const todayChile = new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
     const { data } = await supabase
       .from("jornadas")
@@ -141,6 +140,7 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       .limit(1)
       .maybeSingle();
     setJornada(data);
+    return data;
   };
 
   const fetchTodayStats = async () => {
