@@ -191,18 +191,26 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     });
   };
 
-  const fetchBarStatuses = async () => {
-    const { data: bars } = await supabase
-      .from("stock_locations")
-      .select("id, name, is_active")
-      .eq("type", "bar")
-      .order("name");
+  const fetchBarStatuses = async (jornadaId?: string) => {
+    if (!jornadaId) {
+      setBarStatuses([]);
+      return;
+    }
 
-    setBarStatuses(bars?.map((bar) => ({
-      id: bar.id,
-      name: bar.name,
-      is_active: bar.is_active,
-    })) || []);
+    // Only show bars assigned to the current jornada
+    const { data: assignments } = await supabase
+      .from("jornada_bar_assignments")
+      .select("location_id, stock_locations:location_id(id, name, is_active)")
+      .eq("jornada_id", jornadaId);
+
+    const bars = assignments
+      ?.map((a) => {
+        const loc = a.stock_locations as unknown as { id: string; name: string; is_active: boolean } | null;
+        return loc ? { id: loc.id, name: loc.name, is_active: loc.is_active } : null;
+      })
+      .filter(Boolean) as BarStatus[] || [];
+
+    setBarStatuses(bars);
   };
 
   /* ─── Loading skeleton ─── */
