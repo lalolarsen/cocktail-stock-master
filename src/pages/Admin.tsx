@@ -189,7 +189,7 @@ export default function Admin() {
             {activeView === "settings" && (
               <>
                 <ReceiptSettingsCard />
-                {!isReadOnly && <InventoryFreezeToggle />}
+                {isReadOnly && <InventoryFreezeToggle />}
               </>
             )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
