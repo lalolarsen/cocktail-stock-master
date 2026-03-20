@@ -4,8 +4,8 @@ import { useFlags, isEnabled } from "@/lib/flags";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 
 export function InventoryFreezeBanner() {
-  const { venueId } = useActiveVenue();
-  const { flags, isLoading } = useFlags(venueId);
+  const { venue } = useActiveVenue();
+  const { flags, isLoading } = useFlags(venue?.id);
 
   if (isLoading || !isEnabled(flags, "inventory_freeze_mode")) {
     return null;
