@@ -42,6 +42,10 @@ export const FEATURE_DESCRIPTIONS: Record<string, { name: string; description: s
     name: "Módulo de Entradas",
     description: "Venta de entradas y gestión de covers para eventos",
   },
+  inventory_freeze_mode: {
+    name: "Modo Marcha Blanca",
+    description: "Inventario congelado: ventas normales sin descuento de stock (temporal para pruebas)",
+  },
 };
 
 export default function FeatureFlagsAdmin() {
