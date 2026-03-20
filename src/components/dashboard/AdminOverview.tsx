@@ -143,34 +143,32 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     return data;
   };
 
-  const fetchTodayStats = async () => {
-    // Use Chile timezone to avoid UTC midnight shift issues
-    const todayChile = new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
-    const todayStart = `${todayChile}T00:00:00-04:00`; // Chile offset (CLT=-4, CLST=-3)
+  const fetchTodayStats = async (jornadaId?: string) => {
+    if (!jornadaId) return;
 
     const { data: salesData } = await supabase
       .from("sales")
       .select("total_amount, payment_method")
-      .gte("created_at", todayStart)
+      .eq("jornada_id", jornadaId)
       .eq("payment_status", "paid")
       .eq("is_cancelled", false);
 
     const { data: ticketData } = await supabase
       .from("ticket_sales")
       .select("total")
-      .gte("created_at", todayStart)
+      .eq("jornada_id", jornadaId)
       .eq("payment_status", "paid");
 
     const { count: qrCount } = await supabase
       .from("pickup_redemptions_log")
       .select("*", { count: "exact", head: true })
-      .gte("redeemed_at", todayStart)
+      .eq("jornada_id", jornadaId)
       .eq("result", "success");
 
     const { data: incomeData } = await supabase
       .from("gross_income_entries")
       .select("amount")
-      .gte("created_at", todayStart);
+      .eq("jornada_id", jornadaId);
 
     const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
     const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
