@@ -21,30 +21,14 @@ export function InventoryFreezeToggle() {
     setUpdating(true);
     try {
       const newValue = !frozen;
-
-      // Upsert directly into feature_flags (no developer-only RPC)
-      const { data: existing } = await supabase
-        .from("feature_flags")
-        .select("id")
-        .eq("venue_id", venue.id)
-        .eq("feature_key", "inventory_freeze_mode")
-        .maybeSingle();
-
-      if (existing) {
-        const { error } = await supabase
-          .from("feature_flags")
-          .update({ enabled: newValue, updated_at: new Date().toISOString() })
-          .eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("feature_flags")
-          .insert({ venue_id: venue.id, feature_key: "inventory_freeze_mode", enabled: newValue });
-        if (error) throw error;
-      }
+      const { error } = await supabase.rpc("set_inventory_freeze_mode", {
+        p_enabled: newValue,
+        p_venue_id: venue.id,
+      });
+      if (error) throw error;
 
       await queryClient.invalidateQueries({ queryKey: ["effective-flags", venue.id] });
-      toast.success(frozen ? "Inventario reactivado" : "Inventario congelado (marcha blanca)");
+      toast.success(newValue ? "Inventario congelado (marcha blanca)" : "Inventario reactivado");
     } catch (err) {
       console.error("Error toggling freeze:", err);
       toast.error("Error al cambiar modo de inventario");
