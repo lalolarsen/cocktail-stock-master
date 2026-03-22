@@ -8,14 +8,12 @@ export interface ProductSaleRow {
   cocktailName: string;
   category: string;
   quantity: number;
-  revenue: number;
 }
 
 export interface POSProductBreakdown {
   posName: string;
   products: ProductSaleRow[];
   totalUnits: number;
-  totalRevenue: number;
 }
 
 export interface ProductSalesReportData {
@@ -25,15 +23,12 @@ export interface ProductSalesReportData {
   venueName?: string;
   posSections: POSProductBreakdown[];
   grandTotalUnits: number;
-  grandTotalRevenue: number;
 }
 
-const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
+const sep = "================================================";
+const dash = "------------------------------------------------";
 
 function buildHtml(data: ProductSalesReportData): string {
-  const sep = "================================================";
-  const dash = "------------------------------------------------";
-
   const posBlocks = data.posSections
     .map((pos) => {
       const productRows = pos.products
@@ -42,7 +37,6 @@ function buildHtml(data: ProductSalesReportData): string {
           <tr>
             <td class="prod-qty">${p.quantity}</td>
             <td class="prod-name">${p.cocktailName}</td>
-            <td class="prod-price">${fmt(p.revenue)}</td>
           </tr>`
         )
         .join("");
@@ -55,14 +49,10 @@ function buildHtml(data: ProductSalesReportData): string {
             <tr class="prod-header">
               <td class="prod-qty">Cant</td>
               <td class="prod-name">Producto</td>
-              <td class="prod-price">Ingreso</td>
             </tr>
             ${productRows}
           </tbody></table>
-          <div class="pos-total">
-            <span>${pos.totalUnits} unidades</span>
-            <span class="pos-total-amount">${fmt(pos.totalRevenue)}</span>
-          </div>
+          <div class="pos-total">${pos.totalUnits} unidades</div>
           <div class="sep">${sep}</div>
         </div>`;
     })
@@ -70,7 +60,7 @@ function buildHtml(data: ProductSalesReportData): string {
 
   return `
     <div class="receipt">
-      <div class="venue-name">PRODUCTOS VENDIDOS</div>
+      <div class="venue-name">CONTEO DE PRODUCTOS</div>
       <div class="sep">${sep}</div>
       <div class="meta">Jornada #${data.jornadaNumber}</div>
       <div class="meta">${data.fecha}</div>
@@ -81,10 +71,9 @@ function buildHtml(data: ProductSalesReportData): string {
       <div class="sep">${dash}</div>
       ${posBlocks}
 
-      <div class="section-title">RESUMEN GENERAL</div>
+      <div class="section-title">TOTAL GENERAL</div>
       <div class="sep">${dash}</div>
       <div class="total-line">${data.grandTotalUnits} UNIDADES</div>
-      <div class="total-line">TOTAL: ${fmt(data.grandTotalRevenue)}</div>
       <div class="sep">${sep}</div>
       <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
     </div>
