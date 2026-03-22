@@ -1,10 +1,8 @@
 /**
- * Generates a downloadable PDF report of products sold per POS terminal
- * for a given jornada. Shows quantities SOLD (not redeemed).
+ * Generates a printable 80mm thermal receipt report of products sold per POS terminal.
+ * Uses print-js with the same styling as the POS sales report.
  */
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { formatCLP } from "@/lib/currency";
+import printJS from "print-js";
 
 export interface ProductSaleRow {
   cocktailName: string;
@@ -30,148 +28,99 @@ export interface ProductSalesReportData {
   grandTotalRevenue: number;
 }
 
-const GREEN_PRIMARY: [number, number, number] = [0, 200, 100];
-const DARK_BG: [number, number, number] = [20, 20, 20];
-const DARK_CARD: [number, number, number] = [35, 35, 35];
-const WHITE: [number, number, number] = [255, 255, 255];
-const GRAY_LIGHT: [number, number, number] = [160, 160, 160];
+const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
+
+function buildHtml(data: ProductSalesReportData): string {
+  const sep = "================================================";
+  const dash = "------------------------------------------------";
+
+  const posBlocks = data.posSections
+    .map((pos) => {
+      const productRows = pos.products
+        .map(
+          (p) => `
+          <tr>
+            <td class="prod-qty">${p.quantity}</td>
+            <td class="prod-name">${p.cocktailName}</td>
+            <td class="prod-price">${fmt(p.revenue)}</td>
+          </tr>`
+        )
+        .join("");
+
+      return `
+        <div class="pos-block">
+          <div class="pos-name">${pos.posName}</div>
+          <div class="sep">${dash}</div>
+          <table class="products"><tbody>
+            <tr class="prod-header">
+              <td class="prod-qty">Cant</td>
+              <td class="prod-name">Producto</td>
+              <td class="prod-price">Ingreso</td>
+            </tr>
+            ${productRows}
+          </tbody></table>
+          <div class="pos-total">
+            <span>${pos.totalUnits} unidades</span>
+            <span class="pos-total-amount">${fmt(pos.totalRevenue)}</span>
+          </div>
+          <div class="sep">${sep}</div>
+        </div>`;
+    })
+    .join("");
+
+  return `
+    <div class="receipt">
+      <div class="venue-name">PRODUCTOS VENDIDOS</div>
+      <div class="sep">${sep}</div>
+      <div class="meta">Jornada #${data.jornadaNumber}</div>
+      <div class="meta">${data.fecha}</div>
+      <div class="meta">${data.horario}</div>
+      <div class="sep">${sep}</div>
+
+      <div class="section-title">DESGLOSE POR POS</div>
+      <div class="sep">${dash}</div>
+      ${posBlocks}
+
+      <div class="section-title">RESUMEN GENERAL</div>
+      <div class="sep">${dash}</div>
+      <div class="total-line">${data.grandTotalUnits} UNIDADES</div>
+      <div class="total-line">TOTAL: ${fmt(data.grandTotalRevenue)}</div>
+      <div class="sep">${sep}</div>
+      <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
+    </div>
+  `;
+}
+
+function buildCss(): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 11pt; color: #000; background: #fff; }
+    .receipt { width: 100%; padding: 0 2px; color: #000; }
+    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
+    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; font-size: 8pt; }
+    .meta { text-align: center; font-size: 10pt; color: #000; }
+    .section-title { text-align: center; font-size: 13pt; font-weight: bold; margin: 6px 0 2px; color: #000; }
+    .products { width: 100%; border-collapse: collapse; }
+    .products td { padding: 2px 0; vertical-align: top; color: #000; }
+    .prod-header td { font-size: 9pt; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 3px; margin-bottom: 2px; }
+    .prod-qty { width: 36px; text-align: center; font-size: 14pt; font-weight: bold; color: #000; }
+    .prod-name { text-align: left; font-size: 11pt; font-weight: bold; color: #000; }
+    .prod-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 10pt; color: #000; }
+    .total-line { font-size: 14pt; font-weight: bold; text-align: center; margin: 4px 0; color: #000; }
+    .pos-block { margin: 4px 0; }
+    .pos-name { font-size: 13pt; font-weight: bold; margin: 6px 0 2px; text-align: center; color: #000; text-decoration: underline; }
+    .pos-total { display: flex; justify-content: space-between; font-size: 11pt; font-weight: bold; margin: 4px 0; color: #000; }
+    .pos-total-amount { font-weight: bold; }
+    .footer { text-align: center; margin-top: 10px; font-size: 8pt; color: #000; }
+    @media print {
+      @page { margin: 0; size: 80mm auto; }
+      body { margin: 2mm; }
+    }
+  `;
+}
 
 export function generateProductSalesPDF(data: ProductSalesReportData): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const marginX = 15;
-  const contentW = pageW - marginX * 2;
-  let y = 0;
-
-  // ── Background ──
-  const drawBackground = () => {
-    doc.setFillColor(...DARK_BG);
-    doc.rect(0, 0, pageW, pageH, "F");
-  };
-
-  drawBackground();
-
-  // ── Header ──
-  y = 18;
-  doc.setFillColor(...GREEN_PRIMARY);
-  doc.roundedRect(marginX, y - 6, contentW, 28, 3, 3, "F");
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("REPORTE DE PRODUCTOS VENDIDOS", pageW / 2, y + 4, { align: "center" });
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Jornada #${data.jornadaNumber}  •  ${data.fecha}  •  ${data.horario}`, pageW / 2, y + 14, { align: "center" });
-
-  y += 32;
-
-  // ── Grand Summary Card ──
-  doc.setFillColor(...DARK_CARD);
-  doc.roundedRect(marginX, y, contentW, 18, 2, 2, "F");
-
-  doc.setTextColor(...WHITE);
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("RESUMEN GENERAL", marginX + 6, y + 7);
-
-  doc.setFontSize(14);
-  doc.text(`${data.grandTotalUnits} unidades`, marginX + 6, y + 14);
-
-  doc.setTextColor(...GREEN_PRIMARY);
-  doc.text(formatCLP(data.grandTotalRevenue), pageW - marginX - 6, y + 14, { align: "right" });
-
-  y += 24;
-
-  // ── POS Sections ──
-  for (const pos of data.posSections) {
-    // Check if we need a new page (header + at least a few rows)
-    if (y > pageH - 60) {
-      doc.addPage();
-      drawBackground();
-      y = 15;
-    }
-
-    // POS Header
-    doc.setFillColor(0, 200, 100, 0.15);
-    doc.setFillColor(30, 50, 40);
-    doc.roundedRect(marginX, y, contentW, 12, 2, 2, "F");
-
-    doc.setTextColor(...GREEN_PRIMARY);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(pos.posName, marginX + 5, y + 8);
-
-    doc.setTextColor(...GRAY_LIGHT);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${pos.totalUnits} uds  •  ${formatCLP(pos.totalRevenue)}`, pageW - marginX - 5, y + 8, { align: "right" });
-
-    y += 15;
-
-    // Product table
-    const tableData = pos.products.map((p) => [
-      p.cocktailName,
-      p.category,
-      p.quantity.toString(),
-      formatCLP(p.revenue),
-    ]);
-
-    autoTable(doc, {
-      startY: y,
-      head: [["Producto", "Categoría", "Cant.", "Ingreso"]],
-      body: tableData,
-      margin: { left: marginX, right: marginX },
-      theme: "plain",
-      styles: {
-        fontSize: 11,
-        cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
-        textColor: WHITE,
-        fillColor: DARK_BG,
-        lineWidth: 0,
-      },
-      headStyles: {
-        fillColor: DARK_CARD,
-        textColor: GRAY_LIGHT,
-        fontSize: 9,
-        fontStyle: "bold",
-        cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
-      },
-      columnStyles: {
-        0: { cellWidth: "auto", fontStyle: "bold" },
-        1: { cellWidth: 30, textColor: GRAY_LIGHT, fontSize: 9 },
-        2: { cellWidth: 18, halign: "center", textColor: GREEN_PRIMARY, fontStyle: "bold", fontSize: 13 },
-        3: { cellWidth: 30, halign: "right" },
-      },
-      alternateRowStyles: {
-        fillColor: DARK_CARD,
-      },
-      didDrawPage: () => {
-        drawBackground();
-      },
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY + 8 || y + 20;
-  }
-
-  // ── Footer ──
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setTextColor(...GRAY_LIGHT);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `Generado: ${new Date().toLocaleString("es-CL")}  •  Página ${i}/${pageCount}`,
-      pageW / 2,
-      pageH - 8,
-      { align: "center" }
-    );
-  }
-
-  // ── Download ──
-  doc.save(`Productos_Vendidos_J${data.jornadaNumber}_${data.fecha}.pdf`);
+  const html = buildHtml(data);
+  const css = buildCss();
+  printJS({ printable: html, type: "raw-html", style: css });
 }
