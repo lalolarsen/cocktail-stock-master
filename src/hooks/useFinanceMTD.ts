@@ -303,17 +303,23 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS — deterministic: bottles use (qty_ml / capacity_ml) * unit_cost ──
-      const cogs = (cogsRes.data || []).reduce((s, r) => {
-        const qty = Math.abs(Number(r.quantity));
-        const unitCost = Math.abs(Number(r.unit_cost) || 0);
-        const capacityMl = Number(r.products?.capacity_ml) || 0;
-        const cost = capacityMl > 0
-          ? (qty / capacityMl) * unitCost
-          : qty * unitCost;
-        return s + cost;
-      }, 0);
-      setCogsTotal(cogs);
+      // ── COGS — recipe-based: for each sale_item, sum ingredient costs × sold qty ──
+      let cogs = 0;
+      for (const si of cogsRes.data || []) {
+        const soldQty = Number(si.quantity) || 0;
+        const ingredients = (si.cocktails as any)?.cocktail_ingredients || [];
+        for (const ing of ingredients) {
+          const p = ing.products;
+          if (!p) continue;
+          const ingQty = Number(ing.quantity) || 0;
+          const capacityMl = Number(p.capacity_ml) || 0;
+          const costPerUnit = Number(p.cost_per_unit) || 0;
+          const costPerServing = capacityMl > 0
+            ? (ingQty / capacityMl) * costPerUnit
+            : ingQty * costPerUnit;
+          cogs += costPerServing * soldQty;
+        }
+      }
 
       // ── OPEX by category (from operational_expenses) ──
       const categoryMap = new Map<string, OpexCategoryBreakdown>();
