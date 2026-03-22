@@ -320,8 +320,8 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           cogs += costPerServing * soldQty;
         }
       }
+      setCogsTotal(cogs);
 
-      // ── OPEX by category (from operational_expenses) ──
       const categoryMap = new Map<string, OpexCategoryBreakdown>();
       for (const row of opexRes.data || []) {
         const cat = row.category || "otros";
