@@ -330,7 +330,7 @@ function ProductPDFBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId
       const { data: cocktails } = await supabase.from("cocktails").select("id, name, category").in("id", cocktailIds);
       const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
 
-      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number; revenue: number }>>();
+      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number }>>();
       for (const item of saleItems) {
         const sale = item.sales as unknown as { point_of_sale: string };
         const posName = sale.point_of_sale || "Sin POS";
