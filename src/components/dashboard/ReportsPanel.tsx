@@ -744,8 +744,8 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
 
       const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
 
-      // Aggregate: POS -> product -> { qty, revenue }
-      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number; revenue: number }>>();
+      // Aggregate: POS -> product -> { qty }
+      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number }>>();
 
       for (const item of saleItems) {
         const sale = item.sales as unknown as { point_of_sale: string };
@@ -757,9 +757,8 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
         if (!posMap.has(posName)) posMap.set(posName, new Map());
         const prodMap = posMap.get(posName)!;
 
-        const existing = prodMap.get(item.cocktail_id) || { name: prodName, category, qty: 0, revenue: 0 };
+        const existing = prodMap.get(item.cocktail_id) || { name: prodName, category, qty: 0 };
         existing.qty += Number(item.quantity) || 0;
-        existing.revenue += Number(item.subtotal) || 0;
         prodMap.set(item.cocktail_id, existing);
       }
 
