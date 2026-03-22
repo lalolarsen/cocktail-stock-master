@@ -10,6 +10,7 @@ import {
   Loader2, PieChart, Printer
 } from "lucide-react";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
+import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
@@ -528,6 +529,7 @@ function JornadaRow({
                 </Button>
               )}
               <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
+              <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
             </div>
 
             {/* Sales table */}
@@ -700,6 +702,114 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
     <Button variant="outline" size="sm" className="text-xs h-7" onClick={handlePrint} disabled={loading}>
       {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Printer className="h-3 w-3 mr-1" />}
       Reporte POS
+    </Button>
+  );
+}
+
+/* ── Product Sales PDF Report Button ── */
+
+function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      // Fetch sale_items joined with sales for this jornada (only non-cancelled sales)
+      const { data: saleItems, error: itemsErr } = await supabase
+        .from("sale_items")
+        .select(`
+          cocktail_id,
+          quantity,
+          subtotal,
+          sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled, point_of_sale)
+        `)
+        .eq("sales.jornada_id", jornadaId)
+        .eq("sales.is_cancelled", false);
+
+      if (itemsErr) throw itemsErr;
+
+      if (!saleItems || saleItems.length === 0) {
+        const { toast } = await import("sonner");
+        toast.info("No hay productos vendidos en esta jornada");
+        return;
+      }
+
+      // Fetch cocktails for names
+      const cocktailIds = [...new Set(saleItems.map((i) => i.cocktail_id))];
+      const { data: cocktails } = await supabase
+        .from("cocktails")
+        .select("id, name, category")
+        .in("id", cocktailIds);
+
+      const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
+
+      // Aggregate: POS -> product -> { qty, revenue }
+      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number; revenue: number }>>();
+
+      for (const item of saleItems) {
+        const sale = item.sales as unknown as { point_of_sale: string };
+        const posName = sale.point_of_sale || "Sin POS";
+        const cocktail = cocktailMap.get(item.cocktail_id);
+        const prodName = cocktail?.name || "Producto desconocido";
+        const category = cocktail?.category || "otros";
+
+        if (!posMap.has(posName)) posMap.set(posName, new Map());
+        const prodMap = posMap.get(posName)!;
+
+        const existing = prodMap.get(item.cocktail_id) || { name: prodName, category, qty: 0, revenue: 0 };
+        existing.qty += Number(item.quantity) || 0;
+        existing.revenue += Number(item.subtotal) || 0;
+        prodMap.set(item.cocktail_id, existing);
+      }
+
+      // Build report data
+      const posSections: POSProductBreakdown[] = Array.from(posMap.entries())
+        .map(([posName, prodMap]) => {
+          const products = Array.from(prodMap.values())
+            .map((p) => ({
+              cocktailName: p.name,
+              category: p.category,
+              quantity: p.qty,
+              revenue: p.revenue,
+            }))
+            .sort((a, b) => b.quantity - a.quantity);
+
+          return {
+            posName,
+            products,
+            totalUnits: products.reduce((s, p) => s + p.quantity, 0),
+            totalRevenue: products.reduce((s, p) => s + p.revenue, 0),
+          };
+        })
+        .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+      const reportData: ProductSalesReportData = {
+        jornadaNumber,
+        fecha,
+        horario,
+        posSections,
+        grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0),
+        grandTotalRevenue: posSections.reduce((s, p) => s + p.totalRevenue, 0),
+      };
+
+      generateProductSalesPDF(reportData);
+
+      const { toast } = await import("sonner");
+      toast.success("PDF descargado");
+    } catch (err) {
+      console.error("Error generating product sales PDF:", err);
+      const { toast } = await import("sonner");
+      toast.error("Error al generar PDF");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleDownload} disabled={loading}>
+      {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Download className="h-3 w-3 mr-1" />}
+      Productos PDF
     </Button>
   );
 }
