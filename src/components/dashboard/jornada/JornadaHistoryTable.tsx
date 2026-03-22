@@ -337,25 +337,23 @@ function ProductPDFBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId
         const cocktail = cocktailMap.get(item.cocktail_id);
         if (!posMap.has(posName)) posMap.set(posName, new Map());
         const prodMap = posMap.get(posName)!;
-        const existing = prodMap.get(item.cocktail_id) || { name: cocktail?.name || "Desconocido", category: cocktail?.category || "otros", qty: 0, revenue: 0 };
+        const existing = prodMap.get(item.cocktail_id) || { name: cocktail?.name || "Desconocido", category: cocktail?.category || "otros", qty: 0 };
         existing.qty += Number(item.quantity) || 0;
-        existing.revenue += Number(item.subtotal) || 0;
         prodMap.set(item.cocktail_id, existing);
       }
 
       const posSections: POSProductBreakdown[] = Array.from(posMap.entries())
         .map(([posName, prodMap]) => {
           const products = Array.from(prodMap.values())
-            .map((p) => ({ cocktailName: p.name, category: p.category, quantity: p.qty, revenue: p.revenue }))
+            .map((p) => ({ cocktailName: p.name, category: p.category, quantity: p.qty }))
             .sort((a, b) => b.quantity - a.quantity);
-          return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0), totalRevenue: products.reduce((s, p) => s + p.revenue, 0) };
+          return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0) };
         })
-        .sort((a, b) => b.totalRevenue - a.totalRevenue);
+        .sort((a, b) => b.totalUnits - a.totalUnits);
 
       generateProductSalesPDF({
         jornadaNumber, fecha, horario, posSections,
         grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0),
-        grandTotalRevenue: posSections.reduce((s, p) => s + p.totalRevenue, 0),
       });
 
       const { toast } = await import("sonner");

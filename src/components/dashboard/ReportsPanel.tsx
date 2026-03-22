@@ -771,7 +771,6 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
               cocktailName: p.name,
               category: p.category,
               quantity: p.qty,
-              revenue: p.revenue,
             }))
             .sort((a, b) => b.quantity - a.quantity);
 
@@ -779,10 +778,9 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
             posName,
             products,
             totalUnits: products.reduce((s, p) => s + p.quantity, 0),
-            totalRevenue: products.reduce((s, p) => s + p.revenue, 0),
           };
         })
-        .sort((a, b) => b.totalRevenue - a.totalRevenue);
+        .sort((a, b) => b.totalUnits - a.totalUnits);
 
       const reportData: ProductSalesReportData = {
         jornadaNumber,
@@ -790,7 +788,6 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
         horario,
         posSections,
         grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0),
-        grandTotalRevenue: posSections.reduce((s, p) => s + p.totalRevenue, 0),
       };
 
       generateProductSalesPDF(reportData);
