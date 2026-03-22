@@ -14,7 +14,6 @@ export interface POSProductBreakdown {
   posName: string;
   products: ProductSaleRow[];
   totalUnits: number;
-  totalRevenue: number;
 }
 
 export interface ProductSalesReportData {
