@@ -10,6 +10,7 @@ import {
   Loader2, PieChart, Printer
 } from "lucide-react";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
+import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
