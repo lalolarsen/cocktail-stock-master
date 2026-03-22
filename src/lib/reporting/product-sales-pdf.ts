@@ -23,7 +23,6 @@ export interface ProductSalesReportData {
   venueName?: string;
   posSections: POSProductBreakdown[];
   grandTotalUnits: number;
-  grandTotalRevenue: number;
 }
 
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
