@@ -221,15 +221,27 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS — need capacity_ml from products for deterministic cost
+        // COGS — recipe-based from actual sales (not stock movements)
         supabase
-          .from("stock_movements")
-          .select("quantity, unit_cost, products:product_id(capacity_ml)")
-          .eq("venue_id", venueId)
-          .eq("movement_type", "salida")
-          .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
+          .from("sale_items")
+          .select(`
+            quantity,
+            cocktail_id,
+            cocktails!inner (
+              id,
+              cocktail_ingredients (
+                quantity,
+                product_id,
+                products (cost_per_unit, capacity_ml)
+              )
+            ),
+            sales!sale_items_sale_id_fkey!inner (id)
+          `)
+          .eq("sales.venue_id", venueId)
+          .eq("sales.payment_status", "paid")
+          .eq("sales.is_cancelled", false)
+          .gte("sales.created_at", fromISO)
+          .lte("sales.created_at", toISO),
 
         // OPEX (manual expenses)
         supabase
