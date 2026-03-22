@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,10 +17,14 @@ import {
   AlertTriangle,
   Eye,
   CheckCircle,
+  Loader2,
+  Printer,
 } from "lucide-react";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
+import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
+import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
 
 interface Jornada {
   id: string;
