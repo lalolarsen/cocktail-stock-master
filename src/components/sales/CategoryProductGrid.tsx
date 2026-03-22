@@ -318,9 +318,9 @@ const ProductCard = React.memo(function ProductCard({
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className="p-3 select-none opacity-40 cursor-not-allowed min-h-[72px] flex flex-col items-start justify-center rounded-md border border-border/30 bg-card/50"
+              className="p-2 select-none opacity-40 cursor-not-allowed min-h-[68px] flex flex-col items-start justify-center rounded-md border border-border/30 bg-card/50"
             >
-              <span className="text-sm font-medium leading-tight truncate w-full">
+              <span className="text-xs font-medium leading-snug line-clamp-2 w-full">
                 {cocktail.name}
               </span>
               <span className="text-xs text-destructive flex items-center gap-1 mt-1">
