@@ -339,13 +339,13 @@ const ProductCard = React.memo(function ProductCard({
   return (
     <button
       type="button"
-      className="p-3 text-left rounded-md border border-border/30 bg-card hover:border-primary/50 active:scale-[0.97] transition-all select-none min-h-[72px] flex flex-col justify-between w-full"
+      className="p-2 text-left rounded-md border border-border/30 bg-card hover:border-primary/50 active:scale-[0.97] transition-all select-none min-h-[68px] flex flex-col justify-between w-full"
       onClick={() => onAddToCart(cocktail)}
     >
-      <span className="text-sm font-medium leading-tight line-clamp-1 text-foreground">
+      <span className="text-xs font-medium leading-snug line-clamp-2 text-foreground">
         {cocktail.name}
       </span>
-      <span className="text-lg font-bold text-primary mt-1">
+      <span className="text-base font-bold text-primary mt-1">
         {formatCLP(cocktail.price)}
       </span>
     </button>
