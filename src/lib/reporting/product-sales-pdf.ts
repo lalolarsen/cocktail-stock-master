@@ -8,7 +8,6 @@ export interface ProductSaleRow {
   cocktailName: string;
   category: string;
   quantity: number;
-  revenue: number;
 }
 
 export interface POSProductBreakdown {
