@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -14,13 +13,15 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { 
   Loader2, 
   Calendar, 
-  History, 
-  BarChart3,
   AlertTriangle,
-  Settings,
   Play,
   Square,
   CheckCircle,
@@ -31,6 +32,8 @@ import {
   ArrowRightLeft,
   Store,
   ClipboardCheck,
+  Settings,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -41,7 +44,6 @@ import { CashReconciliationDialog } from "./CashReconciliationDialog";
 import { formatCLP } from "@/lib/currency";
 import { logAuditEvent } from "@/lib/monitoring";
 import { JornadaHistoryTable } from "./jornada/JornadaHistoryTable";
-import { LiveJornadaStats } from "./jornada/LiveJornadaStats";
 import { JornadaDetailDrawer } from "./jornada/JornadaDetailDrawer";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
@@ -106,6 +108,7 @@ export function JornadaManagement() {
   const [detailDrawerJornadaId, setDetailDrawerJornadaId] = useState<string | null>(null);
   const [activePosCount, setActivePosCount] = useState(0);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     fetchJornadas();
@@ -151,7 +154,6 @@ export function JornadaManagement() {
       if (error) throw error;
       setJornadas(data || []);
       
-      // Only consider today's active jornada (America/Santiago)
       const now = new Date();
       const santiagoDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Santiago" }));
       const today = `${santiagoDate.getFullYear()}-${String(santiagoDate.getMonth() + 1).padStart(2, "0")}-${String(santiagoDate.getDate()).padStart(2, "0")}`;
@@ -250,7 +252,7 @@ export function JornadaManagement() {
         const cashSales = (salesRes.data || []).reduce((s, r) => s + Number(r.total_amount), 0);
         const cashExpenses = (expensesRes.data || []).reduce((s, r) => s + Number(r.amount), 0);
         const expected = opening + cashSales - cashExpenses;
-        totalDiff += (0 - expected); // No counted cash
+        totalDiff += (0 - expected);
       }
       setForceCloseDifference(totalDiff);
     } catch {
@@ -268,8 +270,6 @@ export function JornadaManagement() {
 
   const handleForceClose = async () => {
     if (!showForceCloseConfirm) return;
-
-    // Double confirmation for large differences
     if (forceCloseDifference !== null && Math.abs(forceCloseDifference) > 100000 && !showDoubleConfirm) {
       setShowDoubleConfirm(true);
       return;
@@ -283,7 +283,6 @@ export function JornadaManagement() {
       });
 
       if (error) throw error;
-
       const result = data as unknown as { success: boolean; error?: string; difference_total?: number };
       if (!result.success) {
         toast.error(result.error || "Error al forzar cierre");
@@ -291,7 +290,6 @@ export function JornadaManagement() {
       }
 
       await logAuditEvent({ action: "jornada_forced_close", status: "success", metadata: { jornada_id: showForceCloseConfirm.id, difference_total: result.difference_total } });
-
       toast.success("Jornada cerrada forzosamente. Requiere revisión administrativa.");
       setShowForceCloseConfirm(null);
       setForceCloseReason("");
@@ -380,7 +378,6 @@ export function JornadaManagement() {
     toast.success("CSV exportado");
   };
 
-  // Live stats for active jornada
   const activeStats = activeJornada ? jornadaStats[activeJornada.id] : null;
   const activeSummary = activeJornada ? financialSummaries[activeJornada.id] : null;
 
@@ -393,180 +390,112 @@ export function JornadaManagement() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Pending Review Alert ── */}
       {pendingReviewCount > 0 && (
         <Alert className="border-destructive/50 bg-destructive/5">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertDescription className="text-sm">
             <strong>{pendingReviewCount} jornada(s)</strong> con cierre forzado pendiente(s) de revisión.
-            Ve al historial y aprueba la revisión con el botón <CheckCircle className="w-3.5 h-3.5 inline text-green-600" />.
           </AlertDescription>
         </Alert>
       )}
-      {/* ── Page Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Jornadas</h2>
-          <p className="text-sm text-muted-foreground">
-            Control de turnos y cierre con arqueo por POS
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge variant={activeJornada ? "default" : "secondary"} className={activeJornada ? "bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30" : ""}>
-            {activeJornada ? "Activa" : "Sin jornada"}
-          </Badge>
-          {!activeJornada ? (
-            <Button onClick={handleOpenJornada} disabled={hasActiveJornada} className="gap-2">
+
+      {/* ── Compact Active Jornada Bar ── */}
+      {!activeJornada ? (
+        <Card className="p-4 border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                <Calendar className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-amber-700 dark:text-amber-300">Sin jornada abierta</p>
+                <p className="text-xs text-muted-foreground">Las ventas están bloqueadas</p>
+              </div>
+            </div>
+            <Button onClick={handleOpenJornada} disabled={hasActiveJornada} className="gap-2 shrink-0">
               <Play className="w-4 h-4" />
               Abrir Jornada
             </Button>
-          ) : (
-            <Button variant="destructive" onClick={() => handleCloseJornada(activeJornada.id)} className="gap-2">
-              <Square className="w-4 h-4" />
-              Cerrar Jornada
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Hero Card ── */}
-      {!activeJornada ? (
-        <Card className="p-6 border-amber-500/30 bg-amber-500/5">
-          <div className="flex items-start gap-5">
-            <div className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-              <Calendar className="w-7 h-7 text-amber-600" />
-            </div>
-            <div className="flex-1 space-y-3">
-              <div>
-                <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300">
-                  Sin jornada abierta
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Las ventas están bloqueadas hasta abrir jornada.
-                </p>
-              </div>
-
-              <Button onClick={handleOpenJornada} disabled={hasActiveJornada} size="lg" className="gap-2">
-                <Play className="w-4 h-4" />
-                Abrir Jornada
-              </Button>
-
-              <div className="space-y-1.5 pt-2">
-                <ChecklistItem text="Se solicitará nombre de jornada" />
-                <ChecklistItem text="Se solicitarán montos iniciales por POS" />
-                <ChecklistItem text="El cierre requerirá arqueo obligatorio por POS" />
-              </div>
-            </div>
           </div>
         </Card>
       ) : (
-        <Card className="p-6 border-green-500/30 bg-green-500/5">
-          <div className="flex items-start gap-5">
-            <div className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
-              <Calendar className="w-7 h-7 text-green-600" />
-            </div>
-            <div className="flex-1 space-y-4">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-semibold">
-                    {activeJornada.nombre || `Jornada ${activeJornada.numero_jornada}`}
-                  </h3>
-                  <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30">
-                    Abierta
-                  </Badge>
+        <Card className="p-4 border-green-500/30 bg-green-500/5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5 text-green-600" />
                 </div>
-                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1 capitalize">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {format(parseISO(activeJornada.fecha), "EEEE d MMM", { locale: es })}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    Apertura {activeJornada.hora_apertura?.slice(0, 5)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Store className="w-3.5 h-3.5" />
-                    {activePosCount} POS
-                  </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold">{activeJornada.nombre || `Jornada ${activeJornada.numero_jornada}`}</p>
+                    <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30 text-[10px]">Abierta</Badge>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="capitalize">{format(parseISO(activeJornada.fecha), "EEE d MMM", { locale: es })}</span>
+                    <span>Apertura {activeJornada.hora_apertura?.slice(0, 5)}</span>
+                    <span>{activePosCount} POS</span>
+                  </div>
                 </div>
               </div>
-
-              {/* Mini metrics */}
-              {activeStats && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <MiniMetric icon={<DollarSign className="w-4 h-4" />} label="Ventas" value={formatCLP(activeStats.total_ventas)} />
-                  <MiniMetric icon={<ShoppingCart className="w-4 h-4" />} label="Transacciones" value={String(activeStats.cantidad_ventas)} />
-                  <MiniMetric icon={<Banknote className="w-4 h-4" />} label="Efectivo" value={activeSummary ? formatCLP(activeSummary.cash_sales || 0) : "-"} />
-                  <MiniMetric icon={<CreditCard className="w-4 h-4" />} label="Tarjeta" value={activeSummary ? formatCLP((activeSummary.sales_by_payment?.card || 0)) : "-"} />
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <Button variant="destructive" onClick={() => handleCloseJornada(activeJornada.id)} className="gap-2">
-                  <Square className="w-4 h-4" />
-                  Cerrar Jornada
-                </Button>
-                <Button variant="ghost" onClick={() => setDetailDrawerJornadaId(activeJornada.id)} className="gap-2">
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => setDetailDrawerJornadaId(activeJornada.id)} className="gap-1">
                   <ArrowRightLeft className="w-4 h-4" />
-                  Reconciliar Caja
+                  <span className="hidden sm:inline">Detalle</span>
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleCloseJornada(activeJornada.id)} className="gap-1">
+                  <Square className="w-4 h-4" />
+                  Cerrar
                 </Button>
               </div>
             </div>
+            {/* Mini metrics row */}
+            {activeStats && (
+              <div className="grid grid-cols-4 gap-2">
+                <MiniMetric icon={<DollarSign className="w-3.5 h-3.5" />} label="Ventas" value={formatCLP(activeStats.total_ventas)} />
+                <MiniMetric icon={<ShoppingCart className="w-3.5 h-3.5" />} label="Txns" value={String(activeStats.cantidad_ventas)} />
+                <MiniMetric icon={<Banknote className="w-3.5 h-3.5" />} label="Efectivo" value={activeSummary ? formatCLP(activeSummary.cash_sales || 0) : "-"} />
+                <MiniMetric icon={<CreditCard className="w-3.5 h-3.5" />} label="Tarjeta" value={activeSummary ? formatCLP((activeSummary.sales_by_payment?.card || 0)) : "-"} />
+              </div>
+            )}
           </div>
         </Card>
       )}
 
-      {/* ── Main Content ── */}
-      <Tabs defaultValue={activeJornada ? "live" : "history"} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="live" className="gap-2" disabled={!activeJornada}>
-            <BarChart3 className="w-4 h-4" />
-            En Vivo
-          </TabsTrigger>
-          <TabsTrigger value="history" className="gap-2">
-            <History className="w-4 h-4" />
-            Historial
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
+      {/* ── Jornada History (primary content) ── */}
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Historial de Jornadas
+        </h3>
+        <JornadaHistoryTable
+          jornadas={jornadas}
+          jornadaStats={jornadaStats}
+          financialSummaries={financialSummaries}
+          actionLoading={actionLoading}
+          onCloseJornada={handleCloseJornada}
+          onDeleteJornada={deleteJornada}
+          onForceClose={(role === "admin" || role === "gerencia") ? (j) => openForceCloseModal(j) : undefined}
+          onApproveReview={(role === "admin" || role === "gerencia") ? handleApproveReview : undefined}
+          onShowDetail={(id) => setDetailDrawerJornadaId(id)}
+          onExportCSV={exportJornadaCSV}
+        />
+      </div>
+
+      {/* ── Settings (collapsible, bottom) ── */}
+      <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="gap-2 text-muted-foreground w-full justify-start">
             <Settings className="w-4 h-4" />
-            Configuración
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="live">
-          {activeJornada ? (
-            <LiveJornadaStats jornadaId={activeJornada.id} />
-          ) : (
-            <Card className="p-8">
-              <div className="text-center text-muted-foreground">
-                <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">Sin jornada activa</p>
-                <p className="text-sm">Abre una jornada para ver los resultados en tiempo real</p>
-              </div>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="history">
-          <JornadaHistoryTable
-            jornadas={jornadas}
-            jornadaStats={jornadaStats}
-            financialSummaries={financialSummaries}
-            actionLoading={actionLoading}
-            onCloseJornada={handleCloseJornada}
-            onDeleteJornada={deleteJornada}
-            onForceClose={(role === "admin" || role === "gerencia") ? (j) => openForceCloseModal(j) : undefined}
-            onApproveReview={(role === "admin" || role === "gerencia") ? handleApproveReview : undefined}
-            onShowDetail={(id) => setDetailDrawerJornadaId(id)}
-            onExportCSV={exportJornadaCSV}
-          />
-        </TabsContent>
-
-        <TabsContent value="settings">
+            Configuración de Caja
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
           <JornadaCashSettingsCard />
-        </TabsContent>
-      </Tabs>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* ── Dialogs ── */}
       <JornadaCashOpeningDialog
@@ -605,7 +534,6 @@ export function JornadaManagement() {
                   Cerrar forzadamente "<strong>{showForceCloseConfirm?.nombre || `#${showForceCloseConfirm?.numero_jornada}`}</strong>".
                 </p>
 
-                {/* Difference display */}
                 {forceCloseDifference !== null && Math.abs(forceCloseDifference) > 0.01 && (
                   <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm">
                     <p className="font-medium text-destructive mb-1">Diferencia de caja estimada</p>
@@ -619,34 +547,30 @@ export function JornadaManagement() {
                 <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm space-y-2">
                   <p className="font-medium text-destructive">⚠ Advertencias:</p>
                   <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                    <li>Este cierre generará un <strong>ajuste contable automático</strong></li>
-                    <li>La jornada quedará marcada para <strong>revisión administrativa</strong></li>
-                    <li>Esta acción es <strong>irreversible</strong></li>
+                    <li>Ajuste contable automático</li>
+                    <li>Marcada para revisión administrativa</li>
+                    <li>Acción irreversible</li>
                   </ul>
                 </div>
 
-                {/* Reason textarea */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    Motivo del cierre forzado <span className="text-destructive">*</span>
+                    Motivo <span className="text-destructive">*</span>
                   </label>
                   <Textarea
                     value={forceCloseReason}
                     onChange={(e) => setForceCloseReason(e.target.value)}
-                    placeholder="Describe el motivo detalladamente (mínimo 30 caracteres)..."
+                    placeholder="Mínimo 30 caracteres..."
                     rows={3}
                     className="resize-none"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {forceCloseReason.trim().length}/30 caracteres mínimos
-                  </p>
+                  <p className="text-xs text-muted-foreground">{forceCloseReason.trim().length}/30</p>
                 </div>
 
-                {/* Double confirmation for large differences */}
                 {showDoubleConfirm && (
                   <div className="p-3 bg-destructive/20 border border-destructive/50 rounded-lg text-sm">
                     <p className="font-bold text-destructive">
-                      ⚠ La diferencia supera $100.000 CLP. ¿Está seguro de continuar?
+                      ⚠ La diferencia supera $100.000 CLP. ¿Está seguro?
                     </p>
                   </div>
                 )}
@@ -657,15 +581,11 @@ export function JornadaManagement() {
             <Button variant="outline" onClick={() => { setShowForceCloseConfirm(null); setForceCloseReason(""); setShowDoubleConfirm(false); }} disabled={forceCloseLoading}>
               Cancelar
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleForceClose}
-              disabled={forceCloseLoading || forceCloseReason.trim().length < 30}
-            >
+            <Button variant="destructive" onClick={handleForceClose} disabled={forceCloseLoading || forceCloseReason.trim().length < 30}>
               {forceCloseLoading
                 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cerrando...</>
                 : showDoubleConfirm
-                  ? <><AlertTriangle className="w-4 h-4 mr-2" />Sí, confirmar cierre forzado</>
+                  ? <><AlertTriangle className="w-4 h-4 mr-2" />Confirmar cierre forzado</>
                   : <><AlertTriangle className="w-4 h-4 mr-2" />Forzar Cierre</>
               }
             </Button>
@@ -676,23 +596,14 @@ export function JornadaManagement() {
   );
 }
 
-function ChecklistItem({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <ClipboardCheck className="w-4 h-4 text-primary shrink-0" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
 function MiniMetric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="p-3 rounded-lg bg-background border">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+    <div className="p-2 rounded-lg bg-background border text-center">
+      <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground mb-0.5">
         {icon}
         {label}
       </div>
-      <p className="font-bold text-lg">{value}</p>
+      <p className="font-bold text-sm tabular-nums">{value}</p>
     </div>
   );
 }

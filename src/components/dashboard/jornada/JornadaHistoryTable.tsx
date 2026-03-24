@@ -2,23 +2,17 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { 
-  Trash2, 
-  Square, 
+  Printer,
   Download,
   AlertTriangle,
   Eye,
   CheckCircle,
   Loader2,
-  Printer,
+  FileText,
+  Trash2,
+  Square,
 } from "lucide-react";
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
@@ -91,152 +85,112 @@ export function JornadaHistoryTable({
     return differenceInHours(new Date(), openedAt) >= staleThresholdHours;
   };
 
-  const getStatusBadge = (estado: string, jornada?: Jornada) => {
-    if (jornada && isStaleJornada(jornada)) {
-      return (
-        <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
-          <AlertTriangle className="w-3 h-3 mr-1" />
-          Obsoleta
-        </Badge>
-      );
-    }
-    switch (estado) {
-      case "activa":
-        return <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30">Abierta</Badge>;
-      case "cerrada":
-        return <Badge variant="secondary">Cerrada</Badge>;
-      default:
-        return <Badge variant="outline">{estado}</Badge>;
-    }
-  };
-
-  const getForcedBadge = (jornada: Jornada) => {
-    if (jornada.forced_close) {
-      return (
-        <Badge variant="destructive" className="text-[10px] ml-1">
-          {jornada.requires_review ? "Pendiente revisión" : "Forzado ✓"}
-        </Badge>
-      );
-    }
-    return null;
-  };
+  if (jornadas.length === 0) {
+    return (
+      <Card className="p-8 text-center text-muted-foreground">
+        <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
+        <p className="font-medium">No hay jornadas registradas</p>
+      </Card>
+    );
+  }
 
   return (
-    <div className="rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>#</TableHead>
-            <TableHead>Nombre</TableHead>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Horario</TableHead>
-            <TableHead>Ventas</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {jornadas.map((jornada) => {
-            const stats = jornadaStats[jornada.id];
-            const summary = financialSummaries[jornada.id];
-            
-            return (
-              <TableRow key={jornada.id} className="hover:bg-muted/50">
-                <TableCell className="font-medium text-muted-foreground">
-                  {jornada.numero_jornada}
-                </TableCell>
-                <TableCell className="font-medium">
-                  {jornada.nombre || `Jornada ${jornada.numero_jornada}`}
-                </TableCell>
-                <TableCell className="capitalize text-sm">
-                  {format(parseISO(jornada.fecha), "EEE d MMM", { locale: es })}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {jornada.hora_apertura?.slice(0, 5) || "--:--"} — {jornada.hora_cierre?.slice(0, 5) || "--:--"}
-                </TableCell>
-                <TableCell>
-                  {summary
-                    ? formatCLP(summary.gross_sales_total)
-                    : stats
-                      ? formatCLP(stats.total_ventas)
-                      : "-"
-                  }
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    {getStatusBadge(jornada.estado, jornada)}
-                    {getForcedBadge(jornada)}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => onShowDetail(jornada.id)} title="Ver detalle">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                    <POSReportBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={`${jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
-                    <ProductPDFBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={`${jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
-                    {jornada.estado === "cerrada" && summary && (
-                      <Button size="sm" variant="ghost" onClick={() => onExportCSV(jornada)} title="Exportar CSV">
-                        <Download className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {jornada.forced_close && jornada.requires_review && onApproveReview && (
-                      <Button
-                        size="sm" variant="ghost"
-                        className="text-green-600 hover:text-green-700 hover:bg-green-500/10"
-                        onClick={() => onApproveReview(jornada.id)}
-                        disabled={actionLoading === jornada.id}
-                        title="Aprobar revisión"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {jornada.estado === "activa" && isStaleJornada(jornada) && onForceClose && (
-                      <Button
-                        size="sm" variant="ghost"
-                        className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
-                        onClick={() => onForceClose(jornada)}
-                        disabled={actionLoading === jornada.id}
-                        title="Forzar cierre"
-                      >
-                        <AlertTriangle className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {jornada.estado === "activa" && (
-                      <Button
-                        size="sm" variant="ghost"
-                        onClick={() => onCloseJornada(jornada.id)}
-                        disabled={actionLoading === jornada.id}
-                        title="Cerrar jornada"
-                      >
-                        <Square className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {jornada.estado === "cerrada" && (!stats || stats.cantidad_ventas === 0) && (
-                      <Button
-                        size="sm" variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => onDeleteJornada(jornada.id)}
-                        disabled={actionLoading === jornada.id}
-                        title="Eliminar jornada"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-          {jornadas.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                No hay jornadas registradas
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+    <div className="space-y-2">
+      {jornadas.map((jornada) => {
+        const stats = jornadaStats[jornada.id];
+        const summary = financialSummaries[jornada.id];
+        const isActive = jornada.estado === "activa";
+        const isStale = isStaleJornada(jornada);
+        const isClosed = jornada.estado === "cerrada";
+        const horario = `${jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${jornada.hora_cierre?.slice(0, 5) || "--:--"}`;
+
+        return (
+          <Card
+            key={jornada.id}
+            className={`p-3 sm:p-4 ${isActive ? "border-green-500/30 bg-green-500/5" : ""} ${isStale ? "border-amber-500/30 bg-amber-500/5" : ""}`}
+          >
+            {/* Row: Info + Downloads */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              {/* Left: jornada info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono text-muted-foreground">#{jornada.numero_jornada}</span>
+                  <span className="font-semibold text-sm truncate">
+                    {jornada.nombre || `Jornada ${jornada.numero_jornada}`}
+                  </span>
+                  {isActive && !isStale && (
+                    <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30 text-[10px]">Abierta</Badge>
+                  )}
+                  {isStale && (
+                    <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[10px]">
+                      <AlertTriangle className="w-3 h-3 mr-0.5" />Obsoleta
+                    </Badge>
+                  )}
+                  {jornada.forced_close && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      {jornada.requires_review ? "Pendiente revisión" : "Forzado ✓"}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                  <span className="capitalize">{format(parseISO(jornada.fecha), "EEE d MMM", { locale: es })}</span>
+                  <span>{horario}</span>
+                  {(summary || stats) && (
+                    <span className="font-medium text-foreground">
+                      {summary ? formatCLP(summary.gross_sales_total) : stats ? formatCLP(stats.total_ventas) : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Download/action buttons */}
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Primary: Audit downloads */}
+                <POSReportBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
+                <ProductPDFBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
+                {isClosed && summary && (
+                  <Button size="sm" variant="outline" onClick={() => onExportCSV(jornada)} title="Exportar CSV financiero" className="gap-1 text-xs h-8">
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">CSV</span>
+                  </Button>
+                )}
+
+                <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
+
+                {/* Secondary: operational actions */}
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onShowDetail(jornada.id)} title="Ver detalle">
+                  <Eye className="w-4 h-4" />
+                </Button>
+
+                {jornada.forced_close && jornada.requires_review && onApproveReview && (
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-500/10"
+                    onClick={() => onApproveReview(jornada.id)} disabled={actionLoading === jornada.id} title="Aprobar revisión">
+                    <CheckCircle className="w-4 h-4" />
+                  </Button>
+                )}
+                {isActive && isStale && onForceClose && (
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                    onClick={() => onForceClose(jornada)} disabled={actionLoading === jornada.id} title="Forzar cierre">
+                    <AlertTriangle className="w-4 h-4" />
+                  </Button>
+                )}
+                {isActive && (
+                  <Button size="icon" variant="ghost" className="h-8 w-8"
+                    onClick={() => onCloseJornada(jornada.id)} disabled={actionLoading === jornada.id} title="Cerrar jornada">
+                    <Square className="w-4 h-4" />
+                  </Button>
+                )}
+                {isClosed && (!stats || stats.cantidad_ventas === 0) && (
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => onDeleteJornada(jornada.id)} disabled={actionLoading === jornada.id} title="Eliminar">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -298,8 +252,9 @@ function POSReportBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId:
   };
 
   return (
-    <Button size="sm" variant="ghost" onClick={handle} disabled={loading} title="Reporte POS (imprimir)">
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+    <Button size="sm" variant="outline" onClick={handle} disabled={loading} title="Reporte POS (imprimir)" className="gap-1 text-xs h-8">
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+      <span className="hidden sm:inline">POS</span>
     </Button>
   );
 }
@@ -357,19 +312,20 @@ function ProductPDFBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId
       });
 
       const { toast } = await import("sonner");
-      toast.success("PDF descargado");
+      toast.success("Reporte de conteo enviado a impresión");
     } catch (err) {
       console.error("Product PDF error:", err);
       const { toast } = await import("sonner");
-      toast.error("Error al generar PDF de productos");
+      toast.error("Error al generar reporte de productos");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Button size="sm" variant="ghost" onClick={handle} disabled={loading} title="Descargar PDF productos vendidos">
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+    <Button size="sm" variant="outline" onClick={handle} disabled={loading} title="Conteo de productos vendidos" className="gap-1 text-xs h-8">
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+      <span className="hidden sm:inline">Conteo</span>
     </Button>
   );
 }
