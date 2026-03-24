@@ -540,8 +540,6 @@ function JornadaRow({
                   Ver EERR
                 </Button>
               )}
-              <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
-              <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
             </div>
 
             {/* Sales table */}
