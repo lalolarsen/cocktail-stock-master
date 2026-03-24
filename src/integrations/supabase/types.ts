@@ -5367,9 +5367,10 @@ export type Database = {
       }
       migrate_stock_to_lots: { Args: never; Returns: Json }
       normalize_invoice_text: { Args: { input_text: string }; Returns: string }
-      open_jornada_manual:
-        | { Args: { p_cash_amounts?: Json }; Returns: Json }
-        | { Args: { p_cash_amounts: Json; p_nombre?: string }; Returns: Json }
+      open_jornada_manual: {
+        Args: { p_cash_amounts?: Json; p_nombre?: string }
+        Returns: Json
+      }
       record_login_attempt: {
         Args: {
           p_ip_address?: string
