@@ -501,6 +501,18 @@ function JornadaRow({
           </button>
         </CollapsibleTrigger>
 
+        {/* Quick report buttons – always visible */}
+        <div className="flex items-center gap-1 px-3 pb-2 border-b border-border/50">
+          <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
+          <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
+          {isClosed && (
+            <Button variant="outline" size="sm" className="text-xs h-7" onClick={(e) => { e.stopPropagation(); onExport(); }}>
+              <Download className="h-3 w-3 mr-1" />
+              CSV
+            </Button>
+          )}
+        </div>
+
         <CollapsibleContent>
           <div className="border-t p-3 space-y-3 bg-muted/30">
             {/* KPI grid */}
