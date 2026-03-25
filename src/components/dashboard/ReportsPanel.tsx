@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Download, Calendar, ChevronDown, ChevronRight,
+  Download, Calendar, ChevronDown,
   TrendingUp, ShoppingCart, Ticket, Clock, DollarSign,
   XCircle, CreditCard, Banknote, RefreshCw, FileText,
   Loader2, PieChart, Printer
@@ -15,11 +15,6 @@ import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -27,6 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -38,6 +38,7 @@ interface JornadaSummary {
   id: string;
   fecha: string;
   numero_jornada: number;
+  nombre?: string;
   semana_inicio: string;
   hora_apertura: string | null;
   hora_cierre: string | null;
@@ -118,7 +119,7 @@ export function ReportsPanel() {
 
       const { data: jornadasData, error: jornadasError } = await supabase
         .from("jornadas")
-        .select("id, fecha, numero_jornada, semana_inicio, hora_apertura, hora_cierre, estado")
+        .select("id, fecha, numero_jornada, nombre, semana_inicio, hora_apertura, hora_cierre, estado")
         .gte("fecha", format(startDate, "yyyy-MM-dd"))
         .lte("fecha", format(endDate, "yyyy-MM-dd"))
         .order("fecha", { ascending: false });
@@ -131,7 +132,6 @@ export function ReportsPanel() {
 
       const jornadaIds = jornadasData.map((j) => j.id);
 
-      // Parallel: sales + financial summaries
       const [salesRes, financialRes, profilesRes] = await Promise.all([
         supabase
           .from("sales")
@@ -297,12 +297,12 @@ export function ReportsPanel() {
   /* ── render ── */
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Reportes por Jornada</h2>
-          <p className="text-muted-foreground text-xs">Ventas y resultados financieros por jornada operativa</p>
+          <h2 className="text-lg font-bold tracking-tight">Reportes</h2>
+          <p className="text-muted-foreground text-xs">Descarga reportes de auditoría por jornada</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={monthFilter} onValueChange={setMonthFilter}>
@@ -322,26 +322,20 @@ export function ReportsPanel() {
         </div>
       </div>
 
-      {/* Month Summary – compact strip */}
+      {/* Month Summary */}
       {!loading && jornadas.length > 0 && (
-        <Card className="p-3">
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 text-center text-sm">
-            <Metric icon={DollarSign} label="Ventas" value={formatCLP(monthTotals.totalSales)} color="text-primary" />
-            <Metric icon={ShoppingCart} label="Alcohol" value={formatCLP(monthTotals.alcoholSales)} color="text-emerald-600" />
-            <Metric icon={Ticket} label="Entradas" value={formatCLP(monthTotals.ticketSales)} color="text-amber-600" />
-            <Metric icon={PieChart} label="COGS" value={formatCLP(monthTotals.cogsTotal)} color="text-muted-foreground" />
-            <Metric icon={TrendingUp} label="Margen" value={`${avgMargin}%`} color={Number(avgMargin) >= 30 ? "text-primary" : "text-destructive"} />
-            <Metric icon={XCircle} label="Cancel." value={formatCLP(monthTotals.totalCancelled)} color="text-destructive" />
-          </div>
-        </Card>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <SummaryCard label="Ventas Brutas" value={formatCLP(monthTotals.totalSales)} sub={`${monthTotals.salesCount} transacciones`} icon={DollarSign} />
+          <SummaryCard label="Efectivo / Tarjeta" value={`${formatCLP(jornadas.reduce((s, j) => s + j.cashSales, 0))} / ${formatCLP(jornadas.reduce((s, j) => s + j.cardSales, 0))}`} sub={`${jornadas.length} jornadas`} icon={CreditCard} />
+          <SummaryCard label="Margen Bruto" value={`${avgMargin}%`} sub={`COGS ${formatCLP(monthTotals.cogsTotal)}`} icon={TrendingUp} accent={Number(avgMargin) >= 30} />
+          <SummaryCard label="Cancelaciones" value={formatCLP(monthTotals.totalCancelled)} sub={`${monthTotals.cancelledCount} ventas`} icon={XCircle} destructive />
+        </div>
       )}
 
       {/* Jornadas List */}
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 rounded-lg" />
-          ))}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
         </div>
       ) : jornadas.length === 0 ? (
         <Card className="p-10 text-center">
@@ -352,26 +346,19 @@ export function ReportsPanel() {
       ) : (
         <div className="space-y-2">
           {jornadas.map((report) => (
-            <JornadaRow
+            <JornadaReportRow
               key={report.jornada.id}
               report={report}
               expanded={expandedJornada === report.jornada.id}
               onToggle={() => handleExpand(report.jornada.id)}
               loadingSales={loadingSales === report.jornada.id}
               onExport={() => handleExportJornada(report)}
-              onOpenEERR={() =>
-                setEerrOpen({
-                  id: report.jornada.id,
-                  num: report.jornada.numero_jornada,
-                  date: report.jornada.fecha,
-                })
-              }
+              onOpenEERR={() => setEerrOpen({ id: report.jornada.id, num: report.jornada.numero_jornada, date: report.jornada.fecha })}
             />
           ))}
         </div>
       )}
 
-      {/* EERR Dialog */}
       {eerrOpen && (
         <JornadaCloseSummaryDialog
           open
@@ -385,161 +372,105 @@ export function ReportsPanel() {
   );
 }
 
-/* ── small metric helper ── */
+/* ── Summary Card ── */
 
-function Metric({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
+function SummaryCard({ label, value, sub, icon: Icon, accent, destructive }: {
+  label: string; value: string; sub: string; icon: React.ElementType; accent?: boolean; destructive?: boolean;
+}) {
   return (
-    <div>
-      <div className="flex items-center justify-center gap-1 text-muted-foreground mb-0.5">
-        <Icon className="h-3 w-3" />
-        <span className="text-[10px] uppercase tracking-wide">{label}</span>
+    <Card className="p-3">
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+        <Icon className="h-3.5 w-3.5" />
+        <span className="text-[11px] font-medium uppercase tracking-wider">{label}</span>
       </div>
-      <p className={`font-semibold text-sm ${color}`}>{value}</p>
-    </div>
+      <p className={`text-lg font-bold tabular-nums ${destructive ? "text-destructive" : accent ? "text-primary" : ""}`}>{value}</p>
+      <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>
+    </Card>
   );
 }
 
-/* ── jornada row ── */
+/* ── Jornada Report Row ── */
 
-function JornadaRow({
-  report,
-  expanded,
-  onToggle,
-  loadingSales,
-  onExport,
-  onOpenEERR,
+function JornadaReportRow({
+  report, expanded, onToggle, loadingSales, onExport, onOpenEERR,
 }: {
-  report: JornadaReport;
-  expanded: boolean;
-  onToggle: () => void;
-  loadingSales: boolean;
-  onExport: () => void;
-  onOpenEERR: () => void;
+  report: JornadaReport; expanded: boolean; onToggle: () => void;
+  loadingSales: boolean; onExport: () => void; onOpenEERR: () => void;
 }) {
   const fin = report.financial;
   const isClosed = report.jornada.estado === "cerrada";
-  const hasCashIssue = fin && Math.abs(fin.cash_difference || 0) > 0.01;
-  const hasPendingTokens = (fin?.tokens_pending_count || 0) > 0;
+  const horario = `${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`;
+  const displayName = report.jornada.nombre || `Jornada ${report.jornada.numero_jornada}`;
 
   return (
-    <Collapsible open={expanded} onOpenChange={onToggle}>
-      <Card className="overflow-hidden">
+    <Card className="overflow-hidden">
+      {/* Main row: info + downloads */}
+      <div className="p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          {/* Left: Session info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-xs font-mono text-muted-foreground">#{report.jornada.numero_jornada}</span>
+              <span className="font-semibold text-sm truncate">{displayName}</span>
+              <Badge variant={isClosed ? "secondary" : "default"} className="text-[10px] px-1.5 py-0">
+                {isClosed ? "Cerrada" : "Abierta"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="capitalize">{format(parseISO(report.jornada.fecha), "EEE d MMM yyyy", { locale: es })}</span>
+              <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{horario}</span>
+            </div>
+            {/* Inline KPIs */}
+            <div className="flex items-center gap-4 mt-2 text-xs">
+              <span className="font-bold text-base tabular-nums">{formatCLP(report.totalSales)}</span>
+              <span className="text-muted-foreground">{report.salesCount} ventas</span>
+              {fin?.gross_margin_pct != null && (
+                <span className={`font-medium ${fin.gross_margin_pct >= 30 ? "text-primary" : "text-destructive"}`}>
+                  {fin.gross_margin_pct.toFixed(1)}% margen
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Download buttons – hero placement */}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
+            <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
+            {isClosed && (
+              <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={(e) => { e.stopPropagation(); onExport(); }}>
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">CSV</span>
+              </Button>
+            )}
+            {isClosed && fin && (
+              <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={(e) => { e.stopPropagation(); onOpenEERR(); }}>
+                <FileText className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">EERR</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Expandable: detail breakdown */}
+      <Collapsible open={expanded} onOpenChange={onToggle}>
         <CollapsibleTrigger asChild>
-          <button className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left">
-            {/* Jornada badge */}
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex flex-col items-center justify-center shrink-0">
-              <span className="text-[10px] text-muted-foreground leading-none">J</span>
-              <span className="text-base font-bold text-primary leading-none">{report.jornada.numero_jornada}</span>
-            </div>
-
-            {/* Info */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-semibold text-sm">
-                  {format(parseISO(report.jornada.fecha), "EEE d MMM", { locale: es })}
-                </span>
-                <Badge variant={isClosed ? "secondary" : "default"} className="text-[10px] px-1.5 py-0">
-                  {isClosed ? "Cerrada" : "Abierta"}
-                </Badge>
-                {hasCashIssue && (
-                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                    Δ caja
-                  </Badge>
-                )}
-                {hasPendingTokens && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500 text-amber-600">
-                    {fin!.tokens_pending_count} pendientes
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                <span className="flex items-center gap-0.5">
-                  <Clock className="h-3 w-3" />
-                  {report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – {report.jornada.hora_cierre?.slice(0, 5) || "--:--"}
-                </span>
-                <span>{report.salesCount} ventas</span>
-              </div>
-            </div>
-
-            {/* Desktop: quick financial strip */}
-            <div className="hidden md:flex items-center gap-4 text-right text-xs">
-              <div>
-                <p className="text-muted-foreground">Alcohol</p>
-                <p className="font-medium text-emerald-600">{formatCLP(report.alcoholSales)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Entradas</p>
-                <p className="font-medium text-amber-600">{formatCLP(report.ticketSales)}</p>
-              </div>
-              {fin && (
-                <div>
-                  <p className="text-muted-foreground">Margen</p>
-                  <p className={`font-medium ${(fin.gross_margin_pct || 0) >= 30 ? "text-primary" : "text-destructive"}`}>
-                    {fin.gross_margin_pct?.toFixed(1) || "—"}%
-                  </p>
-                </div>
-              )}
-              <div>
-                <p className="text-muted-foreground">Total</p>
-                <p className="font-bold text-sm">{formatCLP(report.totalSales)}</p>
-              </div>
-            </div>
-
-            {/* Mobile total */}
-            <div className="md:hidden text-right shrink-0">
-              <p className="font-bold text-sm">{formatCLP(report.totalSales)}</p>
-              {fin && (
-                <p className={`text-[10px] ${(fin.gross_margin_pct || 0) >= 30 ? "text-primary" : "text-destructive"}`}>
-                  {fin.gross_margin_pct?.toFixed(1)}% margen
-                </p>
-              )}
-            </div>
-
-            <div className="shrink-0">
-              {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-            </div>
+          <button className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/50 transition-colors border-t border-border/50">
+            <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            {expanded ? "Ocultar detalle" : "Ver detalle de ventas"}
           </button>
         </CollapsibleTrigger>
 
-        {/* Quick report buttons – always visible */}
-        <div className="flex items-center gap-1 px-3 pb-2 border-b border-border/50">
-          <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
-          <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={`${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`} />
-          {isClosed && (
-            <Button variant="outline" size="sm" className="text-xs h-7" onClick={(e) => { e.stopPropagation(); onExport(); }}>
-              <Download className="h-3 w-3 mr-1" />
-              CSV
-            </Button>
-          )}
-        </div>
-
         <CollapsibleContent>
-          <div className="border-t p-3 space-y-3 bg-muted/30">
+          <div className="border-t p-3 space-y-3 bg-muted/20">
             {/* KPI grid */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
               <KPICell icon={Banknote} label="Efectivo" value={formatCLP(report.cashSales)} />
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
-              <KPICell icon={DollarSign} label="Otros" value={formatCLP(report.otherPayments)} />
-              <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
+              <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
+              <KPICell icon={Ticket} label="Entradas" value={formatCLP(report.ticketSales)} />
               {fin && <KPICell icon={PieChart} label="COGS" value={formatCLP(fin.cogs_total || 0)} />}
-              {fin && (
-                <KPICell
-                  icon={TrendingUp}
-                  label="Resultado"
-                  value={formatCLP(fin.net_operational_result)}
-                  color={fin.net_operational_result >= 0 ? "text-primary" : "text-destructive"}
-                />
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              {isClosed && fin && (
-                <Button variant="outline" size="sm" className="text-xs h-7" onClick={(e) => { e.stopPropagation(); onOpenEERR(); }}>
-                  <FileText className="h-3 w-3 mr-1" />
-                  Ver EERR
-                </Button>
-              )}
+              <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 
             {/* Sales table */}
@@ -549,48 +480,35 @@ function JornadaRow({
               </div>
             ) : report.sales && report.sales.length > 0 ? (
               <>
-                <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-sm">Detalle de Ventas</h4>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={onExport}>
-                    <Download className="h-3 w-3 mr-1" />
-                    CSV
-                  </Button>
-                </div>
                 <div className="border rounded-lg overflow-x-auto bg-background">
                   <Table>
                     <TableHeader>
                       <TableRow className="text-xs">
-                        <TableHead>Nº</TableHead>
-                        <TableHead>Hora</TableHead>
+                        <TableHead className="w-16">Nº</TableHead>
+                        <TableHead className="w-16">Hora</TableHead>
                         <TableHead>Vendedor</TableHead>
                         <TableHead>POS</TableHead>
-                        <TableHead>Tipo</TableHead>
                         <TableHead>Pago</TableHead>
                         <TableHead className="text-right">Total</TableHead>
-                        <TableHead>Estado</TableHead>
+                        <TableHead className="w-16">Estado</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {report.sales.map((sale) => (
-                        <TableRow key={sale.id} className={`text-xs ${sale.is_cancelled ? "opacity-50" : ""}`}>
-                          <TableCell className="font-mono">{sale.sale_number}</TableCell>
+                        <TableRow key={sale.id} className={`text-xs ${sale.is_cancelled ? "opacity-40" : ""}`}>
+                          <TableCell className="font-mono text-muted-foreground">{sale.sale_number}</TableCell>
                           <TableCell>{format(new Date(sale.created_at), "HH:mm")}</TableCell>
-                          <TableCell>{sale.seller_name}</TableCell>
+                          <TableCell className="truncate max-w-[120px]">{sale.seller_name}</TableCell>
                           <TableCell>{sale.point_of_sale}</TableCell>
-                          <TableCell>
-                            <Badge variant={sale.sale_category === "ticket" ? "secondary" : "outline"} className="text-[10px]">
-                              {sale.sale_category === "ticket" ? "Ticket" : "Alcohol"}
-                            </Badge>
-                          </TableCell>
                           <TableCell>
                             {sale.payment_method === "cash" ? "Efec." : sale.payment_method === "card" ? "Tarjeta" : sale.payment_method}
                           </TableCell>
-                          <TableCell className="text-right font-medium">{formatCLP(sale.total_amount)}</TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">{formatCLP(sale.total_amount)}</TableCell>
                           <TableCell>
                             {sale.is_cancelled ? (
                               <Badge variant="destructive" className="text-[10px]">Cancel.</Badge>
                             ) : (
-                              <Badge variant="default" className="text-[10px]">OK</Badge>
+                              <span className="text-primary text-[10px] font-medium">OK</span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -607,25 +525,15 @@ function JornadaRow({
             )}
           </div>
         </CollapsibleContent>
-      </Card>
-    </Collapsible>
+      </Collapsible>
+    </Card>
   );
 }
 
-/* ── KPI cell helper ── */
+/* ── KPI cell ── */
 
-function KPICell({
-  icon: Icon,
-  label,
-  value,
-  destructive = false,
-  color,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  destructive?: boolean;
-  color?: string;
+function KPICell({ icon: Icon, label, value, destructive }: {
+  icon: React.ElementType; label: string; value: string; destructive?: boolean;
 }) {
   return (
     <div className="p-2 rounded-lg bg-background text-center">
@@ -633,7 +541,7 @@ function KPICell({
         <Icon className="h-3 w-3" />
         <span className="text-[10px]">{label}</span>
       </div>
-      <p className={`font-semibold text-xs ${destructive ? "text-destructive" : color || ""}`}>{value}</p>
+      <p className={`font-semibold text-xs tabular-nums ${destructive ? "text-destructive" : ""}`}>{value}</p>
     </div>
   );
 }
@@ -661,7 +569,6 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
       }
 
       const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-
       for (const s of sales) {
         const pos = s.point_of_sale || "Sin POS";
         const entry = posMap.get(pos) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
@@ -674,31 +581,19 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
 
       const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
         .map(([posName, d]) => ({
-          posName,
-          cashTotal: d.cash,
-          cashCount: d.cashN,
-          cardTotal: d.card,
-          cardCount: d.cardN,
-          otherTotal: d.other,
-          otherCount: d.otherN,
-          total: d.cash + d.card + d.other,
-          totalCount: d.cashN + d.cardN + d.otherN,
+          posName, cashTotal: d.cash, cashCount: d.cashN, cardTotal: d.card, cardCount: d.cardN,
+          otherTotal: d.other, otherCount: d.otherN, total: d.cash + d.card + d.other, totalCount: d.cashN + d.cardN + d.otherN,
         }))
         .sort((a, b) => b.total - a.total);
 
-      const reportData: POSSalesData = {
-        jornadaNumber,
-        fecha,
-        horario,
-        posSummary,
+      printPOSSalesReport({
+        jornadaNumber, fecha, horario, posSummary,
         grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
         grandCash: posSummary.reduce((s, p) => s + p.cashTotal, 0),
         grandCard: posSummary.reduce((s, p) => s + p.cardTotal, 0),
         grandOther: posSummary.reduce((s, p) => s + p.otherTotal, 0),
         grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
-      };
-
-      printPOSSalesReport(reportData);
+      });
     } catch (err) {
       console.error("Error generating POS report:", err);
       const { toast } = await import("sonner");
@@ -709,14 +604,14 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
   };
 
   return (
-    <Button variant="outline" size="sm" className="text-xs h-7" onClick={handlePrint} disabled={loading}>
-      {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Printer className="h-3 w-3 mr-1" />}
-      Reporte POS
+    <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={handlePrint} disabled={loading}>
+      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+      POS
     </Button>
   );
 }
 
-/* ── Product Sales PDF Report Button ── */
+/* ── Product Count Report Button ── */
 
 function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
   const [loading, setLoading] = useState(false);
@@ -725,97 +620,61 @@ function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: 
     e.stopPropagation();
     setLoading(true);
     try {
-      // Fetch sale_items joined with sales for this jornada (only non-cancelled sales)
       const { data: saleItems, error: itemsErr } = await supabase
         .from("sale_items")
-        .select(`
-          cocktail_id,
-          quantity,
-          subtotal,
-          sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled, point_of_sale)
-        `)
+        .select(`cocktail_id, quantity, subtotal, sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled, point_of_sale)`)
         .eq("sales.jornada_id", jornadaId)
         .eq("sales.is_cancelled", false);
 
       if (itemsErr) throw itemsErr;
-
       if (!saleItems || saleItems.length === 0) {
         const { toast } = await import("sonner");
         toast.info("No hay productos vendidos en esta jornada");
         return;
       }
 
-      // Fetch cocktails for names
       const cocktailIds = [...new Set(saleItems.map((i) => i.cocktail_id))];
-      const { data: cocktails } = await supabase
-        .from("cocktails")
-        .select("id, name, category")
-        .in("id", cocktailIds);
-
+      const { data: cocktails } = await supabase.from("cocktails").select("id, name, category").in("id", cocktailIds);
       const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
 
-      // Aggregate: POS -> product -> { qty }
       const posMap = new Map<string, Map<string, { name: string; category: string; qty: number }>>();
-
       for (const item of saleItems) {
         const sale = item.sales as unknown as { point_of_sale: string };
         const posName = sale.point_of_sale || "Sin POS";
         const cocktail = cocktailMap.get(item.cocktail_id);
-        const prodName = cocktail?.name || "Producto desconocido";
-        const category = cocktail?.category || "otros";
-
         if (!posMap.has(posName)) posMap.set(posName, new Map());
         const prodMap = posMap.get(posName)!;
-
-        const existing = prodMap.get(item.cocktail_id) || { name: prodName, category, qty: 0 };
+        const existing = prodMap.get(item.cocktail_id) || { name: cocktail?.name || "Desconocido", category: cocktail?.category || "otros", qty: 0 };
         existing.qty += Number(item.quantity) || 0;
         prodMap.set(item.cocktail_id, existing);
       }
 
-      // Build report data
       const posSections: POSProductBreakdown[] = Array.from(posMap.entries())
         .map(([posName, prodMap]) => {
           const products = Array.from(prodMap.values())
-            .map((p) => ({
-              cocktailName: p.name,
-              category: p.category,
-              quantity: p.qty,
-            }))
+            .map((p) => ({ cocktailName: p.name, category: p.category, quantity: p.qty }))
             .sort((a, b) => b.quantity - a.quantity);
-
-          return {
-            posName,
-            products,
-            totalUnits: products.reduce((s, p) => s + p.quantity, 0),
-          };
+          return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0) };
         })
         .sort((a, b) => b.totalUnits - a.totalUnits);
 
-      const reportData: ProductSalesReportData = {
-        jornadaNumber,
-        fecha,
-        horario,
-        posSections,
-        grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0),
-      };
-
-      generateProductSalesPDF(reportData);
+      generateProductSalesPDF({ jornadaNumber, fecha, horario, posSections, grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0) });
 
       const { toast } = await import("sonner");
-      toast.success("PDF descargado");
+      toast.success("Reporte de conteo enviado a impresión");
     } catch (err) {
       console.error("Error generating product sales PDF:", err);
       const { toast } = await import("sonner");
-      toast.error("Error al generar PDF");
+      toast.error("Error al generar reporte");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleDownload} disabled={loading}>
-      {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Download className="h-3 w-3 mr-1" />}
-      Productos PDF
+    <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={handleDownload} disabled={loading}>
+      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+      Conteo
     </Button>
   );
 }
