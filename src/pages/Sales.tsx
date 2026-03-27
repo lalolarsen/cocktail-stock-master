@@ -125,7 +125,7 @@ export default function Sales() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("card");
   const [historialOpen, setHistorialOpen] = useState(false);
   
   // Multi-POS selection (bar is determined at redemption, not sale)
