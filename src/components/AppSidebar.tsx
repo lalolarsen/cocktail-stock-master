@@ -85,7 +85,6 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Finanzas",
     items: [
       { title: "Ingresos Brutos", value: "income", icon: TrendingUp },
-      { title: "Finanzas", value: "finance", icon: Landmark },
     ],
   },
   {
