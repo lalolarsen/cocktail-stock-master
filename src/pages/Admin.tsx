@@ -180,7 +180,7 @@ export default function Admin() {
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
-            {activeView === "finance" && <FinancePanel />}
+            {activeView === "finance" && isReadOnly && <FinancePanel />}
             {activeView === "income" && <IncomeDeclarationPanel />}
             {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
             {activeView === "courtesy-qr" && <CourtesyQR />}
