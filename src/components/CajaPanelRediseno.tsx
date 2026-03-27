@@ -140,7 +140,7 @@ export function CajaPanelRediseno({
 }: CajaPanelProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [category, setCategory] = useState("Todos");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [historialOpen, setHistorialOpen] = useState(false);
