@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, FileText, CreditCard, Banknote, CheckCircle } from "lucide-react";
+import { Loader2, FileText, CreditCard, Banknote, CheckCircle, Monitor } from "lucide-react";
 import { useReceiptConfig, ReceiptMode } from "@/hooks/useReceiptConfig";
 import { toast } from "sonner";
 
@@ -140,6 +140,46 @@ export function ReceiptSettingsCard() {
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Banknote className="w-3 h-3" />
                     Efectivo → Boleta interna
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* External Mode */}
+          <div
+            onClick={() => handleModeChange("external")}
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              displayMode === "external"
+                ? "border-primary bg-primary/5"
+                : "border-muted hover:border-primary/50"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-lg ${displayMode === "external" ? "bg-primary/10" : "bg-muted"}`}>
+                <Monitor className={`w-5 h-5 ${displayMode === "external" ? "text-primary" : "text-muted-foreground"}`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-base font-semibold cursor-pointer">
+                    Modo Externo
+                  </Label>
+                  {displayMode === "external" && (
+                    <CheckCircle className="w-4 h-4 text-primary" />
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <strong>Todas</strong> las boletas son emitidas por el POS externo o tercero.
+                  El sistema solo registra la venta internamente.
+                </p>
+                <div className="flex items-center gap-4 mt-3 text-xs">
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <CreditCard className="w-3 h-3" />
+                    Tarjeta → Boleta externa
+                  </span>
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Banknote className="w-3 h-3" />
+                    Efectivo → Boleta externa
                   </span>
                 </div>
               </div>
