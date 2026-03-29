@@ -23,6 +23,7 @@ import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
+import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
 
