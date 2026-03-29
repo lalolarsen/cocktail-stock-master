@@ -113,6 +113,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Ventas",
     items: [
+      { title: "Análisis", value: "analytics", icon: BarChart3 },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
