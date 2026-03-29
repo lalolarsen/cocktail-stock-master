@@ -167,8 +167,8 @@ export default function PurchasesImport() {
   const [newProductCategory, setNewProductCategory] = useState("unidades");
   const [creatingProduct, setCreatingProduct] = useState(false);
 
-  // Registrar gastos
-  const [registerExpenses, setRegisterExpenses] = useState(false);
+  // Registrar gastos (disabled - simplified mode)
+  const registerExpenses = false;
 
   // ============================================================================
   // HYDRATION - AUTO-RESTORE DRAFT ON MOUNT
@@ -614,26 +614,12 @@ export default function PurchasesImport() {
     [computedLines]
   );
   
-  const expenseLines = useMemo(() => 
-    computedLines.filter(l => l.status === "EXPENSE"), 
-    [computedLines]
-  );
-  
-  // Use TAX_RATES from purchase-calculator (already imported)
-  
-  // Calculate specific tax total (for expense registration)
-  const specificTaxTotal = useMemo(() => 
-    inventoryLines.reduce((sum, line) => {
-      const rate = TAX_RATES[line.tax_category] || 0;
-      return sum + Math.round(line.net_line_for_cost * rate);
-    }, 0),
-    [inventoryLines]
-  );
+  // Expenses disabled in simplified mode
 
   // Venue validation for confirmation
   const hasVenueId = !!(venueId || venue?.id);
   
-  const canConfirm = validation.canConfirm && hasVenueId && (inventoryLines.length > 0 || (expenseLines.length > 0 && registerExpenses));
+  const canConfirm = validation.canConfirm && hasVenueId && inventoryLines.length > 0;
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
@@ -671,80 +657,7 @@ export default function PurchasesImport() {
         }
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuario no autenticado");
-      
-      const { data: jornadaId } = await supabase.rpc("get_active_jornada");
-
-      // Handle operational expense items (flete, etc.)
-      if (expenseLines.length > 0 && registerExpenses) {
-        const expenseRecords = expenseLines.map((line) => ({
-          description: line.raw_product_name,
-          amount: line.gross_line,
-          expense_type: "operational",
-          category: "Transporte",
-          expense_category: "operational",
-          notes: `Importado desde factura: ${providerName} - ${documentNumber}`,
-          created_by: user.id,
-          jornada_id: jornadaId || null,
-          venue_id: activeVenueId,
-          source_type: "purchase_invoice",
-          source_id: documentId,
-        }));
-
-        const { error: expenseError } = await supabase
-          .from("expenses")
-          .insert(expenseRecords);
-
-        if (expenseError) throw expenseError;
-      }
-      
-      // Register specific taxes as TAX_EXPENSE (ILA/IABA)
-      // These are NOT part of inventory cost but must be tracked as expenses
-      if (specificTaxTotal > 0) {
-        // Group by tax type for clearer expense tracking
-        const taxExpensesByType: Record<string, number> = {};
-        
-        inventoryLines.forEach(line => {
-          if (line.tax_category !== 'NONE') {
-            const rate = TAX_RATES[line.tax_category] || 0;
-            const taxAmount = Math.round(line.net_line_for_cost * rate);
-            if (taxAmount > 0) {
-              taxExpensesByType[line.tax_category] = (taxExpensesByType[line.tax_category] || 0) + taxAmount;
-            }
-          }
-        });
-        
-        // Create tax expense records
-        const taxExpenseRecords = Object.entries(taxExpensesByType).map(([taxType, amount]) => ({
-          description: `Impuesto específico: ${taxType.replace('_', ' ')}`,
-          amount,
-          expense_type: "tax",
-          category: "Impuestos",
-          expense_category: "tax_expense",
-          tax_type: taxType,
-          notes: `Impuesto calculado de factura: ${providerName} - ${documentNumber}`,
-          created_by: user.id,
-          jornada_id: jornadaId || null,
-          venue_id: activeVenueId,
-          source_type: "purchase_invoice",
-          source_id: documentId,
-        }));
-        
-        if (taxExpenseRecords.length > 0) {
-          const { error: taxExpenseError } = await supabase
-            .from("expenses")
-            .insert(taxExpenseRecords);
-            
-          if (taxExpenseError) {
-            console.error("Error registering tax expenses:", taxExpenseError);
-            // Non-blocking: inventory intake already completed; warn but don't throw
-            toast.warning("Ingreso registrado, pero no se pudieron guardar los gastos de impuestos. Revisa manualmente.", {
-              duration: 8000,
-            });
-          }
-        }
-      }
+      // Expenses and tax registration removed in simplified mode
 
       // LEARNING SYSTEM: Save product aliases for future imports
       if (providerName) {
@@ -770,13 +683,11 @@ export default function PurchasesImport() {
           document_id: documentId,
           provider: providerName,
           inventory_items: inventoryLines.length,
-          expense_items: expenseLines.length,
-          tax_expense_total: specificTaxTotal,
           venue_id: activeVenueId,
         },
       });
 
-      toast.success(`Ingreso confirmado: ${inventoryLines.length} productos, ${registerExpenses ? expenseLines.length : 0} gastos`);
+      toast.success(`Ingreso confirmado: ${inventoryLines.length} productos`);
       setStep("complete");
       
       // Clear URL params
@@ -806,7 +717,7 @@ export default function PurchasesImport() {
     setVenueId(null);
     setComputedLines([]);
     setRawExtraction(null);
-    setRegisterExpenses(false);
+    // registerExpenses removed in simplified mode
     setHydrationAttempted(false);
     
     // Clear URL params
@@ -1135,8 +1046,6 @@ export default function PurchasesImport() {
                   products={products}
                   searchQuery={searchQuery}
                   onUpdateLine={handleUpdateLine}
-                  onMarkAsExpense={handleMarkAsExpense}
-                  onMarkAsInventory={handleMarkAsInventory}
                   onOpenDetail={handleOpenDetail}
                   onCreateProduct={handleCreateProduct}
                 />
@@ -1162,8 +1071,8 @@ export default function PurchasesImport() {
               <ImportSummaryPanel
                 lines={computedLines}
                 ivaAmount={ivaAmount}
-                registerExpenses={registerExpenses}
-                onRegisterExpensesChange={setRegisterExpenses}
+                registerExpenses={false}
+                onRegisterExpensesChange={() => {}}
                 canConfirm={canConfirm}
                 confirming={confirming}
                 onConfirm={handleConfirm}

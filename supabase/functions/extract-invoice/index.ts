@@ -7,6 +7,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * SIMPLIFIED INVOICE EXTRACTOR
+ * - Only inventory lines (ignores freight/expenses)
+ * - Auto-maps Mixers → "Mixer Tradicional" and RedBull → "Redbulls"
+ * - Calculates net COGS per product (ignores IVA and specific taxes)
+ */
+
+// Patterns for auto-mapping
+const MIXER_PATTERNS = /\b(mixer|schweppes|canada\s*dry|ginger\s*ale|tonic|t[oó]nica|soda|sprite|coca[\s-]?cola|fanta|seven\s*up|7\s*up|agua\s*mineral|jugo|naranja|pomelo|lim[oó]n)\b/i;
+const REDBULL_PATTERNS = /\b(red\s*bull|redbull|red-bull)\b/i;
+const FREIGHT_PATTERNS = /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a|servicio/i;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -33,7 +45,6 @@ serve(async (req) => {
       });
     }
 
-    // Get import record
     const { data: imp, error: impErr } = await supabase
       .from("purchase_imports")
       .select("*")
@@ -47,10 +58,8 @@ serve(async (req) => {
       });
     }
 
-    // Enforce pilot venue
     enforcePilotVenue(imp.venue_id);
 
-    // Download file from storage
     const filePath = imp.raw_file_url;
     const { data: fileData, error: fileErr } = await supabase.storage.from("purchase-invoices").download(filePath);
 
@@ -67,8 +76,6 @@ serve(async (req) => {
 
     const arrayBuffer = await fileData.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
-
-    // Convert to base64 without spreading huge arrays (avoids call stack overflow)
     let binary = "";
     const chunkSize = 8192;
     for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -84,42 +91,44 @@ serve(async (req) => {
         ? "png"
         : "jpeg";
 
-    // Extract with AI
     const rawExtraction = await extractWithAI(base64, fileType);
 
-    // Detect freight lines and multipliers
-    const freightPatterns =
-      /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a/i;
+    // Load products for auto-mapping
+    const { data: allProducts } = await supabase
+      .from("products")
+      .select("id, name, category")
+      .eq("venue_id", imp.venue_id);
 
-    const lines = rawExtraction.lines.map((line: any, idx: number) => {
+    // Find Mixer Tradicional and Redbull products
+    const mixerProduct = (allProducts || []).find(
+      (p) => p.name.toLowerCase().includes("mixer tradicional") || p.name.toLowerCase() === "mixer tradicional"
+    );
+    const redbullProduct = (allProducts || []).find(
+      (p) => p.name.toLowerCase().includes("red bull") || p.name.toLowerCase().includes("redbull")
+    );
+
+    // Filter out freight/expense lines, keep only inventory
+    const inventoryRawLines = (rawExtraction.lines || []).filter((line: any) => {
       const rawName = line.raw_product_name || "";
-      // Use AI hint OR deterministic detection
-      const isFreight = line.line_type === "expense" || freightPatterns.test(rawName);
-      const mult = isFreight ? 1 : detectMultiplier(rawName);
+      const isFreight = line.line_type === "expense" || FREIGHT_PATTERNS.test(rawName);
+      return !isFreight;
+    });
+
+    // Auto-match from learning_product_mappings
+    const { data: learnings } = await supabase
+      .from("learning_product_mappings")
+      .select("*")
+      .eq("venue_id", imp.venue_id);
+
+    const supplierRut = rawExtraction.header?.provider_rut?.trim();
+
+    const lines = inventoryRawLines.map((line: any, idx: number) => {
+      const rawName = line.raw_product_name || "";
+      const mult = detectMultiplier(rawName);
       const qty = parseNum(line.qty_text);
       const unitPrice = parseNum(line.unit_price_text);
       const lineTotal = parseNum(line.line_total_text);
       const discountPct = parseNum(line.discount_text?.replace("%", ""));
-
-      if (isFreight) {
-        return {
-          purchase_import_id,
-          line_index: idx,
-          raw_text: rawName,
-          qty_invoiced: qty || 1,
-          unit_price_net: unitPrice > 0 ? unitPrice : null,
-          line_total_net: lineTotal > 0 ? lineTotal : unitPrice > 0 ? unitPrice : null,
-          discount_pct: null,
-          detected_multiplier: 1,
-          units_real: 0,
-          cost_unit_net: 0,
-          classification: "freight",
-          status: "OK",
-          product_id: null,
-          tax_category_id: null,
-          notes: `Auto-clasificado como gasto: ${line.expense_hint || "flete/despacho"}`,
-        };
-      }
 
       const unitsReal = qty * mult;
       let packNet = lineTotal > 0 ? lineTotal / (qty || 1) : unitPrice;
@@ -127,6 +136,33 @@ serve(async (req) => {
         packNet = packNet * (1 - discountPct / 100);
       }
       const costUnitNet = mult > 0 ? packNet / mult : packNet;
+
+      // Auto-map product
+      let autoProductId: string | null = null;
+      let autoNotes: string | null = null;
+
+      // 1. Check mixer/redbull patterns first
+      if (REDBULL_PATTERNS.test(rawName) && redbullProduct) {
+        autoProductId = redbullProduct.id;
+        autoNotes = "Auto-match: RedBull → " + redbullProduct.name;
+      } else if (MIXER_PATTERNS.test(rawName) && mixerProduct) {
+        autoProductId = mixerProduct.id;
+        autoNotes = "Auto-match: Mixer → " + mixerProduct.name;
+      }
+
+      // 2. Check learning memory if no auto-match
+      if (!autoProductId) {
+        const normalized = rawName.toLowerCase().trim();
+        const match = (learnings || []).find((l: any) => {
+          if (l.supplier_rut && supplierRut && l.supplier_rut !== supplierRut) return false;
+          return l.raw_text?.toLowerCase().trim() === normalized;
+        });
+
+        if (match) {
+          autoProductId = match.product_id;
+          autoNotes = `Auto-match: ${match.confidence >= 0.9 ? "alta" : "media"} confianza`;
+        }
+      }
 
       return {
         purchase_import_id,
@@ -140,113 +176,21 @@ serve(async (req) => {
         units_real: unitsReal,
         cost_unit_net: Math.round(costUnitNet * 100) / 100,
         classification: "inventory",
-        status: "REVIEW",
-        product_id: null,
-        notes: null,
+        status: autoProductId ? "OK" : "REVIEW",
+        product_id: autoProductId,
+        notes: autoNotes,
       };
     });
 
-    // Auto-match from learning_product_mappings
-    const { data: learnings } = await supabase
-      .from("learning_product_mappings")
-      .select("*")
-      .eq("venue_id", imp.venue_id);
-
-    const supplierRut = rawExtraction.header?.provider_rut?.trim();
-
-    for (const line of lines) {
-      if (line.classification !== "inventory" || !line.raw_text) continue;
-      const normalized = line.raw_text.toLowerCase().trim();
-
-      // Find best match
-      const match = (learnings || []).find((l: any) => {
-        if (l.supplier_rut && supplierRut && l.supplier_rut !== supplierRut) return false;
-        return l.raw_text?.toLowerCase().trim() === normalized;
-      });
-
-      if (match) {
-        line.product_id = match.product_id;
-        line.detected_multiplier = match.detected_multiplier || line.detected_multiplier;
-        // Recalc with updated multiplier
-        const mult = line.detected_multiplier;
-        line.units_real = (line.qty_invoiced || 0) * mult;
-        let packNet = (line.line_total_net || 0) / (line.qty_invoiced || 1);
-        if (!line.line_total_net && line.unit_price_net) packNet = line.unit_price_net;
-        if (line.discount_pct) packNet *= 1 - line.discount_pct / 100;
-        line.cost_unit_net = mult > 0 ? Math.round((packNet / mult) * 100) / 100 : 0;
-        line.notes = `Auto-match: ${match.confidence >= 0.9 ? "alta" : "media"} confianza`;
-      }
-    }
-
-    // Insert lines
     if (lines.length > 0) {
       await supabase.from("purchase_import_lines").insert(lines);
     }
 
-    // Parse header totals
     const netSubtotal = parseNum(rawExtraction.header?.net_total_text);
-    const vatAmount = parseNum(rawExtraction.header?.iva_total_text);
     const totalAmount = parseNum(rawExtraction.header?.gross_total_text);
 
-    // Create taxes
-    const taxes: any[] = [];
-    if (vatAmount > 0) {
-      taxes.push({
-        purchase_import_id,
-        tax_type: "vat_credit",
-        tax_label: "IVA Crédito Fiscal (19%)",
-        tax_amount: vatAmount,
-      });
-    }
-
-    // Check for specific taxes in header
-    if (rawExtraction.header?.tax_totals) {
-      const tt = rawExtraction.header.tax_totals;
-      if (tt.iaba_10_total > 0)
-        taxes.push({
-          purchase_import_id,
-          tax_type: "specific_tax",
-          tax_label: "IABA 10%",
-          tax_amount: tt.iaba_10_total,
-        });
-      if (tt.iaba_18_total > 0)
-        taxes.push({
-          purchase_import_id,
-          tax_type: "specific_tax",
-          tax_label: "IABA 18%",
-          tax_amount: tt.iaba_18_total,
-        });
-      if (tt.ila_vino_total > 0)
-        taxes.push({
-          purchase_import_id,
-          tax_type: "specific_tax",
-          tax_label: "ILA Vinos 20.5%",
-          tax_amount: tt.ila_vino_total,
-        });
-      if (tt.ila_cerveza_total > 0)
-        taxes.push({
-          purchase_import_id,
-          tax_type: "specific_tax",
-          tax_label: "ILA Cerveza 20.5%",
-          tax_amount: tt.ila_cerveza_total,
-        });
-      if (tt.ila_destilados_total > 0)
-        taxes.push({
-          purchase_import_id,
-          tax_type: "specific_tax",
-          tax_label: "ILA Destilados 31.5%",
-          tax_amount: tt.ila_destilados_total,
-        });
-    }
-
-    if (taxes.length > 0) {
-      await supabase.from("purchase_import_taxes").insert(taxes);
-    }
-
-    // Count issues
     const issuesCount = lines.filter((l: any) => l.status === "REVIEW").length;
 
-    // Update import
     await supabase
       .from("purchase_imports")
       .update({
@@ -256,7 +200,7 @@ serve(async (req) => {
         document_number: rawExtraction.header?.document_number || imp.document_number,
         document_date: rawExtraction.header?.document_date || imp.document_date,
         net_subtotal: netSubtotal || null,
-        vat_amount: vatAmount || null,
+        vat_amount: null,
         total_amount: totalAmount || null,
         raw_extraction_json: rawExtraction,
         issues_count: issuesCount,
@@ -269,6 +213,7 @@ serve(async (req) => {
         success: true,
         lines_count: lines.length,
         issues_count: issuesCount,
+        auto_mapped: lines.filter((l: any) => l.product_id).length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -291,7 +236,6 @@ function parseNum(val: any): number {
 }
 
 function detectMultiplier(text: string): number {
-  // Patterns: "6PCX4" => 24, "24PF" => 24, "X06" => 6, "12X1" => 12
   const m1 = text.match(/(\d+)\s*(?:PCX|PX)\s*(\d+)/i);
   if (m1) return parseInt(m1[1]) * parseInt(m1[2]);
 
@@ -315,11 +259,13 @@ async function extractWithAI(base64: string, fileType: string): Promise<any> {
 Return ONLY JSON. No prose. No markdown.
 
 IMPORTANT:
-- Read the entire page including bottom totals blocks (tax summaries often appear at the end).
+- Read the entire page including bottom totals blocks.
 - If the image is rotated, interpret it correctly.
-- Do NOT guess. If unclear, set null and add a warning.
-- Extract RAW values EXACTLY as written (keep punctuation, separators, %, currency symbols, etc.).
+- Do NOT guess. If unclear, set null.
+- Extract RAW values EXACTLY as written.
 - Preserve full product descriptions.
+- IGNORE freight/shipping/delivery lines (flete, despacho, transporte, etc.)
+- Only extract product lines (inventory items)
 
 Return JSON in this exact schema:
 
@@ -330,16 +276,7 @@ Return JSON in this exact schema:
     "document_number": null,
     "document_date": null,
     "net_total_text": null,
-    "iva_total_text": null,
-    "gross_total_text": null,
-
-    "tax_totals_text": {
-      "iaba_10_text": null,
-      "iaba_18_text": null,
-      "ila_vino_20_5_text": null,
-      "ila_cerveza_20_5_text": null,
-      "ila_destilados_31_5_text": null
-    }
+    "gross_total_text": null
   },
 
   "lines": [
@@ -350,31 +287,22 @@ Return JSON in this exact schema:
       "unit_price_text": null,
       "discount_text": null,
       "line_total_text": null,
-
-      "line_type": "inventory_or_expense",
-      "expense_hint": null
+      "line_type": "inventory"
     }
   ],
 
   "warnings": [],
   "confidence": {
     "header": "high_or_medium_or_low",
-    "lines": "high_or_medium_or_low",
-    "tax_block": "high_or_medium_or_low"
+    "lines": "high_or_medium_or_low"
   }
 }
 
 RULES:
 1) Extract values EXACTLY as written.
 2) If a field is missing, use null.
-3) For each line, set:
-   - line_type = "expense" if the description contains any of: "FLETE", "DESPACHO", "TRANSPORTE", "ENTREGA", "SERVICIO"
-   - otherwise line_type = "inventory"
-   If line_type = "expense", set expense_hint = the matching keyword found; else null.
-4) Do NOT move expense lines into header. Keep them in lines with line_type="expense".
-5) If you cannot clearly detect a full table of lines, still return the header you can find, set lines=[] and add a warning like "Could not reliably detect line items table".
-6) Tax totals: extract the RAW text values as they appear in the tax totals block. If a specific tax is not present, keep it null (do not assume 0).
-7) Return ONLY JSON.`;
+3) SKIP lines that are freight, shipping, delivery services, or non-product items. Only include actual products.
+4) Return ONLY JSON.`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
   let content: string;
