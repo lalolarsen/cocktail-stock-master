@@ -221,6 +221,21 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* ── Month Selector ── */}
+      <div className="flex items-center gap-3">
+        <CalendarDays className="w-5 h-5 text-muted-foreground" />
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {monthOptions.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
