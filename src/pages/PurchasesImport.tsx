@@ -167,8 +167,8 @@ export default function PurchasesImport() {
   const [newProductCategory, setNewProductCategory] = useState("unidades");
   const [creatingProduct, setCreatingProduct] = useState(false);
 
-  // Registrar gastos
-  const [registerExpenses, setRegisterExpenses] = useState(false);
+  // Registrar gastos (disabled - simplified mode)
+  const registerExpenses = false;
 
   // ============================================================================
   // HYDRATION - AUTO-RESTORE DRAFT ON MOUNT
