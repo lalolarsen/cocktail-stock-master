@@ -40,7 +40,7 @@ export function useReceiptConfig(): ReceiptConfig {
         }
       } else if (data) {
         setId(data.id);
-        setReceiptMode((data.receipt_mode as ReceiptMode) || "hybrid");
+        setReceiptMode((data.receipt_mode as ReceiptMode) || "external");
         setActiveProvider(data.active_provider || "mock");
       }
     } catch (err: any) {
