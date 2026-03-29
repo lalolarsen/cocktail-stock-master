@@ -33,7 +33,7 @@ export function useReceiptConfig(): ReceiptConfig {
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
           // No config row exists, use defaults
-          setReceiptMode("hybrid");
+          setReceiptMode("external");
           setActiveProvider("mock");
         } else {
           throw fetchError;
