@@ -68,6 +68,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Ventas",
     items: [
+      { title: "Análisis", value: "analytics", icon: BarChart3 },
       { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Totems Passline", value: "passline-audit", icon: Monitor },
