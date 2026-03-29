@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { PilotBadge } from "@/components/PilotBadge";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -68,6 +68,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Ventas",
     items: [
+      { title: "Análisis", value: "analytics", icon: BarChart3 },
       { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Totems Passline", value: "passline-audit", icon: Monitor },
@@ -112,6 +113,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Ventas",
     items: [
+      { title: "Análisis", value: "analytics", icon: BarChart3 },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
