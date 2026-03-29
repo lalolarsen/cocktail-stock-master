@@ -1345,6 +1345,17 @@ export default function Sales() {
           onClose={() => setShowCourtesyRedeem(false)}
           onRedeemed={handleCourtesyRedeemed}
         />
+
+        {/* Replenishment Request Dialog — hybrid POS only */}
+        {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+          <ReplenishmentRequestDialog
+            open={showReplenishmentRequest}
+            onOpenChange={setShowReplenishmentRequest}
+            locationId={selectedPosObj.bar_location_id}
+            locationName={selectedPosObj.bar_location?.name || "Barra"}
+            onRequestSent={() => setShowReplenishmentRequest(false)}
+          />
+        )}
       </>
     </VenueGuard>
   );
