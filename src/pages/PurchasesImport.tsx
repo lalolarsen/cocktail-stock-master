@@ -683,13 +683,12 @@ export default function PurchasesImport() {
           document_id: documentId,
           provider: providerName,
           inventory_items: inventoryLines.length,
-          expense_items: expenseLines.length,
-          tax_expense_total: specificTaxTotal,
+          inventory_items: inventoryLines.length,
           venue_id: activeVenueId,
         },
       });
 
-      toast.success(`Ingreso confirmado: ${inventoryLines.length} productos, ${registerExpenses ? expenseLines.length : 0} gastos`);
+      toast.success(`Ingreso confirmado: ${inventoryLines.length} productos`);
       setStep("complete");
       
       // Clear URL params
