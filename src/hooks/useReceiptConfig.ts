@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type ReceiptMode = "hybrid" | "unified";
+export type ReceiptMode = "hybrid" | "unified" | "external";
 
 export interface ReceiptConfig {
   id: string;
