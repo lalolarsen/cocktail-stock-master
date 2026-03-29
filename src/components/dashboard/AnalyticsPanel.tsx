@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   BarChart3,
   TrendingUp,
@@ -15,9 +16,12 @@ import {
   ShoppingCart,
   ArrowUpRight,
   ArrowDownRight,
+  CalendarDays,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
+import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
+import { es } from "date-fns/locale";
 
 /* ─────────────── types ─────────────── */
 
@@ -71,12 +75,31 @@ export function AnalyticsPanel() {
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
   const [jornadaCount, setJornadaCount] = useState(0);
 
+  // Generate last 12 months as options
+  const monthOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = subMonths(new Date(), i);
+      const val = format(d, "yyyy-MM");
+      const label = format(d, "MMMM yyyy", { locale: es });
+      opts.push({ value: val, label: label.charAt(0).toUpperCase() + label.slice(1) });
+    }
+    return opts;
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || format(new Date(), "yyyy-MM"));
+
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchAll = async () => {
     setLoading(true);
+
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const from = startOfMonth(new Date(year, month - 1)).toISOString();
+    const to = endOfMonth(new Date(year, month - 1)).toISOString();
+
     const [salesRes, posRes, jornadaRes] = await Promise.all([
       supabase
         .from("sales")
@@ -84,6 +107,8 @@ export function AnalyticsPanel() {
         .eq("venue_id", venueId)
         .eq("payment_status", "paid")
         .eq("is_cancelled", false)
+        .gte("created_at", from)
+        .lte("created_at", to)
         .order("created_at", { ascending: false }),
       supabase
         .from("pos_terminals")
@@ -93,7 +118,9 @@ export function AnalyticsPanel() {
         .from("jornadas")
         .select("id", { count: "exact", head: true })
         .eq("venue_id", venueId)
-        .eq("estado", "cerrada"),
+        .eq("estado", "cerrada")
+        .gte("fecha", from)
+        .lte("fecha", to),
     ]);
 
     const salesData = (salesRes.data || []) as SaleRow[];
@@ -101,7 +128,6 @@ export function AnalyticsPanel() {
     setPosTerminals((posRes.data || []) as POSTerminal[]);
     setJornadaCount(jornadaRes.count || 0);
 
-    // Fetch sale items for top products
     if (salesData.length > 0) {
       const saleIds = salesData.slice(0, 1000).map((s) => s.id);
       const { data: items } = await supabase
@@ -109,6 +135,8 @@ export function AnalyticsPanel() {
         .select("quantity, unit_price, cocktail_id, cocktails(name, category)")
         .in("sale_id", saleIds);
       setSaleItems((items || []) as unknown as SaleItemRow[]);
+    } else {
+      setSaleItems([]);
     }
 
     setLoading(false);
@@ -193,6 +221,21 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* ── Month Selector ── */}
+      <div className="flex items-center gap-3">
+        <CalendarDays className="w-5 h-5 text-muted-foreground" />
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {monthOptions.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
