@@ -1046,8 +1046,6 @@ export default function PurchasesImport() {
                   products={products}
                   searchQuery={searchQuery}
                   onUpdateLine={handleUpdateLine}
-                  onMarkAsExpense={handleMarkAsExpense}
-                  onMarkAsInventory={handleMarkAsInventory}
                   onOpenDetail={handleOpenDetail}
                   onCreateProduct={handleCreateProduct}
                 />
