@@ -614,21 +614,7 @@ export default function PurchasesImport() {
     [computedLines]
   );
   
-  const expenseLines = useMemo(() => 
-    computedLines.filter(l => l.status === "EXPENSE"), 
-    [computedLines]
-  );
-  
-  // Use TAX_RATES from purchase-calculator (already imported)
-  
-  // Calculate specific tax total (for expense registration)
-  const specificTaxTotal = useMemo(() => 
-    inventoryLines.reduce((sum, line) => {
-      const rate = TAX_RATES[line.tax_category] || 0;
-      return sum + Math.round(line.net_line_for_cost * rate);
-    }, 0),
-    [inventoryLines]
-  );
+  // Expenses disabled in simplified mode
 
   // Venue validation for confirmation
   const hasVenueId = !!(venueId || venue?.id);
