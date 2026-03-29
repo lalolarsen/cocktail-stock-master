@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, FileText, CreditCard, Banknote, CheckCircle } from "lucide-react";
+import { Loader2, FileText, CreditCard, Banknote, CheckCircle, Monitor } from "lucide-react";
 import { useReceiptConfig, ReceiptMode } from "@/hooks/useReceiptConfig";
 import { toast } from "sonner";
 
