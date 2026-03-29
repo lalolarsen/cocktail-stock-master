@@ -160,7 +160,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
           )}
         </div>
         {!isCollapsed && <VenueIndicator variant="sidebar" showRole />}
-        {!isCollapsed && <PilotBadge />}
+        
       </SidebarHeader>
 
       <SidebarContent>
