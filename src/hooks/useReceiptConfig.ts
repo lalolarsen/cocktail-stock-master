@@ -15,7 +15,7 @@ export interface ReceiptConfig {
 
 export function useReceiptConfig(): ReceiptConfig {
   const [id, setId] = useState<string>("");
-  const [receiptMode, setReceiptMode] = useState<ReceiptMode>("hybrid");
+  const [receiptMode, setReceiptMode] = useState<ReceiptMode>("external");
   const [activeProvider, setActiveProvider] = useState<string>("mock");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
