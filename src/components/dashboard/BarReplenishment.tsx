@@ -174,17 +174,25 @@ export function BarReplenishment() {
         barsPct={metrics.barsPct}
       />
 
-      <Tabs defaultValue="bulk" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
+      <Tabs defaultValue="requests" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsTrigger value="requests" className="flex items-center gap-2">
+            <Inbox className="w-4 h-4" />
+            Solicitudes
+          </TabsTrigger>
           <TabsTrigger value="bulk" className="flex items-center gap-2">
             <Send className="w-4 h-4" />
-            Envío Rápido (Masivo)
+            Envío Directo
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="w-4 h-4" />
             Historial
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="requests" className="space-y-4">
+          <ReplenishmentRequestsPanel onApproved={refetch} />
+        </TabsContent>
 
         <TabsContent value="bulk" className="space-y-4">
           <BulkTransferGrid
