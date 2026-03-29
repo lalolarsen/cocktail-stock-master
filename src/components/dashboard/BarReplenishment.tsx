@@ -4,7 +4,7 @@ import { PILOT_VENUE_ID } from "@/lib/venue";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Send, Warehouse, History } from "lucide-react";
+import { Send, Warehouse, History, Inbox } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useReplenishmentData } from "./replenishment/useReplenishmentData";
@@ -12,6 +12,7 @@ import { StockMetricsBar } from "./replenishment/StockMetricsBar";
 import { ConfirmTransferDialog } from "./replenishment/ConfirmTransferDialog";
 import { TransferHistory } from "./replenishment/TransferHistory";
 import { BulkTransferGrid } from "./replenishment/BulkTransferGrid";
+import { ReplenishmentRequestsPanel } from "./ReplenishmentRequestsPanel";
 import type { TransferLine } from "./replenishment/types";
 
 export function BarReplenishment() {
@@ -173,17 +174,25 @@ export function BarReplenishment() {
         barsPct={metrics.barsPct}
       />
 
-      <Tabs defaultValue="bulk" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
+      <Tabs defaultValue="requests" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsTrigger value="requests" className="flex items-center gap-2">
+            <Inbox className="w-4 h-4" />
+            Solicitudes
+          </TabsTrigger>
           <TabsTrigger value="bulk" className="flex items-center gap-2">
             <Send className="w-4 h-4" />
-            Envío Rápido (Masivo)
+            Envío Directo
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="w-4 h-4" />
             Historial
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="requests" className="space-y-4">
+          <ReplenishmentRequestsPanel onApproved={refetch} />
+        </TabsContent>
 
         <TabsContent value="bulk" className="space-y-4">
           <BulkTransferGrid

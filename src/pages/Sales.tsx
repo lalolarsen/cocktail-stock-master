@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2 } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2, Package } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
 import { PrintingPanel } from "@/components/sales/PrintingPanel";
+import { ReplenishmentRequestDialog } from "@/components/dashboard/ReplenishmentRequestDialog";
 import {
   Select,
   SelectContent,
@@ -164,6 +165,7 @@ export default function Sales() {
   // Clear cart confirmation
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showCourtesyRedeem, setShowCourtesyRedeem] = useState(false);
+  const [showReplenishmentRequest, setShowReplenishmentRequest] = useState(false);
   
   // Success screen state
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
@@ -976,6 +978,17 @@ export default function Sales() {
               <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={changePosSelection}>
                 Cambiar
               </Button>
+              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px] gap-1 px-2"
+                  onClick={() => setShowReplenishmentRequest(true)}
+                >
+                  <Package className="w-3 h-3" />
+                  Pedir reposición
+                </Button>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {/* Printer config popover */}
@@ -1332,6 +1345,17 @@ export default function Sales() {
           onClose={() => setShowCourtesyRedeem(false)}
           onRedeemed={handleCourtesyRedeemed}
         />
+
+        {/* Replenishment Request Dialog — hybrid POS only */}
+        {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+          <ReplenishmentRequestDialog
+            open={showReplenishmentRequest}
+            onOpenChange={setShowReplenishmentRequest}
+            locationId={selectedPosObj.bar_location_id}
+            locationName={selectedPosObj.bar_location?.name || "Barra"}
+            onRequestSent={() => setShowReplenishmentRequest(false)}
+          />
+        )}
       </>
     </VenueGuard>
   );

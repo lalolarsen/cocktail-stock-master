@@ -20,6 +20,7 @@ import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
+import { ReplenishmentRequestDialog } from "@/components/dashboard/ReplenishmentRequestDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
@@ -164,6 +165,7 @@ export default function Bar() {
 
   // UI
   const [showWasteDialog, setShowWasteDialog] = useState(false);
+  const [showReplenishmentDialog, setShowReplenishmentDialog] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualToken, setManualToken] = useState("");
 
@@ -848,7 +850,10 @@ export default function Bar() {
             </Button>
           )}
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowWasteDialog(true)}>
-            <Trash2 className="w-3.5 h-3.5" />Registrar merma
+            <Trash2 className="w-3.5 h-3.5" />Merma
+          </Button>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowReplenishmentDialog(true)}>
+            <Package className="w-3.5 h-3.5" />Pedir reposición
           </Button>
 
           {/* Second bartender control */}
@@ -910,6 +915,17 @@ export default function Bar() {
 
         {/* ── Waste dialog ── */}
         <WasteRegistrationDialog open={showWasteDialog} onOpenChange={setShowWasteDialog} onWasteRegistered={() => setShowWasteDialog(false)} />
+
+        {/* ── Replenishment request dialog ── */}
+        {selectedBarId && barName && (
+          <ReplenishmentRequestDialog
+            open={showReplenishmentDialog}
+            onOpenChange={setShowReplenishmentDialog}
+            locationId={selectedBarId}
+            locationName={barName}
+            onRequestSent={() => setShowReplenishmentDialog(false)}
+          />
+        )}
 
         {/* ── Add second bartender dialog ── */}
         <Dialog open={showAddBartender} onOpenChange={open => { setShowAddBartender(open); if (!open) { setAddBartenderSelectedId(""); setTimeout(focusInput, 200); } }}>
