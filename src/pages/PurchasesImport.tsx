@@ -1071,8 +1071,8 @@ export default function PurchasesImport() {
               <ImportSummaryPanel
                 lines={computedLines}
                 ivaAmount={ivaAmount}
-                registerExpenses={registerExpenses}
-                onRegisterExpensesChange={setRegisterExpenses}
+                registerExpenses={false}
+                onRegisterExpensesChange={() => {}}
                 canConfirm={canConfirm}
                 confirming={confirming}
                 onConfirm={handleConfirm}
