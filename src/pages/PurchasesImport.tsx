@@ -717,7 +717,7 @@ export default function PurchasesImport() {
     setVenueId(null);
     setComputedLines([]);
     setRawExtraction(null);
-    setRegisterExpenses(false);
+    // registerExpenses removed in simplified mode
     setHydrationAttempted(false);
     
     // Clear URL params
