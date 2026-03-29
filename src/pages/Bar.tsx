@@ -20,6 +20,7 @@ import { openBottlesTable, openBottleEventsTable } from "@/lib/db-tables";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
+import { ReplenishmentRequestDialog } from "@/components/dashboard/ReplenishmentRequestDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
