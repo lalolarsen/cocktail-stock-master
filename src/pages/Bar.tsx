@@ -165,6 +165,7 @@ export default function Bar() {
 
   // UI
   const [showWasteDialog, setShowWasteDialog] = useState(false);
+  const [showReplenishmentDialog, setShowReplenishmentDialog] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualToken, setManualToken] = useState("");
 
