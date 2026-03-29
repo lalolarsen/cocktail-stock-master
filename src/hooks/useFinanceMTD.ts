@@ -291,22 +291,17 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS — recipe-based: for each sale_item, sum ingredient costs × sold qty ──
+      // ── COGS — from actual stock movements during redemption ──
       let cogs = 0;
-      for (const si of cogsRes.data || []) {
-        const soldQty = Number(si.quantity) || 0;
-        const ingredients = (si.cocktails as any)?.cocktail_ingredients || [];
-        for (const ing of ingredients) {
-          const p = ing.products;
-          if (!p) continue;
-          const ingQty = Number(ing.quantity) || 0;
-          const capacityMl = Number(p.capacity_ml) || 0;
-          const costPerUnit = Number(p.cost_per_unit) || 0;
-          const costPerServing = capacityMl > 0
-            ? (ingQty / capacityMl) * costPerUnit
-            : ingQty * costPerUnit;
-          cogs += costPerServing * soldQty;
-        }
+      for (const m of cogsRes.data || []) {
+        const qty = Math.abs(Number(m.quantity) || 0);
+        const capacityMl = Number((m as any).products?.capacity_ml) || 0;
+        const rawUnitCost = Math.abs(Number(m.unit_cost) || 0);
+        const catalogCost = Math.abs(Number((m as any).products?.cost_per_unit) || 0);
+        const unitCost = rawUnitCost > 0 ? rawUnitCost : catalogCost;
+        cogs += capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
       }
       setCogsTotal(cogs);
 
