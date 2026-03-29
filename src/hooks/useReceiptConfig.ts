@@ -15,7 +15,7 @@ export interface ReceiptConfig {
 
 export function useReceiptConfig(): ReceiptConfig {
   const [id, setId] = useState<string>("");
-  const [receiptMode, setReceiptMode] = useState<ReceiptMode>("hybrid");
+  const [receiptMode, setReceiptMode] = useState<ReceiptMode>("external");
   const [activeProvider, setActiveProvider] = useState<string>("mock");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,14 +33,14 @@ export function useReceiptConfig(): ReceiptConfig {
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
           // No config row exists, use defaults
-          setReceiptMode("hybrid");
+          setReceiptMode("external");
           setActiveProvider("mock");
         } else {
           throw fetchError;
         }
       } else if (data) {
         setId(data.id);
-        setReceiptMode((data.receipt_mode as ReceiptMode) || "hybrid");
+        setReceiptMode((data.receipt_mode as ReceiptMode) || "external");
         setActiveProvider(data.active_provider || "mock");
       }
     } catch (err: any) {
