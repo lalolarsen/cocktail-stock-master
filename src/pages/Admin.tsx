@@ -185,6 +185,7 @@ export default function Admin() {
             {activeView === "finance" && isReadOnly && <FinancePanel />}
             {activeView === "income" && <IncomeDeclarationPanel />}
             {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
+            {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && <CourtesyQR />}
             {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
