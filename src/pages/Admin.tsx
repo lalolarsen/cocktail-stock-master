@@ -18,6 +18,7 @@ import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagem
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
+import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
