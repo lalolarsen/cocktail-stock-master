@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   BarChart3,
   TrendingUp,
@@ -15,9 +16,12 @@ import {
   ShoppingCart,
   ArrowUpRight,
   ArrowDownRight,
+  CalendarDays,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
+import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
+import { es } from "date-fns/locale";
 
 /* ─────────────── types ─────────────── */
 
