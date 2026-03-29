@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -39,15 +38,12 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  DollarSign,
-  ShoppingBag,
   Monitor,
   FileBarChart2,
   X,
   PackageCheck,
-  TrendingUp,
+  Package,
 } from "lucide-react";
-import { formatCLP } from "@/lib/currency";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
@@ -56,9 +52,7 @@ import { useAppSession } from "@/contexts/AppSessionContext";
 interface CatalogProduct {
   id: string;
   name: string;
-  price: number;
   type: "cocktail" | "product";
-  cost_per_unit: number;
   capacity_ml: number | null;
 }
 
@@ -72,8 +66,6 @@ interface AuditItem {
   product_id: string | null;
   stock_applied: boolean;
   income_applied: boolean;
-  // Local-only for COGS preview
-  _cogs_per_unit?: number;
 }
 
 interface AuditSession {
@@ -83,9 +75,6 @@ interface AuditSession {
   session_date: string;
   total_amount: number;
   total_txns: number;
-  cogs_total: number;
-  net_amount: number;
-  iva_amount: number;
   status: "pending" | "reconciled" | "discrepancy";
   notes: string | null;
   created_at: string;
@@ -98,11 +87,6 @@ interface Jornada {
   fecha: string;
   estado: string;
   hora_apertura: string | null;
-}
-
-interface CocktailIngredient {
-  product_id: string;
-  quantity: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -125,17 +109,6 @@ const STATUS_CONFIG = {
   },
 };
 
-const IVA_RATE = 0.19;
-
-function calcNet(gross: number) {
-  return Math.round(gross / (1 + IVA_RATE));
-}
-function calcIva(gross: number) {
-  return gross - calcNet(gross);
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
 function StatusBadge({ status }: { status: AuditSession["status"] }) {
   const cfg = STATUS_CONFIG[status];
   const Icon = cfg.icon;
@@ -147,7 +120,7 @@ function StatusBadge({ status }: { status: AuditSession["status"] }) {
   );
 }
 
-function SummaryCard({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon: typeof DollarSign }) {
+function SummaryCard({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon: typeof Package }) {
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between">
@@ -252,16 +225,15 @@ export function PasslineAuditPanel() {
   };
 
   const fetchCatalog = async () => {
-    // Fetch cocktails AND products in parallel
     const [cocktailsRes, productsRes] = await Promise.all([
       supabase
         .from("cocktails")
-        .select("id, name, price")
+        .select("id, name")
         .eq("venue_id", venue!.id)
         .order("name"),
       supabase
         .from("products")
-        .select("id, name, cost_per_unit, capacity_ml, category")
+        .select("id, name, capacity_ml, category")
         .eq("venue_id", venue!.id)
         .eq("is_active_in_sales", true)
         .order("name"),
@@ -269,28 +241,12 @@ export function PasslineAuditPanel() {
 
     const merged: CatalogProduct[] = [];
 
-    // Cocktails — cost will be calculated from ingredients on confirm
     for (const c of cocktailsRes.data || []) {
-      merged.push({
-        id: c.id,
-        name: c.name,
-        price: c.price,
-        type: "cocktail",
-        cost_per_unit: 0, // calculated from recipe
-        capacity_ml: null,
-      });
+      merged.push({ id: c.id, name: c.name, type: "cocktail", capacity_ml: null });
     }
 
-    // Products (unitarios y botellas activos en ventas)
     for (const p of productsRes.data || []) {
-      merged.push({
-        id: p.id,
-        name: p.name,
-        price: 0, // products don't have a fixed sale price in this table
-        type: "product",
-        cost_per_unit: Number(p.cost_per_unit) || 0,
-        capacity_ml: p.capacity_ml,
-      });
+      merged.push({ id: p.id, name: p.name, type: "product", capacity_ml: p.capacity_ml });
     }
 
     setCatalog(merged);
@@ -311,12 +267,10 @@ export function PasslineAuditPanel() {
     const confirmed = sessions.filter((s) => s.status === "reconciled");
     const pending = sessions.filter((s) => s.status === "pending");
     return {
-      totalConfirmado: confirmed.reduce((a, s) => a + s.total_amount, 0),
-      totalPendiente: pending.reduce((a, s) => a + s.total_amount, 0),
-      totalCOGS: confirmed.reduce((a, s) => a + (s.cogs_total || 0), 0),
+      totalConfirmadas: confirmed.length,
+      pendingCount: pending.length,
       totalSessions: sessions.length,
       totalDiscrepancies: sessions.filter((s) => s.status === "discrepancy").length,
-      pendingCount: pending.length,
     };
   }, [sessions]);
 
@@ -328,13 +282,9 @@ export function PasslineAuditPanel() {
 
     setItems((prev) => {
       const next = [...prev];
-      const qty = next[idx].quantity || 1;
-      const unitPrice = product.price || next[idx].unit_price;
       next[idx] = {
         ...next[idx],
         product_name: product.name,
-        unit_price: unitPrice,
-        total_amount: qty * unitPrice,
         cocktail_id: product.type === "cocktail" ? product.id : null,
         product_id: product.type === "product" ? product.id : null,
       };
@@ -346,11 +296,6 @@ export function PasslineAuditPanel() {
     setItems((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      if (field === "quantity" || field === "unit_price") {
-        const q = field === "quantity" ? Number(value) : next[idx].quantity;
-        const p = field === "unit_price" ? Number(value) : next[idx].unit_price;
-        next[idx].total_amount = q * p;
-      }
       return next;
     });
   };
@@ -373,21 +318,17 @@ export function PasslineAuditPanel() {
       const userId = authData.session?.user.id;
       if (!userId) throw new Error("No autenticado");
 
-      const totalAmount = validItems.reduce((a, i) => a + i.total_amount, 0);
-      const netAmount = calcNet(totalAmount);
-      const ivaAmount = calcIva(totalAmount);
-
       const sessionPayload: any = {
         venue_id: venue!.id,
         jornada_id: form.jornada_id || null,
         totem_number: form.totem_number.trim(),
         report_number: form.report_number.trim(),
         session_date: form.session_date,
-        total_amount: totalAmount,
+        total_amount: 0,
         total_txns: validItems.reduce((a, i) => a + i.quantity, 0),
-        net_amount: netAmount,
-        iva_amount: ivaAmount,
-        cogs_total: 0, // calculated on confirm
+        net_amount: 0,
+        iva_amount: 0,
+        cogs_total: 0,
         notes: form.notes || null,
         status: "pending",
         created_by: userId,
@@ -406,8 +347,8 @@ export function PasslineAuditPanel() {
         venue_id: venue!.id,
         product_name: i.product_name.trim(),
         quantity: i.quantity,
-        unit_price: i.unit_price,
-        total_amount: i.total_amount,
+        unit_price: 0,
+        total_amount: 0,
         cocktail_id: i.cocktail_id || null,
         product_id: i.product_id || null,
         stock_applied: false,
@@ -417,7 +358,7 @@ export function PasslineAuditPanel() {
       const { error: itemsError } = await passlineAuditItemsTable().insert(itemsPayload);
       if (itemsError) throw itemsError;
 
-      toast.success("Auditoría Passline registrada");
+      toast.success("Descuento de inventario registrado");
       setShowDialog(false);
       resetForm();
       fetchSessions();
@@ -443,7 +384,7 @@ export function PasslineAuditPanel() {
     setItems([makeEmptyItem()]);
   };
 
-  // ── Confirm (reconcile + stock deduction + COGS) ──────────────────────────
+  // ── Confirm (reconcile + stock deduction only) ────────────────────────────
 
   const openConfirm = (session: AuditSession) => {
     setConfirmSession(session);
@@ -462,7 +403,6 @@ export function PasslineAuditPanel() {
       const userId = authData.session?.user.id;
       if (!userId) throw new Error("No autenticado");
 
-      // Load items if not loaded
       let sessionItems = confirmSession.items;
       if (!sessionItems) {
         const { data } = await passlineAuditItemsTable()
@@ -470,8 +410,6 @@ export function PasslineAuditPanel() {
           .eq("session_id", confirmSession.id);
         sessionItems = (data || []) as unknown as AuditItem[];
       }
-
-      let totalCogs = 0;
 
       if (confirmStatus === "reconciled") {
         // Get the first bar location for stock deduction
@@ -486,7 +424,7 @@ export function PasslineAuditPanel() {
         const barLocationId = locations?.[0]?.id;
         if (!barLocationId) throw new Error("No hay barra activa para descontar stock");
 
-        // Process each item
+        // Process each item — stock deduction only
         for (const item of sessionItems) {
           if (item.cocktail_id) {
             // Cocktail — get recipe and deduct each ingredient
@@ -499,7 +437,7 @@ export function PasslineAuditPanel() {
             for (const ing of (ingredients || []).filter((i: any) => i.product_id)) {
               const { data: prod } = await supabase
                 .from("products")
-                .select("cost_per_unit, capacity_ml")
+                .select("capacity_ml, cost_per_unit")
                 .eq("id", ing.product_id)
                 .single();
 
@@ -508,13 +446,6 @@ export function PasslineAuditPanel() {
               const ingQtyPerServing = Number(ing.quantity);
               const totalIngQty = ingQtyPerServing * item.quantity;
               const costPerUnit = Number(prod.cost_per_unit) || 0;
-              const capacityMl = Number(prod.capacity_ml) || 0;
-
-              // COGS: (ml / capacity) * cost for bottles, qty * cost for units
-              const ingCogs = capacityMl > 0
-                ? (totalIngQty / capacityMl) * costPerUnit
-                : totalIngQty * costPerUnit;
-              totalCogs += ingCogs;
 
               // Create stock_movement
               await supabase.from("stock_movements").insert({
@@ -526,11 +457,10 @@ export function PasslineAuditPanel() {
                 source_type: "passline_totem",
                 from_location_id: barLocationId,
                 jornada_id: confirmSession.jornada_id || null,
-                notes: `[PASSLINE] Totem #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
+                notes: `[TOTEM] #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
               });
 
               // Update stock_balances
-              // Decrement stock balance directly
               const { data: currentBalance } = await supabase
                 .from("stock_balances")
                 .select("quantity")
@@ -548,58 +478,55 @@ export function PasslineAuditPanel() {
           } else if (item.product_id) {
             // Unit product — deduct directly
             const prod = catalogMap.get(item.product_id);
-            const costPerUnit = prod?.cost_per_unit || 0;
             const capacityMl = prod?.capacity_ml || 0;
-
             const deductQty = capacityMl && capacityMl > 0 ? item.quantity * capacityMl : item.quantity;
-            const itemCogs = capacityMl > 0
-              ? item.quantity * costPerUnit
-              : item.quantity * costPerUnit;
-            totalCogs += itemCogs;
 
             await supabase.from("stock_movements").insert({
               product_id: item.product_id,
               venue_id: venue!.id,
               movement_type: "salida",
               quantity: -deductQty,
-              unit_cost: costPerUnit,
+              unit_cost: 0,
               source_type: "passline_totem",
               from_location_id: barLocationId,
               jornada_id: confirmSession.jornada_id || null,
-              notes: `[PASSLINE] Totem #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
+              notes: `[TOTEM] #${confirmSession.totem_number} — ${item.product_name} x${item.quantity}`,
             });
+
+            // Update stock_balances
+            const { data: currentBalance } = await supabase
+              .from("stock_balances")
+              .select("quantity")
+              .eq("product_id", item.product_id)
+              .eq("location_id", barLocationId)
+              .single();
+            if (currentBalance) {
+              await supabase
+                .from("stock_balances")
+                .update({ quantity: Math.max(0, Number(currentBalance.quantity) - deductQty) })
+                .eq("product_id", item.product_id)
+                .eq("location_id", barLocationId);
+            }
           }
         }
 
-        // Register gross income
-        await supabase.from("gross_income_entries").insert({
-          venue_id: venue!.id,
-          source_type: "passline_totem",
-          source_id: confirmSession.id,
-          amount: confirmSession.total_amount,
-          description: `Passline Totem #${confirmSession.totem_number} — Informe ${confirmSession.report_number}`,
-          jornada_id: confirmSession.jornada_id || null,
-          created_by: userId,
-        });
-
-        // Mark items as applied
+        // Mark items as stock applied
         await passlineAuditItemsTable()
-          .update({ stock_applied: true, income_applied: true })
+          .update({ stock_applied: true })
           .eq("session_id", confirmSession.id);
       }
 
-      // Update session
+      // Update session status
       await passlineAuditSessionsTable()
         .update({
           status: confirmStatus,
-          cogs_total: Math.round(totalCogs),
           notes: confirmNotes || null,
         })
         .eq("id", confirmSession.id);
 
       toast.success(
         confirmStatus === "reconciled"
-          ? "✓ Confirmado — stock descontado y COGS registrado"
+          ? "✓ Stock descontado correctamente"
           : "⚠ Discrepancia registrada"
       );
       setShowConfirmDialog(false);
@@ -635,13 +562,9 @@ export function PasslineAuditPanel() {
     }
   };
 
-  // ── Helpers for current item selection ID ─────────────────────────────────
-
   const getItemCatalogId = (item: AuditItem) => item.cocktail_id || item.product_id || "";
 
   // ─── Render ───────────────────────────────────────────────────────────────
-
-  const itemsTotal = items.reduce((a, i) => a + i.total_amount, 0);
 
   return (
     <div className="space-y-6">
@@ -650,10 +573,10 @@ export function PasslineAuditPanel() {
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Monitor className="w-5 h-5 text-primary" />
-            Ventas por Totems Passline
+            Descuento de Inventario — Totems
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Registra ventas de totems externos, descuenta stock y calcula COGS/IVA/Margen
+            Registra ventas de totems externos y descuenta stock automáticamente
           </p>
         </div>
         <Button onClick={() => setShowDialog(true)} className="gap-2">
@@ -662,35 +585,25 @@ export function PasslineAuditPanel() {
         </Button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Summary cards — inventory focused */}
+      <div className="grid grid-cols-3 gap-4">
         <SummaryCard
-          label="Ventas Confirmadas"
-          value={formatCLP(computed.totalConfirmado)}
-          sub="con stock descontado"
+          label="Confirmadas"
+          value={String(computed.totalConfirmadas)}
+          sub="stock descontado"
           icon={CheckCircle2}
         />
         <SummaryCard
-          label="Pendiente Confirmar"
-          value={formatCLP(computed.totalPendiente)}
-          sub={`${computed.pendingCount} sesiones`}
+          label="Pendientes"
+          value={String(computed.pendingCount)}
+          sub="por confirmar"
           icon={Clock}
         />
         <SummaryCard
-          label="COGS Totems"
-          value={formatCLP(computed.totalCOGS)}
-          sub="costo de ventas terceros"
-          icon={ShoppingBag}
-        />
-        <SummaryCard
-          label="Margen Bruto"
-          value={
-            computed.totalConfirmado > 0
-              ? `${(((calcNet(computed.totalConfirmado) - computed.totalCOGS) / calcNet(computed.totalConfirmado)) * 100).toFixed(1)}%`
-              : "—"
-          }
-          sub={formatCLP(calcNet(computed.totalConfirmado) - computed.totalCOGS)}
-          icon={TrendingUp}
+          label="Total Registros"
+          value={String(computed.totalSessions)}
+          sub={computed.totalDiscrepancies > 0 ? `${computed.totalDiscrepancies} discrepancias` : undefined}
+          icon={Package}
         />
       </div>
 
@@ -727,7 +640,7 @@ export function PasslineAuditPanel() {
                       {expandedId === session.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
 
-                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-6 gap-x-4 gap-y-0.5">
+                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5">
                       <div>
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Totem</p>
                         <p className="text-sm font-semibold">#{session.totem_number}</p>
@@ -744,16 +657,6 @@ export function PasslineAuditPanel() {
                             month: "short",
                             year: "2-digit",
                           })}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Venta Bruta</p>
-                        <p className="text-sm font-bold text-primary">{formatCLP(session.total_amount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">COGS</p>
-                        <p className="text-sm font-semibold text-destructive">
-                          {session.cogs_total ? formatCLP(session.cogs_total) : "—"}
                         </p>
                       </div>
                       <div className="flex items-center">
@@ -782,30 +685,6 @@ export function PasslineAuditPanel() {
                   {/* Expanded detail */}
                   {expandedId === session.id && (
                     <div className="bg-muted/20 border-t border-border px-4 py-4 space-y-4">
-                      {/* Financial summary */}
-                      {session.status === "reconciled" && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Venta Neta</p>
-                            <p className="text-sm font-semibold">{formatCLP(session.net_amount || calcNet(session.total_amount))}</p>
-                          </div>
-                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">IVA (19%)</p>
-                            <p className="text-sm font-semibold">{formatCLP(session.iva_amount || calcIva(session.total_amount))}</p>
-                          </div>
-                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">COGS</p>
-                            <p className="text-sm font-semibold text-destructive">{formatCLP(session.cogs_total)}</p>
-                          </div>
-                          <div className="bg-background rounded-lg p-2 text-center border border-border/50">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
-                            <p className="text-sm font-bold text-primary">
-                              {formatCLP((session.net_amount || calcNet(session.total_amount)) - (session.cogs_total || 0))}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
                       {/* Items table */}
                       {session.items === undefined ? (
                         <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
@@ -821,9 +700,7 @@ export function PasslineAuditPanel() {
                               <TableRow className="bg-muted/40">
                                 <TableHead className="text-xs">Producto</TableHead>
                                 <TableHead className="text-xs text-right w-16">Cant.</TableHead>
-                                <TableHead className="text-xs text-right w-28">Precio</TableHead>
-                                <TableHead className="text-xs text-right w-28">Total</TableHead>
-                                <TableHead className="text-xs text-center w-16">Stock</TableHead>
+                                <TableHead className="text-xs text-center w-20">Stock</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -831,8 +708,6 @@ export function PasslineAuditPanel() {
                                 <TableRow key={item.id || idx}>
                                   <TableCell className="text-xs py-2 font-medium">{item.product_name}</TableCell>
                                   <TableCell className="text-right text-xs py-2">{item.quantity}</TableCell>
-                                  <TableCell className="text-right text-xs py-2">{formatCLP(item.unit_price)}</TableCell>
-                                  <TableCell className="text-right text-xs font-semibold py-2">{formatCLP(item.total_amount)}</TableCell>
                                   <TableCell className="text-center py-2">
                                     {item.stock_applied ? (
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mx-auto" />
@@ -863,11 +738,11 @@ export function PasslineAuditPanel() {
 
       {/* ─── New Session Dialog ──────────────────────────────────────────────── */}
       <Dialog open={showDialog} onOpenChange={(v) => { setShowDialog(v); if (!v) resetForm(); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Monitor className="w-5 h-5 text-primary" />
-              Registrar Jornada de Totem Passline
+              Registrar Descuento de Inventario — Totem
             </DialogTitle>
           </DialogHeader>
 
@@ -933,10 +808,8 @@ export function PasslineAuditPanel() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="text-xs w-[45%]">Producto de la Carta *</TableHead>
-                      <TableHead className="text-xs w-20">Cant.</TableHead>
-                      <TableHead className="text-xs w-28">Precio Unit.</TableHead>
-                      <TableHead className="text-xs w-28">Total</TableHead>
+                      <TableHead className="text-xs w-[65%]">Producto de la Carta *</TableHead>
+                      <TableHead className="text-xs w-24">Cantidad</TableHead>
                       <TableHead className="w-8" />
                     </TableRow>
                   </TableHeader>
@@ -957,36 +830,32 @@ export function PasslineAuditPanel() {
                               <SelectItem value="__none__" disabled>
                                 Seleccionar producto...
                               </SelectItem>
-                              {catalog.length > 0 && (
+                              {catalog.filter((c) => c.type === "cocktail").length > 0 && (
                                 <>
-                                  {catalog.filter((c) => c.type === "cocktail").length > 0 && (
-                                    <>
-                                      <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                        Cocktails
-                                      </div>
-                                      {catalog
-                                        .filter((c) => c.type === "cocktail")
-                                        .map((c) => (
-                                          <SelectItem key={c.id} value={c.id}>
-                                            🍸 {c.name} — {formatCLP(c.price)}
-                                          </SelectItem>
-                                        ))}
-                                    </>
-                                  )}
-                                  {catalog.filter((c) => c.type === "product").length > 0 && (
-                                    <>
-                                      <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">
-                                        Productos
-                                      </div>
-                                      {catalog
-                                        .filter((c) => c.type === "product")
-                                        .map((c) => (
-                                          <SelectItem key={c.id} value={c.id}>
-                                            📦 {c.name}
-                                          </SelectItem>
-                                        ))}
-                                    </>
-                                  )}
+                                  <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                    Cocktails
+                                  </div>
+                                  {catalog
+                                    .filter((c) => c.type === "cocktail")
+                                    .map((c) => (
+                                      <SelectItem key={c.id} value={c.id}>
+                                        🍸 {c.name}
+                                      </SelectItem>
+                                    ))}
+                                </>
+                              )}
+                              {catalog.filter((c) => c.type === "product").length > 0 && (
+                                <>
+                                  <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">
+                                    Productos
+                                  </div>
+                                  {catalog
+                                    .filter((c) => c.type === "product")
+                                    .map((c) => (
+                                      <SelectItem key={c.id} value={c.id}>
+                                        📦 {c.name}
+                                      </SelectItem>
+                                    ))}
                                 </>
                               )}
                             </SelectContent>
@@ -1000,19 +869,6 @@ export function PasslineAuditPanel() {
                             value={item.quantity}
                             onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
                           />
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <Input
-                            className="h-7 text-xs text-right"
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={item.unit_price || ""}
-                            onChange={(e) => updateItemField(idx, "unit_price", Number(e.target.value))}
-                          />
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <span className="text-xs font-medium tabular-nums">{formatCLP(item.total_amount)}</span>
                         </TableCell>
                         <TableCell className="py-1.5 pr-2">
                           <Button
@@ -1031,18 +887,9 @@ export function PasslineAuditPanel() {
                 </Table>
               </div>
 
-              {/* Running total + IVA preview */}
-              <div className="flex justify-end mt-2 pr-2 gap-4">
-                <span className="text-xs text-muted-foreground">
-                  Neto: <span className="font-semibold text-foreground">{formatCLP(calcNet(itemsTotal))}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  IVA: <span className="font-semibold text-foreground">{formatCLP(calcIva(itemsTotal))}</span>
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  Total: <span className="font-bold text-foreground">{formatCLP(itemsTotal)}</span>
-                </span>
-              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {items.filter(i => i.cocktail_id || i.product_id).length} producto(s) vinculado(s)
+              </p>
             </div>
 
             {/* Notes */}
@@ -1062,7 +909,7 @@ export function PasslineAuditPanel() {
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
             <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              Guardar Auditoría
+              Guardar Registro
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1074,13 +921,12 @@ export function PasslineAuditPanel() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageCheck className="w-5 h-5 text-primary" />
-              Confirmar Jornada de Totem
+              Confirmar Descuento de Stock
             </DialogTitle>
           </DialogHeader>
 
           {confirmSession && (
             <div className="space-y-4 py-2">
-              {/* Summary */}
               <div className="bg-muted/40 rounded-lg p-4 space-y-1.5 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Totem:</span>
@@ -1091,16 +937,8 @@ export function PasslineAuditPanel() {
                   <span className="font-mono">{confirmSession.report_number}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Venta Bruta:</span>
-                  <span className="font-bold text-primary text-base">{formatCLP(confirmSession.total_amount)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Neto (sin IVA):</span>
-                  <span className="font-semibold">{formatCLP(calcNet(confirmSession.total_amount))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">IVA (19%):</span>
-                  <span className="font-semibold">{formatCLP(calcIva(confirmSession.total_amount))}</span>
+                  <span className="text-muted-foreground">Productos:</span>
+                  <span className="font-semibold">{confirmSession.total_txns} unidades</span>
                 </div>
               </div>
 
@@ -1139,14 +977,12 @@ export function PasslineAuditPanel() {
                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-xs text-emerald-700 space-y-1">
                   <p className="font-medium">Al confirmar se ejecutará:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    <li>Descuento de stock (ingredientes de cada producto)</li>
-                    <li>Registro de COGS por producto</li>
-                    <li>Registro de ingreso bruto</li>
+                    <li>Descuento de stock de cada producto/ingrediente</li>
+                    <li>Actualización de balances de inventario</li>
                   </ul>
                 </div>
               )}
 
-              {/* Notes */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Notas (opcional)</Label>
                 <Textarea
