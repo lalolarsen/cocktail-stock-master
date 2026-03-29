@@ -978,6 +978,17 @@ export default function Sales() {
               <Button variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={changePosSelection}>
                 Cambiar
               </Button>
+              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px] gap-1 px-2"
+                  onClick={() => setShowReplenishmentRequest(true)}
+                >
+                  <Package className="w-3 h-3" />
+                  Pedir reposición
+                </Button>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {/* Printer config popover */}
