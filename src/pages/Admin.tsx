@@ -123,6 +123,7 @@ export default function Admin() {
       case "tickets": return "Entradas";
       case "finance": return "Finanzas";
       case "income": return "Ingresos";
+      case "analytics": return "Análisis";
       case "proveedores": return "Proveedores";
       case "courtesy-qr": return "QR Cortesía";
       case "waste": return "Merma";
