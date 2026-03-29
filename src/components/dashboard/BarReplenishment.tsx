@@ -4,7 +4,7 @@ import { PILOT_VENUE_ID } from "@/lib/venue";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Send, Warehouse, History } from "lucide-react";
+import { Send, Warehouse, History, Inbox } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useReplenishmentData } from "./replenishment/useReplenishmentData";
