@@ -683,7 +683,6 @@ export default function PurchasesImport() {
           document_id: documentId,
           provider: providerName,
           inventory_items: inventoryLines.length,
-          inventory_items: inventoryLines.length,
           venue_id: activeVenueId,
         },
       });
