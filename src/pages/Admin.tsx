@@ -18,6 +18,7 @@ import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagem
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
+import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
@@ -186,7 +187,7 @@ export default function Admin() {
             {activeView === "income" && <IncomeDeclarationPanel />}
             {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
             {activeView === "analytics" && <AnalyticsPanel />}
-            {activeView === "courtesy-qr" && <CourtesyQR />}
+            {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
             {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
             {activeView === "settings" && (
