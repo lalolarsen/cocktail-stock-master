@@ -916,6 +916,17 @@ export default function Bar() {
         {/* ── Waste dialog ── */}
         <WasteRegistrationDialog open={showWasteDialog} onOpenChange={setShowWasteDialog} onWasteRegistered={() => setShowWasteDialog(false)} />
 
+        {/* ── Replenishment request dialog ── */}
+        {selectedBarId && barName && (
+          <ReplenishmentRequestDialog
+            open={showReplenishmentDialog}
+            onOpenChange={setShowReplenishmentDialog}
+            locationId={selectedBarId}
+            locationName={barName}
+            onRequestSent={() => setShowReplenishmentDialog(false)}
+          />
+        )}
+
         {/* ── Add second bartender dialog ── */}
         <Dialog open={showAddBartender} onOpenChange={open => { setShowAddBartender(open); if (!open) { setAddBartenderSelectedId(""); setTimeout(focusInput, 200); } }}>
           <DialogContent className="max-w-sm" onClick={e => e.stopPropagation()}>
