@@ -850,7 +850,10 @@ export default function Bar() {
             </Button>
           )}
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowWasteDialog(true)}>
-            <Trash2 className="w-3.5 h-3.5" />Registrar merma
+            <Trash2 className="w-3.5 h-3.5" />Merma
+          </Button>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowReplenishmentDialog(true)}>
+            <Package className="w-3.5 h-3.5" />Pedir reposición
           </Button>
 
           {/* Second bartender control */}
