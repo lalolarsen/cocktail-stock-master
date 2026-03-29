@@ -12,6 +12,7 @@ import { StockMetricsBar } from "./replenishment/StockMetricsBar";
 import { ConfirmTransferDialog } from "./replenishment/ConfirmTransferDialog";
 import { TransferHistory } from "./replenishment/TransferHistory";
 import { BulkTransferGrid } from "./replenishment/BulkTransferGrid";
+import { ReplenishmentRequestsPanel } from "./ReplenishmentRequestsPanel";
 import type { TransferLine } from "./replenishment/types";
 
 export function BarReplenishment() {
