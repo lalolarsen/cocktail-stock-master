@@ -221,27 +221,15 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS — recipe-based from actual sales (not stock movements)
+        // COGS — from actual stock movements during redemption (not recipe estimates)
         supabase
-          .from("sale_items")
-          .select(`
-            quantity,
-            cocktail_id,
-            cocktails!inner (
-              id,
-              cocktail_ingredients (
-                quantity,
-                product_id,
-                products (cost_per_unit, capacity_ml)
-              )
-            ),
-            sales!sale_items_sale_id_fkey!inner (id)
-          `)
-          .eq("sales.venue_id", venueId)
-          .eq("sales.payment_status", "paid")
-          .eq("sales.is_cancelled", false)
-          .gte("sales.created_at", fromISO)
-          .lte("sales.created_at", toISO),
+          .from("stock_movements")
+          .select("quantity, unit_cost, product_id, products:product_id(capacity_ml, cost_per_unit)")
+          .eq("venue_id", venueId)
+          .eq("movement_type", "salida")
+          .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
 
         // OPEX (manual expenses)
         supabase
@@ -303,22 +291,17 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS — recipe-based: for each sale_item, sum ingredient costs × sold qty ──
+      // ── COGS — from actual stock movements during redemption ──
       let cogs = 0;
-      for (const si of cogsRes.data || []) {
-        const soldQty = Number(si.quantity) || 0;
-        const ingredients = (si.cocktails as any)?.cocktail_ingredients || [];
-        for (const ing of ingredients) {
-          const p = ing.products;
-          if (!p) continue;
-          const ingQty = Number(ing.quantity) || 0;
-          const capacityMl = Number(p.capacity_ml) || 0;
-          const costPerUnit = Number(p.cost_per_unit) || 0;
-          const costPerServing = capacityMl > 0
-            ? (ingQty / capacityMl) * costPerUnit
-            : ingQty * costPerUnit;
-          cogs += costPerServing * soldQty;
-        }
+      for (const m of cogsRes.data || []) {
+        const qty = Math.abs(Number(m.quantity) || 0);
+        const capacityMl = Number((m as any).products?.capacity_ml) || 0;
+        const rawUnitCost = Math.abs(Number(m.unit_cost) || 0);
+        const catalogCost = Math.abs(Number((m as any).products?.cost_per_unit) || 0);
+        const unitCost = rawUnitCost > 0 ? rawUnitCost : catalogCost;
+        cogs += capacityMl > 0
+          ? (qty / capacityMl) * unitCost
+          : qty * unitCost;
       }
       setCogsTotal(cogs);
 
