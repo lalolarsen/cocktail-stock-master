@@ -619,7 +619,7 @@ export default function PurchasesImport() {
   // Venue validation for confirmation
   const hasVenueId = !!(venueId || venue?.id);
   
-  const canConfirm = validation.canConfirm && hasVenueId && (inventoryLines.length > 0 || (expenseLines.length > 0 && registerExpenses));
+  const canConfirm = validation.canConfirm && hasVenueId && inventoryLines.length > 0;
 
   const handleConfirm = async () => {
     if (!documentId || !canConfirm) return;
