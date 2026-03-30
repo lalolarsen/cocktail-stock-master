@@ -60,7 +60,8 @@ const SOURCE_MAP: Record<string, string> = {
 };
 
 export function ExternalConsumptionPanel() {
-  const { venueId, user } = useAppSession();
+  const { venue, user } = useAppSession();
+  const venueId = venue?.id;
   const [batches, setBatches] = useState<Batch[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
