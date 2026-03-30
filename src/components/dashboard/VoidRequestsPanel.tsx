@@ -54,7 +54,7 @@ export function VoidRequestsPanel() {
         .order("requested_at", { ascending: false })
         .limit(50);
       if (error) throw error;
-      return (data || []) as VoidRequest[];
+      return (data || []) as unknown as VoidRequest[];
     },
   });
 

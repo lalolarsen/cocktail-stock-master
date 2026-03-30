@@ -52,6 +52,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Jornadas", value: "jornadas", icon: Calendar },
       { title: "Puntos de Venta", value: "pos", icon: Receipt },
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
     ],
   },
   {

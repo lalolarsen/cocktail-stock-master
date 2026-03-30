@@ -55,7 +55,7 @@ export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
         .from("void_requests" as any)
         .select("id, sale_id, status")
         .in("sale_id", saleIds);
-      return (data || []) as { id: string; sale_id: string; status: string }[];
+      return (data || []) as unknown as { id: string; sale_id: string; status: string }[];
     },
   });
 
