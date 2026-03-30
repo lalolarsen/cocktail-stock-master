@@ -106,6 +106,12 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     ],
   },
   {
+    label: "Operación",
+    items: [
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
+    ],
+  },
+  {
     label: "Inventario",
     items: [
       { title: "Inventario", value: "inventory", icon: Warehouse },
