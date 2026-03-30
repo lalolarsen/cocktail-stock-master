@@ -1371,6 +1371,12 @@ export default function Sales() {
             onRequestSent={() => setShowReplenishmentRequest(false)}
           />
         )}
+        {/* Void Request Dialog */}
+        <VoidRequestDialog
+          saleId={voidSaleId}
+          onClose={() => setVoidSaleId(null)}
+          onSuccess={() => setVoidSaleId(null)}
+        />
       </>
     </VenueGuard>
   );
