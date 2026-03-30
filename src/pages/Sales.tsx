@@ -1282,19 +1282,32 @@ export default function Sales() {
                               </div>
                               <p className="text-[10px] text-muted-foreground/60">{formatTime(sale.created_at)}</p>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-1.5 gap-1"
-                              onClick={() => viewSaleQR(sale)}
-                              title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
-                            >
-                              <QrCode className="w-3 h-3" />
-                              <span className="text-[9px]">
-                                {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
-                              </span>
-                              {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 gap-1"
+                                onClick={() => viewSaleQR(sale)}
+                                title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
+                              >
+                                <QrCode className="w-3 h-3" />
+                                <span className="text-[9px]">
+                                  {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
+                                </span>
+                                {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
+                              </Button>
+                              {!sale.is_cancelled && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => setVoidSaleId(sale.id)}
+                                  title="Solicitar anulación"
+                                >
+                                  <Undo2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
