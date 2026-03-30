@@ -134,6 +134,7 @@ export default function Admin() {
       case "settings": return "Config";
       case "passline-audit": return "Passline";
       case "voids": return "Anulaciones";
+      case "external-consumption": return "Consumo Externo";
       default: return "Admin";
     }
   };
