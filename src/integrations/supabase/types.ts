@@ -5436,6 +5436,10 @@ export type Database = {
         Args: { p_jornada_id: string }
         Returns: Json
       }
+      execute_void_request: {
+        Args: { p_void_request_id: string }
+        Returns: undefined
+      }
       factory_reset_non_demo: { Args: never; Returns: Json }
       force_close_jornada: {
         Args: { p_jornada_id: string; p_reason: string }
@@ -5621,12 +5625,25 @@ export type Database = {
         }
         Returns: Json
       }
+      request_sale_void: {
+        Args: { p_notes?: string; p_reason: string; p_sale_id: string }
+        Returns: string
+      }
       reset_demo_data: { Args: never; Returns: Json }
       reset_venue_data: {
         Args: { p_keep_user_ids?: string[]; p_venue_id: string }
         Returns: Json
       }
       reset_venue_flags: { Args: { p_venue_id: string }; Returns: undefined }
+      review_void_request: {
+        Args: {
+          p_action: string
+          p_execution_mode?: string
+          p_request_id: string
+          p_review_notes?: string
+        }
+        Returns: undefined
+      }
       safe_log_pickup_redemption: {
         Args: {
           p_bartender_id: string
