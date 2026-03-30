@@ -129,6 +129,7 @@ export default function Sales() {
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("card");
   const [historialOpen, setHistorialOpen] = useState(false);
+  const [voidSaleId, setVoidSaleId] = useState<string | null>(null);
   
   // Multi-POS selection (bar is determined at redemption, not sale)
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
