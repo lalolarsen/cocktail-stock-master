@@ -132,6 +132,7 @@ export default function Admin() {
       case "botellas": return "Botellas";
       case "settings": return "Config";
       case "passline-audit": return "Passline";
+      case "voids": return "Anulaciones";
       default: return "Admin";
     }
   };
