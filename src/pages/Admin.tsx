@@ -27,6 +27,7 @@ import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
+import { ExternalConsumptionPanel } from "@/components/dashboard/ExternalConsumptionPanel";
 import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
 
 import { AppSidebar } from "@/components/AppSidebar";
@@ -36,7 +37,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -133,6 +134,7 @@ export default function Admin() {
       case "settings": return "Config";
       case "passline-audit": return "Passline";
       case "voids": return "Anulaciones";
+      case "external-consumption": return "Consumo Externo";
       default: return "Admin";
     }
   };
@@ -200,6 +202,7 @@ export default function Admin() {
             )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
+            {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
           </div>
         </main>
       </div>

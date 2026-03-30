@@ -786,6 +786,154 @@ export type Database = {
           },
         ]
       }
+      external_consumption_batches: {
+        Row: {
+          applied_at: string | null
+          applied_by: string | null
+          created_at: string
+          created_by: string
+          id: string
+          location_id: string
+          notes: string | null
+          period_end: string
+          period_start: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_type: Database["public"]["Enums"]["ext_consumption_source"]
+          status: Database["public"]["Enums"]["ext_consumption_status"]
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_by?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          location_id: string
+          notes?: string | null
+          period_end: string
+          period_start: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_type: Database["public"]["Enums"]["ext_consumption_source"]
+          status?: Database["public"]["Enums"]["ext_consumption_status"]
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          applied_by?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          location_id?: string
+          notes?: string | null
+          period_end?: string
+          period_start?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_type?: Database["public"]["Enums"]["ext_consumption_source"]
+          status?: Database["public"]["Enums"]["ext_consumption_status"]
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_consumption_batches_applied_by_fkey"
+            columns: ["applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_batches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_batches_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_batches_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_batches_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      external_consumption_lines: {
+        Row: {
+          batch_id: string
+          cocktail_id: string | null
+          cost_snapshot: number | null
+          created_at: string
+          id: string
+          notes: string | null
+          product_id: string | null
+          quantity: number
+          recipe_snapshot: Json | null
+        }
+        Insert: {
+          batch_id: string
+          cocktail_id?: string | null
+          cost_snapshot?: number | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          quantity: number
+          recipe_snapshot?: Json | null
+        }
+        Update: {
+          batch_id?: string
+          cocktail_id?: string | null
+          cost_snapshot?: number | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          quantity?: number
+          recipe_snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_consumption_lines_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "external_consumption_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_lines_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_consumption_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_flags: {
         Row: {
           created_at: string
@@ -5297,6 +5445,10 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_external_consumption_batch: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
       auto_redeem_sale_token:
         | {
@@ -5755,6 +5907,8 @@ export type Database = {
         | "developer"
       document_status: "pending" | "issued" | "failed" | "cancelled"
       document_type: "boleta" | "factura"
+      ext_consumption_source: "cover_manual" | "totem_manual"
+      ext_consumption_status: "draft" | "confirmed" | "applied" | "cancelled"
       location_type: "warehouse" | "bar"
       movement_type:
         | "entrada"
@@ -5948,6 +6102,8 @@ export const Constants = {
       ],
       document_status: ["pending", "issued", "failed", "cancelled"],
       document_type: ["boleta", "factura"],
+      ext_consumption_source: ["cover_manual", "totem_manual"],
+      ext_consumption_status: ["draft", "confirmed", "applied", "cancelled"],
       location_type: ["warehouse", "bar"],
       movement_type: [
         "entrada",
