@@ -22,6 +22,7 @@ import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
 import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
+import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
@@ -35,7 +36,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -70,7 +71,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -131,6 +132,7 @@ export default function Admin() {
       case "botellas": return "Botellas";
       case "settings": return "Config";
       case "passline-audit": return "Passline";
+      case "voids": return "Anulaciones";
       default: return "Admin";
     }
   };
@@ -197,6 +199,7 @@ export default function Admin() {
               </>
             )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
+            {activeView === "voids" && <VoidRequestsPanel />}
           </div>
         </main>
       </div>

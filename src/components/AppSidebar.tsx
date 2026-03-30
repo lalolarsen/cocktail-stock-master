@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3 } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3, Undo2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -52,6 +52,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Jornadas", value: "jornadas", icon: Calendar },
       { title: "Puntos de Venta", value: "pos", icon: Receipt },
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
     ],
   },
   {
@@ -102,6 +103,12 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     label: "Dashboard",
     items: [
       { title: "Dashboard", value: "overview", icon: Wine },
+    ],
+  },
+  {
+    label: "Operación",
+    items: [
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
     ],
   },
   {

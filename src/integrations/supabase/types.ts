@@ -4986,6 +4986,167 @@ export type Database = {
         }
         Relationships: []
       }
+      void_events: {
+        Row: {
+          approved_by: string | null
+          created_at: string
+          created_by: string
+          event_type: Database["public"]["Enums"]["void_event_type"]
+          id: string
+          inventory_resolution: Database["public"]["Enums"]["void_inventory_resolution"]
+          reason: string | null
+          sale_id: string
+          venue_id: string
+          void_request_id: string
+        }
+        Insert: {
+          approved_by?: string | null
+          created_at?: string
+          created_by: string
+          event_type: Database["public"]["Enums"]["void_event_type"]
+          id?: string
+          inventory_resolution?: Database["public"]["Enums"]["void_inventory_resolution"]
+          reason?: string | null
+          sale_id: string
+          venue_id: string
+          void_request_id: string
+        }
+        Update: {
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string
+          event_type?: Database["public"]["Enums"]["void_event_type"]
+          id?: string
+          inventory_resolution?: Database["public"]["Enums"]["void_inventory_resolution"]
+          reason?: string | null
+          sale_id?: string
+          venue_id?: string
+          void_request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "void_events_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_events_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_events_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_events_void_request_id_fkey"
+            columns: ["void_request_id"]
+            isOneToOne: false
+            referencedRelation: "void_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      void_requests: {
+        Row: {
+          executed_at: string | null
+          execution_mode:
+            | Database["public"]["Enums"]["void_execution_mode"]
+            | null
+          id: string
+          notes: string | null
+          reason: string
+          request_type: Database["public"]["Enums"]["void_request_type"]
+          requested_at: string
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          sale_id: string
+          status: Database["public"]["Enums"]["void_request_status"]
+          venue_id: string
+        }
+        Insert: {
+          executed_at?: string | null
+          execution_mode?:
+            | Database["public"]["Enums"]["void_execution_mode"]
+            | null
+          id?: string
+          notes?: string | null
+          reason: string
+          request_type?: Database["public"]["Enums"]["void_request_type"]
+          requested_at?: string
+          requested_by: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sale_id: string
+          status?: Database["public"]["Enums"]["void_request_status"]
+          venue_id: string
+        }
+        Update: {
+          executed_at?: string | null
+          execution_mode?:
+            | Database["public"]["Enums"]["void_execution_mode"]
+            | null
+          id?: string
+          notes?: string | null
+          reason?: string
+          request_type?: Database["public"]["Enums"]["void_request_type"]
+          requested_at?: string
+          requested_by?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sale_id?: string
+          status?: Database["public"]["Enums"]["void_request_status"]
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "void_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_requests_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "void_requests_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waste_requests: {
         Row: {
           approved_at: string | null
@@ -5275,6 +5436,10 @@ export type Database = {
         Args: { p_jornada_id: string }
         Returns: Json
       }
+      execute_void_request: {
+        Args: { p_void_request_id: string }
+        Returns: undefined
+      }
       factory_reset_non_demo: { Args: never; Returns: Json }
       force_close_jornada: {
         Args: { p_jornada_id: string; p_reason: string }
@@ -5460,12 +5625,25 @@ export type Database = {
         }
         Returns: Json
       }
+      request_sale_void: {
+        Args: { p_notes?: string; p_reason: string; p_sale_id: string }
+        Returns: string
+      }
       reset_demo_data: { Args: never; Returns: Json }
       reset_venue_data: {
         Args: { p_keep_user_ids?: string[]; p_venue_id: string }
         Returns: Json
       }
       reset_venue_flags: { Args: { p_venue_id: string }; Returns: undefined }
+      review_void_request: {
+        Args: {
+          p_action: string
+          p_execution_mode?: string
+          p_request_id: string
+          p_review_notes?: string
+        }
+        Returns: undefined
+      }
       safe_log_pickup_redemption: {
         Args: {
           p_bartender_id: string
@@ -5617,6 +5795,22 @@ export type Database = {
         | "stock_error"
         | "timeout"
       replenishment_plan_status: "draft" | "applied" | "cancelled"
+      void_event_type: "void_pre_redeem" | "refund_post_redeem"
+      void_execution_mode:
+        | "void_only"
+        | "refund_with_inventory_return"
+        | "refund_with_loss"
+      void_inventory_resolution:
+        | "none"
+        | "returned_to_stock"
+        | "recognized_as_loss"
+      void_request_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "executed"
+        | "cancelled"
+      void_request_type: "pre_redeem" | "post_redeem" | "unknown"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5798,6 +5992,25 @@ export const Constants = {
         "timeout",
       ],
       replenishment_plan_status: ["draft", "applied", "cancelled"],
+      void_event_type: ["void_pre_redeem", "refund_post_redeem"],
+      void_execution_mode: [
+        "void_only",
+        "refund_with_inventory_return",
+        "refund_with_loss",
+      ],
+      void_inventory_resolution: [
+        "none",
+        "returned_to_stock",
+        "recognized_as_loss",
+      ],
+      void_request_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "executed",
+        "cancelled",
+      ],
+      void_request_type: ["pre_redeem", "post_redeem", "unknown"],
     },
   },
 } as const

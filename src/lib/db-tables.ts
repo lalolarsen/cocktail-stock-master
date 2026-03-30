@@ -36,5 +36,9 @@ export const specificTaxCategoriesTable   = () => supabase.from("specific_tax_ca
 export const passlineAuditSessionsTable = () => supabase.from("passline_audit_sessions" as any);
 export const passlineAuditItemsTable    = () => supabase.from("passline_audit_items"    as any);
 
+// ── Voids ────────────────────────────────────────────────────────────────────
+export const voidRequestsTable = () => supabase.from("void_requests" as any);
+export const voidEventsTable   = () => supabase.from("void_events"   as any);
+
 // ── Misc ─────────────────────────────────────────────────────────────────────
 export const proveedoresTable = () => supabase.from("purchases" as any);
