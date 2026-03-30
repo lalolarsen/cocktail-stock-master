@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePersistedCart, type Cocktail, type CartItem } from "@/hooks/usePersistedCart";
 import { PrintingPanel } from "@/components/sales/PrintingPanel";
 import { ReplenishmentRequestDialog } from "@/components/dashboard/ReplenishmentRequestDialog";
+import { VoidRequestDialog } from "@/components/sales/VoidRequestDialog";
 import {
   Select,
   SelectContent,
