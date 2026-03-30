@@ -40,5 +40,9 @@ export const passlineAuditItemsTable    = () => supabase.from("passline_audit_it
 export const voidRequestsTable = () => supabase.from("void_requests" as any);
 export const voidEventsTable   = () => supabase.from("void_events"   as any);
 
+// ── External consumption ─────────────────────────────────────────────────────
+export const extConsumptionBatchesTable = () => supabase.from("external_consumption_batches" as any);
+export const extConsumptionLinesTable   = () => supabase.from("external_consumption_lines"   as any);
+
 // ── Misc ─────────────────────────────────────────────────────────────────────
 export const proveedoresTable = () => supabase.from("purchases" as any);
