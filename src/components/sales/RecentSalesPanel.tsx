@@ -22,7 +22,8 @@ export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [voidSaleId, setVoidSaleId] = useState<string | null>(null);
-  const { venueId } = useActiveVenue();
+  const { venue } = useActiveVenue();
+  const venueId = venue?.id;
 
   const { data: sales, refetch } = useQuery({
     queryKey: ["recent-sales", jornadaId, posId, venueId],
