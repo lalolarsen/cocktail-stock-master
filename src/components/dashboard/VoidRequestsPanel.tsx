@@ -33,7 +33,8 @@ type VoidRequest = {
 };
 
 export function VoidRequestsPanel() {
-  const { venueId } = useActiveVenue();
+  const { venue } = useActiveVenue();
+  const venueId = venue?.id;
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("pending");
   const [reviewDialog, setReviewDialog] = useState<{ request: VoidRequest; action: "approved" | "rejected" } | null>(null);
