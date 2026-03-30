@@ -64,6 +64,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Merma", value: "waste", icon: Trash2 },
       // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
+      { title: "Consumo Externo", value: "external-consumption", icon: ClipboardList },
     ],
   },
   {

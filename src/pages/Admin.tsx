@@ -202,6 +202,7 @@ export default function Admin() {
             )}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
+            {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
           </div>
         </main>
       </div>
