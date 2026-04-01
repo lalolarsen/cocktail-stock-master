@@ -108,7 +108,7 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   let qrHtml = "";
   if (data.pickupToken) {
     const qrContent = `PICKUP:${data.pickupToken}`;
-    const qrSize = paperWidth === "58mm" ? 180 : 220;
+    const qrSize = paperWidth === "58mm" ? 220 : 280;
     const qrSvg = generateQRSvgString(qrContent, qrSize);
     const shortCodeHtml = data.shortCode
       ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
