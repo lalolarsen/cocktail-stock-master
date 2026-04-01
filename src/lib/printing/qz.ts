@@ -61,23 +61,23 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
     body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
-    .receipt { width: 100%; padding: 0 2px; color: #000; }
+    .receipt { width: 100%; padding: 0 2px; padding-bottom: 40mm; color: #000; }
     .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
     .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
-    .meta { text-align: center; font-size: 9pt; color: #000; }
+    .meta { text-align: center; font-size: 11pt; color: #000; }
     .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; color: #000; }
+    .items td { padding: 1px 0; vertical-align: top; font-size: 11pt; color: #000; }
     .item-name { text-align: left; color: #000; }
-    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; color: #000; }
-    .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
-    .payment { text-align: center; margin: 4px 0; font-size: 9.5pt; color: #000; }
+    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 11pt; color: #000; }
+    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
+    .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
     .qr-section { text-align: center; margin: 10px 0; }
-    .qr-section svg { display: inline-block; max-width: 85%; height: auto; }
-    .qr-label { font-size: 10pt; font-weight: bold; margin-bottom: 4px; color: #000; }
-    .qr-instruction { font-size: 9pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
-    .short-code { text-align: center; margin-top: 8px; font-size: 18pt; font-weight: bold; letter-spacing: 6px; color: #000; }
-    .short-code-label { text-align: center; font-size: 9pt; color: #000; margin-top: 2px; }
-    .footer { text-align: center; margin-top: 10px; font-size: 9.5pt; color: #000; }
+    .qr-section svg { display: inline-block; max-width: 90%; height: auto; }
+    .qr-label { font-size: 13pt; font-weight: bold; margin-bottom: 4px; color: #000; }
+    .qr-instruction { font-size: 10pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
+    .short-code { text-align: center; margin-top: 8px; font-size: 22pt; font-weight: bold; letter-spacing: 6px; color: #000; }
+    .short-code-label { text-align: center; font-size: 11pt; color: #000; margin-top: 2px; }
+    .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -108,7 +108,7 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   let qrHtml = "";
   if (data.pickupToken) {
     const qrContent = `PICKUP:${data.pickupToken}`;
-    const qrSize = paperWidth === "58mm" ? 180 : 220;
+    const qrSize = paperWidth === "58mm" ? 220 : 280;
     const qrSvg = generateQRSvgString(qrContent, qrSize);
     const shortCodeHtml = data.shortCode
       ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
