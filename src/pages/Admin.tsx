@@ -136,6 +136,7 @@ export default function Admin() {
       case "passline-audit": return "Passline";
       case "voids": return "Anulaciones";
       case "external-consumption": return "Consumo Externo";
+      case "reconciliation": return "Cuadre de Inventario";
       default: return "Admin";
     }
   };
