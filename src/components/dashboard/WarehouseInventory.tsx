@@ -447,7 +447,11 @@ export function WarehouseInventory({ isReadOnly = false }: { isReadOnly?: boolea
             <h2 className="text-xl font-bold tracking-tight">Inventario</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Capital inmovilizado por ubicación</p>
           </div>
-          <Button variant="outline" size="sm" className="text-xs h-8" onClick={handleExportCSV}>
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => handleExportCSV(true)}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Planilla conteo
+          </Button>
+          <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => handleExportCSV(false)}>
             <Download className="h-3.5 w-3.5 mr-1.5" />
             CSV
           </Button>
