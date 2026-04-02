@@ -5928,6 +5928,7 @@ export type Database = {
         | "transfer_out"
         | "transfer_in"
         | "waste"
+        | "reconciliation"
       payment_method: "cash" | "debit" | "credit" | "transfer" | "card"
       pickup_token_status:
         | "issued"
@@ -6123,6 +6124,7 @@ export const Constants = {
         "transfer_out",
         "transfer_in",
         "waste",
+        "reconciliation",
       ],
       payment_method: ["cash", "debit", "credit", "transfer", "card"],
       pickup_token_status: [

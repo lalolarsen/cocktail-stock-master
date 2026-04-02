@@ -29,6 +29,7 @@ import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import { ExternalConsumptionPanel } from "@/components/dashboard/ExternalConsumptionPanel";
 import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
+import { StockReconciliation } from "@/components/dashboard/StockReconciliation";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -37,7 +38,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -135,6 +136,7 @@ export default function Admin() {
       case "passline-audit": return "Passline";
       case "voids": return "Anulaciones";
       case "external-consumption": return "Consumo Externo";
+      case "reconciliation": return "Cuadre de Inventario";
       default: return "Admin";
     }
   };
@@ -203,6 +205,7 @@ export default function Admin() {
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
             {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
+            {activeView === "reconciliation" && !isReadOnly && <StockReconciliation />}
           </div>
         </main>
       </div>

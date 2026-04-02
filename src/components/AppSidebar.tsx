@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3, Undo2, ClipboardList } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3, Undo2, ClipboardList, Scale } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -65,6 +65,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
       { title: "Consumo Externo", value: "external-consumption", icon: ClipboardList },
+      { title: "Cuadre de Stock", value: "reconciliation", icon: Scale },
     ],
   },
   {

@@ -1,89 +1,58 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Plus, Trash2, Eye, Check, X, Play, FileText, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, Search, Check, Play, ChevronDown, ChevronRight, Loader2, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
+type Location = { id: string; name: string; type: string };
+type Cocktail = { id: string; name: string };
+type DraftLine = { cocktail_id: string; cocktail_name: string; quantity: number };
+
 type Batch = {
   id: string;
-  venue_id: string;
   location_id: string;
-  period_start: string;
-  period_end: string;
-  source_type: "cover_manual" | "totem_manual";
-  status: "draft" | "confirmed" | "applied" | "cancelled";
-  created_by: string;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
+  status: string;
+  created_at: string;
   applied_at: string | null;
   notes: string | null;
-  created_at: string;
   location_name?: string;
+  total_units?: number;
+  line_count?: number;
 };
 
-type BatchLine = {
-  id: string;
-  batch_id: string;
-  product_id: string | null;
-  cocktail_id: string | null;
-  quantity: number;
-  notes: string | null;
-  product_name?: string;
-  cocktail_name?: string;
-};
-
-type Location = { id: string; name: string };
-type Product = { id: string; name: string };
-type Cocktail = { id: string; name: string };
-
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Borrador", variant: "secondary" },
   confirmed: { label: "Confirmado", variant: "default" },
   applied: { label: "Aplicado", variant: "outline" },
   cancelled: { label: "Cancelado", variant: "destructive" },
 };
 
-const SOURCE_MAP: Record<string, string> = {
-  cover_manual: "Covers Manuales",
-  totem_manual: "Tótems Manual",
-};
-
 export function ExternalConsumptionPanel() {
   const { venue, user } = useAppSession();
   const venueId = venue?.id;
-  const [batches, setBatches] = useState<Batch[]>([]);
+
   const [locations, setLocations] = useState<Location[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [cocktails, setCocktails] = useState<Cocktail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
-  const [lines, setLines] = useState<BatchLine[]>([]);
-  const [linesLoading, setLinesLoading] = useState(false);
 
-  // Create form
-  const [formLocation, setFormLocation] = useState("");
-  const [formSource, setFormSource] = useState<"cover_manual" | "totem_manual">("cover_manual");
-  const [formStart, setFormStart] = useState("");
-  const [formEnd, setFormEnd] = useState("");
-  const [formNotes, setFormNotes] = useState("");
+  // Draft entry
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Add line form
-  const [lineType, setLineType] = useState<"product" | "cocktail">("cocktail");
-  const [lineItemId, setLineItemId] = useState("");
-  const [lineQty, setLineQty] = useState("");
-  const [lineNotes, setLineNotes] = useState("");
+  // History
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!venueId) return;
@@ -92,327 +61,377 @@ export function ExternalConsumptionPanel() {
 
   const loadAll = async () => {
     setLoading(true);
-    const [bRes, lRes, pRes, cRes] = await Promise.all([
-      supabase.from("external_consumption_batches" as any).select("*").eq("venue_id", venueId).order("created_at", { ascending: false }),
-      supabase.from("stock_locations").select("id, name").eq("venue_id", venueId!).eq("is_active", true),
-      supabase.from("products").select("id, name").eq("venue_id", venueId!),
-      supabase.from("cocktails").select("id, name").eq("venue_id", venueId!),
+    const [lRes, cRes, bRes] = await Promise.all([
+      supabase.from("stock_locations").select("id, name, type").eq("venue_id", venueId!).eq("is_active", true),
+      supabase.from("cocktails").select("id, name").eq("venue_id", venueId!).order("name"),
+      supabase.from("external_consumption_batches" as any).select("*").eq("venue_id", venueId).order("created_at", { ascending: false }).limit(20),
     ]);
-    const locMap = new Map((lRes.data || []).map((l: any) => [l.id, l.name]));
-    setBatches(((bRes.data || []) as any[]).map(b => ({ ...b, location_name: locMap.get(b.location_id) || "—" })));
-    setLocations((lRes.data || []) as Location[]);
-    setProducts((pRes.data || []) as Product[]);
+
+    const locs = (lRes.data || []) as Location[];
+    setLocations(locs);
     setCocktails((cRes.data || []) as Cocktail[]);
+
+    // Enrich batches with location names + line counts
+    const locMap = new Map(locs.map(l => [l.id, l.name]));
+    const rawBatches = (bRes.data || []) as any[];
+
+    // Fetch line counts for batches
+    if (rawBatches.length > 0) {
+      const batchIds = rawBatches.map(b => b.id);
+      const { data: lineData } = await supabase
+        .from("external_consumption_lines" as any)
+        .select("batch_id, quantity")
+        .in("batch_id", batchIds);
+      
+      const lineMap = new Map<string, { count: number; total: number }>();
+      ((lineData || []) as any[]).forEach((l: any) => {
+        const existing = lineMap.get(l.batch_id) || { count: 0, total: 0 };
+        existing.count++;
+        existing.total += Number(l.quantity);
+        lineMap.set(l.batch_id, existing);
+      });
+
+      setBatches(rawBatches.map(b => ({
+        ...b,
+        location_name: locMap.get(b.location_id) || "—",
+        total_units: lineMap.get(b.id)?.total || 0,
+        line_count: lineMap.get(b.id)?.count || 0,
+      })));
+    } else {
+      setBatches([]);
+    }
+
+    // Auto-select first bar location
+    const bars = locs.filter(l => l.type === "bar");
+    if (bars.length > 0 && !selectedLocation) {
+      setSelectedLocation(bars[0].id);
+    }
+
     setLoading(false);
   };
 
-  const handleCreate = async () => {
-    if (!formLocation || !formStart || !formEnd) {
-      toast.error("Completa todos los campos obligatorios");
+  const filteredCocktails = useMemo(() => {
+    if (!searchTerm.trim()) return cocktails;
+    const term = searchTerm.toLowerCase();
+    return cocktails.filter(c => c.name.toLowerCase().includes(term));
+  }, [cocktails, searchTerm]);
+
+  const addLine = (cocktail: Cocktail) => {
+    const existing = draftLines.find(l => l.cocktail_id === cocktail.id);
+    if (existing) {
+      setDraftLines(draftLines.map(l =>
+        l.cocktail_id === cocktail.id ? { ...l, quantity: l.quantity + 1 } : l
+      ));
+    } else {
+      setDraftLines([...draftLines, { cocktail_id: cocktail.id, cocktail_name: cocktail.name, quantity: 1 }]);
+    }
+  };
+
+  const updateQuantity = (cocktailId: string, qty: number) => {
+    if (qty <= 0) {
+      setDraftLines(draftLines.filter(l => l.cocktail_id !== cocktailId));
+    } else {
+      setDraftLines(draftLines.map(l =>
+        l.cocktail_id === cocktailId ? { ...l, quantity: qty } : l
+      ));
+    }
+  };
+
+  const removeLine = (cocktailId: string) => {
+    setDraftLines(draftLines.filter(l => l.cocktail_id !== cocktailId));
+  };
+
+  const totalUnits = draftLines.reduce((s, l) => s + l.quantity, 0);
+
+  const handleSaveDraft = async () => {
+    if (!selectedLocation || draftLines.length === 0) {
+      toast.error("Selecciona ubicación y agrega al menos un producto");
       return;
     }
-    const { error } = await supabase.from("external_consumption_batches" as any).insert({
-      venue_id: venueId,
-      location_id: formLocation,
-      period_start: formStart,
-      period_end: formEnd,
-      source_type: formSource,
-      created_by: user?.id,
-      notes: formNotes || null,
-    } as any);
-    if (error) { toast.error("Error al crear lote"); return; }
-    toast.success("Lote creado");
-    setShowCreate(false);
-    setFormLocation(""); setFormStart(""); setFormEnd(""); setFormNotes("");
-    loadAll();
+    setSaving(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: batch, error: batchErr } = await supabase
+        .from("external_consumption_batches" as any)
+        .insert({
+          venue_id: venueId,
+          location_id: selectedLocation,
+          period_start: today,
+          period_end: today,
+          source_type: "cover_manual",
+          created_by: user?.id,
+          status: "draft",
+        } as any)
+        .select("id")
+        .single();
+
+      if (batchErr || !batch) throw batchErr;
+
+      const lines = draftLines.map(l => ({
+        batch_id: (batch as any).id,
+        cocktail_id: l.cocktail_id,
+        quantity: l.quantity,
+      }));
+
+      const { error: lineErr } = await supabase
+        .from("external_consumption_lines" as any)
+        .insert(lines as any);
+
+      if (lineErr) throw lineErr;
+
+      toast.success(`Borrador guardado: ${totalUnits} unidades`);
+      setDraftLines([]);
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const openDetail = async (batch: Batch) => {
-    setSelectedBatch(batch);
-    setLinesLoading(true);
-    const { data } = await supabase.from("external_consumption_lines" as any).select("*").eq("batch_id", batch.id);
-    const enriched = ((data || []) as any[]).map((l: any) => ({
-      ...l,
-      product_name: products.find(p => p.id === l.product_id)?.name,
-      cocktail_name: cocktails.find(c => c.id === l.cocktail_id)?.name,
-    }));
-    setLines(enriched);
-    setLinesLoading(false);
-  };
-
-  const addLine = async () => {
-    if (!selectedBatch || !lineItemId || !lineQty || Number(lineQty) <= 0) {
-      toast.error("Selecciona producto y cantidad válida");
+  const handleConfirmAndApply = async () => {
+    if (!selectedLocation || draftLines.length === 0) {
+      toast.error("Agrega al menos un producto");
       return;
     }
-    const payload: any = {
-      batch_id: selectedBatch.id,
-      quantity: Number(lineQty),
-      notes: lineNotes || null,
-    };
-    if (lineType === "cocktail") payload.cocktail_id = lineItemId;
-    else payload.product_id = lineItemId;
+    setSaving(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: batch, error: batchErr } = await supabase
+        .from("external_consumption_batches" as any)
+        .insert({
+          venue_id: venueId,
+          location_id: selectedLocation,
+          period_start: today,
+          period_end: today,
+          source_type: "cover_manual",
+          created_by: user?.id,
+          status: "confirmed",
+          reviewed_by: user?.id,
+          reviewed_at: new Date().toISOString(),
+        } as any)
+        .select("id")
+        .single();
 
-    const { error } = await supabase.from("external_consumption_lines" as any).insert(payload);
-    if (error) { toast.error("Error al agregar línea"); return; }
-    toast.success("Línea agregada");
-    setLineItemId(""); setLineQty(""); setLineNotes("");
-    openDetail(selectedBatch);
-  };
+      if (batchErr || !batch) throw batchErr;
 
-  const deleteLine = async (lineId: string) => {
-    await supabase.from("external_consumption_lines" as any).delete().eq("id", lineId);
-    if (selectedBatch) openDetail(selectedBatch);
-  };
+      const lines = draftLines.map(l => ({
+        batch_id: (batch as any).id,
+        cocktail_id: l.cocktail_id,
+        quantity: l.quantity,
+      }));
 
-  const updateBatchStatus = async (batchId: string, status: string, extra: any = {}) => {
-    const { error } = await supabase.from("external_consumption_batches" as any)
-      .update({ status, updated_at: new Date().toISOString(), ...extra } as any)
-      .eq("id", batchId);
-    if (error) { toast.error("Error al actualizar estado"); return; }
-    toast.success(`Lote ${status === "confirmed" ? "confirmado" : status === "cancelled" ? "cancelado" : "actualizado"}`);
-    loadAll();
-    if (selectedBatch) setSelectedBatch({ ...selectedBatch, status: status as any, ...extra });
+      const { error: lineErr } = await supabase
+        .from("external_consumption_lines" as any)
+        .insert(lines as any);
+      if (lineErr) throw lineErr;
+
+      // Apply
+      const { data, error: applyErr } = await supabase.rpc(
+        "apply_external_consumption_batch",
+        { p_batch_id: (batch as any).id } as any
+      );
+      if (applyErr) throw applyErr;
+
+      toast.success(`Aplicado: ${(data as any)?.movements_created || 0} movimientos de stock`);
+      setDraftLines([]);
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || "Error al aplicar");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const applyBatch = async (batchId: string) => {
     const { data, error } = await supabase.rpc("apply_external_consumption_batch", { p_batch_id: batchId } as any);
     if (error) { toast.error(error.message || "Error al aplicar"); return; }
-    toast.success(`Lote aplicado: ${(data as any)?.movements_created || 0} movimientos creados`);
+    toast.success(`Aplicado: ${(data as any)?.movements_created || 0} movimientos`);
     loadAll();
-    setSelectedBatch(null);
   };
 
-  // ── Detail View ──
-  if (selectedBatch) {
-    const b = selectedBatch;
-    const isDraft = b.status === "draft";
-    const isConfirmed = b.status === "confirmed";
-    const badge = STATUS_MAP[b.status];
+  const barLocations = locations.filter(l => l.type === "bar");
 
+  if (loading) {
     return (
-      <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => setSelectedBatch(null)}>
-          <ArrowLeft className="w-4 h-4 mr-1" /> Volver
-        </Button>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Lote de Consumo Externo</CardTitle>
-              <Badge variant={badge.variant}>{badge.label}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-              <div><span className="text-muted-foreground">Ubicación:</span><br />{b.location_name}</div>
-              <div><span className="text-muted-foreground">Origen:</span><br />{SOURCE_MAP[b.source_type]}</div>
-              <div><span className="text-muted-foreground">Período:</span><br />{b.period_start} — {b.period_end}</div>
-              <div><span className="text-muted-foreground">Creado:</span><br />{format(new Date(b.created_at), "dd/MM/yy HH:mm", { locale: es })}</div>
-            </div>
-            {b.notes && <p className="text-sm text-muted-foreground border-l-2 border-muted pl-3">{b.notes}</p>}
-
-            {/* Lines */}
-            <div className="space-y-3">
-              <h3 className="font-medium text-sm">Líneas de consumo</h3>
-              {linesLoading ? (
-                <p className="text-sm text-muted-foreground">Cargando…</p>
-              ) : lines.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin líneas aún</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead>Notas</TableHead>
-                      {isDraft && <TableHead className="w-10" />}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {lines.map(l => (
-                      <TableRow key={l.id}>
-                        <TableCell>{l.cocktail_name || l.product_name || "—"}</TableCell>
-                        <TableCell className="text-right font-mono">{l.quantity}</TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{l.notes || "—"}</TableCell>
-                        {isDraft && (
-                          <TableCell>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteLine(l.id)}>
-                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-
-              {/* Add line (draft only) */}
-              {isDraft && (
-                <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                  <h4 className="text-sm font-medium">Agregar línea</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-                    <div>
-                      <Label className="text-xs">Tipo</Label>
-                      <Select value={lineType} onValueChange={(v: any) => { setLineType(v); setLineItemId(""); }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cocktail">Carta</SelectItem>
-                          <SelectItem value="product">Producto directo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Label className="text-xs">{lineType === "cocktail" ? "Producto de carta" : "Producto"}</Label>
-                      <Select value={lineItemId} onValueChange={setLineItemId}>
-                        <SelectTrigger><SelectValue placeholder="Seleccionar…" /></SelectTrigger>
-                        <SelectContent>
-                          {(lineType === "cocktail" ? cocktails : products).map(item => (
-                            <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Cantidad</Label>
-                      <Input type="number" min={1} value={lineQty} onChange={e => setLineQty(e.target.value)} placeholder="0" />
-                    </div>
-                    <Button size="sm" onClick={addLine} className="h-9">
-                      <Plus className="w-4 h-4 mr-1" /> Agregar
-                    </Button>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Notas (opcional)</Label>
-                    <Input value={lineNotes} onChange={e => setLineNotes(e.target.value)} placeholder="Ej: conteo manual viernes" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Summary */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <span className="text-sm text-muted-foreground">
-                Total: <strong className="text-foreground">{lines.reduce((a, l) => a + l.quantity, 0)}</strong> unidades en {lines.length} líneas
-              </span>
-              <div className="flex gap-2">
-                {isDraft && lines.length > 0 && (
-                  <Button size="sm" variant="outline" onClick={() => updateBatchStatus(b.id, "confirmed", { reviewed_by: user?.id, reviewed_at: new Date().toISOString() })}>
-                    <Check className="w-4 h-4 mr-1" /> Confirmar
-                  </Button>
-                )}
-                {isDraft && (
-                  <Button size="sm" variant="destructive" onClick={() => updateBatchStatus(b.id, "cancelled")}>
-                    <X className="w-4 h-4 mr-1" /> Cancelar
-                  </Button>
-                )}
-                {isConfirmed && (
-                  <Button size="sm" onClick={() => applyBatch(b.id)}>
-                    <Play className="w-4 h-4 mr-1" /> Aplicar descuento
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  // ── List View ──
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Consumo Externo</h2>
-          <p className="text-sm text-muted-foreground">Registra y aplica descuentos de inventario por consumos fuera de Stockia</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus className="w-4 h-4 mr-1" /> Nuevo lote
-        </Button>
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-semibold">Consumo Externo</h2>
+        <p className="text-sm text-muted-foreground">
+          Registra consumos de tickets/covers externos para descuento de inventario
+        </p>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Cargando…</p>
-      ) : batches.length === 0 ? (
-        <Card><CardContent className="py-8 text-center text-muted-foreground">No hay lotes registrados</CardContent></Card>
-      ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Período</TableHead>
-                <TableHead>Ubicación</TableHead>
-                <TableHead>Origen</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Creado</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {batches.map(b => {
-                const badge = STATUS_MAP[b.status];
-                return (
-                  <TableRow key={b.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(b)}>
-                    <TableCell className="font-mono text-xs">{b.period_start} — {b.period_end}</TableCell>
-                    <TableCell>{b.location_name}</TableCell>
-                    <TableCell>{SOURCE_MAP[b.source_type]}</TableCell>
-                    <TableCell><Badge variant={badge.variant}>{badge.label}</Badge></TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{format(new Date(b.created_at), "dd/MM HH:mm", { locale: es })}</TableCell>
-                    <TableCell><Eye className="w-4 h-4 text-muted-foreground" /></TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-
-      {/* Create Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nuevo lote de consumo externo</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Ubicación</Label>
-              <Select value={formLocation} onValueChange={setFormLocation}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar ubicación" /></SelectTrigger>
-                <SelectContent>
-                  {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Origen</Label>
-              <Select value={formSource} onValueChange={(v: any) => setFormSource(v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cover_manual">Covers Manuales</SelectItem>
-                  <SelectItem value="totem_manual">Tótems Manual</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Desde</Label>
-                <Input type="date" value={formStart} onChange={e => setFormStart(e.target.value)} />
-              </div>
-              <div>
-                <Label>Hasta</Label>
-                <Input type="date" value={formEnd} onChange={e => setFormEnd(e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <Label>Notas (opcional)</Label>
-              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Ej: semana 12, consolidado manual" />
-            </div>
+      {/* Quick entry card */}
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          {/* Location selector */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium shrink-0">Ubicación:</span>
+            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+              <SelectTrigger className="w-[200px] h-9">
+                <SelectValue placeholder="Seleccionar barra" />
+              </SelectTrigger>
+              <SelectContent>
+                {barLocations.map(l => (
+                  <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancelar</Button>
-            <Button onClick={handleCreate}><FileText className="w-4 h-4 mr-1" /> Crear borrador</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+          {/* Search + quick add */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto de carta…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-8 h-9"
+            />
+          </div>
+
+          {/* Cocktail grid — quick tap to add */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 max-h-[200px] overflow-y-auto">
+            {filteredCocktails.map(c => {
+              const inDraft = draftLines.find(l => l.cocktail_id === c.id);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => addLine(c)}
+                  className={`text-left px-2.5 py-2 rounded-md border text-sm transition-colors ${
+                    inDraft
+                      ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                      : "bg-card border-border hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="truncate block">{c.name}</span>
+                  {inDraft && (
+                    <span className="text-xs text-primary/70">×{inDraft.quantity}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Draft lines table */}
+          {draftLines.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead className="w-24 text-center">Cantidad</TableHead>
+                    <TableHead className="w-10" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {draftLines.map(l => (
+                    <TableRow key={l.cocktail_id}>
+                      <TableCell className="text-sm">{l.cocktail_name}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={l.quantity}
+                          onChange={e => updateQuantity(l.cocktail_id, parseInt(e.target.value) || 0)}
+                          className="h-8 text-center w-20 mx-auto"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLine(l.cocktail_id)}>
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-t">
+                <span className="text-sm">
+                  <strong>{totalUnits}</strong> unidades en {draftLines.length} productos
+                </span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={handleSaveDraft} disabled={saving}>
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+                    Guardar borrador
+                  </Button>
+                  <Button size="sm" onClick={handleConfirmAndApply} disabled={saving}>
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+                    <Play className="w-3.5 h-3.5 mr-1" />
+                    Confirmar y aplicar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* History */}
+      <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          {historyOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          Historial de lotes ({batches.length})
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2">
+          {batches.length === 0 ? (
+            <Card>
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                <ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                No hay lotes registrados
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Ubicación</TableHead>
+                    <TableHead className="text-right">Unidades</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="w-20" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batches.map(b => {
+                    const badge = STATUS_BADGE[b.status] || STATUS_BADGE.draft;
+                    return (
+                      <TableRow key={b.id}>
+                        <TableCell className="text-xs font-mono">
+                          {format(new Date(b.created_at), "dd/MM/yy HH:mm", { locale: es })}
+                        </TableCell>
+                        <TableCell className="text-sm">{b.location_name}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{b.total_units || 0}</TableCell>
+                        <TableCell>
+                          <Badge variant={badge.variant} className="text-[10px]">{badge.label}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {b.status === "confirmed" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyBatch(b.id)}>
+                              <Play className="w-3 h-3 mr-1" /> Aplicar
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
