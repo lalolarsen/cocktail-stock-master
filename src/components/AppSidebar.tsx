@@ -65,6 +65,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
       // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
       { title: "Consumo Externo", value: "external-consumption", icon: ClipboardList },
+      { title: "Cuadre de Stock", value: "reconciliation", icon: Scale },
     ],
   },
   {

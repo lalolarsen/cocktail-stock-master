@@ -205,6 +205,7 @@ export default function Admin() {
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
             {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
+            {activeView === "reconciliation" && !isReadOnly && <StockReconciliation />}
           </div>
         </main>
       </div>
