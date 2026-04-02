@@ -2255,6 +2255,7 @@ export type Database = {
           created_at: string
           delivered_by_worker_id: string | null
           id: string
+          jornada_id: string | null
           metadata: Json | null
           pickup_token_id: string | null
           pos_id: string | null
@@ -2268,6 +2269,7 @@ export type Database = {
           created_at?: string
           delivered_by_worker_id?: string | null
           id?: string
+          jornada_id?: string | null
           metadata?: Json | null
           pickup_token_id?: string | null
           pos_id?: string | null
@@ -2281,6 +2283,7 @@ export type Database = {
           created_at?: string
           delivered_by_worker_id?: string | null
           id?: string
+          jornada_id?: string | null
           metadata?: Json | null
           pickup_token_id?: string | null
           pos_id?: string | null
@@ -2290,6 +2293,13 @@ export type Database = {
           venue_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pickup_redemptions_log_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pickup_redemptions_log_pickup_token_id_fkey"
             columns: ["pickup_token_id"]
