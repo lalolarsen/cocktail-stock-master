@@ -439,7 +439,7 @@ export default function Sales() {
     }
   };
 
-
+  const processSale = async () => {
     if (cart.length === 0) {
       toast.error("El carrito está vacío");
       return;
