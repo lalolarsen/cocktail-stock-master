@@ -46,6 +46,7 @@ export function useAutoPrintReceipt({
       data: ReceiptData,
       saleId?: string,
       pickupTokenId?: string,
+      isHybrid?: boolean,
     ): Promise<PrintResult> => {
       if (!venueId) {
         return { success: false, error: "Venue no configurado" };
