@@ -1081,6 +1081,16 @@ export default function Sales() {
                 </PopoverContent>
               </Popover>
               <VenueIndicator variant="header" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground"
+                title="Descargar resultados de jornada"
+                onClick={handleDownloadJornadaReport}
+                disabled={!hasActiveJornada}
+              >
+                <Download className="w-4 h-4" />
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />
               </Button>
