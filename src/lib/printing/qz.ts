@@ -145,7 +145,96 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   `;
 }
 
-// ── Main print function ──
+// ── QR-only ticket builder ──
+
+function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
+  const sep = paperWidth === "58mm"
+    ? "================================"
+    : "================================================";
+
+  if (!data.pickupToken) return "";
+
+  const qrContent = `PICKUP:${data.pickupToken}`;
+  const qrSize = paperWidth === "58mm" ? 220 : 280;
+  const qrSvg = generateQRSvgString(qrContent, qrSize);
+  const shortCodeHtml = data.shortCode
+    ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
+       <div class="short-code-label">CÓDIGO DE RETIRO</div>`
+    : "";
+
+  return `
+    <div class="receipt">
+      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
+      <div class="sep">${sep}</div>
+      <div class="meta">Venta: ${data.saleNumber}</div>
+      <div class="qr-section">
+        <div class="qr-label">QR DE RETIRO</div>
+        ${qrSvg}
+        ${shortCodeHtml}
+        <div class="qr-instruction">
+          Presenta este QR o dicta el código en la barra
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Cashier receipt builder (no QR) ──
+
+function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
+  const sep = paperWidth === "58mm"
+    ? "================================"
+    : "================================================";
+  const dash = paperWidth === "58mm"
+    ? "--------------------------------"
+    : "------------------------------------------------";
+
+  const itemsHtml = data.items
+    .map(
+      (item) => `<div class="item-line">${item.quantity}x ${item.name} $${item.price.toLocaleString("es-CL")}</div>`,
+    )
+    .join("");
+
+  const paymentLabel = data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta";
+
+  return `
+    <div class="receipt">
+      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
+      <div class="sep">${sep}</div>
+      <div class="meta">${data.posName}</div>
+      <div class="meta">Venta: ${data.saleNumber}</div>
+      <div class="meta">${data.dateTime}</div>
+      <div class="sep">${sep}</div>
+      <div class="items-list">${itemsHtml}</div>
+      <div class="sep">${dash}</div>
+      <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
+      <div class="payment">Pago: ${paymentLabel}</div>
+      <div class="footer">Gracias por tu compra</div>
+    </div>
+  `;
+}
+
+function buildCashierReceiptCss(paperWidth: PaperWidth): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
+    .receipt { width: 100%; padding: 0 2px; padding-bottom: 40mm; color: #000; }
+    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
+    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
+    .meta { text-align: center; font-size: 11pt; color: #000; }
+    .items-list { margin: 6px 0; }
+    .item-line { font-size: 11pt; color: #000; padding: 1px 0; }
+    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
+    .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
+    .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
+    @media print {
+      @page { margin: 0; size: ${paperWidth} auto; }
+      body { margin: 2mm; }
+    }
+  `;
+}
+
+// ── Main print function (kept for compatibility) ──
 
 /**
  * Print a receipt via print-js (browser print dialog or kiosk-silent).
@@ -172,4 +261,55 @@ export function printRaw(
     console.error("[PrintJS] Error:", error);
     return Promise.resolve({ success: false, error: message });
   }
+}
+
+// ── Sale documents coordinator ──
+
+function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      printJS({
+        printable: html,
+        type: "raw-html",
+        style: css,
+        onError: (err: any) => {
+          console.error("[PrintJS] Error:", err);
+          resolve({ success: false, error: String(err) });
+        },
+      });
+      resolve({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error de impresión";
+      resolve({ success: false, error: message });
+    }
+  });
+}
+
+/**
+ * Print sale documents sequentially.
+ * - Normal POS (pickupToken present, not hybrid): QR ticket → wait → cashier receipt
+ * - Hybrid POS (or no pickupToken): cashier receipt only
+ */
+export async function printSaleDocuments(
+  _printerName: string,
+  data: ReceiptData,
+  paperWidth: PaperWidth = "80mm",
+  isHybrid: boolean = false,
+): Promise<{ success: boolean; error?: string }> {
+  const hasQr = !!data.pickupToken && !isHybrid;
+
+  // Step 1: print QR if normal POS
+  if (hasQr) {
+    const qrHtml = buildQrOnlyHtml(data, paperWidth);
+    const qrCss = buildReceiptCss(paperWidth);
+    const qrResult = await printOneDocument(qrHtml, qrCss);
+    if (!qrResult.success) return qrResult;
+    // Wait for first print to finish spooling
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  // Step 2: print cashier receipt
+  const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
+  const receiptCss = buildCashierReceiptCss(paperWidth);
+  return printOneDocument(receiptHtml, receiptCss);
 }

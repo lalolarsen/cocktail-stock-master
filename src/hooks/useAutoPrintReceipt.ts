@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   getPreferredPaperWidthStorageKey,
   printRaw,
+  printSaleDocuments,
   type PaperWidth,
   type ReceiptData,
 } from "@/lib/printing/qz";
@@ -45,6 +46,7 @@ export function useAutoPrintReceipt({
       data: ReceiptData,
       saleId?: string,
       pickupTokenId?: string,
+      isHybrid?: boolean,
     ): Promise<PrintResult> => {
       if (!venueId) {
         return { success: false, error: "Venue no configurado" };
@@ -78,7 +80,7 @@ export function useAutoPrintReceipt({
       const jobId = job?.id;
       if (jobId) lastJobIdRef.current = jobId;
 
-      const result = await printRaw(printerName, data, preferredPaperWidth);
+      const result = await printSaleDocuments(printerName, data, preferredPaperWidth, !!isHybrid);
 
       // Update audit
       if (jobId) {

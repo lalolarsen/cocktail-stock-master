@@ -654,7 +654,7 @@ export default function Sales() {
           shortCode: pickupData?.shortCode,
         };
         // Fire-and-forget with toast feedback
-        autoPrintReceipt(receiptData, sale.id).then((result) => {
+        autoPrintReceipt(receiptData, sale.id, undefined, isHybridPOS).then((result) => {
           if (result.success) {
             toast.success("Impreso OK", { duration: 2000 });
           } else {
