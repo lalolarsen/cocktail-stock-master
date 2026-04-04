@@ -80,7 +80,7 @@ export function useAutoPrintReceipt({
       const jobId = job?.id;
       if (jobId) lastJobIdRef.current = jobId;
 
-      const result = await printRaw(printerName, data, preferredPaperWidth);
+      const result = await printSaleDocuments(printerName, data, preferredPaperWidth, !!isHybrid);
 
       // Update audit
       if (jobId) {
