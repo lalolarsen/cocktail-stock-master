@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   getPreferredPaperWidthStorageKey,
   printRaw,
+  printSaleDocuments,
   type PaperWidth,
   type ReceiptData,
 } from "@/lib/printing/qz";
