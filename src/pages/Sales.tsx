@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2, Package } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2, Package, Download } from "lucide-react";
+import { downloadCashierReport, type CashierReportData } from "@/lib/reporting/jornada-cashier-report";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -384,6 +385,58 @@ export default function Sales() {
     }
     
     setShowPosSelection(false);
+  };
+
+  const handleDownloadJornadaReport = async () => {
+    if (!activeJornadaId) {
+      toast.error("No hay jornada activa");
+      return;
+    }
+    if (!selectedPosId || !venue?.id) {
+      toast.error("Selecciona una caja primero");
+      return;
+    }
+    try {
+      // Fetch jornada info
+      const { data: jornada } = await supabase
+        .from("jornadas")
+        .select("numero_jornada, fecha, hora_apertura")
+        .eq("id", activeJornadaId)
+        .single();
+
+      // Fetch sales for this POS + jornada
+      const { data: sales } = await supabase
+        .from("sales")
+        .select("total_amount, payment_method")
+        .eq("jornada_id", activeJornadaId)
+        .eq("pos_id", selectedPosId)
+        .eq("is_cancelled", false);
+
+      const cashSales = (sales || []).filter(s => s.payment_method === "cash");
+      const cardSales = (sales || []).filter(s => s.payment_method === "card");
+
+      const posName = posTerminals.find(p => p.id === selectedPosId)?.name || "Caja";
+
+      const reportData: CashierReportData = {
+        venueName: venue.name || "",
+        posName,
+        jornadaNumber: jornada?.numero_jornada || 0,
+        fecha: jornada?.fecha || new Date().toISOString().slice(0, 10),
+        downloadTime: new Date().toLocaleString("es-CL"),
+        cashTotal: cashSales.reduce((s, r) => s + (r.total_amount || 0), 0),
+        cashCount: cashSales.length,
+        cardTotal: cardSales.reduce((s, r) => s + (r.total_amount || 0), 0),
+        cardCount: cardSales.length,
+        grandTotal: (sales || []).reduce((s, r) => s + (r.total_amount || 0), 0),
+        grandCount: (sales || []).length,
+      };
+
+      downloadCashierReport(reportData);
+      toast.success("Reporte descargado");
+    } catch (err) {
+      console.error("Error generating report:", err);
+      toast.error("Error al generar reporte");
+    }
   };
 
   const processSale = async () => {
@@ -1028,6 +1081,16 @@ export default function Sales() {
                 </PopoverContent>
               </Popover>
               <VenueIndicator variant="header" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground"
+                title="Descargar resultados de jornada"
+                onClick={handleDownloadJornadaReport}
+                disabled={!hasActiveJornada}
+              >
+                <Download className="w-4 h-4" />
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />
               </Button>
