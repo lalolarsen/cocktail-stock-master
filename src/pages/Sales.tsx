@@ -387,7 +387,59 @@ export default function Sales() {
     setShowPosSelection(false);
   };
 
-  const processSale = async () => {
+  const handleDownloadJornadaReport = async () => {
+    if (!activeJornadaId) {
+      toast.error("No hay jornada activa");
+      return;
+    }
+    if (!selectedPosId || !venue?.id) {
+      toast.error("Selecciona una caja primero");
+      return;
+    }
+    try {
+      // Fetch jornada info
+      const { data: jornada } = await supabase
+        .from("jornadas")
+        .select("numero_jornada, fecha, hora_apertura")
+        .eq("id", activeJornadaId)
+        .single();
+
+      // Fetch sales for this POS + jornada
+      const { data: sales } = await supabase
+        .from("sales")
+        .select("total_amount, payment_method")
+        .eq("jornada_id", activeJornadaId)
+        .eq("pos_id", selectedPosId)
+        .eq("is_cancelled", false);
+
+      const cashSales = (sales || []).filter(s => s.payment_method === "cash");
+      const cardSales = (sales || []).filter(s => s.payment_method === "card");
+
+      const posName = posTerminals.find(p => p.id === selectedPosId)?.name || "Caja";
+
+      const reportData: CashierReportData = {
+        venueName: venue.name || "",
+        posName,
+        jornadaNumber: jornada?.numero_jornada || 0,
+        fecha: jornada?.fecha || new Date().toISOString().slice(0, 10),
+        downloadTime: new Date().toLocaleString("es-CL"),
+        cashTotal: cashSales.reduce((s, r) => s + (r.total_amount || 0), 0),
+        cashCount: cashSales.length,
+        cardTotal: cardSales.reduce((s, r) => s + (r.total_amount || 0), 0),
+        cardCount: cardSales.length,
+        grandTotal: (sales || []).reduce((s, r) => s + (r.total_amount || 0), 0),
+        grandCount: (sales || []).length,
+      };
+
+      downloadCashierReport(reportData);
+      toast.success("Reporte descargado");
+    } catch (err) {
+      console.error("Error generating report:", err);
+      toast.error("Error al generar reporte");
+    }
+  };
+
+
     if (cart.length === 0) {
       toast.error("El carrito está vacío");
       return;
