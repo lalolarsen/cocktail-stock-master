@@ -180,13 +180,13 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS
+        // COGS — sales-based: get sale_items + recipes
         supabase
-          .from("stock_movements")
-          .select("quantity, unit_cost, product_id, products:product_id(capacity_ml, cost_per_unit)")
+          .from("sales")
+          .select("id")
           .eq("venue_id", venueId)
-          .eq("movement_type", "salida")
-          .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
+          .eq("payment_status", "paid")
+          .eq("is_cancelled", false)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
@@ -232,17 +232,44 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS ──
+      // ── COGS (sales-based: sale_items × recipes × CPP) ──
       let cogs = 0;
-      for (const m of cogsRes.data || []) {
-        const qty = Math.abs(Number(m.quantity) || 0);
-        const capacityMl = Number((m as any).products?.capacity_ml) || 0;
-        const rawUnitCost = Math.abs(Number(m.unit_cost) || 0);
-        const catalogCost = Math.abs(Number((m as any).products?.cost_per_unit) || 0);
-        const unitCost = rawUnitCost > 0 ? rawUnitCost : catalogCost;
-        cogs += capacityMl > 0
-          ? (qty / capacityMl) * unitCost
-          : qty * unitCost;
+      const cogsSaleIds = (cogsRes.data || []).map((s: any) => s.id);
+      if (cogsSaleIds.length > 0) {
+        // Get sale items with cocktail references
+        const { data: saleItems } = await supabase
+          .from("sale_items")
+          .select("quantity, cocktail_id")
+          .in("sale_id", cogsSaleIds);
+
+        if (saleItems && saleItems.length > 0) {
+          // Aggregate qty per cocktail
+          const cocktailQty = new Map<string, number>();
+          for (const si of saleItems) {
+            if (!si.cocktail_id) continue;
+            cocktailQty.set(si.cocktail_id, (cocktailQty.get(si.cocktail_id) || 0) + Number(si.quantity));
+          }
+
+          const cocktailIds = Array.from(cocktailQty.keys());
+          if (cocktailIds.length > 0) {
+            // Get recipe ingredients with product costs
+            const { data: ingredients } = await supabase
+              .from("cocktail_ingredients")
+              .select("cocktail_id, product_id, quantity, products:product_id(capacity_ml, cost_per_unit)")
+              .in("cocktail_id", cocktailIds);
+
+            for (const ing of ingredients || []) {
+              const soldQty = cocktailQty.get(ing.cocktail_id) || 0;
+              const ingQtyMl = Number(ing.quantity);
+              const capacityMl = Number((ing as any).products?.capacity_ml) || 0;
+              const costPerUnit = Number((ing as any).products?.cost_per_unit) || 0;
+              const costPerServing = capacityMl > 0
+                ? (ingQtyMl / capacityMl) * costPerUnit
+                : ingQtyMl * costPerUnit;
+              cogs += costPerServing * soldQty;
+            }
+          }
+        }
       }
       setCogsTotal(cogs);
 
@@ -325,7 +352,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       const passlineRows = (passlineRes.data || []) as unknown as PasslineSessionSummary[];
       setPasslineSessions(passlineRows);
 
-      // ── Courtesy COGS ──
+      // ── Courtesy COGS (sales-based) ──
       const { data: courtesyRedemptions } = await supabase
         .from("courtesy_redemptions")
         .select("courtesy_id, venue_id, courtesy_qr:courtesy_id(product_name, note, qty)")
@@ -345,28 +372,35 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
       let courtesyCogs = 0;
       if (courtesySales && courtesySales.length > 0) {
-        const saleIds = courtesySales.map((s) => s.id);
-        const { data: tokens } = await supabase
-          .from("pickup_tokens")
-          .select("id")
-          .in("sale_id", saleIds.slice(0, 200));
+        const courtesySaleIds = courtesySales.map((s) => s.id);
+        const { data: courtesySaleItems } = await supabase
+          .from("sale_items")
+          .select("quantity, cocktail_id")
+          .in("sale_id", courtesySaleIds.slice(0, 200));
 
-        if (tokens && tokens.length > 0) {
-          const tokenIds = tokens.map((t) => t.id);
-          const { data: courtesyMovements } = await supabase
-            .from("stock_movements")
-            .select("quantity, unit_cost, products:product_id(capacity_ml)")
-            .eq("venue_id", venueId)
-            .eq("movement_type", "salida")
-            .in("pickup_token_id", tokenIds.slice(0, 200));
+        if (courtesySaleItems && courtesySaleItems.length > 0) {
+          const cCocktailQty = new Map<string, number>();
+          for (const si of courtesySaleItems) {
+            if (!si.cocktail_id) continue;
+            cCocktailQty.set(si.cocktail_id, (cCocktailQty.get(si.cocktail_id) || 0) + Number(si.quantity));
+          }
+          const cCocktailIds = Array.from(cCocktailQty.keys());
+          if (cCocktailIds.length > 0) {
+            const { data: cIngredients } = await supabase
+              .from("cocktail_ingredients")
+              .select("cocktail_id, quantity, products:product_id(capacity_ml, cost_per_unit)")
+              .in("cocktail_id", cCocktailIds);
 
-          for (const m of courtesyMovements || []) {
-            const qty = Math.abs(Number(m.quantity));
-            const unitCost = Math.abs(Number(m.unit_cost) || 0);
-            const capacityMl = Number(m.products?.capacity_ml) || 0;
-            courtesyCogs += capacityMl > 0
-              ? (qty / capacityMl) * unitCost
-              : qty * unitCost;
+            for (const ing of cIngredients || []) {
+              const soldQty = cCocktailQty.get(ing.cocktail_id) || 0;
+              const ingQtyMl = Number(ing.quantity);
+              const capacityMl = Number((ing as any).products?.capacity_ml) || 0;
+              const costPerUnit = Number((ing as any).products?.cost_per_unit) || 0;
+              const costPerServing = capacityMl > 0
+                ? (ingQtyMl / capacityMl) * costPerUnit
+                : ingQtyMl * costPerUnit;
+              courtesyCogs += costPerServing * soldQty;
+            }
           }
         }
       }
