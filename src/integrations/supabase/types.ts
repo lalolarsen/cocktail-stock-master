@@ -4184,6 +4184,149 @@ export type Database = {
           },
         ]
       }
+      stock_import_batches: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          batch_type: string
+          created_at: string
+          file_name: string | null
+          id: string
+          invalid_count: number
+          row_count: number
+          status: string
+          summary_json: Json
+          uploaded_at: string
+          uploaded_by: string
+          valid_count: number
+          venue_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_type: string
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          invalid_count?: number
+          row_count?: number
+          status?: string
+          summary_json?: Json
+          uploaded_at?: string
+          uploaded_by: string
+          valid_count?: number
+          venue_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_type?: string
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          invalid_count?: number
+          row_count?: number
+          status?: string
+          summary_json?: Json
+          uploaded_at?: string
+          uploaded_by?: string
+          valid_count?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_import_batches_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_import_rows: {
+        Row: {
+          batch_id: string
+          computed_base_qty: number | null
+          created_at: string
+          errors: string[] | null
+          id: string
+          is_valid: boolean
+          location_destino_id: string | null
+          location_origen_id: string | null
+          match_confidence: string | null
+          product_id: string | null
+          product_name_excel: string | null
+          product_name_matched: string | null
+          quantity: number | null
+          raw_data: Json
+          row_index: number
+          stock_real: number | null
+          stock_teorico: number | null
+          tipo_consumo: string | null
+          unidad_detectada: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          batch_id: string
+          computed_base_qty?: number | null
+          created_at?: string
+          errors?: string[] | null
+          id?: string
+          is_valid?: boolean
+          location_destino_id?: string | null
+          location_origen_id?: string | null
+          match_confidence?: string | null
+          product_id?: string | null
+          product_name_excel?: string | null
+          product_name_matched?: string | null
+          quantity?: number | null
+          raw_data?: Json
+          row_index: number
+          stock_real?: number | null
+          stock_teorico?: number | null
+          tipo_consumo?: string | null
+          unidad_detectada?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          batch_id?: string
+          computed_base_qty?: number | null
+          created_at?: string
+          errors?: string[] | null
+          id?: string
+          is_valid?: boolean
+          location_destino_id?: string | null
+          location_origen_id?: string | null
+          match_confidence?: string | null
+          product_id?: string | null
+          product_name_excel?: string | null
+          product_name_matched?: string | null
+          quantity?: number | null
+          raw_data?: Json
+          row_index?: number
+          stock_real?: number | null
+          stock_teorico?: number | null
+          tipo_consumo?: string | null
+          unidad_detectada?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_import_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "stock_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_import_rows_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_intake_batches: {
         Row: {
           created_at: string
