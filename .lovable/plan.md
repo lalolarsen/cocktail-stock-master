@@ -1,142 +1,118 @@
 
 
-# Plan: Simplificación contable — Solo costo neto, CPP e IVA débito
+# Plan: Excel-First Inventory Flow
 
 ## Resumen
 
-Eliminar toda la complejidad tributaria (IVA crédito, ILA, IABA, impuestos específicos, prorrateo) del flujo activo. Dejar el sistema enfocado en: **costo neto unitario → CPP → venta neta + IVA débito**.
+Reemplazar el `ExcelUpload` actual (simple, por nombre, sin ubicaciones) con un módulo completo que procesa la plantilla unificada con 3 tipos de movimiento: COMPRA, TRANSFERENCIA y CONTEO. Usa `products.code` como `sku_base` para el matching.
 
----
+## Fase 1 — Parser y tipos (nuevo archivo)
 
-## Cambios por área
+### `src/lib/excel-inventory-parser.ts`
 
-### 1. Motor de cálculo de compras (`src/lib/purchase-calculator.ts`)
+Nuevo módulo de parsing que:
+- Lee la hoja "Plantilla_Unica" del XLSX subido
+- Mapea las 21 columnas de la plantilla a un tipo `ExcelInventoryRow`
+- Valida por tipo_movimiento:
+  - COMPRA: requiere ubicacion_destino, sku_base, cantidad_envases, costo_neto_envase
+  - TRANSFERENCIA: requiere ubicacion_origen, ubicacion_destino, sku_base, cantidad_base_movida
+  - CONTEO: requiere ubicacion_destino, sku_base, stock_real_contado
+- Para COMPRA ML: calcula `cantidad_base_calculada = formato_compra_ml × cantidad_envases`
+- Para COMPRA UNIT: `cantidad_base_calculada = cantidad_envases`
+- Retorna `{ rows: ParsedRow[], errors: ValidationError[] }` donde cada row tiene su estado de validación
 
-**Simplificar** eliminando del flujo activo:
-- Tipos `TaxCategory`, `HeaderTaxTotals`, `ProrationDiagnostic` — dejar como `NONE` por defecto, no exponer en UI
-- Eliminar `TAX_CATEGORY_KEYWORDS`, `detectTaxCategory()`, `getTaxCategoryLabel()`, `TAX_RATES` del flujo visible
-- Eliminar campos `tax_category`, `tax_rate`, `tax_details`, `specific_tax_amount`, `inventory_cost_line`, `inventory_unit_cost` de la interfaz `ComputedLine` activa (o dejar como siempre 0/NONE)
-- `computePurchaseLine()` debe retornar directamente: **`net_unit_cost`** como único dato de costo relevante
-- Eliminar `applyTaxProration()` y toda la lógica de prorrateo
+### Resolución de SKU
 
-**Resultado**: el motor solo calcula qty × precio unitario (con desc.) = costo neto unitario
+- Cargar todos los `products` del venue con sus `code`, `capacity_ml`, `cost_per_unit`
+- Cargar todos los `stock_locations` del venue
+- Resolver `sku_base` → `product_id` por `products.code` (case-insensitive)
+- Resolver `ubicacion_origen/destino` → `location_id` por `stock_locations.name`
+- Marcar errores en filas donde no se encuentre match
 
-### 2. Motor financiero (`src/lib/purchase-financial-engine.ts`)
+## Fase 2 — Preview con validación (refactor componente)
 
-**Simplificar** `FinancialSummary`:
-- Eliminar secciones `tax_credit`, `specific_taxes`
-- Mantener solo: `inventory_impact`, `operational_expenses` (simple), `accounts_payable`, `validation`
-- La cuadratura ya no considera IVA ni impuestos específicos
+### `src/components/dashboard/ExcelUpload.tsx` — Reescritura completa
 
-### 3. Lector de facturas / Edge function (`supabase/functions/extract-invoice/index.ts`)
+Nuevo flujo:
+1. **Descargar plantilla** — genera XLSX con las 21 columnas + hoja de referencia + hoja Export_Stock_Actual
+2. **Descargar stock actual** — exporta stock teórico por ubicación desde `stock_balances` + `products` + `stock_locations`
+3. **Subir archivo** — parsea con el nuevo parser
+4. **Preview** — tabla agrupada por tipo_movimiento con validación visual:
+   - Verde: fila válida
+   - Rojo: error (SKU no encontrado, ubicación inválida, stock insuficiente para transferencia)
+   - Resumen: X compras, Y transferencias, Z conteos, N errores
+5. **Confirmar** — procesa secuencialmente por tipo (primero compras, luego transferencias, luego conteos)
 
-**Mantener** la lógica de extracción AI pero:
-- El prompt al modelo solo debe pedir: nombre producto, cantidad, precio unitario, total línea
-- No pedir IVA, ILA, IABA ni impuestos del documento
-- Mantener solo los campos `net_subtotal` y `total_amount` del header (informativo)
-- Eliminar extracción de `iva_total`, impuestos específicos por categoría
+### `src/components/dashboard/StockImportPreviewDialog.tsx` — Reemplazar
 
-### 4. UI de revisión de importación (`src/pages/PurchasesImport.tsx`)
+Reemplazar el dialog actual por uno nuevo que muestre la tabla con las 21 columnas relevantes por tipo, badges de estado, y botón de confirmar solo si no hay errores críticos.
 
-- **Eliminar** campos IVA e impuestos del header del documento (grid Neto/IVA/Total → solo Neto y Total)
-- **Eliminar** referencia a `TAX_RATES`, `TaxCategory` del import
-- La confirmación solo persiste: producto, cantidad, multiplicador, costo neto unitario
+## Fase 3 — Procesamiento transaccional
 
-### 5. Tabla de revisión (`src/components/purchase/MinimalReviewTable.tsx`)
+### Lógica de confirmación en `ExcelUpload.tsx`
 
-- Ya está simplificada mostrando "COGS Neto". Mantener como está.
-- Eliminar botón "Crear producto" (`Plus` icon) — regla: solo enlazar a existente, no crear desde lector
+**COMPRA:**
+1. Crear `stock_intake_batches` (notes = documento_ref + proveedor)
+2. Por cada línea: insertar `stock_intake_items` con `net_unit_cost`, `quantity` (en bottles o units), `location_id` = Bodega Principal
+3. Upsert `stock_balances` (incrementar quantity)
+4. Insertar `stock_movements` con `movement_type = 'compra'`
+5. Recalcular CPP: usar `calculateCPP()` de `product-type.ts` y actualizar `products.cost_per_unit`
+6. Sincronizar `products.current_stock` = SUM de todos los balances
 
-### 6. Drawer de detalle de línea (`src/components/purchase/LineDetailDrawer.tsx`)
+**TRANSFERENCIA:**
+1. Crear `stock_transfers` (from_location_id, to_location_id)
+2. Por cada línea: insertar `stock_transfer_items`
+3. Decrementar `stock_balances` en origen, incrementar en destino
+4. Insertar 2 `stock_movements`: `transfer_out` y `transfer_in`
+5. Validar que balance origen no quede negativo ANTES de aplicar
+6. Sincronizar `products.current_stock`
 
-- **Eliminar** sección "Impuesto Clasificado (Informativo)" (líneas 146-166)
-- **Eliminar** sección "Impuestos Extraídos de Factura" (líneas 168-207)
-- Dejar solo: fórmula de cálculo (pasos 1-4) + resultado costo neto unitario
+**CONTEO:**
+1. Leer `stock_balances` actual para la ubicación
+2. Calcular diferencia = stock_real_contado - teórico
+3. Si diferencia < 0: insertar `stock_movements` con `movement_type = 'waste'` (merma)
+4. Si diferencia > 0: insertar `stock_movements` con `movement_type = 'reconciliation'` (ajuste positivo)
+5. Actualizar `stock_balances` al valor real contado
+6. Sincronizar `products.current_stock`
 
-### 7. Panel de resumen (`src/components/purchase/ImportSummaryPanel.tsx`)
+## Fase 4 — Exportación de stock actual
 
-- Ya está simplificado. Eliminar props `ivaAmount` y `registerExpenses` que no se usan visualmente.
+### Botón "Descargar Stock Actual"
 
-### 8. Finanzas MTD (`src/hooks/useFinanceMTD.ts`)
+Query:
+```sql
+SELECT sl.name, p.code, p.name, p.capacity_ml, p.unit, p.cost_per_unit,
+       sb.quantity, sb.updated_at
+FROM stock_balances sb
+JOIN products p ON sb.product_id = p.id
+JOIN stock_locations sl ON sb.location_id = sl.id
+WHERE sb.venue_id = ?
+ORDER BY sl.name, p.name
+```
 
-**Simplificar significativamente**:
-- Eliminar query de `purchase_imports` para IVA crédito e impuestos específicos
-- Eliminar query de `purchase_documents` legacy
-- Eliminar campos: `ivaCreditoFacturas`, `ivaCreditoFromImports`, `ivaCreditoTotal`, `ivaNeto`, `specificTaxTotal`, `specificTaxFromInvoices`, `specificTaxFromOpex`, `specificTaxBreakdown`, `marginPostSpecificTax`, todos los forecasts de impuestos específicos
-- Mantener: ventas (gross/net/iva débito), COGS, waste, OPEX (simple), margen bruto, resultado operacional
-- Resultado operacional = Ventas netas − COGS − Merma − OPEX
+Generar XLSX con columnas: fecha_exportacion, ubicacion, sku_base, producto_nombre, tipo_consumo (ML/UNIT basado en capacity_ml), stock_actual_base, unidad_base, cpp_actual_base, valor_total_stock, ultima_actualizacion.
 
-### 9. Panel de Finanzas (`src/components/dashboard/FinancePanel.tsx`)
+## Archivos a modificar/crear
 
-- Ya está bastante limpio. Verificar que no muestre IVA crédito ni impuestos específicos. Actualmente no los muestra — **sin cambios**.
-
-### 10. Estado de Resultados (`src/pages/IncomeStatement.tsx`)
-
-- Limpiar si hay referencias a impuestos específicos o IVA crédito en el desglose
-- Mantener estructura: Ingresos → COGS → Margen Bruto → Gastos → Resultado
-
-### 11. Gastos operacionales (`src/components/dashboard/AddOperationalExpenseDialog.tsx`)
-
-- **Eliminar** campos: `specificTax`, `taxNotes`, `vatApplies`, `vatRate` del formulario
-- El gasto se registra solo como: monto, categoría, descripción, fecha
-- No mezclar con flujo de costo de producto
-
-### 12. Panel de proveedores (`src/components/dashboard/ProveedoresPanel.tsx`)
-
-- Eliminar columnas IVA de la tabla de importaciones
-- Mantener: Fecha, Proveedor, Doc#, Neto, Total, Estado
-
-### 13. Limpieza de lenguaje UI
-
-Buscar y reemplazar en toda la app:
-- Eliminar menciones de "IVA crédito", "ILA", "IABA", "impuesto específico" de labels y textos de ayuda
-- Renombrar donde aplique para usar "costo neto" consistentemente
-
----
-
-## Archivos a modificar
-
-| Archivo | Cambio |
+| Archivo | Acción |
 |---|---|
-| `src/lib/purchase-calculator.ts` | Neutralizar tax logic (todo NONE/0) |
-| `src/lib/purchase-financial-engine.ts` | Eliminar secciones tributarias |
-| `supabase/functions/extract-invoice/index.ts` | Simplificar prompt AI |
-| `src/pages/PurchasesImport.tsx` | Eliminar campos IVA/impuestos, eliminar crear producto |
-| `src/components/purchase/MinimalReviewTable.tsx` | Eliminar botón crear producto |
-| `src/components/purchase/LineDetailDrawer.tsx` | Eliminar secciones de impuestos |
-| `src/components/purchase/ImportSummaryPanel.tsx` | Limpiar props no usados |
-| `src/hooks/useFinanceMTD.ts` | Eliminar queries y campos tributarios |
-| `src/pages/IncomeStatement.tsx` | Verificar limpieza |
-| `src/components/dashboard/AddOperationalExpenseDialog.tsx` | Simplificar formulario |
-| `src/components/dashboard/ProveedoresPanel.tsx` | Eliminar columna IVA |
-| `src/components/purchase/DiagnosticPanel.tsx` | Limpiar refs tributarias |
-
----
+| `src/lib/excel-inventory-parser.ts` | **Crear** — parser + validación |
+| `src/components/dashboard/ExcelUpload.tsx` | **Reescribir** — nuevo flujo completo |
+| `src/components/dashboard/StockImportPreviewDialog.tsx` | **Reescribir** — preview por tipo_movimiento |
+| `src/pages/Index.tsx` | Sin cambios (ya importa ExcelUpload) |
 
 ## Lo que NO se toca
 
-- Autenticación, multi-venue, productos, inventario, ventas, jornadas, recetas, redeem, trazabilidad
-- DB schema (no se eliminan columnas, solo se dejan de usar)
-- `useCOGSData.ts` — ya funciona correctamente con costo neto
-- Lógica de CPP existente (ya usa `net_unit_cost` / `cost_per_unit`)
+- Tablas DB (ya existen todas las necesarias)
+- Lógica de redeem/pickup (ya descuenta desde stock_balances)
+- Recetas
+- `product-type.ts` (se reutiliza `isBottle`, `calculateCPP`)
+- Autenticación, multi-venue, jornadas
 
-## Preparado para futuro (interno, sin UI)
+## Convenciones
 
-- Tipos `TaxCategory` se mantienen en el código pero con valor `NONE` por defecto
-- Columnas de DB como `iaba_10_total`, `ila_destilados_total` siguen existiendo pero no se populan
-- La función `detectTaxCategory()` se mantiene pero no se invoca desde UI
-
-## Flujo final simplificado
-
-```text
-FACTURA → Lector AI extrae líneas
-  → Cada línea: nombre + qty + precio unitario
-  → Enlace obligatorio a producto existente (o revisión manual)
-  → Costo neto unitario = precio × (1 - desc%)
-  → Confirmar → actualiza CPP del producto
-
-VENTA → total = neto + IVA débito (19%)
-  → COGS = CPP × cantidad consumida
-  → Margen = Neto − COGS
-```
+- `sku_base` = `products.code` (ya existe, único por venue)
+- `tipo_consumo` ML/UNIT se determina por `isBottle(product)` — no se guarda nuevo campo
+- CPP se redondea a enteros (CLP)
+- Stock negativo bloqueado en transferencias (validación pre-confirm)
 
