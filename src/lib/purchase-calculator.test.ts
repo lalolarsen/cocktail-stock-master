@@ -181,41 +181,14 @@ describe("isFreightLine", () => {
 // detectTaxCategory
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("detectTaxCategory", () => {
-  it("clasifica destilados como ILA_DESTILADOS_315", () => {
-    expect(detectTaxCategory("Vodka Absolut 750ml")).toBe("ILA_DESTILADOS_315");
-    expect(detectTaxCategory("Whisky Johnnie Walker")).toBe("ILA_DESTILADOS_315");
-    expect(detectTaxCategory("Ron Bacardí Blanco")).toBe("ILA_DESTILADOS_315");
-    expect(detectTaxCategory("Pisco Control 40°")).toBe("ILA_DESTILADOS_315");
-  });
-
-  it("clasifica vino como ILA_VINO_205", () => {
-    expect(detectTaxCategory("Vino Sauvignon Blanc")).toBe("ILA_VINO_205");
-    expect(detectTaxCategory("Cabernet Reserva Maipo")).toBe("ILA_VINO_205");
-    expect(detectTaxCategory("Espumante Brut")).toBe("ILA_VINO_205");
-  });
-
-  it("clasifica cerveza como ILA_CERVEZA_205", () => {
-    expect(detectTaxCategory("Cerveza Kunstmann Torobayo")).toBe("ILA_CERVEZA_205");
-    expect(detectTaxCategory("Beer Heineken 330ml")).toBe("ILA_CERVEZA_205");
-  });
-
-  it("clasifica bebidas energéticas como IABA_18", () => {
-    expect(detectTaxCategory("Red Bull 250ml")).toBe("IABA_18");
-    expect(detectTaxCategory("Monster Energy")).toBe("IABA_18");
-  });
-
-  it("clasifica bebidas azucaradas como IABA_10", () => {
-    expect(detectTaxCategory("Bebida Gaseosa 1,5L")).toBe("IABA_10");
-    expect(detectTaxCategory("Jugo Néctar Durazno")).toBe("IABA_10");
-  });
-
-  it("prioriza destilados sobre genéricos (licor vs bebida)", () => {
-    // "licor" es destilado, aunque contenga "bebida" en contexto
-    expect(detectTaxCategory("Licor Baileys")).toBe("ILA_DESTILADOS_315");
-  });
-
-  it("retorna NONE para productos sin clasificación", () => {
+describe("detectTaxCategory (simplified — always NONE)", () => {
+  it("retorna NONE para todos los productos (impuestos desactivados)", () => {
+    expect(detectTaxCategory("Vodka Absolut 750ml")).toBe("NONE");
+    expect(detectTaxCategory("Vino Sauvignon Blanc")).toBe("NONE");
+    expect(detectTaxCategory("Cerveza Kunstmann Torobayo")).toBe("NONE");
+    expect(detectTaxCategory("Red Bull 250ml")).toBe("NONE");
+    expect(detectTaxCategory("Bebida Gaseosa 1,5L")).toBe("NONE");
+    expect(detectTaxCategory("Licor Baileys")).toBe("NONE");
     expect(detectTaxCategory("Sal de Mesa 1kg")).toBe("NONE");
     expect(detectTaxCategory("Servilletas Pack 100")).toBe("NONE");
   });
@@ -373,13 +346,13 @@ describe("computePurchaseLine", () => {
     });
   });
 
-  describe("categoría de impuesto", () => {
-    it("detecta ILA_DESTILADOS_315 desde el nombre", () => {
+  describe("categoría de impuesto (simplified)", () => {
+    it("siempre retorna NONE en modo simplificado", () => {
       const r = computePurchaseLine(makeInput({
         raw_product_name: "Vodka Absolut 1L",
       }));
-      expect(r.tax_category).toBe("ILA_DESTILADOS_315");
-      expect(r.tax_rate).toBe(0.315);
+      expect(r.tax_category).toBe("NONE");
+      expect(r.tax_rate).toBe(0);
     });
 
     it("respeta tax_category_override", () => {
