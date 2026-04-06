@@ -42,7 +42,7 @@ export function ManualStockEntryDialog({
         <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <DialogTitle className="text-lg">Ingreso manual a bodega</DialogTitle>
           <DialogDescription className="text-sm">
-            Ingresa varios productos tipo Excel. IVA (19%) e impuesto específico se calculan automáticamente.
+            Ingresa varios productos tipo Excel. El costo neto unitario actualiza el CPP del producto.
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-auto p-6">
