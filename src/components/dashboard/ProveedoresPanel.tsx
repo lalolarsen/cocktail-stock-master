@@ -137,7 +137,6 @@ export function ProveedoresPanel() {
                     <TableHead>Proveedor</TableHead>
                     <TableHead>Doc #</TableHead>
                     <TableHead className="text-right">Neto</TableHead>
-                    <TableHead className="text-right">IVA</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Obs.</TableHead>
@@ -153,7 +152,6 @@ export function ProveedoresPanel() {
                         <TableCell className="font-medium text-sm">{imp.supplier_name || "—"}</TableCell>
                         <TableCell className="text-sm">{imp.document_number || "—"}</TableCell>
                         <TableCell className="text-right text-sm">{imp.net_subtotal ? formatCLP(imp.net_subtotal) : "—"}</TableCell>
-                        <TableCell className="text-right text-sm">{imp.vat_amount ? formatCLP(imp.vat_amount) : "—"}</TableCell>
                         <TableCell className="text-right text-sm font-medium">{imp.total_amount ? formatCLP(imp.total_amount) : "—"}</TableCell>
                         <TableCell>
                           <Badge variant={badge.variant} className="text-[10px]">{badge.label}</Badge>
@@ -254,7 +252,6 @@ function HistoryTab({ venueId }: { venueId?: string }) {
             <TableHead>Proveedor</TableHead>
             <TableHead>Doc #</TableHead>
             <TableHead className="text-right">Neto</TableHead>
-            <TableHead className="text-right">IVA CF</TableHead>
             <TableHead className="text-right">Total</TableHead>
           </TableRow>
         </TableHeader>
@@ -265,7 +262,6 @@ function HistoryTab({ venueId }: { venueId?: string }) {
               <TableCell>{p.supplier_name || "—"}</TableCell>
               <TableCell>{p.document_number || "—"}</TableCell>
               <TableCell className="text-right">{p.net_subtotal ? formatCLP(p.net_subtotal) : "—"}</TableCell>
-              <TableCell className="text-right">{p.vat_credit ? formatCLP(p.vat_credit) : "—"}</TableCell>
               <TableCell className="text-right font-medium">{p.total_amount ? formatCLP(p.total_amount) : "—"}</TableCell>
             </TableRow>
           ))}

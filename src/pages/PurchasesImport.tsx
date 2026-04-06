@@ -58,10 +58,8 @@ import {
   computePurchaseLine,
   recalculateLine,
   validateForConfirmation,
-  TAX_RATES,
   type ComputedLine,
   type DiscountMode,
-  type TaxCategory,
 } from "@/lib/purchase-calculator";
 
 // Componentes específicos
@@ -989,22 +987,13 @@ export default function PurchasesImport() {
                 
                 <Separator />
                 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs">Neto</Label>
                     <Input
                       type="number"
                       value={netAmount}
                       onChange={(e) => setNetAmount(parseFloat(e.target.value) || 0)}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">IVA</Label>
-                    <Input
-                      type="number"
-                      value={ivaAmount}
-                      onChange={(e) => setIvaAmount(parseFloat(e.target.value) || 0)}
                       className="h-8 text-sm"
                     />
                   </div>
