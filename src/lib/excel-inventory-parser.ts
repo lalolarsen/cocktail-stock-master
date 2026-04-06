@@ -1,11 +1,11 @@
 /**
  * Excel-First Inventory Parser
  *
- * Parses the unified inventory template (Plantilla_Unica) with 3 movement types:
- * COMPRA, TRANSFERENCIA, CONTEO.
+ * Supports two modes:
+ * 1. Legacy unified template (21 columns, sku_base matching)
+ * 2. Simplified per-type templates (fuzzy name matching)
  *
- * Resolves sku_base → product_id via products.code (case-insensitive)
- * Resolves ubicacion → location_id via stock_locations.name (case-insensitive)
+ * Resolves products via code OR fuzzy name similarity.
  */
 
 import * as XLSX from "xlsx";
@@ -15,6 +15,7 @@ import { isBottle } from "@/lib/product-type";
 
 export type MovementType = "COMPRA" | "TRANSFERENCIA" | "CONTEO";
 export type ConsumoType = "ML" | "UNIT";
+export type MatchConfidence = "alta" | "media" | "baja" | "sin_match";
 
 export interface ExcelInventoryRow {
   rowIndex: number;
@@ -46,6 +47,8 @@ export interface ResolvedRow extends ExcelInventoryRow {
   locationOrigenId: string | null;
   locationDestinoId: string | null;
   computedBaseQty: number;
+  matchConfidence: MatchConfidence;
+  productNameMatched: string | null;
   errors: string[];
   isValid: boolean;
 }
@@ -83,7 +86,71 @@ export interface LocationRef {
   type: string;
 }
 
-// ── Column mapping ───────────────────────────────────────────────────────────
+// ── Fuzzy matching ───────────────────────────────────────────────────────────
+
+function normalize(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function similarity(a: string, b: string): number {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return 1;
+  if (!na || !nb) return 0;
+
+  // Check if one contains the other
+  if (na.includes(nb) || nb.includes(na)) return 0.9;
+
+  // Bigram similarity
+  const bigramsA = bigrams(na);
+  const bigramsB = bigrams(nb);
+  if (bigramsA.size === 0 && bigramsB.size === 0) return 1;
+
+  let intersection = 0;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) intersection++;
+  }
+  return (2 * intersection) / (bigramsA.size + bigramsB.size);
+}
+
+function bigrams(s: string): Set<string> {
+  const set = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) {
+    set.add(s.substring(i, i + 2));
+  }
+  return set;
+}
+
+export function fuzzyMatchProduct(
+  name: string,
+  products: ProductRef[],
+): { product: ProductRef | null; confidence: MatchConfidence } {
+  if (!name || !name.trim()) return { product: null, confidence: "sin_match" };
+
+  // Try exact code match first
+  const norm = normalize(name);
+  const byCode = products.find((p) => p.code && normalize(p.code) === norm);
+  if (byCode) return { product: byCode, confidence: "alta" };
+
+  // Fuzzy name match
+  let best: ProductRef | null = null;
+  let bestScore = 0;
+
+  for (const p of products) {
+    const score = similarity(name, p.name);
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+
+  if (bestScore >= 0.85) return { product: best, confidence: "alta" };
+  if (bestScore >= 0.7) return { product: best, confidence: "media" };
+  if (bestScore >= 0.5) return { product: best, confidence: "baja" };
+  return { product: null, confidence: "sin_match" };
+}
+
+// ── Column mapping (legacy) ──────────────────────────────────────────────────
 
 const COLUMN_MAP: Record<string, keyof ExcelInventoryRow> = {
   tipo_movimiento: "tipo_movimiento",
@@ -109,17 +176,254 @@ const COLUMN_MAP: Record<string, keyof ExcelInventoryRow> = {
   observaciones: "observaciones",
 };
 
-// ── Parser ───────────────────────────────────────────────────────────────────
+// ── Simplified parsers ───────────────────────────────────────────────────────
+
+export function parseCompraSimple(
+  fileData: ArrayBuffer,
+  products: ProductRef[],
+  locations: LocationRef[],
+): ParseResult {
+  const rawRows = readFirstSheet(fileData);
+  const bodega = locations.find((l) => normalize(l.name).includes("bodega")) || locations[0];
+  const errors: ValidationError[] = [];
+  const resolved: ResolvedRow[] = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i];
+    const rowIndex = i + 2;
+    const rowErrors: string[] = [];
+
+    const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
+    const cantidad = num(raw, "cantidad", "cantidad_envases", "qty");
+    const costo = num(raw, "costo_compra", "costo_neto_envase", "costo", "precio", "costo_unitario");
+    const documento = str(raw, "documento", "documento_ref", "factura", "doc");
+
+    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+
+    if (!product && confidence === "sin_match") {
+      rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
+    }
+    if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
+    if (costo === null || costo < 0) rowErrors.push("Costo requerido");
+
+    const isBotella = product ? isBottle(product) : false;
+    const formatoMl = product?.capacity_ml || null;
+    const computedBaseQty = isBotella && formatoMl ? (cantidad || 0) * formatoMl : (cantidad || 0);
+
+    const row: ResolvedRow = {
+      rowIndex,
+      tipo_movimiento: "COMPRA",
+      fecha: str(raw, "fecha") || new Date().toISOString().split("T")[0],
+      documento_ref: documento,
+      proveedor: str(raw, "proveedor"),
+      ubicacion_origen: "",
+      ubicacion_destino: bodega?.name || "Bodega Principal",
+      sku_base: product?.code || "",
+      producto_nombre: nombreExcel,
+      tipo_consumo: isBotella ? "ML" : "UNIT",
+      unidad_base: isBotella ? "ml" : "ud",
+      formato_compra_ml: formatoMl,
+      cantidad_envases: cantidad,
+      cantidad_base_movida: null,
+      cantidad_base_calculada: null,
+      costo_neto_envase: costo,
+      valor_neto_linea: (costo || 0) * (cantidad || 0),
+      cpp_base_calculado: null,
+      stock_teorico_exportado: null,
+      stock_real_contado: null,
+      motivo_ajuste: "",
+      observaciones: str(raw, "observaciones", "notas"),
+      productId: product?.id || null,
+      locationOrigenId: null,
+      locationDestinoId: bodega?.id || null,
+      computedBaseQty,
+      matchConfidence: confidence,
+      productNameMatched: product?.name || null,
+      errors: rowErrors,
+      isValid: rowErrors.length === 0,
+    };
+
+    rowErrors.forEach((msg) => errors.push({ rowIndex, field: "general", message: msg }));
+    resolved.push(row);
+  }
+
+  return buildResult(resolved, errors);
+}
+
+export function parseReposicionSimple(
+  fileData: ArrayBuffer,
+  products: ProductRef[],
+  locations: LocationRef[],
+  balances: Map<string, number>,
+): ParseResult {
+  const rawRows = readFirstSheet(fileData);
+  const bodega = locations.find((l) => normalize(l.name).includes("bodega")) || locations[0];
+  const locationByName = new Map<string, LocationRef>();
+  locations.forEach((l) => locationByName.set(normalize(l.name), l));
+
+  const errors: ValidationError[] = [];
+  const resolved: ResolvedRow[] = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i];
+    const rowIndex = i + 2;
+    const rowErrors: string[] = [];
+
+    const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
+    const cantidad = num(raw, "cantidad", "cantidad_base_movida", "qty");
+    const destinoNombre = str(raw, "ubicacion_destino", "destino", "ubicacion");
+
+    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+    const locDestino = destinoNombre ? locationByName.get(normalize(destinoNombre)) || null : null;
+
+    if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
+    if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
+    if (!locDestino && destinoNombre) rowErrors.push(`Ubicación "${destinoNombre}" no encontrada`);
+    if (!destinoNombre) rowErrors.push("Ubicación destino requerida");
+
+    // Check stock at origin (bodega)
+    if (product && bodega && cantidad && cantidad > 0) {
+      const key = `${product.id}::${bodega.id}`;
+      const currentBal = balances.get(key) || 0;
+      const isBotella = isBottle(product);
+      const baseQty = isBotella && product.capacity_ml ? cantidad * product.capacity_ml : cantidad;
+      if (baseQty > currentBal) rowErrors.push(`Stock insuficiente en bodega (disp: ${currentBal})`);
+    }
+
+    const isBotella = product ? isBottle(product) : false;
+    const computedBaseQty = isBotella && product?.capacity_ml ? (cantidad || 0) * product.capacity_ml : (cantidad || 0);
+
+    const row: ResolvedRow = {
+      rowIndex,
+      tipo_movimiento: "TRANSFERENCIA",
+      fecha: str(raw, "fecha") || new Date().toISOString().split("T")[0],
+      documento_ref: "",
+      proveedor: "",
+      ubicacion_origen: bodega?.name || "Bodega Principal",
+      ubicacion_destino: destinoNombre,
+      sku_base: product?.code || "",
+      producto_nombre: nombreExcel,
+      tipo_consumo: isBotella ? "ML" : "UNIT",
+      unidad_base: isBotella ? "ml" : "ud",
+      formato_compra_ml: null,
+      cantidad_envases: null,
+      cantidad_base_movida: computedBaseQty,
+      cantidad_base_calculada: null,
+      costo_neto_envase: null,
+      valor_neto_linea: null,
+      cpp_base_calculado: null,
+      stock_teorico_exportado: null,
+      stock_real_contado: null,
+      motivo_ajuste: "",
+      observaciones: str(raw, "observaciones", "notas"),
+      productId: product?.id || null,
+      locationOrigenId: bodega?.id || null,
+      locationDestinoId: locDestino?.id || null,
+      computedBaseQty,
+      matchConfidence: confidence,
+      productNameMatched: product?.name || null,
+      errors: rowErrors,
+      isValid: rowErrors.length === 0,
+    };
+
+    rowErrors.forEach((msg) => errors.push({ rowIndex, field: "general", message: msg }));
+    resolved.push(row);
+  }
+
+  return buildResult(resolved, errors);
+}
+
+export function parseConteoSimple(
+  fileData: ArrayBuffer,
+  products: ProductRef[],
+  locations: LocationRef[],
+  balances: Map<string, number>,
+  locationId?: string,
+): ParseResult {
+  const rawRows = readFirstSheet(fileData);
+  const locationByName = new Map<string, LocationRef>();
+  locations.forEach((l) => locationByName.set(normalize(l.name), l));
+
+  const errors: ValidationError[] = [];
+  const resolved: ResolvedRow[] = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i];
+    const rowIndex = i + 2;
+    const rowErrors: string[] = [];
+
+    const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
+    const stockReal = num(raw, "stock_real", "stock_real_contado", "real", "contado");
+    const ubicNombre = str(raw, "ubicacion", "ubicacion_destino", "destino");
+
+    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+
+    // Resolve location
+    let locDestino: LocationRef | null = null;
+    if (locationId) {
+      locDestino = locations.find((l) => l.id === locationId) || null;
+    } else if (ubicNombre) {
+      locDestino = locationByName.get(normalize(ubicNombre)) || null;
+    }
+
+    if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
+    if (stockReal === null || stockReal < 0) rowErrors.push("Stock real requerido ≥ 0");
+    if (!locDestino) rowErrors.push("Ubicación no encontrada");
+
+    // Get theoretical stock
+    const stockTeorico = product && locDestino
+      ? balances.get(`${product.id}::${locDestino.id}`) || 0
+      : 0;
+
+    const row: ResolvedRow = {
+      rowIndex,
+      tipo_movimiento: "CONTEO",
+      fecha: new Date().toISOString().split("T")[0],
+      documento_ref: "",
+      proveedor: "",
+      ubicacion_origen: "",
+      ubicacion_destino: locDestino?.name || ubicNombre || "",
+      sku_base: product?.code || "",
+      producto_nombre: nombreExcel,
+      tipo_consumo: product ? (isBottle(product) ? "ML" : "UNIT") : "UNIT",
+      unidad_base: product ? (isBottle(product) ? "ml" : "ud") : "ud",
+      formato_compra_ml: null,
+      cantidad_envases: null,
+      cantidad_base_movida: null,
+      cantidad_base_calculada: null,
+      costo_neto_envase: null,
+      valor_neto_linea: null,
+      cpp_base_calculado: null,
+      stock_teorico_exportado: stockTeorico,
+      stock_real_contado: stockReal,
+      motivo_ajuste: str(raw, "motivo_ajuste", "motivo", "observacion"),
+      observaciones: "",
+      productId: product?.id || null,
+      locationOrigenId: null,
+      locationDestinoId: locDestino?.id || null,
+      computedBaseQty: stockReal || 0,
+      matchConfidence: confidence,
+      productNameMatched: product?.name || null,
+      errors: rowErrors,
+      isValid: rowErrors.length === 0,
+    };
+
+    rowErrors.forEach((msg) => errors.push({ rowIndex, field: "general", message: msg }));
+    resolved.push(row);
+  }
+
+  return buildResult(resolved, errors);
+}
+
+// ── Legacy unified parser ────────────────────────────────────────────────────
 
 export function parseExcelInventory(
   fileData: ArrayBuffer,
   products: ProductRef[],
   locations: LocationRef[],
-  balances: Map<string, number>, // key = `${productId}::${locationId}` → quantity
+  balances: Map<string, number>,
 ): ParseResult {
   const workbook = XLSX.read(fileData);
-
-  // Try to find "Plantilla_Unica" sheet, fallback to first sheet
   const sheetName =
     workbook.SheetNames.find((n) => n.toLowerCase().includes("plantilla")) ||
     workbook.SheetNames[0];
@@ -127,134 +431,97 @@ export function parseExcelInventory(
   const sheet = workbook.Sheets[sheetName];
   const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
 
-  // Build lookup maps
   const productByCode = new Map<string, ProductRef>();
   products.forEach((p) => {
     if (p.code) productByCode.set(p.code.toLowerCase().trim(), p);
   });
 
   const locationByName = new Map<string, LocationRef>();
-  locations.forEach((l) => {
-    locationByName.set(l.name.toLowerCase().trim(), l);
-  });
+  locations.forEach((l) => locationByName.set(l.name.toLowerCase().trim(), l));
 
   const errors: ValidationError[] = [];
   const resolved: ResolvedRow[] = [];
 
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
-    const rowIndex = i + 2; // Excel row (1-indexed + header)
-
-    // Map columns (case-insensitive key match)
+    const rowIndex = i + 2;
     const row = mapRawRow(raw, rowIndex);
 
-    // Skip empty rows
     if (!row.tipo_movimiento && !row.sku_base) continue;
 
     const tipo = row.tipo_movimiento.toUpperCase().trim() as MovementType;
     if (!["COMPRA", "TRANSFERENCIA", "CONTEO"].includes(tipo)) {
       errors.push({ rowIndex, field: "tipo_movimiento", message: `Tipo inválido: "${row.tipo_movimiento}"` });
-      resolved.push({ ...row, productId: null, locationOrigenId: null, locationDestinoId: null, computedBaseQty: 0, errors: [`Tipo inválido`], isValid: false });
+      resolved.push({ ...row, productId: null, locationOrigenId: null, locationDestinoId: null, computedBaseQty: 0, matchConfidence: "sin_match", productNameMatched: null, errors: [`Tipo inválido`], isValid: false });
       continue;
     }
 
     const rowErrors: string[] = [];
 
-    // Resolve product
+    // Resolve product: try code first, then fuzzy name
     const sku = (row.sku_base || "").toLowerCase().trim();
-    const product = sku ? productByCode.get(sku) : null;
-    if (!sku) {
-      rowErrors.push("SKU vacío");
-      errors.push({ rowIndex, field: "sku_base", message: "SKU vacío" });
-    } else if (!product) {
-      rowErrors.push(`SKU "${row.sku_base}" no encontrado`);
-      errors.push({ rowIndex, field: "sku_base", message: `SKU "${row.sku_base}" no encontrado` });
+    let product = sku ? productByCode.get(sku) : null;
+    let confidence: MatchConfidence = "sin_match";
+
+    if (product) {
+      confidence = "alta";
+    } else if (row.producto_nombre) {
+      const match = fuzzyMatchProduct(row.producto_nombre, products);
+      product = match.product;
+      confidence = match.confidence;
     }
 
-    // Determine tipo_consumo from product if not specified
+    if (!product) {
+      rowErrors.push(sku ? `SKU "${row.sku_base}" no encontrado` : `Producto "${row.producto_nombre}" no encontrado`);
+      errors.push({ rowIndex, field: "sku_base", message: rowErrors[rowErrors.length - 1] });
+    }
+
     const tipoConsumo: ConsumoType =
-      row.tipo_consumo?.toUpperCase().trim() === "UNIT"
-        ? "UNIT"
-        : row.tipo_consumo?.toUpperCase().trim() === "ML"
-          ? "ML"
-          : product
-            ? isBottle(product) ? "ML" : "UNIT"
-            : "UNIT";
+      row.tipo_consumo?.toUpperCase().trim() === "UNIT" ? "UNIT"
+        : row.tipo_consumo?.toUpperCase().trim() === "ML" ? "ML"
+          : product ? (isBottle(product) ? "ML" : "UNIT") : "UNIT";
 
-    // Resolve locations
-    const locOrigen = row.ubicacion_origen
-      ? locationByName.get(row.ubicacion_origen.toLowerCase().trim()) || null
-      : null;
-    const locDestino = row.ubicacion_destino
-      ? locationByName.get(row.ubicacion_destino.toLowerCase().trim()) || null
-      : null;
+    const locOrigen = row.ubicacion_origen ? locationByName.get(row.ubicacion_origen.toLowerCase().trim()) || null : null;
+    const locDestino = row.ubicacion_destino ? locationByName.get(row.ubicacion_destino.toLowerCase().trim()) || null : null;
 
-    // Validate per type
     let computedBaseQty = 0;
 
     if (tipo === "COMPRA") {
-      if (!locDestino && row.ubicacion_destino) {
-        rowErrors.push(`Ubicación destino "${row.ubicacion_destino}" no encontrada`);
-      } else if (!row.ubicacion_destino) {
-        rowErrors.push("Ubicación destino requerida");
-      }
+      if (!locDestino && row.ubicacion_destino) rowErrors.push(`Ubicación destino "${row.ubicacion_destino}" no encontrada`);
+      else if (!row.ubicacion_destino) rowErrors.push("Ubicación destino requerida");
 
       const cantEnvases = toNum(row.cantidad_envases);
       const costoEnvase = toNum(row.costo_neto_envase);
-
-      if (!cantEnvases || cantEnvases <= 0) {
-        rowErrors.push("Cantidad envases requerida > 0");
-      }
-      if (costoEnvase === null || costoEnvase < 0) {
-        rowErrors.push("Costo neto envase requerido");
-      }
+      if (!cantEnvases || cantEnvases <= 0) rowErrors.push("Cantidad envases requerida > 0");
+      if (costoEnvase === null || costoEnvase < 0) rowErrors.push("Costo neto envase requerido");
 
       if (tipoConsumo === "ML") {
         const formato = toNum(row.formato_compra_ml);
-        if (!formato || formato <= 0) {
-          rowErrors.push("Formato compra ML requerido para tipo ML");
-        } else {
-          computedBaseQty = (cantEnvases || 0) * formato;
-        }
+        if (!formato || formato <= 0) rowErrors.push("Formato compra ML requerido para tipo ML");
+        else computedBaseQty = (cantEnvases || 0) * formato;
       } else {
         computedBaseQty = cantEnvases || 0;
       }
     } else if (tipo === "TRANSFERENCIA") {
-      if (!locOrigen && row.ubicacion_origen) {
-        rowErrors.push(`Ubicación origen "${row.ubicacion_origen}" no encontrada`);
-      } else if (!row.ubicacion_origen) {
-        rowErrors.push("Ubicación origen requerida");
-      }
-      if (!locDestino && row.ubicacion_destino) {
-        rowErrors.push(`Ubicación destino "${row.ubicacion_destino}" no encontrada`);
-      } else if (!row.ubicacion_destino) {
-        rowErrors.push("Ubicación destino requerida");
-      }
+      if (!locOrigen && row.ubicacion_origen) rowErrors.push(`Ubicación origen "${row.ubicacion_origen}" no encontrada`);
+      else if (!row.ubicacion_origen) rowErrors.push("Ubicación origen requerida");
+      if (!locDestino && row.ubicacion_destino) rowErrors.push(`Ubicación destino "${row.ubicacion_destino}" no encontrada`);
+      else if (!row.ubicacion_destino) rowErrors.push("Ubicación destino requerida");
 
       computedBaseQty = toNum(row.cantidad_base_movida) || 0;
-      if (computedBaseQty <= 0) {
-        rowErrors.push("Cantidad base movida requerida > 0");
-      }
+      if (computedBaseQty <= 0) rowErrors.push("Cantidad base movida requerida > 0");
 
-      // Check sufficient stock at origin
       if (product && locOrigen && computedBaseQty > 0) {
         const key = `${product.id}::${locOrigen.id}`;
         const currentBalance = balances.get(key) || 0;
-        if (computedBaseQty > currentBalance) {
-          rowErrors.push(`Stock insuficiente en origen (disponible: ${currentBalance})`);
-        }
+        if (computedBaseQty > currentBalance) rowErrors.push(`Stock insuficiente en origen (disponible: ${currentBalance})`);
       }
     } else if (tipo === "CONTEO") {
-      if (!locDestino && row.ubicacion_destino) {
-        rowErrors.push(`Ubicación "${row.ubicacion_destino}" no encontrada`);
-      } else if (!row.ubicacion_destino) {
-        rowErrors.push("Ubicación requerida");
-      }
+      if (!locDestino && row.ubicacion_destino) rowErrors.push(`Ubicación "${row.ubicacion_destino}" no encontrada`);
+      else if (!row.ubicacion_destino) rowErrors.push("Ubicación requerida");
 
       const stockReal = toNum(row.stock_real_contado);
-      if (stockReal === null || stockReal < 0) {
-        rowErrors.push("Stock real contado requerido ≥ 0");
-      }
+      if (stockReal === null || stockReal < 0) rowErrors.push("Stock real contado requerido ≥ 0");
       computedBaseQty = stockReal || 0;
     }
 
@@ -272,38 +539,66 @@ export function parseExcelInventory(
       locationOrigenId: locOrigen?.id || null,
       locationDestinoId: locDestino?.id || null,
       computedBaseQty,
+      matchConfidence: confidence,
+      productNameMatched: product?.name || null,
       errors: rowErrors,
       isValid: rowErrors.length === 0,
     });
   }
 
-  const compras = resolved.filter((r) => r.tipo_movimiento === "COMPRA");
-  const transferencias = resolved.filter((r) => r.tipo_movimiento === "TRANSFERENCIA");
-  const conteos = resolved.filter((r) => r.tipo_movimiento === "CONTEO");
+  return buildResult(resolved, errors);
+}
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function readFirstSheet(fileData: ArrayBuffer): Record<string, any>[] {
+  const wb = XLSX.read(fileData);
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+}
+
+/** Get string value from raw row by trying multiple possible column names */
+function str(raw: Record<string, any>, ...keys: string[]): string {
+  for (const key of keys) {
+    for (const [k, v] of Object.entries(raw)) {
+      if (k.toLowerCase().trim() === key.toLowerCase()) return String(v || "").trim();
+    }
+  }
+  return "";
+}
+
+/** Get numeric value from raw row by trying multiple possible column names */
+function num(raw: Record<string, any>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    for (const [k, v] of Object.entries(raw)) {
+      if (k.toLowerCase().trim() === key.toLowerCase()) {
+        if (v === null || v === undefined || v === "") return null;
+        const n = Number(v);
+        return isNaN(n) ? null : n;
+      }
+    }
+  }
+  return null;
+}
+
+function buildResult(resolved: ResolvedRow[], errors: ValidationError[]): ParseResult {
   return {
     rows: resolved,
     errors,
     summary: {
-      compras: compras.length,
-      transferencias: transferencias.length,
-      conteos: conteos.length,
+      compras: resolved.filter((r) => r.tipo_movimiento === "COMPRA").length,
+      transferencias: resolved.filter((r) => r.tipo_movimiento === "TRANSFERENCIA").length,
+      conteos: resolved.filter((r) => r.tipo_movimiento === "CONTEO").length,
       valid: resolved.filter((r) => r.isValid).length,
       invalid: resolved.filter((r) => !r.isValid).length,
     },
   };
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 function mapRawRow(raw: Record<string, any>, rowIndex: number): ExcelInventoryRow {
   const mapped: any = { rowIndex };
-
-  // Normalize raw keys to match COLUMN_MAP
   const normalizedRaw = new Map<string, any>();
-  Object.entries(raw).forEach(([key, val]) => {
-    normalizedRaw.set(key.toLowerCase().trim(), val);
-  });
+  Object.entries(raw).forEach(([key, val]) => normalizedRaw.set(key.toLowerCase().trim(), val));
 
   Object.entries(COLUMN_MAP).forEach(([excelKey, fieldName]) => {
     const val = normalizedRaw.get(excelKey.toLowerCase());
@@ -342,17 +637,12 @@ export function generateTemplate(
   templateSheet["!cols"] = headers.map(() => ({ wch: 18 }));
   XLSX.utils.book_append_sheet(wb, templateSheet, "Plantilla_Unica");
 
-  // Sheet 2: Referencia (products + locations)
+  // Sheet 2: Referencia
   const refData = [
     ["=== PRODUCTOS ===", "", "", ""],
     ["sku_base", "producto_nombre", "tipo_consumo", "unidad_base", "capacity_ml", "cpp_actual"],
     ...products.map((p) => [
-      p.code,
-      p.name,
-      isBottle(p) ? "ML" : "UNIT",
-      isBottle(p) ? "ml" : "ud",
-      p.capacity_ml || "",
-      p.cost_per_unit,
+      p.code, p.name, isBottle(p) ? "ML" : "UNIT", isBottle(p) ? "ml" : "ud", p.capacity_ml || "", p.cost_per_unit,
     ]),
     [],
     ["=== UBICACIONES ===", ""],
@@ -364,12 +654,8 @@ export function generateTemplate(
   XLSX.utils.book_append_sheet(wb, refSheet, "Referencia");
 
   // Sheet 3: Export_Stock_Actual
-  const balanceMap = new Map<string, number>();
-  balances.forEach((b) => balanceMap.set(`${b.productId}::${b.locationId}`, b.quantity));
-
   const locationMap = new Map<string, LocationRef>();
   locations.forEach((l) => locationMap.set(l.id, l));
-
   const productMap = new Map<string, ProductRef>();
   products.forEach((p) => productMap.set(p.id, p));
 
@@ -389,29 +675,58 @@ export function generateTemplate(
       const product = productMap.get(bal.productId);
       const location = locationMap.get(bal.locationId);
       if (!product || !location) return;
-
       const bottle = isBottle(product);
       const costPerBase = bottle && product.capacity_ml && product.capacity_ml > 0
-        ? product.cost_per_unit / product.capacity_ml
-        : product.cost_per_unit;
+        ? product.cost_per_unit / product.capacity_ml : product.cost_per_unit;
 
       stockRows.push([
-        now,
-        location.name,
-        product.code,
-        product.name,
-        bottle ? "ML" : "UNIT",
-        bal.quantity,
-        bottle ? "ml" : "ud",
-        Math.round(product.cost_per_unit),
-        Math.round(bal.quantity * costPerBase),
-        now,
+        now, location.name, product.code, product.name, bottle ? "ML" : "UNIT",
+        bal.quantity, bottle ? "ml" : "ud", Math.round(product.cost_per_unit),
+        Math.round(bal.quantity * costPerBase), now,
       ]);
     });
 
   const stockSheet = XLSX.utils.aoa_to_sheet(stockRows);
   stockSheet["!cols"] = stockRows[0].map(() => ({ wch: 18 }));
   XLSX.utils.book_append_sheet(wb, stockSheet, "Export_Stock_Actual");
+
+  return wb;
+}
+
+// ── Conteo template generator ────────────────────────────────────────────────
+
+export function generateConteoTemplate(
+  products: ProductRef[],
+  location: LocationRef,
+  balances: { productId: string; locationId: string; quantity: number }[],
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const productMap = new Map<string, ProductRef>();
+  products.forEach((p) => productMap.set(p.id, p));
+
+  const rows: any[][] = [
+    ["producto_nombre", "sku_base", "unidad", "formato", "stock_teorico", "stock_real"],
+  ];
+
+  const locationBalances = balances.filter((b) => b.locationId === location.id);
+
+  for (const bal of locationBalances) {
+    const product = productMap.get(bal.productId);
+    if (!product) continue;
+    const bottle = isBottle(product);
+    rows.push([
+      product.name,
+      product.code,
+      bottle ? "ml" : "ud",
+      bottle ? (product.capacity_ml || "") : "",
+      bal.quantity,
+      "", // stock_real → user fills this
+    ]);
+  }
+
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, sheet, `Conteo_${location.name}`);
 
   return wb;
 }
