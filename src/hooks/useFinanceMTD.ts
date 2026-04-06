@@ -232,17 +232,44 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       setSalesNet(net);
       setIvaDebitoState(ivaD);
 
-      // ── COGS ──
+      // ── COGS (sales-based: sale_items × recipes × CPP) ──
       let cogs = 0;
-      for (const m of cogsRes.data || []) {
-        const qty = Math.abs(Number(m.quantity) || 0);
-        const capacityMl = Number((m as any).products?.capacity_ml) || 0;
-        const rawUnitCost = Math.abs(Number(m.unit_cost) || 0);
-        const catalogCost = Math.abs(Number((m as any).products?.cost_per_unit) || 0);
-        const unitCost = rawUnitCost > 0 ? rawUnitCost : catalogCost;
-        cogs += capacityMl > 0
-          ? (qty / capacityMl) * unitCost
-          : qty * unitCost;
+      const cogsSaleIds = (cogsRes.data || []).map((s: any) => s.id);
+      if (cogsSaleIds.length > 0) {
+        // Get sale items with cocktail references
+        const { data: saleItems } = await supabase
+          .from("sale_items")
+          .select("quantity, cocktail_id")
+          .in("sale_id", cogsSaleIds);
+
+        if (saleItems && saleItems.length > 0) {
+          // Aggregate qty per cocktail
+          const cocktailQty = new Map<string, number>();
+          for (const si of saleItems) {
+            if (!si.cocktail_id) continue;
+            cocktailQty.set(si.cocktail_id, (cocktailQty.get(si.cocktail_id) || 0) + Number(si.quantity));
+          }
+
+          const cocktailIds = Array.from(cocktailQty.keys());
+          if (cocktailIds.length > 0) {
+            // Get recipe ingredients with product costs
+            const { data: ingredients } = await supabase
+              .from("cocktail_ingredients")
+              .select("cocktail_id, product_id, quantity, products:product_id(capacity_ml, cost_per_unit)")
+              .in("cocktail_id", cocktailIds);
+
+            for (const ing of ingredients || []) {
+              const soldQty = cocktailQty.get(ing.cocktail_id) || 0;
+              const ingQtyMl = Number(ing.quantity);
+              const capacityMl = Number((ing as any).products?.capacity_ml) || 0;
+              const costPerUnit = Number((ing as any).products?.cost_per_unit) || 0;
+              const costPerServing = capacityMl > 0
+                ? (ingQtyMl / capacityMl) * costPerUnit
+                : ingQtyMl * costPerUnit;
+              cogs += costPerServing * soldQty;
+            }
+          }
+        }
       }
       setCogsTotal(cogs);
 
