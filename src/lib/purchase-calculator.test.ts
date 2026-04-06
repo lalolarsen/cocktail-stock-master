@@ -25,7 +25,6 @@ import {
   applyTaxProration,
   validateForConfirmation,
   createEmptyHeaderTaxTotals,
-  normalizeTaxCategory,
   type ComputeLineInput,
   type ComputedLine,
   type HeaderTaxTotals,
@@ -458,98 +457,24 @@ describe("computePurchaseLine", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// applyTaxProration
+// applyTaxProration — SIMPLIFIED (no-op stub)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("applyTaxProration", () => {
-  function makeLine(overrides: Partial<ComputedLine> = {}): ComputedLine {
+  it("returns lines unchanged (no-op in simplified mode)", () => {
     const base = computePurchaseLine(makeInput({
       raw_product_name: "Vodka Test",
       qty_text: "10",
       unit_price_text: "5000",
-      tax_category_override: "ILA_DESTILADOS_315",
     }));
-    return { ...base, matched_product_id: "prod-1", ...overrides };
-  }
-
-  it("prorratea impuesto entre líneas de misma categoría proporcional al neto", () => {
-    const line1 = makeLine({ id: "l1", net_line_for_cost: 30000 });
-    const line2 = makeLine({ id: "l2", net_line_for_cost: 70000 });
+    const line = { ...base, matched_product_id: "prod-1" };
 
     const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 10000;
-
-    const { lines, diagnostics } = applyTaxProration([line1, line2], taxTotals);
-
-    const l1 = lines.find(l => l.id === "l1")!;
-    const l2 = lines.find(l => l.id === "l2")!;
-
-    // l1 tiene 30% del neto → 3000; l2 tiene 70% → 7000
-    expect(l1.specific_tax_amount).toBe(3000);
-    expect(l2.specific_tax_amount).toBe(7000);
-    // La suma debe cuadrar exactamente con el header
-    expect(l1.specific_tax_amount + l2.specific_tax_amount).toBe(10000);
-    expect(diagnostics[0].is_valid).toBe(true);
-  });
-
-  it("calcula impuesto por tasa (fallback CALCULATED) cuando header total = 0", () => {
-    // Cuando no hay total en header, la función usa la tasa como estimador.
-    // ILA_DESTILADOS_315 = 31.5% → 50000 * 0.315 = 15750
-    const line = makeLine({ id: "l1", net_line_for_cost: 50000 });
-    const taxTotals = emptyTaxTotals(); // todos en cero
-
     const { lines, diagnostics } = applyTaxProration([line], taxTotals);
-    expect(lines[0].specific_tax_amount).toBe(15750);
-    expect(lines[0].specific_tax_source).toBe("CALCULATED");
 
-    const diag = diagnostics.find(d => d.category === "ILA_DESTILADOS_315");
-    expect(diag?.is_valid).toBe(true);
-    expect(diag?.error_message).toContain("usando cálculo por tasa");
-  });
-
-  it("genera diagnóstico de error cuando hay impuesto en header sin líneas asignadas", () => {
-    // Línea de VINO, pero el impuesto en header es para DESTILADOS
-    const line = computePurchaseLine(makeInput({
-      raw_product_name: "Vino Merlot",
-      tax_category_override: "ILA_VINO_205",
-      qty_text: "10",
-      unit_price_text: "3000",
-    }));
-    const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 5000; // sin líneas de destilados
-
-    const { diagnostics } = applyTaxProration([line], taxTotals);
-    const destDiag = diagnostics.find(d => d.category === "ILA_DESTILADOS_315");
-    expect(destDiag?.is_valid).toBe(false);
-    expect(destDiag?.error_message).toBeDefined();
-  });
-
-  it("el ajuste de redondeo garantiza que la suma sea exacta", () => {
-    // 3 líneas iguales, impuesto indivisible exactamente por 3
-    const lines = [1, 2, 3].map(i =>
-      makeLine({ id: `l${i}`, net_line_for_cost: 10000 })
-    );
-    const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 100; // 100/3 = 33.33...
-
-    const { lines: result } = applyTaxProration(lines, taxTotals);
-    const total = result.reduce((s, l) => s + l.specific_tax_amount, 0);
-    expect(total).toBe(100);
-  });
-
-  it("ignora líneas EXPENSE y IGNORED en el prorrateo", () => {
-    const lineOK = makeLine({ id: "l1", net_line_for_cost: 50000, status: "OK" });
-    const lineExpense = makeLine({ id: "l2", net_line_for_cost: 50000, status: "EXPENSE" });
-
-    const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 1000;
-
-    const { lines } = applyTaxProration([lineOK, lineExpense], taxTotals);
-    const ok = lines.find(l => l.id === "l1")!;
-    const exp = lines.find(l => l.id === "l2")!;
-
-    expect(ok.specific_tax_amount).toBe(1000); // todo va a la línea OK
-    expect(exp.specific_tax_amount).toBe(0);   // expense no recibe impuesto
+    expect(lines).toHaveLength(1);
+    expect(lines[0].specific_tax_amount).toBe(0);
+    expect(diagnostics).toHaveLength(0);
   });
 });
 
@@ -602,31 +527,6 @@ describe("validateForConfirmation", () => {
     const result = validateForConfirmation([line]);
     expect(result.canConfirm).toBe(false);
     expect(result.errors.some(e => e.includes("precio unitario = 0"))).toBe(true);
-  });
-
-  it("error si prorrateo no cuadra con header", () => {
-    const line = makeOKLine("l1");
-    line.tax_category = "ILA_DESTILADOS_315";
-    line.specific_tax_amount = 0; // no prorrateado
-
-    const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 5000;
-
-    const result = validateForConfirmation([line], taxTotals);
-    expect(result.canConfirm).toBe(false);
-    expect(result.errors.some(e => e.includes("no cuadra"))).toBe(true);
-  });
-
-  it("canConfirm=true cuando el prorrateo cuadra con header", () => {
-    const line = makeOKLine("l1");
-    line.tax_category = "ILA_DESTILADOS_315";
-    line.specific_tax_amount = 5000; // coincide con header
-
-    const taxTotals = emptyTaxTotals();
-    taxTotals.ila_destilados_315_total = 5000;
-
-    const result = validateForConfirmation([line], taxTotals);
-    expect(result.canConfirm).toBe(true);
   });
 
   it("líneas EXPENSE son ignoradas en validación de producto asignado", () => {
