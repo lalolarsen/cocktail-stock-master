@@ -60,9 +60,6 @@ const ADMIN_SECTIONS: MenuSection[] = [
     items: [
       { title: "Inventario", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
-      { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
-      // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
-      { title: "Proveedores", value: "proveedores", icon: Truck },
     ],
   },
   {
