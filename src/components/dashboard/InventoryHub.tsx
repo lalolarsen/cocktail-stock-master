@@ -87,7 +87,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         .eq("venue_id", venue.id),
       supabase
         .from("stock_movements")
-        .select("id, movement_type, quantity, created_at, product_id, location_id, products(name), stock_locations(name)")
+        .select("id, movement_type, quantity, created_at, product_id, to_location_id, products(name), stock_locations!stock_movements_to_location_id_fkey(name)")
         .eq("venue_id", venue.id)
         .order("created_at", { ascending: false })
         .limit(5),
