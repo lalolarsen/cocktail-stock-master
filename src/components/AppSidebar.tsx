@@ -61,11 +61,8 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Inventario", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
       { title: "Reposición", value: "replenishment", icon: ArrowRightLeft },
-      { title: "Merma", value: "waste", icon: Trash2 },
       // { title: "Botellas Abiertas", value: "botellas", icon: Wine },
       { title: "Proveedores", value: "proveedores", icon: Truck },
-      { title: "Consumo Externo", value: "external-consumption", icon: ClipboardList },
-      { title: "Cuadre de Stock", value: "reconciliation", icon: Scale },
     ],
   },
   {

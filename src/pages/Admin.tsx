@@ -11,7 +11,7 @@ import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
-import { WarehouseInventory } from "@/components/dashboard/WarehouseInventory";
+import { InventoryHub } from "@/components/dashboard/InventoryHub";
 import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
@@ -19,17 +19,12 @@ import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
 import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
-import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
-import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
-import { ExternalConsumptionPanel } from "@/components/dashboard/ExternalConsumptionPanel";
-import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
-import { StockReconciliation } from "@/components/dashboard/StockReconciliation";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -181,10 +176,7 @@ export default function Admin() {
             {activeView === "documents" && <DocumentsRetryPanel />}
             {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
             {activeView === "inventory" && (
-              <>
-                <InventoryFreezeBanner />
-                <WarehouseInventory isReadOnly={isReadOnly} />
-              </>
+              <InventoryHub isReadOnly={isReadOnly} />
             )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
@@ -194,18 +186,10 @@ export default function Admin() {
             {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
             {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
-            {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
-            {activeView === "settings" && (
-              <>
-                <ReceiptSettingsCard />
-                {isReadOnly && <InventoryFreezeToggle />}
-              </>
-            )}
+            {activeView === "settings" && <ReceiptSettingsCard />}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
-            {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
-            {activeView === "reconciliation" && !isReadOnly && <StockReconciliation />}
           </div>
         </main>
       </div>

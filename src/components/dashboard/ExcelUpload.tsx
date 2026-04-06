@@ -17,7 +17,11 @@ import {
 } from "@/lib/excel-inventory-parser";
 import { isBottle, calculateCPP } from "@/lib/product-type";
 
-export const ExcelUpload = () => {
+interface ExcelUploadProps {
+  defaultMovementType?: "COMPRA" | "TRANSFERENCIA" | "CONTEO";
+}
+
+export const ExcelUpload = ({ defaultMovementType }: ExcelUploadProps = {}) => {
   const { venue } = useActiveVenue();
   const [uploading, setUploading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
