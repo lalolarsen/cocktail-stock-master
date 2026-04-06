@@ -103,20 +103,7 @@ describe("parseNumber", () => {
 // normalizeTaxCategory
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("normalizeTaxCategory", () => {
-  it("convierte aliases legacy al nuevo formato", () => {
-    expect(normalizeTaxCategory("IABA10")).toBe("IABA_10");
-    expect(normalizeTaxCategory("IABA18")).toBe("IABA_18");
-    expect(normalizeTaxCategory("ILA_VINO_20_5")).toBe("ILA_VINO_205");
-    expect(normalizeTaxCategory("ILA_CERVEZA_20_5")).toBe("ILA_CERVEZA_205");
-    expect(normalizeTaxCategory("ILA_DESTILADOS_31_5")).toBe("ILA_DESTILADOS_315");
-  });
-
-  it("pasa categorías ya normalizadas sin cambio", () => {
-    expect(normalizeTaxCategory("NONE")).toBe("NONE");
-    expect(normalizeTaxCategory("IABA_10")).toBe("IABA_10");
-  });
-});
+// normalizeTaxCategory tests removed — tax logic simplified to NONE
 
 // ─────────────────────────────────────────────────────────────────────────────
 // detectPackMultiplier
