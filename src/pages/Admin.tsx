@@ -19,14 +19,12 @@ import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
 import CourtesyQR from "@/pages/CourtesyQR";
 import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
-import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
 import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
-import { StockReconciliation } from "@/components/dashboard/StockReconciliation";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
