@@ -11,7 +11,7 @@ import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
 import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
-import { WarehouseInventory } from "@/components/dashboard/WarehouseInventory";
+import { InventoryHub } from "@/components/dashboard/InventoryHub";
 import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
@@ -181,10 +181,7 @@ export default function Admin() {
             {activeView === "documents" && <DocumentsRetryPanel />}
             {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
             {activeView === "inventory" && (
-              <>
-                <InventoryFreezeBanner />
-                <WarehouseInventory isReadOnly={isReadOnly} />
-              </>
+              <InventoryHub isReadOnly={isReadOnly} />
             )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
