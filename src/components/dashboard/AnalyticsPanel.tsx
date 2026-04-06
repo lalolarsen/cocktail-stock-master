@@ -129,12 +129,20 @@ export function AnalyticsPanel() {
     setJornadaCount(jornadaRes.count || 0);
 
     if (salesData.length > 0) {
-      const saleIds = salesData.slice(0, 1000).map((s) => s.id);
-      const { data: items } = await supabase
-        .from("sale_items")
-        .select("quantity, unit_price, cocktail_id, cocktails(name, category)")
-        .in("sale_id", saleIds);
-      setSaleItems((items || []) as unknown as SaleItemRow[]);
+      // Fetch sale_items in batches to avoid Supabase 1000-row limit
+      const saleIds = salesData.map((s) => s.id);
+      const allItems: SaleItemRow[] = [];
+      const BATCH = 500;
+      for (let i = 0; i < saleIds.length; i += BATCH) {
+        const batch = saleIds.slice(i, i + BATCH);
+        const { data: items } = await supabase
+          .from("sale_items")
+          .select("quantity, unit_price, cocktail_id, cocktails(name, category)")
+          .in("sale_id", batch)
+          .limit(5000);
+        if (items) allItems.push(...(items as unknown as SaleItemRow[]));
+      }
+      setSaleItems(allItems);
     } else {
       setSaleItems([]);
     }
