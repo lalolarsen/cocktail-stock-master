@@ -26,9 +26,6 @@ import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
-import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
-import { ExternalConsumptionPanel } from "@/components/dashboard/ExternalConsumptionPanel";
-import { InventoryFreezeToggle } from "@/components/settings/InventoryFreezeToggle";
 import { StockReconciliation } from "@/components/dashboard/StockReconciliation";
 
 import { AppSidebar } from "@/components/AppSidebar";
