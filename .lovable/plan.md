@@ -1,95 +1,81 @@
 
 
-# Plan: Refactor visual del módulo de Inventario — Excel-First
+# Plan: Refactorizar "Stock detallado" — Vista de valorización por ubicación
 
 ## Resumen
 
-Reemplazar la vista actual de inventario (976 líneas de `WarehouseInventory` que carga toda la data al montar) por una pantalla operativa simple con 4 acciones principales, historial liviano y acceso secundario a detalle/auditoría.
+Reemplazar el componente `WarehouseInventory` actual (976 líneas, carga todo al montar) por una vista nueva y ligera con 3 capas: resumen de capital, distribución por ubicación, y detalle filtrable bajo demanda.
 
 ## Nueva estructura visual
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│  📦 Inventario                                  │
+│  Stock Detallado                                │
 │                                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────┐│
-│  │ Subir    │ │ Subir    │ │ Subir    │ │Desc.││
-│  │ Compra   │ │ Repos.   │ │ Conteo   │ │Stock││
-│  └──────────┘ └──────────┘ └──────────┘ └─────┘│
+│  ┌────────────┐ ┌────────────┐ ┌──────────────┐│
+│  │Capital Total│ │Ubicaciones │ │Últ. Actualiz.││
+│  │ $12.500.000 │ │     4      │ │ 05 abr 14:30 ││
+│  └────────────┘ └────────────┘ └──────────────┘│
 │                                                 │
-│  ── Resumen rápido ──────────────────────────── │
-│  Capital total: $X  │  Última compra: dd/mm     │
-│  Último conteo: dd/mm │ Productos: N            │
+│  ── Distribución por ubicación ──────────────── │
+│  Bodega Principal  $8.200.000  65%  42 prods    │
+│  Barra 1           $2.800.000  22%  35 prods    │
+│  Barra 2           $1.500.000  12%  28 prods    │
 │                                                 │
-│  ── Últimos movimientos ─────────────────────── │
-│  (5 filas más recientes de stock_movements)     │
-│                                                 │
-│  [Ver stock completo]  [Ver historial completo] │
-│  (carga lazy WarehouseInventory / detalle)      │
+│  ── Detalle (carga bajo demanda) ────────────── │
+│  [Selector ubicación] [Buscar] [ML/UNIT]        │
+│  sku | nombre | tipo | stock | und | cpp | valor│
+│  ...                                            │
 └─────────────────────────────────────────────────┘
 ```
 
-## Cambios planificados
+## Cambios
 
-### 1. Nuevo componente: `src/components/dashboard/InventoryHub.tsx`
+### 1. Reescribir `WarehouseInventory.tsx`
 
-Pantalla principal liviana que reemplaza la carga directa de `WarehouseInventory`:
+Reemplazar las 976 líneas actuales por un componente nuevo con 3 secciones:
 
-- **4 action cards** arriba: Subir Compra, Subir Reposición, Subir Conteo, Descargar Stock
-  - Subir Compra/Repos/Conteo abren el mismo `ExcelUpload` con un filtro de tipo pre-seleccionado
-  - Descargar Stock ejecuta la exportación XLSX existente de `ExcelUpload`
-- **Resumen rápido** (4 mini-stats): Capital total, productos con stock, último movimiento, alertas de stock bajo
-  - Query liviana: `SELECT COUNT(*), SUM(quantity) FROM stock_balances WHERE venue_id = ?` + último movimiento
-- **Últimos 5 movimientos** de `stock_movements` (query con limit 5, sin cargar todo)
-- **Botones secundarios**:
-  - "Ver stock detallado" → abre `WarehouseInventory` en un colapsable o tab
-  - "Ver historial" → carga historial completo bajo demanda
+**Capa 1 — Summary cards** (carga inmediata, query liviana):
+- Capital total valorizado (SUM de stock × cpp por base)
+- Cantidad de ubicaciones activas
+- Última actualización (MAX de `stock_balances.updated_at`)
+- Query: un solo fetch de `stock_balances` + join con `products` y `stock_locations`
 
-### 2. Modificar `ExcelUpload.tsx`
+**Capa 2 — Distribución por ubicación** (carga inmediata, misma query):
+- Tabla/cards con: ubicación, valor inventario, % del total, productos con stock
+- Barra de progreso visual por %
+- Calculada en frontend agrupando los balances ya cargados
 
-- Agregar prop opcional `defaultMovementType?: "COMPRA" | "TRANSFERENCIA" | "CONTEO"` para pre-filtrar
-- El componente se usa embebido dentro de un Dialog que se abre desde las action cards
-- Mantener toda la lógica transaccional existente sin cambios
+**Capa 3 — Detalle filtrable** (carga bajo demanda):
+- Se muestra colapsado por defecto, se expande al hacer clic o seleccionar ubicación
+- Filtros: selector de ubicación, búsqueda por nombre/SKU, toggle ML/UNIT
+- Columnas: sku_base, producto_nombre, tipo_consumo, ubicación, stock_actual_base, unidad_base, cpp_actual_base, valor_total_stock
+- Usa `isBottle()` para tipo_consumo y cálculo de valor
+- Valor = para ML: `stock × (cost_per_unit / capacity_ml)`, para UNIT: `stock × cost_per_unit`
+- Paginación o limit inicial de 50 filas
 
-### 3. Modificar `src/pages/Admin.tsx`
+### 2. Optimización de carga
 
-- Cambiar el render de `activeView === "inventory"` para usar `InventoryHub` en vez de `WarehouseInventory` directamente
-- `WarehouseInventory` se carga lazy dentro de `InventoryHub` solo cuando el usuario lo solicita
+**Carga inicial** (capas 1 y 2): un solo query que trae `stock_balances` con `product_id`, `location_id`, `quantity` + productos (`code`, `name`, `capacity_ml`, `cost_per_unit`, `unit`) + locations (`name`, `type`). Se agrupa en frontend para capital total y distribución.
 
-### 4. Simplificar sidebar (`AppSidebar.tsx`)
+**Carga detalle** (capa 3): se activa solo cuando el usuario expande o filtra. No se monta la tabla hasta que haya interacción.
 
-Consolidar la sección "Inventario" del sidebar:
-- **Mantener**: Inventario, Productos, Reposición, Proveedores
-- **Ocultar del sidebar** (accesibles desde dentro de InventoryHub): Merma, Consumo Externo, Cuadre de Stock
-  - Estas acciones ahora se acceden como botones secundarios dentro del hub
+### 3. Eliminar complejidad legacy
 
-### 5. Lazy loading de `WarehouseInventory`
+- Remover: secciones collapsibles por estado (OK/Low/Out), ingreso manual, registro de merma, ajuste de mínimos, chips de filtro por estado, info banner
+- Mantener: export CSV (simplificado), prop `isReadOnly` para vista Gerencia
+- La vista Gerencia (`isReadOnly`) se unifica con la nueva estructura (ya tiene distribución por ubicación, solo se limpia)
 
-- Convertir el import de `WarehouseInventory` a `React.lazy()` dentro de `InventoryHub`
-- Solo se monta cuando el usuario hace clic en "Ver stock detallado"
-- Elimina la carga de ~4 queries paralelas pesadas al abrir inventario
-
-## Archivos a crear/modificar
+## Archivos a modificar
 
 | Archivo | Acción |
 |---|---|
-| `src/components/dashboard/InventoryHub.tsx` | **Crear** — pantalla principal liviana |
-| `src/components/dashboard/ExcelUpload.tsx` | **Modificar** — agregar prop `defaultMovementType` |
-| `src/pages/Admin.tsx` | **Modificar** — usar `InventoryHub` en vez de `WarehouseInventory` |
-| `src/components/AppSidebar.tsx` | **Modificar** — reducir ítems de inventario |
+| `src/components/dashboard/WarehouseInventory.tsx` | **Reescribir** — nueva vista de 3 capas |
 
 ## Lo que NO se toca
 
-- `WarehouseInventory.tsx` — se mantiene intacto, solo se carga lazy
-- Lógica transaccional de `ExcelUpload`
+- `InventoryHub.tsx` — sigue siendo el entry point, carga `WarehouseInventory` lazy
 - DB / schema
-- Redeem, recetas, ventas, jornadas
-- `StockReconciliation`, `WasteManagement` — se mantienen, acceso desde hub
-
-## Resultado esperado
-
-- Carga inicial del módulo: 1 query liviana (últimos 5 movimientos + counts) vs 4 queries pesadas actuales
-- El usuario ve inmediatamente las 4 acciones Excel-first
-- Stock detallado solo se carga bajo demanda
-- Sidebar más limpio con menos ítems redundantes
+- `ExcelUpload`, `StockReconciliation`, `WasteManagement`
+- Lógica de ventas, recetas, redeem
 
