@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Info, Brain, Sparkles } from "lucide-react";
+import { Info, Brain, Sparkles } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { ComputedLine } from "@/lib/purchase-calculator";
@@ -56,7 +56,6 @@ export function MinimalReviewTable({
   searchQuery,
   onUpdateLine,
   onOpenDetail,
-  onCreateProduct,
 }: MinimalReviewTableProps) {
   const filteredProducts = products.filter(
     (p) =>
@@ -98,7 +97,7 @@ export function MinimalReviewTable({
               <TableHead className="w-[60px] text-center">Pack?</TableHead>
               <TableHead className="w-[60px] text-center">Desc.%</TableHead>
               <TableHead className="w-[100px] text-right bg-green-50">
-                <span className="text-green-700 font-semibold">COGS Neto</span>
+                <span className="text-green-700 font-semibold">Costo Neto</span>
               </TableHead>
               <TableHead className="w-[70px] text-center">Estado</TableHead>
               <TableHead className="w-[40px]"></TableHead>
@@ -145,45 +144,34 @@ export function MinimalReviewTable({
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-xs bg-muted">
-                      NUEVA
+                      —
                     </Badge>
                   )}
                 </TableCell>
 
-                {/* Match Producto */}
+                {/* Match Producto — solo selector, sin botón crear */}
                 <TableCell>
-                  <div className="flex gap-1 items-center">
-                    <Select
-                      value={line.matched_product_id || ""}
-                      onValueChange={(value) =>
-                        onUpdateLine(line.id, {
-                          matched_product_id: value || null,
-                          matched_product_name: products.find(p => p.id === value)?.name || null,
-                          match_confidence: value ? 1.0 : 0,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-7 text-xs w-[110px]">
-                        <SelectValue placeholder="Seleccionar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredProducts.map((p) => (
-                          <SelectItem key={p.id} value={p.id} className="text-xs">
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => onCreateProduct(line.id, line.raw_product_name)}
-                      title="Crear producto"
-                      className="h-6 w-6"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  <Select
+                    value={line.matched_product_id || ""}
+                    onValueChange={(value) =>
+                      onUpdateLine(line.id, {
+                        matched_product_id: value || null,
+                        matched_product_name: products.find(p => p.id === value)?.name || null,
+                        match_confidence: value ? 1.0 : 0,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-7 text-xs w-[130px]">
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredProducts.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
 
                 {/* Cantidad */}
@@ -267,7 +255,7 @@ export function MinimalReviewTable({
                   />
                 </TableCell>
 
-                {/* COGS Neto Unitario */}
+                {/* Costo Neto Unitario */}
                 <TableCell className="text-right bg-green-50/50">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -282,7 +270,7 @@ export function MinimalReviewTable({
                       <div className="text-xs">
                         <p>P. Factura: {formatCLP(line.invoice_unit_price_raw)}</p>
                         {line.discount_pct > 0 && <p>Desc: -{line.discount_pct}%</p>}
-                        <p className="font-bold text-green-700 mt-1">COGS Neto: {formatCLP(line.net_unit_cost)}</p>
+                        <p className="font-bold text-green-700 mt-1">Costo Neto: {formatCLP(line.net_unit_cost)}</p>
                       </div>
                     </TooltipContent>
                   </Tooltip>

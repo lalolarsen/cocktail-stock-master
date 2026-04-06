@@ -1,11 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
@@ -42,54 +40,39 @@ export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: P
   const { user } = useAppSession();
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [netAmount, setNetAmount] = useState("");
+  const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>("");
   const [description, setDescription] = useState("");
-  const [vatApplies, setVatApplies] = useState(false);
-  const [vatRate, setVatRate] = useState("19");
-  const [specificTax, setSpecificTax] = useState("");
-  const [taxNotes, setTaxNotes] = useState("");
-
-  const computed = useMemo(() => {
-    const net = Number(netAmount) || 0;
-    const rate = Number(vatRate) || 0;
-    const vat = vatApplies ? Math.round(net * rate / 100) : 0;
-    const spec = Number(specificTax) || 0;
-    return { net, vat, spec, total: net + vat + spec };
-  }, [netAmount, vatApplies, vatRate, specificTax]);
 
   const resetForm = () => {
-    setNetAmount("");
+    setAmount("");
     setCategory("");
     setDescription("");
-    setVatApplies(false);
-    setVatRate("19");
-    setSpecificTax("");
-    setTaxNotes("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
-    if (!netAmount || !category || !description) {
-      toast.error("Completa monto neto, categoría y descripción");
+    if (!amount || !category || !description) {
+      toast.error("Completa monto, categoría y descripción");
       return;
     }
+
+    const numAmount = Number(amount) || 0;
 
     setSaving(true);
     const { error } = await supabase.from("operational_expenses").insert({
       venue_id: DEFAULT_VENUE_ID,
       expense_date: date,
-      amount: computed.total,
-      net_amount: computed.net,
-      vat_rate: vatApplies ? Number(vatRate) : 0,
-      vat_amount: computed.vat,
-      specific_tax_amount: computed.spec,
-      total_amount: computed.total,
+      amount: numAmount,
+      net_amount: numAmount,
+      vat_rate: 0,
+      vat_amount: 0,
+      specific_tax_amount: 0,
+      total_amount: numAmount,
       category,
       description: description || null,
       supplier_source: "manual",
-      tax_notes: taxNotes || null,
       created_by: user.id,
     });
 
@@ -108,7 +91,7 @@ export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: P
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Agregar gasto operacional</DialogTitle>
         </DialogHeader>
@@ -147,94 +130,26 @@ export function AddOperationalExpenseDialog({ open, onOpenChange, onSuccess }: P
             />
           </div>
 
-          {/* Net amount */}
+          {/* Amount */}
           <div className="space-y-1.5">
-            <Label>Monto neto (CLP)</Label>
+            <Label>Monto (CLP)</Label>
             <Input
               type="number"
               min="0"
               step="1"
               placeholder="0"
-              value={netAmount}
-              onChange={(e) => setNetAmount(e.target.value)}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               required
             />
           </div>
 
-          {/* VAT toggle */}
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p className="text-sm font-medium">¿Aplica IVA?</p>
-              <p className="text-xs text-muted-foreground">Se calculará automáticamente</p>
-            </div>
-            <Switch checked={vatApplies} onCheckedChange={setVatApplies} />
-          </div>
-
-          {vatApplies && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Tasa IVA (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={vatRate}
-                  onChange={(e) => setVatRate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>IVA calculado</Label>
-                <Input value={formatCLP(computed.vat)} readOnly className="bg-muted" />
-              </div>
-            </div>
-          )}
-
-          {/* Specific taxes */}
-          <div className="space-y-1.5">
-            <Label>Impuestos específicos (CLP)</Label>
-            <Input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={specificTax}
-              onChange={(e) => setSpecificTax(e.target.value)}
-            />
-          </div>
-
-          {/* Total */}
+          {/* Total preview */}
           <div className="rounded-lg border bg-muted/50 p-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Neto</span>
-              <span>{formatCLP(computed.net)}</span>
-            </div>
-            {computed.vat > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">IVA</span>
-                <span>{formatCLP(computed.vat)}</span>
-              </div>
-            )}
-            {computed.spec > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Imp. específicos</span>
-                <span>{formatCLP(computed.spec)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm font-bold mt-1 pt-1 border-t">
+            <div className="flex justify-between text-sm font-bold">
               <span>Total</span>
-              <span>{formatCLP(computed.total)}</span>
+              <span>{formatCLP(Number(amount) || 0)}</span>
             </div>
-          </div>
-
-          {/* Tax notes */}
-          <div className="space-y-1.5">
-            <Label>Notas tributarias (opcional)</Label>
-            <Textarea
-              placeholder="Observaciones sobre impuestos..."
-              value={taxNotes}
-              onChange={(e) => setTaxNotes(e.target.value)}
-              rows={2}
-            />
           </div>
 
           {/* Actions */}

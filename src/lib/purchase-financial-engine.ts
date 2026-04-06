@@ -1,11 +1,12 @@
 /**
- * Motor financiero interno para confirmación de importaciones de compra.
- * Construye un JSON financiero, valida cuadratura y produce las entidades a persistir.
+ * Motor financiero simplificado para confirmación de importaciones de compra.
+ * Solo: inventario neto, gastos operacionales, cuadratura básica.
+ * Sin IVA crédito ni impuestos específicos.
  */
 
 export interface ImportLineInput {
   id: string;
-  classification: string; // "inventory" | "freight" | "other_expense"
+  classification: string;
   product_id: string | null;
   units_real: number;
   cost_unit_net: number;
@@ -30,6 +31,7 @@ export interface ImportHeaderInput {
   net_subtotal: number | null;
   vat_amount: number | null;
   total_amount: number | null;
+  // Legacy fields — kept for interface compat, not used
   iaba_10_total: number;
   iaba_18_total: number;
   ila_vino_total: number;
@@ -43,17 +45,6 @@ export interface FinancialSummary {
     lines_count: number;
     total_units: number;
     total_inventory_net: number;
-  };
-  tax_credit: {
-    iva_credit_19: number;
-  };
-  specific_taxes: {
-    iaba_10: number;
-    iaba_18: number;
-    ila_vino: number;
-    ila_cerveza: number;
-    ila_destilados: number;
-    total: number;
   };
   operational_expenses: {
     freight_total: number;
@@ -72,7 +63,7 @@ export interface FinancialSummary {
   };
 }
 
-const TOLERANCE = 10; // CLP tolerance for rounding
+const TOLERANCE = 10;
 
 export function buildFinancialSummary(
   header: ImportHeaderInput,
@@ -97,22 +88,10 @@ export function buildFinancialSummary(
     0
   );
 
-  const ivaCredit = header.vat_amount || 0;
-  const specificTaxes = {
-    iaba_10: header.iaba_10_total || 0,
-    iaba_18: header.iaba_18_total || 0,
-    ila_vino: header.ila_vino_total || 0,
-    ila_cerveza: header.ila_cerveza_total || 0,
-    ila_destilados: header.ila_destilados_total || 0,
-    total: header.specific_taxes_total || 0,
-  };
-
   const documentTotal = header.total_amount || 0;
 
-  // Cuadratura: inventario_neto + iva + impuestos_específicos + gastos = total_factura
-  const computedSum = Math.round(
-    totalInventoryNet + ivaCredit + specificTaxes.total + freightTotal + otherTotal
-  );
+  // Simple validation: inventory net + expenses ≈ document total (informative)
+  const computedSum = Math.round(totalInventoryNet + freightTotal + otherTotal);
   const difference = Math.abs(computedSum - documentTotal);
 
   return {
@@ -121,10 +100,6 @@ export function buildFinancialSummary(
       total_units: totalUnits,
       total_inventory_net: Math.round(totalInventoryNet),
     },
-    tax_credit: {
-      iva_credit_19: Math.round(ivaCredit),
-    },
-    specific_taxes: specificTaxes,
     operational_expenses: {
       freight_total: Math.round(freightTotal),
       other_total: Math.round(otherTotal),
