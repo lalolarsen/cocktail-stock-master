@@ -1,81 +1,147 @@
 
 
-# Plan: Refactorizar "Stock detallado" — Vista de valorización por ubicación
+# Plan: Flujo Excel con validación humana obligatoria
 
 ## Resumen
 
-Reemplazar el componente `WarehouseInventory` actual (976 líneas, carga todo al montar) por una vista nueva y ligera con 3 capas: resumen de capital, distribución por ubicación, y detalle filtrable bajo demanda.
+Transformar el flujo actual (subir Excel → preview → aplicar inmediatamente) en un flujo de 2 etapas: **subir → preview + guardar como pendiente** y luego **aprobar/rechazar desde un panel de lotes pendientes**. Simplificar los Excel de entrada a columnas mínimas por tipo.
 
-## Nueva estructura visual
+## Cambios de base de datos
 
-```text
-┌─────────────────────────────────────────────────┐
-│  Stock Detallado                                │
-│                                                 │
-│  ┌────────────┐ ┌────────────┐ ┌──────────────┐│
-│  │Capital Total│ │Ubicaciones │ │Últ. Actualiz.││
-│  │ $12.500.000 │ │     4      │ │ 05 abr 14:30 ││
-│  └────────────┘ └────────────┘ └──────────────┘│
-│                                                 │
-│  ── Distribución por ubicación ──────────────── │
-│  Bodega Principal  $8.200.000  65%  42 prods    │
-│  Barra 1           $2.800.000  22%  35 prods    │
-│  Barra 2           $1.500.000  12%  28 prods    │
-│                                                 │
-│  ── Detalle (carga bajo demanda) ────────────── │
-│  [Selector ubicación] [Buscar] [ML/UNIT]        │
-│  sku | nombre | tipo | stock | und | cpp | valor│
-│  ...                                            │
-└─────────────────────────────────────────────────┘
+### Nueva tabla: `stock_import_batches`
+
+Tabla central para el flujo de aprobación:
+
+```sql
+CREATE TABLE public.stock_import_batches (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id uuid NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  batch_type text NOT NULL CHECK (batch_type IN ('COMPRA','TRANSFERENCIA','CONTEO')),
+  status text NOT NULL DEFAULT 'pendiente_aprobacion' CHECK (status IN ('pendiente_aprobacion','aprobado','rechazado')),
+  uploaded_by uuid NOT NULL,
+  uploaded_at timestamptz NOT NULL DEFAULT now(),
+  approved_by uuid,
+  approved_at timestamptz,
+  file_name text,
+  summary_json jsonb NOT NULL DEFAULT '{}',
+  row_count integer NOT NULL DEFAULT 0,
+  valid_count integer NOT NULL DEFAULT 0,
+  invalid_count integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE public.stock_import_rows (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id uuid NOT NULL REFERENCES stock_import_batches(id) ON DELETE CASCADE,
+  row_index integer NOT NULL,
+  raw_data jsonb NOT NULL DEFAULT '{}',
+  product_id uuid REFERENCES products(id),
+  product_name_excel text,
+  product_name_matched text,
+  match_confidence text CHECK (match_confidence IN ('alta','media','baja','sin_match')),
+  tipo_consumo text,
+  unidad_detectada text,
+  location_destino_id uuid,
+  location_origen_id uuid,
+  quantity numeric,
+  unit_cost numeric,
+  computed_base_qty numeric,
+  stock_teorico numeric,
+  stock_real numeric,
+  errors text[] DEFAULT '{}',
+  is_valid boolean NOT NULL DEFAULT false
+);
 ```
 
-## Cambios
+RLS: lectura por venue, escritura admin.
 
-### 1. Reescribir `WarehouseInventory.tsx`
+### Excel simplificado por tipo
 
-Reemplazar las 976 líneas actuales por un componente nuevo con 3 secciones:
+**COMPRA** (4 columnas mínimas):
+- `documento`, `producto_nombre`, `costo_compra`, `cantidad`
+- Sistema auto-completa: destino=Bodega Principal, formato/unidad desde producto, SKU desde match
 
-**Capa 1 — Summary cards** (carga inmediata, query liviana):
-- Capital total valorizado (SUM de stock × cpp por base)
-- Cantidad de ubicaciones activas
-- Última actualización (MAX de `stock_balances.updated_at`)
-- Query: un solo fetch de `stock_balances` + join con `products` y `stock_locations`
+**REPOSICION** (4 columnas mínimas):
+- `ubicacion_destino`, `producto_nombre`, `cantidad`, `fecha`
+- Sistema auto-completa: origen=Bodega Principal, unidad desde producto
 
-**Capa 2 — Distribución por ubicación** (carga inmediata, misma query):
-- Tabla/cards con: ubicación, valor inventario, % del total, productos con stock
-- Barra de progreso visual por %
-- Calculada en frontend agrupando los balances ya cargados
+**CONTEO** (sistema genera Excel pre-llenado):
+- Columnas: `producto`, `unidad`, `formato`, `stock_teorico`, `stock_real` (solo esta la llena el usuario)
 
-**Capa 3 — Detalle filtrable** (carga bajo demanda):
-- Se muestra colapsado por defecto, se expande al hacer clic o seleccionar ubicación
-- Filtros: selector de ubicación, búsqueda por nombre/SKU, toggle ML/UNIT
-- Columnas: sku_base, producto_nombre, tipo_consumo, ubicación, stock_actual_base, unidad_base, cpp_actual_base, valor_total_stock
-- Usa `isBottle()` para tipo_consumo y cálculo de valor
-- Valor = para ML: `stock × (cost_per_unit / capacity_ml)`, para UNIT: `stock × cost_per_unit`
-- Paginación o limit inicial de 50 filas
+## Cambios de frontend
 
-### 2. Optimización de carga
+### 1. Nuevo parser simplificado en `excel-inventory-parser.ts`
 
-**Carga inicial** (capas 1 y 2): un solo query que trae `stock_balances` con `product_id`, `location_id`, `quantity` + productos (`code`, `name`, `capacity_ml`, `cost_per_unit`, `unit`) + locations (`name`, `type`). Se agrupa en frontend para capital total y distribución.
+- Agregar funciones `parseCompraSimple()`, `parseReposicionSimple()`, `parseConteoSimple()`
+- Cada una acepta las columnas mínimas y resuelve producto por **similitud de nombre** (fuzzy match) en vez de SKU obligatorio
+- Calcular `match_confidence`: alta (exact match code), media (nombre similar >80%), baja (>60%), sin_match (<60%)
+- Auto-completar tipo_consumo, unidad, formato desde el producto encontrado en catálogo
 
-**Carga detalle** (capa 3): se activa solo cuando el usuario expande o filtra. No se monta la tabla hasta que haya interacción.
+### 2. Reescribir `ExcelUpload.tsx`
 
-### 3. Eliminar complejidad legacy
+**Al subir archivo:**
+1. Parsear con el parser simplificado según tipo
+2. Mostrar preview por fila con: producto Excel, producto asociado, formato detectado, confianza del match, acción, errores
+3. Si hay filas `sin_match` → bloquear botón "Guardar"
+4. Botón "Guardar como pendiente" → inserta en `stock_import_batches` + `stock_import_rows`, estado `pendiente_aprobacion`
+5. NO aplica ningún cambio a stock
 
-- Remover: secciones collapsibles por estado (OK/Low/Out), ingreso manual, registro de merma, ajuste de mínimos, chips de filtro por estado, info banner
-- Mantener: export CSV (simplificado), prop `isReadOnly` para vista Gerencia
-- La vista Gerencia (`isReadOnly`) se unifica con la nueva estructura (ya tiene distribución por ubicación, solo se limpia)
+### 3. Reescribir `StockImportPreviewDialog.tsx`
 
-## Archivos a modificar
+Agregar **resumen ejecutivo** antes del detalle por fila:
+
+- **Siempre**: tipo operación, total filas, productos afectados, impacto total en stock, variación valorización
+- **COMPRA**: monto total, CPP antes vs después por producto
+- **REPOSICION**: total unidades/ml movidos, ubicación destino
+- **CONTEO**: ajustes positivos, mermas, diferencia valorizada total
+
+Cambiar botón de "Confirmar" a "Guardar como pendiente".
+
+### 4. Nuevo componente: panel de lotes pendientes en `InventoryHub.tsx`
+
+Sección visible en el hub (entre stats y movimientos recientes):
+
+- Lista de lotes con: tipo, fecha, quién subió, filas válidas/errores, estado (badge color)
+- Click en lote → abre drawer/dialog con resumen ejecutivo + detalle por fila
+- Botones: **Aprobar** (aplica cambios a stock usando la lógica existente de `processCompras/Transferencias/Conteos`) y **Rechazar** (marca como rechazado)
+- Al aprobar: registra `approved_by`, `approved_at`, ejecuta las transacciones de stock, cambia estado a `aprobado`
+
+### 5. Generar Excel de conteo pre-llenado
+
+Nuevo botón "Generar conteo" en hub que:
+- Pide seleccionar ubicación
+- Genera Excel con productos de esa ubicación + stock teórico
+- Usuario solo llena columna `stock_real`
+- Al subir, el parser compara teórico vs real
+
+## Archivos a crear/modificar
 
 | Archivo | Acción |
 |---|---|
-| `src/components/dashboard/WarehouseInventory.tsx` | **Reescribir** — nueva vista de 3 capas |
+| Migración SQL | **Crear** — `stock_import_batches` + `stock_import_rows` + RLS |
+| `src/lib/excel-inventory-parser.ts` | **Modificar** — agregar parsers simplificados + fuzzy match |
+| `src/components/dashboard/ExcelUpload.tsx` | **Reescribir** — flujo de guardar como pendiente |
+| `src/components/dashboard/StockImportPreviewDialog.tsx` | **Reescribir** — resumen ejecutivo + preview por fila con confianza |
+| `src/components/dashboard/InventoryHub.tsx` | **Modificar** — agregar panel de lotes pendientes |
 
 ## Lo que NO se toca
 
-- `InventoryHub.tsx` — sigue siendo el entry point, carga `WarehouseInventory` lazy
-- DB / schema
-- `ExcelUpload`, `StockReconciliation`, `WasteManagement`
-- Lógica de ventas, recetas, redeem
+- Lógica transaccional de stock (se reutiliza tal cual al aprobar)
+- DB de stock_balances, stock_movements, products
+- Ventas, recetas, redeem, jornadas
+- Autenticación, multi-venue
+
+## Flujo final
+
+```text
+Usuario sube Excel simplificado
+  → Parser detecta tipo + resuelve productos por nombre
+  → Preview: fila por fila con confianza del match
+  → Resumen ejecutivo del impacto
+  → "Guardar como pendiente" → DB (sin tocar stock)
+
+Admin abre panel de pendientes
+  → Ve resumen + detalle
+  → Aprobar → ejecuta transacciones → stock actualizado
+  → Rechazar → marca descartado
+```
 
