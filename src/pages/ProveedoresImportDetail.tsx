@@ -942,27 +942,7 @@ export default function ProveedoresImportDetail() {
 
                 <div className="border-t" />
 
-                {/* Tax credit */}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Crédito fiscal</p>
-                  <div className="flex justify-between text-sm"><span>IVA 19%</span><span className="font-medium">{formatCLP(financialSummary.tax_credit.iva_credit_19)}</span></div>
-                </div>
-
-                {/* Specific taxes */}
-                {financialSummary.specific_taxes.total > 0 && (
-                  <>
-                    <div className="border-t" />
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Impuestos específicos (no afecta CPP)</p>
-                      {financialSummary.specific_taxes.iaba_10 > 0 && <div className="flex justify-between text-sm"><span>IABA 10%</span><span>{formatCLP(financialSummary.specific_taxes.iaba_10)}</span></div>}
-                      {financialSummary.specific_taxes.iaba_18 > 0 && <div className="flex justify-between text-sm"><span>IABA 18%</span><span>{formatCLP(financialSummary.specific_taxes.iaba_18)}</span></div>}
-                      {financialSummary.specific_taxes.ila_vino > 0 && <div className="flex justify-between text-sm"><span>ILA Vino 20,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_vino)}</span></div>}
-                      {financialSummary.specific_taxes.ila_cerveza > 0 && <div className="flex justify-between text-sm"><span>ILA Cerveza 20,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_cerveza)}</span></div>}
-                      {financialSummary.specific_taxes.ila_destilados > 0 && <div className="flex justify-between text-sm"><span>ILA Destilados 31,5%</span><span>{formatCLP(financialSummary.specific_taxes.ila_destilados)}</span></div>}
-                      <div className="flex justify-between text-sm font-semibold"><span>Total imp. específicos</span><span>{formatCLP(financialSummary.specific_taxes.total)}</span></div>
-                    </div>
-                  </>
-                )}
+                {/* Simplified: no tax credit or specific taxes */}
 
                 {/* Operational expenses */}
                 {financialSummary.operational_expenses.total > 0 && (

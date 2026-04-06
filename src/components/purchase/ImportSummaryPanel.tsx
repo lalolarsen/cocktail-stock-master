@@ -12,14 +12,15 @@ import type { ComputedLine } from "@/lib/purchase-calculator";
 
 interface ImportSummaryPanelProps {
   lines: ComputedLine[];
-  ivaAmount: number;
-  registerExpenses: boolean;
-  onRegisterExpensesChange: (checked: boolean) => void;
   canConfirm: boolean;
   confirming: boolean;
   onConfirm: () => void;
   lastSaved?: Date | null;
   isSaving?: boolean;
+  // Legacy props — accepted but ignored
+  ivaAmount?: number;
+  registerExpenses?: boolean;
+  onRegisterExpensesChange?: (checked: boolean) => void;
 }
 
 export function ImportSummaryPanel({
@@ -73,7 +74,7 @@ export function ImportSummaryPanel({
           <div className="flex justify-between bg-primary/10 p-2 rounded -mx-2">
             <span className="font-semibold text-foreground flex items-center gap-1">
               <PackagePlus className="h-4 w-4 text-primary" />
-              COGS NETO TOTAL
+              COSTO NETO TOTAL
             </span>
             <span className="font-bold text-primary">{formatCLP(totalCOGSNet)}</span>
           </div>

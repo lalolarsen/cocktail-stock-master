@@ -2,9 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { formatCLP } from "@/lib/currency";
-import { cn } from "@/lib/utils";
 import type { ComputedLine } from "@/lib/purchase-calculator";
-import { getTaxCategoryLabel } from "@/lib/purchase-calculator";
 
 interface LineDetailDrawerProps {
   open: boolean;
@@ -58,7 +56,7 @@ export function LineDetailDrawer({ open, onOpenChange, line }: LineDetailDrawerP
 
           <Separator />
 
-          {/* Fórmula de Cálculo - NUEVA */}
+          {/* Fórmula de Cálculo */}
           <div className="space-y-4">
             <h4 className="font-medium">Fórmula de Cálculo</h4>
             
@@ -141,85 +139,22 @@ export function LineDetailDrawer({ open, onOpenChange, line }: LineDetailDrawerP
             </div>
           </div>
 
-          <Separator />
-
-          {/* Impuestos Informativos */}
-          <div className="space-y-2">
-            <h4 className="font-medium text-muted-foreground">Impuesto Clasificado (Informativo)</h4>
-            <div className="flex items-center gap-2">
-              <Badge 
-                variant="outline" 
-                className={cn("text-sm", {
-                  "bg-gray-100 text-gray-600": line.tax_category === 'NONE',
-                  "bg-blue-100 text-blue-700": line.tax_category === 'IABA_10' || line.tax_category === 'IABA_18',
-                  "bg-purple-100 text-purple-700": line.tax_category === 'ILA_VINO_205',
-                  "bg-amber-100 text-amber-700": line.tax_category === 'ILA_CERVEZA_205',
-                  "bg-red-100 text-red-700": line.tax_category === 'ILA_DESTILADOS_315',
-                })}
-              >
-                {getTaxCategoryLabel(line.tax_category)}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Este impuesto es solo informativo y NO afecta el cálculo del costo ni el CPP.
-            </p>
-          </div>
-
-          {/* Desglose de Impuestos Extraídos */}
-          {line.taxes_excluded_for_cost > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-medium text-muted-foreground">Impuestos Extraídos de Factura</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                {line.tax_details.iaba_10 && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">IABA 10%</span>
-                    <span>{formatCLP(line.tax_details.iaba_10)}</span>
-                  </div>
-                )}
-                {line.tax_details.iaba_18 && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">IABA 18%</span>
-                    <span>{formatCLP(line.tax_details.iaba_18)}</span>
-                  </div>
-                )}
-                {line.tax_details.ila_vin && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ILA Vino 20.5%</span>
-                    <span>{formatCLP(line.tax_details.ila_vin)}</span>
-                  </div>
-                )}
-                {line.tax_details.ila_cer && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ILA Cerveza 20.5%</span>
-                    <span>{formatCLP(line.tax_details.ila_cer)}</span>
-                  </div>
-                )}
-                {line.tax_details.ila_lic && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ILA Licor 31.5%</span>
-                    <span>{formatCLP(line.tax_details.ila_lic)}</span>
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Total impuestos extraídos: {formatCLP(line.taxes_excluded_for_cost)}
-              </p>
-            </div>
-          )}
-
           {/* Razones / Advertencias */}
           {line.reasons.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-medium text-amber-700">Notas del Motor</h4>
-              <ul className="text-sm space-y-1">
-                {line.reasons.map((reason, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-amber-500">•</span>
-                    <span className="text-muted-foreground">{reason}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <h4 className="font-medium text-amber-700">Notas del Motor</h4>
+                <ul className="text-sm space-y-1">
+                  {line.reasons.map((reason, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-amber-500">•</span>
+                      <span className="text-muted-foreground">{reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
           )}
         </div>
       </SheetContent>
