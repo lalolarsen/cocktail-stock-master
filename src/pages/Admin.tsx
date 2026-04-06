@@ -188,18 +188,10 @@ export default function Admin() {
             {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
             {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
-            {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "botellas" && <OpenBottlesMonitor />}
-            {activeView === "settings" && (
-              <>
-                <ReceiptSettingsCard />
-                {isReadOnly && <InventoryFreezeToggle />}
-              </>
-            )}
+            {activeView === "settings" && <ReceiptSettingsCard />}
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
-            {activeView === "external-consumption" && !isReadOnly && <ExternalConsumptionPanel />}
-            {activeView === "reconciliation" && !isReadOnly && <StockReconciliation />}
           </div>
         </main>
       </div>
