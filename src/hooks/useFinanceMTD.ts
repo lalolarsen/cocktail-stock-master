@@ -180,13 +180,13 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
-        // COGS
+        // COGS — sales-based: get sale_items + recipes
         supabase
-          .from("stock_movements")
-          .select("quantity, unit_cost, product_id, products:product_id(capacity_ml, cost_per_unit)")
+          .from("sales")
+          .select("id")
           .eq("venue_id", venueId)
-          .eq("movement_type", "salida")
-          .in("source_type", ["sale_redemption", "cover_redemption", "sale", "pickup"])
+          .eq("payment_status", "paid")
+          .eq("is_cancelled", false)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
 
