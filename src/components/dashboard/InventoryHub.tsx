@@ -401,6 +401,60 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     }
   };
 
+  // ── Download stock ─────────────────────────────────────────────────────────
+
+  const handleDownloadStock = async () => {
+    if (!venue?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from("stock_balances")
+        .select("quantity, products(name, code, unit, capacity_ml, cost_per_unit), stock_locations(name)")
+        .eq("venue_id", venue.id)
+        .gt("quantity", 0);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.info("No hay stock registrado");
+        return;
+      }
+
+      const rows = data.map((b: any) => {
+        const prod = b.products;
+        const loc = b.stock_locations;
+        const bottle = prod?.capacity_ml && prod.capacity_ml > 0;
+        const cpp = prod?.cost_per_unit || 0;
+        const valor = bottle
+          ? b.quantity * (cpp / prod.capacity_ml)
+          : b.quantity * cpp;
+
+        return [
+          prod?.code || "",
+          prod?.name || "",
+          loc?.name || "",
+          bottle ? "ML" : "UNIT",
+          prod?.unit || "",
+          b.quantity,
+          Math.round(cpp),
+          Math.round(valor),
+        ];
+      });
+
+      const header = ["SKU", "Producto", "Ubicación", "Tipo", "Unidad", "Stock", "CPP", "Valor"];
+      const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stock_${venue.name || "venue"}_${format(new Date(), "yyyy-MM-dd")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Stock descargado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al descargar stock");
+    }
+  };
+
   // ── UI helpers ─────────────────────────────────────────────────────────────
 
   const actionCards = [
@@ -452,7 +506,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             </CardContent>
           </Card>
         ))}
-        <Card className="cursor-pointer hover:shadow-md transition-shadow border-border/50" onClick={() => setUploadDialog("COMPRA")}>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow border-border/50" onClick={handleDownloadStock}>
           <CardContent className="p-4 flex flex-col items-center text-center gap-2">
             <div className="p-3 rounded-xl bg-purple-500/10"><Download className="w-6 h-6 text-purple-500" /></div>
             <span className="font-medium text-sm text-foreground">Descargar Stock</span>
