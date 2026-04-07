@@ -452,7 +452,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             </CardContent>
           </Card>
         ))}
-        <Card className="cursor-pointer hover:shadow-md transition-shadow border-border/50" onClick={() => setUploadDialog("COMPRA")}>
+        <Card className="cursor-pointer hover:shadow-md transition-shadow border-border/50" onClick={handleDownloadStock}>
           <CardContent className="p-4 flex flex-col items-center text-center gap-2">
             <div className="p-3 rounded-xl bg-purple-500/10"><Download className="w-6 h-6 text-purple-500" /></div>
             <span className="font-medium text-sm text-foreground">Descargar Stock</span>
