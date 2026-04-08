@@ -512,25 +512,25 @@ export default function Bar() {
       if (!cq) {
         const r: RedemptionResult = { success: false, error_code: "TOKEN_NOT_FOUND", message: "Cortesía no encontrada" };
         setResult(r);
-        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "INVALID", label: "CORTESÍA NO ENCONTRADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "INVALID" as const, label: "CORTESÍA NO ENCONTRADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         releaseLocks("error"); scheduleAutoReset(); return;
       }
       if (cq.status !== "active") {
         const r: RedemptionResult = { success: false, error_code: "ALREADY_REDEEMED", message: "Cortesía ya usada o inactiva" };
         setResult(r);
-        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED", label: "CORTESÍA YA USADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED" as const, label: "CORTESÍA YA USADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         releaseLocks("error"); scheduleAutoReset(); return;
       }
       if (new Date(cq.expires_at) < new Date()) {
         const r: RedemptionResult = { success: false, error_code: "TOKEN_EXPIRED", message: "Cortesía vencida" };
         setResult(r);
-        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "EXPIRED", label: "CORTESÍA VENCIDA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "EXPIRED" as const, label: "CORTESÍA VENCIDA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         releaseLocks("error"); scheduleAutoReset(); return;
       }
       if (cq.used_count >= cq.max_uses) {
         const r: RedemptionResult = { success: false, error_code: "ALREADY_REDEEMED", message: "Cortesía agotó sus usos" };
         setResult(r);
-        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED", label: "CORTESÍA SIN USOS", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED" as const, label: "CORTESÍA SIN USOS", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         releaseLocks("error"); scheduleAutoReset(); return;
       }
       // Update used_count
@@ -548,12 +548,12 @@ export default function Bar() {
       };
       setResult(r);
       logAuditEvent({ action: "redeem_courtesy_bar", status: "success", metadata: { code: code.slice(0, 6), product: cq.product_name, qty: cq.qty, bar_id: selectedBarId } });
-      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: `CORTESÍA: ${cq.product_name} x${cq.qty}`, tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "SUCCESS" as const, label: `CORTESÍA: ${cq.product_name} x${cq.qty}`, tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("success"); scheduleAutoReset();
     } catch (err: any) {
       const msg = err?.message || "Error al canjear cortesía";
       setResult({ success: false, error_code: "SYSTEM_ERROR", message: msg });
-      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR CORTESÍA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ERROR" as const, label: "ERROR CORTESÍA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
   }, [currentVenueId, currentUserId, selectedBarId, releaseLocks, scheduleAutoReset]);
