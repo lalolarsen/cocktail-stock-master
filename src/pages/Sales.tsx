@@ -1361,6 +1361,35 @@ export default function Sales() {
                                 </span>
                                 {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 gap-1"
+                                onClick={() => {
+                                  const items = (sale.sale_items || []).map((item: any) => ({
+                                    name: item.cocktails?.name || "Item",
+                                    quantity: item.quantity,
+                                    price: item.unit_price,
+                                  }));
+                                  const paperKey = getPreferredPaperWidthStorageKey(venue?.id, selectedPosId);
+                                  const pw = (localStorage.getItem(paperKey) || "80mm") as PaperWidth;
+                                  const posName = posTerminals.find(p => p.id === selectedPosId)?.name || "POS";
+                                  const rd: ReceiptData = {
+                                    saleNumber: sale.sale_number,
+                                    venueName: venue?.name || "",
+                                    posName,
+                                    dateTime: new Date(sale.created_at).toLocaleString("es-CL"),
+                                    items,
+                                    total: sale.total_amount,
+                                    paymentMethod: sale.payment_method || "card",
+                                  };
+                                  printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
+                                }}
+                                title="Reimprimir comprobante"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span className="text-[9px]">Ticket</span>
+                              </Button>
                               {!sale.is_cancelled && (
                                 <Button
                                   variant="ghost"
