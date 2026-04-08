@@ -66,9 +66,9 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
     .meta { text-align: center; font-size: 11pt; color: #000; }
     .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    .items td { padding: 1px 0; vertical-align: top; font-size: 11pt; color: #000; }
+    .items td { padding: 2px 0; vertical-align: top; font-size: 14pt; font-weight: bold; color: #000; }
     .item-name { text-align: left; color: #000; }
-    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 11pt; color: #000; }
+    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 14pt; font-weight: bold; color: #000; }
     .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
     .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
     .qr-section { text-align: center; margin: 10px 0; }
@@ -162,11 +162,16 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
        <div class="short-code-label">CÓDIGO DE RETIRO</div>`
     : "";
 
+  const itemsHtml = data.items
+    .map((item) => `<div style="font-size:14pt;font-weight:bold;color:#000;padding:2px 0;">${item.quantity}x ${item.name}</div>`)
+    .join("");
+
   return `
     <div class="receipt">
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
+      <div style="margin:6px 0;">${itemsHtml}</div>
       <div class="qr-section">
         <div class="qr-label">QR DE RETIRO</div>
         ${qrSvg}
@@ -181,7 +186,7 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
 
 // ── Cashier receipt builder (no QR) ──
 
-function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
+export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   const sep = paperWidth === "58mm"
     ? "================================"
     : "================================================";
@@ -214,7 +219,7 @@ function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): str
   `;
 }
 
-function buildCashierReceiptCss(paperWidth: PaperWidth): string {
+export function buildCashierReceiptCss(paperWidth: PaperWidth): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
     body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
@@ -223,7 +228,7 @@ function buildCashierReceiptCss(paperWidth: PaperWidth): string {
     .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
     .meta { text-align: center; font-size: 11pt; color: #000; }
     .items-list { margin: 6px 0; }
-    .item-line { font-size: 11pt; color: #000; padding: 1px 0; }
+    .item-line { font-size: 14pt; font-weight: bold; color: #000; padding: 2px 0; }
     .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
     .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
