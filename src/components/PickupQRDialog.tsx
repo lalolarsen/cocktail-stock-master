@@ -86,8 +86,8 @@ export default function PickupQRDialog({
             .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 8px; }
             .sep { margin: 4px 0; font-size: 10pt; }
             .sale-number { font-size: 14pt; font-weight: bold; margin: 6px 0; }
-            .items { text-align: left; margin: 8px 0; font-size: 11px; }
-            .item { margin: 2px 0; }
+            .items { text-align: left; margin: 8px 0; font-size: 14pt; font-weight: bold; }
+            .item { margin: 3px 0; font-size: 14pt; font-weight: bold; }
             .total { font-size: 14pt; font-weight: bold; margin: 8px 0; }
             .qr-container { margin: 12px 0; }
             .qr-container svg { max-width: 85%; height: auto; }
@@ -167,7 +167,7 @@ export default function PickupQRDialog({
 
       <div className="text-center space-y-1">
         {items.map((item, index) => (
-          <p key={index} className="text-sm text-muted-foreground">
+          <p key={index} className="text-base font-semibold text-foreground">
             {item.quantity}x {item.name}
           </p>
         ))}

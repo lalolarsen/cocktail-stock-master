@@ -95,7 +95,7 @@ function getDelivery(deliver?: DeliverInfo): { name: string; quantity: number } 
   if (deliver.type === "cover" && deliver.name) return { name: deliver.name, quantity: deliver.quantity || 1 };
   if (deliver.type === "menu_items" && deliver.items?.length) {
     if (deliver.items.length === 1) return { name: deliver.items[0].name, quantity: deliver.items[0].quantity };
-    return { name: deliver.items[0].name, quantity: deliver.items.reduce((s, i) => s + i.quantity, 0) };
+    return { name: `${deliver.items.length} productos`, quantity: deliver.items.reduce((s, i) => s + i.quantity, 0) };
   }
   return { name: "Pedido", quantity: 1 };
 }
