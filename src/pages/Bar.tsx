@@ -499,8 +499,67 @@ export default function Bar() {
 
   checkBottlesRef.current = checkAndProceedWithBottles;
 
+  // ── Redeem courtesy QR directly ──────────────────────────────────────────
+  const redeemCourtesy = useCallback(async (code: string) => {
+    try {
+      const { data: cq, error: cqErr } = await supabase
+        .from("courtesy_qr")
+        .select("id, product_name, qty, status, used_count, max_uses, expires_at, venue_id")
+        .eq("code", code)
+        .eq("venue_id", currentVenueId)
+        .maybeSingle();
+      if (cqErr) throw cqErr;
+      if (!cq) {
+        const r: RedemptionResult = { success: false, error_code: "TOKEN_NOT_FOUND", message: "Cortesía no encontrada" };
+        setResult(r);
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "INVALID" as const, label: "CORTESÍA NO ENCONTRADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset(); return;
+      }
+      if (cq.status !== "active") {
+        const r: RedemptionResult = { success: false, error_code: "ALREADY_REDEEMED", message: "Cortesía ya usada o inactiva" };
+        setResult(r);
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED" as const, label: "CORTESÍA YA USADA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset(); return;
+      }
+      if (new Date(cq.expires_at) < new Date()) {
+        const r: RedemptionResult = { success: false, error_code: "TOKEN_EXPIRED", message: "Cortesía vencida" };
+        setResult(r);
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "EXPIRED" as const, label: "CORTESÍA VENCIDA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset(); return;
+      }
+      if (cq.used_count >= cq.max_uses) {
+        const r: RedemptionResult = { success: false, error_code: "ALREADY_REDEEMED", message: "Cortesía agotó sus usos" };
+        setResult(r);
+        setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ALREADY_REDEEMED" as const, label: "CORTESÍA SIN USOS", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset(); return;
+      }
+      // Update used_count
+      const newCount = cq.used_count + 1;
+      const newStatus = newCount >= cq.max_uses ? "redeemed" : "active";
+      await supabase.from("courtesy_qr").update({ used_count: newCount, status: newStatus }).eq("id", cq.id);
+      // Register redemption
+      await supabase.from("courtesy_redemptions").insert({
+        courtesy_id: cq.id, redeemed_by: currentUserId, venue_id: currentVenueId,
+        jornada_id: "00000000-0000-0000-0000-000000000000", result: "success", reason: "bar_scan",
+      });
+      const r: RedemptionResult = {
+        success: true, message: "Cortesía canjeada",
+        deliver: { type: "menu_items", items: [{ name: cq.product_name, quantity: cq.qty }], source: "sale" },
+      };
+      setResult(r);
+      logAuditEvent({ action: "redeem_courtesy_bar", status: "success", metadata: { code: code.slice(0, 6), product: cq.product_name, qty: cq.qty, bar_id: selectedBarId } });
+      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "SUCCESS" as const, label: `CORTESÍA: ${cq.product_name} x${cq.qty}`, tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("success"); scheduleAutoReset();
+    } catch (err: any) {
+      const msg = err?.message || "Error al canjear cortesía";
+      setResult({ success: false, error_code: "SYSTEM_ERROR", message: msg });
+      setScanHistory(prev => [{ id: crypto.randomUUID(), time: new Date(), status: "ERROR" as const, label: "ERROR CORTESÍA", tokenShort: code.slice(-6) }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("error"); scheduleAutoReset();
+    }
+  }, [currentVenueId, currentUserId, selectedBarId, releaseLocks, scheduleAutoReset]);
+
   // ── Process token (entry point) ────────────────────────────────────────────
-  const processToken = useCallback(async (token: string) => {
+  const processToken = useCallback(async (token: string, tokenType: 'pickup' | 'courtesy' = 'pickup') => {
     const now = Date.now();
     if (isProcessingRef.current || redeemInFlightRef.current || scannerFrozen) return;
     if (token === lastTokenRef.current && now - lastTimeRef.current < DEDUPE_WINDOW_MS) return;
@@ -527,6 +586,12 @@ export default function Bar() {
     try {
       setDebugStep("fetch-token");
 
+      // Courtesy QRs go to a separate redemption path
+      if (tokenType === 'courtesy') {
+        await redeemCourtesy(token);
+        return;
+      }
+
       // Direct redeem — with delivered-by gate
       if (selectedBarId) {
         await checkBottlesRef.current?.(token, null);
@@ -542,7 +607,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset();
     }
-  }, [selectedBarId, scannerFrozen, redeemToken, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
+  }, [selectedBarId, scannerFrozen, redeemToken, redeemCourtesy, resolveDeliveredByAndRedeem, releaseLocks, scheduleAutoReset]);
 
   // ── Bluetooth HID keyboard input ───────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -557,7 +622,7 @@ export default function Bar() {
         setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
         return;
       }
-      processToken(parsed.token);
+      processToken(parsed.token, parsed.type);
     } else {
       scanBufferRef.current += e.key;
     }
@@ -570,7 +635,7 @@ export default function Bar() {
     const parsed = parseQRToken(raw);
     if (!parsed.valid) { toast.error("Token inválido"); return; }
     setShowManualEntry(false); setManualToken("");
-    processToken(parsed.token);
+    processToken(parsed.token, parsed.type);
   }, [manualToken, processToken]);
 
   const handleDebugTap = useCallback(() => {

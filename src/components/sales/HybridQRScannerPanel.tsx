@@ -29,6 +29,7 @@ interface RedemptionResult {
 export interface HybridQRScannerPanelProps {
   barLocationId: string;
   barName: string;
+  venueId: string;
 }
 
 const AUTO_RESET_MS = 6000;
@@ -56,7 +57,7 @@ function deliverSummary(result: RedemptionResult | null): string {
   return "";
 }
 
-export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScannerPanelProps) {
+export function HybridQRScannerPanel({ barLocationId, barName, venueId }: HybridQRScannerPanelProps) {
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -107,6 +108,62 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     clearTimers();
     resetTimerRef.current = setTimeout(() => resetToIdle({ clearDedup: false }), AUTO_RESET_MS);
   }, [clearTimers, resetToIdle]);
+
+  const processCourtesy = useCallback(async (code: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setScanState("processing");
+    setResult(null);
+
+    watchdogRef.current = setTimeout(() => resetToIdle({ clearDedup: true }), WATCHDOG_MS);
+
+    try {
+      const { data: cq, error: cqErr } = await supabase
+        .from("courtesy_qr")
+        .select("id, product_name, qty, status, used_count, max_uses, expires_at")
+        .eq("code", code)
+        .eq("venue_id", venueId)
+        .maybeSingle();
+      if (cqErr) throw cqErr;
+      clearTimers();
+
+      if (!cq) {
+        setResult({ success: false, error_code: "TOKEN_NOT_FOUND", message: "Cortesía no encontrada" });
+        setScanState("error"); scheduleReset(); return;
+      }
+      if (cq.status !== "active") {
+        setResult({ success: false, error_code: "ALREADY_REDEEMED", message: "Cortesía ya usada" });
+        setScanState("error"); scheduleReset(); return;
+      }
+      if (new Date(cq.expires_at) < new Date()) {
+        setResult({ success: false, error_code: "TOKEN_EXPIRED", message: "Cortesía vencida" });
+        setScanState("error"); scheduleReset(); return;
+      }
+      if (cq.used_count >= cq.max_uses) {
+        setResult({ success: false, error_code: "ALREADY_REDEEMED", message: "Sin usos disponibles" });
+        setScanState("error"); scheduleReset(); return;
+      }
+
+      const newCount = cq.used_count + 1;
+      const newStatus = newCount >= cq.max_uses ? "redeemed" : "active";
+      await supabase.from("courtesy_qr").update({ used_count: newCount, status: newStatus }).eq("id", cq.id);
+
+      const r: RedemptionResult = {
+        success: true,
+        deliver: { type: "menu_items", items: [{ name: cq.product_name, quantity: cq.qty }] },
+      };
+      setResult(r);
+      setScanState("success");
+      logAuditEvent({ action: "redeem_courtesy_hybrid", status: "success", metadata: { code: code.slice(0, 6), product: cq.product_name, bar_id: barLocationId, source: "hybrid_pos" } });
+      scheduleReset();
+    } catch (err: any) {
+      clearTimers();
+      setResult({ success: false, message: err?.message || "Error al canjear cortesía" });
+      setScanState("error"); scheduleReset();
+    } finally {
+      processingRef.current = false;
+    }
+  }, [venueId, barLocationId, clearTimers, resetToIdle, scheduleReset]);
 
   const processToken = useCallback(async (token: string) => {
     if (processingRef.current) return;
@@ -174,11 +231,15 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       if (!raw || scanState !== "idle") return;
       const parsed = parseQRToken(raw);
       if (!parsed.valid) return;
-      processToken(parsed.token);
+      if (parsed.type === 'courtesy') {
+        processCourtesy(parsed.token);
+      } else {
+        processToken(parsed.token);
+      }
     } else if (e.key.length === 1) {
       scanBufferRef.current += e.key;
     }
-  }, [scanState, processToken]);
+  }, [scanState, processToken, processCourtesy]);
 
   const handleDismiss = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
