@@ -14,8 +14,7 @@ import {
   Banknote,
   Trophy,
   ShoppingCart,
-  ArrowUpRight,
-  ArrowDownRight,
+  Gift,
   CalendarDays,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
@@ -65,7 +64,12 @@ interface TopProduct {
   revenue: number;
 }
 
-/* ─────────────── component ─────────────── */
+interface CourtesyCOGSItem {
+  productName: string;
+  qty: number;
+  note: string;
+  cogs: number;
+}
 
 export function AnalyticsPanel() {
   const venueId = DEFAULT_VENUE_ID;
@@ -74,8 +78,8 @@ export function AnalyticsPanel() {
   const [saleItems, setSaleItems] = useState<SaleItemRow[]>([]);
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
   const [jornadaCount, setJornadaCount] = useState(0);
+  const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
 
-  // Generate last 12 months as options
   const monthOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
     for (let i = 0; i < 12; i++) {
@@ -100,7 +104,7 @@ export function AnalyticsPanel() {
     const from = startOfMonth(new Date(year, month - 1)).toISOString();
     const to = endOfMonth(new Date(year, month - 1)).toISOString();
 
-    const [salesRes, posRes, jornadaRes] = await Promise.all([
+    const [salesRes, posRes, jornadaRes, courtesyRes] = await Promise.all([
       supabase
         .from("sales")
         .select("id, total_amount, net_amount, payment_method, pos_id, created_at, jornada_id")
@@ -121,6 +125,13 @@ export function AnalyticsPanel() {
         .eq("estado", "cerrada")
         .gte("fecha", from)
         .lte("fecha", to),
+      supabase
+        .from("courtesy_qr")
+        .select("id, product_id, product_name, qty, note, status")
+        .eq("venue_id", venueId)
+        .eq("status", "redeemed")
+        .gte("created_at", from)
+        .lte("created_at", to),
     ]);
 
     const salesData = (salesRes.data || []) as SaleRow[];
@@ -128,8 +139,8 @@ export function AnalyticsPanel() {
     setPosTerminals((posRes.data || []) as POSTerminal[]);
     setJornadaCount(jornadaRes.count || 0);
 
+    // Sale items
     if (salesData.length > 0) {
-      // Fetch sale_items in batches to avoid Supabase 1000-row limit
       const saleIds = salesData.map((s) => s.id);
       const allItems: SaleItemRow[] = [];
       const BATCH = 500;
@@ -147,11 +158,47 @@ export function AnalyticsPanel() {
       setSaleItems([]);
     }
 
+    // Courtesy COGS calculation
+    const courtesyData = courtesyRes.data || [];
+    if (courtesyData.length > 0) {
+      const cocktailIds = [...new Set(courtesyData.map(c => c.product_id))];
+      const { data: ingredients } = await supabase
+        .from("cocktail_ingredients")
+        .select("cocktail_id, quantity, products(cost_per_unit, capacity_ml)")
+        .in("cocktail_id", cocktailIds);
+
+      // Build recipe cost map
+      const recipeCostMap = new Map<string, number>();
+      if (ingredients) {
+        for (const ing of ingredients as any[]) {
+          const p = ing.products;
+          if (!p) continue;
+          const ingQtyMl = Number(ing.quantity);
+          const capacityMl = Number(p.capacity_ml) || 0;
+          const costPerUnit = Number(p.cost_per_unit) || 0;
+          const costPerServing = capacityMl > 0
+            ? (ingQtyMl / capacityMl) * costPerUnit
+            : ingQtyMl * costPerUnit;
+          const prev = recipeCostMap.get(ing.cocktail_id) || 0;
+          recipeCostMap.set(ing.cocktail_id, prev + costPerServing);
+        }
+      }
+
+      const items: CourtesyCOGSItem[] = courtesyData.map(qr => ({
+        productName: qr.product_name,
+        qty: qr.qty,
+        note: qr.note || "Sin motivo",
+        cogs: (recipeCostMap.get(qr.product_id) || 0) * qr.qty,
+      }));
+      setCourtesyCOGS(items);
+    } else {
+      setCourtesyCOGS([]);
+    }
+
     setLoading(false);
   };
 
-  /* ─── computed metrics ─── */
-
+  // Computed metrics
   const totalRevenue = useMemo(() => sales.reduce((s, r) => s + Math.abs(Number(r.total_amount)), 0), [sales]);
   const totalTransactions = sales.length;
   const avgTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
@@ -167,7 +214,7 @@ export function AnalyticsPanel() {
 
   const avgPerJornada = jornadaCount > 0 ? totalRevenue / jornadaCount : 0;
 
-  /* ─── POS breakdown ─── */
+  // POS breakdown
   const posStats: POSStats[] = useMemo(() => {
     const posMap = new Map<string, { sales: number; count: number; cash: number; card: number }>();
     for (const s of sales) {
@@ -193,7 +240,7 @@ export function AnalyticsPanel() {
       .sort((a, b) => b.totalSales - a.totalSales);
   }, [sales, posTerminals]);
 
-  /* ─── top products ─── */
+  // Top products
   const topProducts: TopProduct[] = useMemo(() => {
     const map = new Map<string, { name: string; category: string; qty: number; revenue: number }>();
     for (const si of saleItems) {
@@ -211,9 +258,27 @@ export function AnalyticsPanel() {
       .slice(0, 10);
   }, [saleItems]);
 
-  /* ─── payment distribution ─── */
+  // Payment distribution
   const cashPct = totalRevenue > 0 ? (cashTotal / totalRevenue) * 100 : 0;
   const cardPct = totalRevenue > 0 ? (cardTotal / totalRevenue) * 100 : 0;
+
+  // Courtesy COGS aggregated by reason
+  const courtesyByReason = useMemo(() => {
+    const map = new Map<string, { count: number; totalCogs: number; items: string[] }>();
+    for (const c of courtesyCOGS) {
+      const key = c.note;
+      if (!map.has(key)) map.set(key, { count: 0, totalCogs: 0, items: [] });
+      const b = map.get(key)!;
+      b.count += c.qty;
+      b.totalCogs += c.cogs;
+      if (!b.items.includes(c.productName)) b.items.push(c.productName);
+    }
+    return Array.from(map.entries())
+      .map(([reason, d]) => ({ reason, ...d }))
+      .sort((a, b) => b.totalCogs - a.totalCogs);
+  }, [courtesyCOGS]);
+
+  const totalCourtesyCOGS = courtesyCOGS.reduce((s, c) => s + c.cogs, 0);
 
   if (loading) {
     return (
@@ -229,7 +294,7 @@ export function AnalyticsPanel() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* ── Month Selector ── */}
+      {/* Month Selector */}
       <div className="flex items-center gap-3">
         <CalendarDays className="w-5 h-5 text-muted-foreground" />
         <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -244,39 +309,15 @@ export function AnalyticsPanel() {
         </Select>
       </div>
 
-      {/* ── KPI Cards ── */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPICard
-          icon={DollarSign}
-          label="Ingreso Total"
-          value={formatCLP(totalRevenue)}
-          sub={`${totalTransactions} ventas`}
-          accent="text-emerald-500"
-        />
-        <KPICard
-          icon={Receipt}
-          label="Ticket Promedio"
-          value={formatCLP(avgTicket)}
-          sub={`${jornadaCount} jornadas`}
-          accent="text-blue-500"
-        />
-        <KPICard
-          icon={Store}
-          label="Promedio / Jornada"
-          value={formatCLP(avgPerJornada)}
-          sub={`${posStats.length} POS activos`}
-          accent="text-violet-500"
-        />
-        <KPICard
-          icon={ShoppingCart}
-          label="Productos Vendidos"
-          value={saleItems.reduce((s, si) => s + Number(si.quantity), 0).toLocaleString("es-CL")}
-          sub={`${topProducts.length} productos distintos`}
-          accent="text-amber-500"
-        />
+        <KPICard icon={DollarSign} label="Ingreso Total" value={formatCLP(totalRevenue)} sub={`${totalTransactions} ventas`} accent="text-emerald-500" />
+        <KPICard icon={Receipt} label="Ticket Promedio" value={formatCLP(avgTicket)} sub={`${jornadaCount} jornadas`} accent="text-blue-500" />
+        <KPICard icon={Store} label="Promedio / Jornada" value={formatCLP(avgPerJornada)} sub={`${posStats.length} POS activos`} accent="text-violet-500" />
+        <KPICard icon={ShoppingCart} label="Productos Vendidos" value={saleItems.reduce((s, si) => s + Number(si.quantity), 0).toLocaleString("es-CL")} sub={`${topProducts.length} productos distintos`} accent="text-amber-500" />
       </div>
 
-      {/* ── Payment Distribution ── */}
+      {/* Payment Distribution */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -287,14 +328,8 @@ export function AnalyticsPanel() {
         <CardContent>
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden flex">
-              <div
-                className="h-full bg-emerald-500 transition-all"
-                style={{ width: `${cardPct}%` }}
-              />
-              <div
-                className="h-full bg-amber-500 transition-all"
-                style={{ width: `${cashPct}%` }}
-              />
+              <div className="h-full bg-emerald-500 transition-all" style={{ width: `${cardPct}%` }} />
+              <div className="h-full bg-amber-500 transition-all" style={{ width: `${cashPct}%` }} />
             </div>
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
@@ -315,7 +350,7 @@ export function AnalyticsPanel() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* ── Revenue by POS ── */}
+        {/* Revenue by POS */}
         <Card className="border-border/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -340,10 +375,7 @@ export function AnalyticsPanel() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full bg-primary/70 rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
+                      <div className="h-full bg-primary/70 rounded-full transition-all" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-xs text-muted-foreground tabular-nums w-12 text-right">{pct.toFixed(1)}%</span>
                   </div>
@@ -359,7 +391,7 @@ export function AnalyticsPanel() {
           </CardContent>
         </Card>
 
-        {/* ── Top Products ── */}
+        {/* Top Products */}
         <Card className="border-border/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -391,10 +423,7 @@ export function AnalyticsPanel() {
                   </div>
                   <div className="flex items-center gap-2 pl-7">
                     <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full bg-amber-500/60 rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
+                      <div className="h-full bg-amber-500/60 rounded-full transition-all" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-xs text-muted-foreground tabular-nums w-20 text-right">{formatCLP(p.revenue)}</span>
                   </div>
@@ -404,12 +433,62 @@ export function AnalyticsPanel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Courtesy COGS Section */}
+      {courtesyCOGS.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Gift className="w-4 h-4 text-primary" />
+              COGS Cortesías
+              <Badge variant="secondary" className="ml-auto text-xs">{formatCLP(totalCourtesyCOGS)}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* By reason summary */}
+            <div className="space-y-2">
+              {courtesyByReason.map(r => (
+                <div key={r.reason} className="flex items-center justify-between text-sm p-2 rounded-lg bg-muted/50">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{r.reason}</p>
+                    <p className="text-xs text-muted-foreground">{r.count} uds · {r.items.length} producto{r.items.length > 1 ? "s" : ""}</p>
+                  </div>
+                  <span className="font-semibold tabular-nums shrink-0 ml-2">{formatCLP(r.totalCogs)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Detail table */}
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-muted-foreground">
+                    <th className="text-left p-2 font-medium">Producto</th>
+                    <th className="text-center p-2 font-medium">Qty</th>
+                    <th className="text-left p-2 font-medium">Motivo</th>
+                    <th className="text-right p-2 font-medium">COGS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {courtesyCOGS.map((c, i) => (
+                    <tr key={i} className="border-t border-border/30">
+                      <td className="p-2 font-medium truncate max-w-[150px]">{c.productName}</td>
+                      <td className="p-2 text-center tabular-nums">{c.qty}</td>
+                      <td className="p-2 text-muted-foreground truncate max-w-[150px]">{c.note}</td>
+                      <td className="p-2 text-right tabular-nums font-medium">{formatCLP(c.cogs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
 
-/* ─── KPI Card subcomponent ─── */
-
+/* KPI Card subcomponent */
 function KPICard({
   icon: Icon,
   label,

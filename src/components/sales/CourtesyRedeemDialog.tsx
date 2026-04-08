@@ -49,7 +49,9 @@ export function CourtesyRedeemDialog({ open, onClose, onRedeemed }: CourtesyRede
   }, [open]);
 
   const validate = async () => {
-    const cleanCode = code.trim().replace(/^COURTESY:/i, "");
+    // Strip COURTESY: prefix (case-insensitive), trim whitespace, normalize to lowercase
+    let cleanCode = code.trim().replace(/^COURTESY:/i, "").trim().toLowerCase();
+    
     if (!cleanCode) {
       toast.error("Ingresa un código");
       return;
@@ -62,7 +64,6 @@ export function CourtesyRedeemDialog({ open, onClose, onRedeemed }: CourtesyRede
 
     setLoading(true);
     try {
-      // Lookup courtesy QR
       const { data: qr, error } = await supabase
         .from("courtesy_qr")
         .select("*")
@@ -73,11 +74,11 @@ export function CourtesyRedeemDialog({ open, onClose, onRedeemed }: CourtesyRede
       if (error) throw error;
 
       if (!qr) {
-        setResult({ success: false, message: "QR no encontrado" });
+        console.warn("[CourtesyRedeem] No match for code:", cleanCode, "venue:", venue.id);
+        setResult({ success: false, message: "QR no encontrado para este venue" });
         return;
       }
 
-      // Validate status
       if (qr.status === "cancelled") {
         setResult({ success: false, message: "Este QR fue cancelado" });
         return;
@@ -87,28 +88,25 @@ export function CourtesyRedeemDialog({ open, onClose, onRedeemed }: CourtesyRede
         return;
       }
 
-      // Check expiry
       if (new Date(qr.expires_at) < new Date()) {
-        // Auto-update status to expired
         await supabase.from("courtesy_qr").update({ status: "expired" }).eq("id", qr.id);
         setResult({ success: false, message: "Este QR ha expirado" });
         return;
       }
 
-      // Check uses
       if (qr.used_count >= qr.max_uses) {
         await supabase.from("courtesy_qr").update({ status: "redeemed" }).eq("id", qr.id);
         setResult({ success: false, message: "Este QR ya alcanzó el máximo de usos" });
         return;
       }
 
-      // Valid!
       setResult({
         success: true,
         message: `${qr.product_name} × ${qr.qty}`,
         data: qr as CourtesyResult,
       });
     } catch (err: any) {
+      console.error("[CourtesyRedeem] Error:", err);
       setResult({ success: false, message: err.message || "Error al validar" });
     } finally {
       setLoading(false);
@@ -127,9 +125,10 @@ export function CourtesyRedeemDialog({ open, onClose, onRedeemed }: CourtesyRede
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
+      e.preventDefault();
       if (result?.success) {
         handleRedeem();
-      } else {
+      } else if (code.trim()) {
         validate();
       }
     }
