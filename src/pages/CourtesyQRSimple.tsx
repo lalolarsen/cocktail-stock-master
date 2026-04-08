@@ -13,13 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Plus,
@@ -31,6 +24,7 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  Search,
 } from "lucide-react";
 
 const SOCIOS = [
@@ -71,6 +65,7 @@ export default function CourtesyQRSimple() {
 
   // Create form
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState("");
   const [creating, setCreating] = useState(false);
@@ -105,25 +100,29 @@ export default function CourtesyQRSimple() {
     enabled: !!venue?.id,
   });
 
-  // Only show today's active + recent
   const todayQRs = useMemo(() => {
     const now = new Date();
     return qrs.map(qr =>
       qr.status === "active" && new Date(qr.expires_at) < now
         ? { ...qr, status: "expired" }
         : qr
-    ).filter(qr => {
-      // Show active first, then recent canjeados
-      if (qr.status === "active") return true;
-      // Show last 10 non-active
-      return true;
-    }).slice(0, 15);
+    ).slice(0, 15);
   }, [qrs]);
 
   const activeCount = todayQRs.filter(q => q.status === "active").length;
 
+  // Filtered cocktails for search
+  const filteredCocktails = useMemo(() => {
+    if (!productSearch.trim()) return cocktails;
+    const q = productSearch.toLowerCase();
+    return cocktails.filter(c => c.name.toLowerCase().includes(q));
+  }, [cocktails, productSearch]);
+
+  const selectedProduct = cocktails.find(c => c.id === selectedProductId);
+
   const resetForm = () => {
     setSelectedProductId("");
+    setProductSearch("");
     setQty(1);
     setNote("");
   };
@@ -173,9 +172,6 @@ export default function CourtesyQRSimple() {
     navigator.clipboard.writeText(code);
     toast.success("Código copiado");
   };
-
-  const fmtTime = (iso: string) =>
-    new Date(iso).toLocaleString("es-CL", { hour: "2-digit", minute: "2-digit" });
 
   const handlePrint = (qr: CourtesyQR) => {
     const qrEl = document.getElementById("courtesy-qr-svg-simple");
@@ -270,7 +266,7 @@ export default function CourtesyQRSimple() {
         </div>
       )}
 
-      {/* Simplified Create Dialog - Mobile optimized */}
+      {/* Create Dialog with product search */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-[95vw] sm:max-w-md rounded-2xl">
           <DialogHeader>
@@ -281,24 +277,56 @@ export default function CourtesyQRSimple() {
           </DialogHeader>
 
           <div className="space-y-5 mt-1">
-            {/* Product selector - big touch targets */}
+            {/* Product search + selection */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Producto</label>
-              <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue placeholder="Seleccionar…" />
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {cocktails.map(c => (
-                    <SelectItem key={c.id} value={c.id} className="text-base py-3">
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {selectedProduct ? (
+                <div className="flex items-center gap-2 p-3 rounded-xl border-2 border-primary bg-primary/5">
+                  <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                  <span className="font-semibold text-base flex-1">{selectedProduct.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-8"
+                    onClick={() => { setSelectedProductId(""); setProductSearch(""); }}
+                  >
+                    Cambiar
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar producto…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="h-12 text-base pl-10"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1 border rounded-xl p-1">
+                    {filteredCocktails.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Sin resultados</p>
+                    ) : (
+                      filteredCocktails.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setSelectedProductId(c.id); setProductSearch(""); }}
+                          className="w-full text-left p-3 rounded-lg hover:bg-accent active:scale-[0.98] transition-all text-base"
+                        >
+                          <span className="font-medium">{c.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{c.category}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Quantity - big stepper */}
+            {/* Quantity */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Cantidad</label>
               <div className="flex items-center gap-3">
@@ -365,7 +393,7 @@ export default function CourtesyQRSimple() {
         </DialogContent>
       </Dialog>
 
-      {/* View QR Dialog - big for mobile */}
+      {/* View QR Dialog */}
       <Dialog open={!!showQR} onOpenChange={() => setShowQR(null)}>
         <DialogContent className="max-w-[95vw] sm:max-w-sm rounded-2xl text-center">
           <DialogHeader>
