@@ -270,7 +270,7 @@ export function printRaw(
 
 // ── Sale documents coordinator ──
 
-function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
+export function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
     try {
       printJS({

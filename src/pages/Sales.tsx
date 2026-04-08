@@ -31,6 +31,8 @@ import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
 import { useAutoPrintReceipt } from "@/hooks/useAutoPrintReceipt";
 import type { ReceiptData } from "@/lib/printing/qz";
+import { buildCashierReceiptHtml, buildCashierReceiptCss, printOneDocument, getPreferredPaperWidthStorageKey } from "@/lib/printing/qz";
+import type { PaperWidth } from "@/lib/printing/qz";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
