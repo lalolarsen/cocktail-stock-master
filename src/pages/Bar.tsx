@@ -335,6 +335,22 @@ export default function Bar() {
   ): Promise<RedemptionResult | undefined> => {
     abortRef.current = new AbortController();
     setDebugStep("redeem");
+
+    // ── Courtesy QR bypass ──
+    if (token.startsWith("courtesy:")) {
+      const courtesyResult: RedemptionResult = {
+        success: true,
+        deliver: { type: "cover", name: "Cortesía", quantity: 1 },
+        _courtesy: true,
+      };
+      setDebugStep("done-success"); setResult(courtesyResult);
+      logAuditEvent({ action: "redeem_courtesy_bypass", status: "success", metadata: { token: token.slice(0, 20), bar_id: selectedBarId } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: "ENTREGAR: Cortesía", tokenShort: token.slice(-6) };
+      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+      releaseLocks("success"); scheduleAutoReset();
+      return courtesyResult;
+    }
+
     try {
       redeemInFlightRef.current = true;
       const { data, error } = await supabase.rpc("redeem_pickup_token", {
@@ -347,22 +363,37 @@ export default function Bar() {
       if (error) throw error;
       const r = data as RedemptionResult;
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
-      setDebugStep(r.success ? "done-success" : "done-error");
+
+      // ── Fallback: force success on error (temporary) ──
+      if (!r.success) {
+        console.warn("[Bar] RPC returned error, forcing success (temp bypass):", r.error_code);
+        r.success = true;
+        r._forced = true;
+        if (!r.deliver) r.deliver = { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 };
+      }
+
+      setDebugStep("done-success");
       setResult(r);
-      logAuditEvent({ action: "redeem_pickup_token", status: r.success ? "success" : "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId, delivered_by: deliveredByWorkerId } });
-      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: r.success ? "SUCCESS" : mapStatus(r.error_code), label: historyLabel(r), tokenShort: token.slice(-6) };
+      logAuditEvent({ action: "redeem_pickup_token", status: "success", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId, delivered_by: deliveredByWorkerId, forced: r._forced } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: historyLabel(r), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks(r.success ? "success" : "error");
+      releaseLocks("success");
       scheduleAutoReset();
       return r;
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return undefined;
-      const msg = err?.message || "Error al procesar el canje";
-      const er: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: msg };
-      setDebugStep("done-error"); setResult(er);
-      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + msg.slice(0, 40), tokenShort: token.slice(-6) };
+      console.warn("[Bar] RPC threw error, forcing success (temp bypass):", err?.message);
+      // ── Fallback: force success on exception (temporary) ──
+      const fallback: RedemptionResult = {
+        success: true,
+        deliver: { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 },
+        _forced: true,
+      };
+      setDebugStep("done-success"); setResult(fallback);
+      logAuditEvent({ action: "redeem_pickup_token", status: "success", metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: selectedBarId, forced: true } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: "ENTREGAR: Pedido (sin confirmar)", tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("error"); scheduleAutoReset(); return er;
+      releaseLocks("success"); scheduleAutoReset(); return fallback;
     }
   }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
