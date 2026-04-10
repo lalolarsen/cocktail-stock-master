@@ -54,6 +54,8 @@ type RedemptionResult = {
   message: string;
   deliver?: DeliverInfo;
   bar_location?: { id: string; name: string };
+  _courtesy?: boolean;
+  _forced?: boolean;
 };
 type BarLocation = { id: string; name: string; type: string };
 type ScanHistoryEntry = {
