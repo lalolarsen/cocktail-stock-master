@@ -51,7 +51,7 @@ type DeliverInfo = {
 type RedemptionResult = {
   success: boolean;
   error_code?: string;
-  message: string;
+  message?: string;
   deliver?: DeliverInfo;
   bar_location?: { id: string; name: string };
   _courtesy?: boolean;
