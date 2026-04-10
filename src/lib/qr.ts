@@ -17,6 +17,9 @@ export function parseQRToken(raw: string): { valid: boolean; token: string } {
     const m = trimmed.match(/\/r\/([a-f0-9]+)/i); if (m) token = m[1];
   } else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
     token = trimmed.substring(7);
+  } else if (trimmed.toUpperCase().startsWith("COURTESY:")) {
+    const code = trimmed.substring(9).trim();
+    if (code.length >= 4) return { valid: true, token: `courtesy:${code}` };
   } else {
     const m = trimmed.match(/[a-f0-9]{12,64}/i); if (m) token = m[0];
   }
