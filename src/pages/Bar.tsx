@@ -46,7 +46,7 @@ type DeliverInfo = {
   name?: string;
   quantity?: number;
   items?: DeliverItem[];
-  source: "sale" | "ticket";
+  source?: "sale" | "ticket";
 };
 type RedemptionResult = {
   success: boolean;
