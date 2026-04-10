@@ -696,9 +696,6 @@ export default function Sales() {
       const printerToUse = currentPos?.printer_name || savedPrinter;
       const shouldAutoPrint = (currentPos?.auto_print_enabled || !!savedPrinter) && !!printerToUse;
       
-      // For hybrid POS: always auto-print cashier receipt
-      const shouldForceHybridPrint = isHybridPOS && !shouldAutoPrint;
-
       if (shouldAutoPrint && printerToUse) {
         const receiptData: ReceiptData = {
           saleNumber,
@@ -729,26 +726,6 @@ export default function Sales() {
             action: { label: "Reintentar", onClick: () => reprintLast() },
           });
         });
-      } else if (shouldForceHybridPrint) {
-        // Hybrid POS fallback: print cashier receipt even without printer config
-        try {
-          const paperKey = getPreferredPaperWidthStorageKey(venue?.id, selectedPosId);
-          const paperWidth = (localStorage.getItem(paperKey) || "80mm") as PaperWidth;
-          const html = buildCashierReceiptHtml({
-            saleNumber,
-            venueName: venue?.name || "Venue",
-            posName: currentPos?.name || "POS",
-            dateTime: new Date().toLocaleString("es-CL"),
-            items: cartItemsForQR,
-            total: totalAmount,
-            paymentMethod: dbPaymentMethod,
-          }, paperWidth);
-          const css = buildCashierReceiptCss(paperWidth);
-          printOneDocument(html, css);
-          toast.success("Comprobante impreso", { duration: 2000 });
-        } catch (printErr) {
-          console.error("[Sales] hybrid fallback print error:", printErr);
-        }
       }
     } catch (error: any) {
       toast.error(error.message || "Error al procesar la venta");
@@ -1334,7 +1311,6 @@ export default function Sales() {
                 <HybridQRScannerPanel
                   barLocationId={selectedPosObj.bar_location_id}
                   barName={barNameForHeader}
-                  venueId={venue?.id || ""}
                 />
               )}
 

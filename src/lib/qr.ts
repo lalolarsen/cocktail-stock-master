@@ -2,23 +2,12 @@
  * Shared QR token parsing utility.
  * Used by both Bar.tsx (bar redemption) and HybridQRScannerPanel (hybrid POS).
  */
-export type QRTokenType = 'pickup' | 'courtesy';
-
-export function parseQRToken(raw: string): { valid: boolean; token: string; type: QRTokenType } {
+export function parseQRToken(raw: string): { valid: boolean; token: string } {
   const trimmed = raw.trim();
 
-  // 6-digit numeric short code (manual entry) → pickup
+  // 6-digit numeric short code (manual entry)
   if (/^\d{6}$/.test(trimmed)) {
-    return { valid: true, token: trimmed, type: 'pickup' };
-  }
-
-  // COURTESY: prefix → courtesy QR
-  if (trimmed.toUpperCase().startsWith("COURTESY:")) {
-    const code = trimmed.substring(9).trim();
-    if (code.length > 0) {
-      return { valid: true, token: code, type: 'courtesy' };
-    }
-    return { valid: false, token: "", type: 'courtesy' };
+    return { valid: true, token: trimmed };
   }
 
   let token = "";
@@ -33,6 +22,6 @@ export function parseQRToken(raw: string): { valid: boolean; token: string; type
   }
   token = token.toLowerCase();
   if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token))
-    return { valid: true, token, type: 'pickup' };
-  return { valid: false, token: "", type: 'pickup' };
+    return { valid: true, token };
+  return { valid: false, token: "" };
 }
