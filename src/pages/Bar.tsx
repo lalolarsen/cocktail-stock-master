@@ -795,6 +795,9 @@ export default function Bar() {
                 <h1 className="text-3xl font-black leading-tight">{delivery.name}</h1>
                 <p className="text-6xl font-black text-primary leading-none">×{delivery.quantity}</p>
                 {result.deliver?.source && <p className="text-sm text-muted-foreground">{getSourceLabel(result.deliver.source)}</p>}
+                {(result._forced || result._courtesy) && (
+                  <p className="text-xs text-amber-600 font-medium mt-1">⚠ {result._courtesy ? "Cortesía" : "Sin confirmar en sistema"}</p>
+                )}
                 {result.deliver?.type === "menu_items" && result.deliver.items && result.deliver.items.length > 1 && (
                   <div className="bg-muted rounded-xl p-3 text-left space-y-2 mt-2">
                     {result.deliver.items.map((item, i) => (
