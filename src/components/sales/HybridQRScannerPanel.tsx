@@ -201,6 +201,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       scanBufferRef.current = "";
       if (scannerInputRef.current) scannerInputRef.current.value = "";
       if (!raw || scanState !== "idle") return;
+      console.log("[HybridQR] raw scan:", JSON.stringify(raw));
       const parsed = parseQRToken(raw);
       if (!parsed.valid) return;
       processToken(parsed.token);

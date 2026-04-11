@@ -4,6 +4,7 @@
  */
 export function parseQRToken(raw: string): { valid: boolean; token: string } {
   const trimmed = raw.trim();
+  console.log("[parseQRToken] raw input:", JSON.stringify(trimmed));
 
   // 6-digit numeric short code (manual entry)
   if (/^\d{6}$/.test(trimmed)) {
@@ -17,11 +18,11 @@ export function parseQRToken(raw: string): { valid: boolean; token: string } {
     const m = trimmed.match(/\/r\/([a-f0-9]+)/i); if (m) token = m[1];
   } else if (trimmed.toUpperCase().startsWith("PICKUP:")) {
     token = trimmed.substring(7);
-  } else if (trimmed.toUpperCase().startsWith("COURTESY:")) {
-    const code = trimmed.substring(9).trim();
+  } else if (/^COURTESY[:\-\s;.]/i.test(trimmed) || trimmed.toUpperCase().startsWith("COURTESY")) {
+    const code = trimmed.replace(/^COURTESY[:\-\s;.]?/i, "").trim();
     if (code.length >= 4) return { valid: true, token: `courtesy:${code}` };
   } else {
-    const m = trimmed.match(/[a-f0-9]{12,64}/i); if (m) token = m[0];
+    const m = trimmed.match(/[a-f0-9]{8,64}/i); if (m) token = m[0];
   }
   token = token.toLowerCase();
   if (token.length >= 12 && token.length <= 64 && /^[a-f0-9]+$/.test(token))
