@@ -205,6 +205,8 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       }
       return;
     }
+
+    watchdogRef.current = setTimeout(() => resetToIdle({ clearDedup: true }), WATCHDOG_MS);
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
 
