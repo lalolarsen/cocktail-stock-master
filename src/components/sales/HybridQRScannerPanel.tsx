@@ -125,19 +125,86 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     // ── Courtesy QR bypass ──
     if (token.startsWith("courtesy:")) {
       clearTimers();
-      const courtesyResult: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Cortesía", quantity: 1 },
-      };
-      logAuditEvent({ action: "redeem_courtesy_bypass", status: "success", metadata: { token: token.slice(0, 20), bar_id: barLocationId, source: "hybrid_pos" } });
-      setResult(courtesyResult);
-      setScanState("success");
-      processingRef.current = false;
-      scheduleReset();
+      const courtesyCode = token.replace(/^courtesy:/i, "").trim().toLowerCase();
+      try {
+        // Look up the courtesy QR
+        const { data: qr, error: qrErr } = await supabase
+          .from("courtesy_qr")
+          .select("*")
+          .eq("code", courtesyCode)
+          .eq("venue_id", venue?.id ?? "")
+          .maybeSingle();
+
+        if (qrErr) throw qrErr;
+
+        if (!qr) {
+          setResult({ success: false, error_code: "TOKEN_NOT_FOUND", message: "QR cortesía no encontrado" });
+          setScanState("error");
+          processingRef.current = false;
+          scheduleReset();
+          return;
+        }
+
+        if (qr.status === "cancelled" || qr.status === "redeemed" || qr.status === "expired") {
+          const msgs: Record<string, string> = { cancelled: "QR cancelado", redeemed: "QR ya canjeado", expired: "QR expirado" };
+          setResult({ success: false, error_code: "ALREADY_REDEEMED", message: msgs[qr.status] || "QR no válido" });
+          setScanState("error");
+          processingRef.current = false;
+          scheduleReset();
+          return;
+        }
+
+        if (new Date(qr.expires_at) < new Date()) {
+          await supabase.from("courtesy_qr").update({ status: "expired" }).eq("id", qr.id);
+          setResult({ success: false, error_code: "TOKEN_EXPIRED", message: "QR cortesía expirado" });
+          setScanState("error");
+          processingRef.current = false;
+          scheduleReset();
+          return;
+        }
+
+        if (qr.used_count >= qr.max_uses) {
+          await supabase.from("courtesy_qr").update({ status: "redeemed" }).eq("id", qr.id);
+          setResult({ success: false, error_code: "ALREADY_REDEEMED", message: "QR ya alcanzó máximo de usos" });
+          setScanState("error");
+          processingRef.current = false;
+          scheduleReset();
+          return;
+        }
+
+        // Burn: increment used_count, update status
+        const newUsedCount = qr.used_count + 1;
+        const newStatus = newUsedCount >= qr.max_uses ? "redeemed" : "active";
+        await supabase.from("courtesy_qr").update({ used_count: newUsedCount, status: newStatus }).eq("id", qr.id);
+
+        // Record redemption
+        if (activeJornadaId && user?.id && venue?.id) {
+          await supabase.from("courtesy_redemptions").insert({
+            courtesy_id: qr.id,
+            jornada_id: activeJornadaId,
+            redeemed_by: user.id,
+            venue_id: venue.id,
+            result: "success",
+          });
+        }
+
+        const courtesyResult: RedemptionResult = {
+          success: true,
+          deliver: { type: "cover", name: `🎁 ${qr.product_name}`, quantity: qr.qty },
+        };
+        logAuditEvent({ action: "redeem_courtesy", status: "success", metadata: { code: courtesyCode.slice(0, 12), product: qr.product_name, qty: qr.qty, bar_id: barLocationId, source: "hybrid_pos" } });
+        setResult(courtesyResult);
+        setScanState("success");
+      } catch (err: any) {
+        console.error("[HybridQR] Courtesy redeem error:", err);
+        setResult({ success: false, error_code: "UNKNOWN", message: err?.message || "Error al canjear cortesía" });
+        setScanState("error");
+      } finally {
+        processingRef.current = false;
+        scheduleReset();
+      }
       return;
     }
-
-    watchdogRef.current = setTimeout(() => resetToIdle({ clearDedup: true }), WATCHDOG_MS);
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
 
