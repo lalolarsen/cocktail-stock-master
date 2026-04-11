@@ -59,6 +59,8 @@ function deliverSummary(result: RedemptionResult | null): string {
 }
 
 export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScannerPanelProps) {
+  const { user, activeJornadaId } = useAppSession();
+  const { venue } = useActiveVenue();
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
