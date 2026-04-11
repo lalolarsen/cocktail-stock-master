@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
-import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +25,17 @@ interface RedemptionResult {
     items?: DeliverItem[];
   };
   missing?: Array<{ product_name: string; required_qty: number; available_qty?: number; unit: string }>;
+}
+
+interface CourtesyRedemptionRpcResult extends RedemptionResult {
+  courtesy?: {
+    code?: string;
+    product_name?: string;
+    qty?: number;
+    used_count?: number;
+    max_uses?: number;
+    status?: string;
+  };
 }
 
 export interface HybridQRScannerPanelProps {
@@ -59,8 +69,7 @@ function deliverSummary(result: RedemptionResult | null): string {
 }
 
 export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScannerPanelProps) {
-  const { user, activeJornadaId } = useAppSession();
-  const { venue } = useActiveVenue();
+  const { activeJornadaId } = useAppSession();
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -122,81 +131,56 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     setScanState("processing");
     setResult(null);
 
-    // ── Courtesy QR bypass ──
+    // ── Courtesy QR redeem via backend RPC ──
     if (token.startsWith("courtesy:")) {
       clearTimers();
       const courtesyCode = token.replace(/^courtesy:/i, "").trim().toLowerCase();
       try {
-        // Look up the courtesy QR
-        const { data: qr, error: qrErr } = await supabase
-          .from("courtesy_qr")
-          .select("*")
-          .eq("code", courtesyCode)
-          .eq("venue_id", venue?.id ?? "")
-          .maybeSingle();
+        const { data, error } = await (supabase as any).rpc("redeem_courtesy_qr", {
+          p_code: courtesyCode,
+          p_jornada_id: activeJornadaId ?? null,
+        });
 
-        if (qrErr) throw qrErr;
+        if (error) throw error;
 
-        if (!qr) {
-          setResult({ success: false, error_code: "TOKEN_NOT_FOUND", message: "QR cortesía no encontrado" });
-          setScanState("error");
-          processingRef.current = false;
-          scheduleReset();
-          return;
-        }
+        const courtesyResult = (data ?? null) as CourtesyRedemptionRpcResult | null;
 
-        if (qr.status === "cancelled" || qr.status === "redeemed" || qr.status === "expired") {
-          const msgs: Record<string, string> = { cancelled: "QR cancelado", redeemed: "QR ya canjeado", expired: "QR expirado" };
-          setResult({ success: false, error_code: "ALREADY_REDEEMED", message: msgs[qr.status] || "QR no válido" });
-          setScanState("error");
-          processingRef.current = false;
-          scheduleReset();
-          return;
-        }
-
-        if (new Date(qr.expires_at) < new Date()) {
-          await supabase.from("courtesy_qr").update({ status: "expired" }).eq("id", qr.id);
-          setResult({ success: false, error_code: "TOKEN_EXPIRED", message: "QR cortesía expirado" });
-          setScanState("error");
-          processingRef.current = false;
-          scheduleReset();
-          return;
-        }
-
-        if (qr.used_count >= qr.max_uses) {
-          await supabase.from("courtesy_qr").update({ status: "redeemed" }).eq("id", qr.id);
-          setResult({ success: false, error_code: "ALREADY_REDEEMED", message: "QR ya alcanzó máximo de usos" });
-          setScanState("error");
-          processingRef.current = false;
-          scheduleReset();
-          return;
-        }
-
-        // Burn: increment used_count, update status
-        const newUsedCount = qr.used_count + 1;
-        const newStatus = newUsedCount >= qr.max_uses ? "redeemed" : "active";
-        await supabase.from("courtesy_qr").update({ used_count: newUsedCount, status: newStatus }).eq("id", qr.id);
-
-        // Record redemption
-        if (activeJornadaId && user?.id && venue?.id) {
-          await supabase.from("courtesy_redemptions").insert({
-            courtesy_id: qr.id,
-            jornada_id: activeJornadaId,
-            redeemed_by: user.id,
-            venue_id: venue.id,
-            result: "success",
+        if (!courtesyResult?.success) {
+          logAuditEvent({
+            action: "redeem_courtesy",
+            status: "fail",
+            metadata: {
+              code: courtesyCode.slice(0, 12),
+              error_code: courtesyResult?.error_code,
+              bar_id: barLocationId,
+              source: "hybrid_pos",
+            },
           });
+          setResult({
+            success: false,
+            error_code: courtesyResult?.error_code ?? "TOKEN_NOT_FOUND",
+            message: courtesyResult?.message || "Error al canjear cortesía",
+          });
+          setScanState("error");
+          return;
         }
 
-        const courtesyResult: RedemptionResult = {
-          success: true,
-          deliver: { type: "cover", name: `🎁 ${qr.product_name}`, quantity: qr.qty },
-        };
-        logAuditEvent({ action: "redeem_courtesy", status: "success", metadata: { code: courtesyCode.slice(0, 12), product: qr.product_name, qty: qr.qty, bar_id: barLocationId, source: "hybrid_pos" } });
+        logAuditEvent({
+          action: "redeem_courtesy",
+          status: "success",
+          metadata: {
+            code: courtesyCode.slice(0, 12),
+            product: courtesyResult.courtesy?.product_name,
+            qty: courtesyResult.courtesy?.qty,
+            bar_id: barLocationId,
+            source: "hybrid_pos",
+          },
+        });
         setResult(courtesyResult);
         setScanState("success");
       } catch (err: any) {
         console.error("[HybridQR] Courtesy redeem error:", err);
+        logAuditEvent({ action: "redeem_courtesy", status: "fail", metadata: { code: courtesyCode.slice(0, 12), error: err?.message, bar_id: barLocationId, source: "hybrid_pos" } });
         setResult({ success: false, error_code: "UNKNOWN", message: err?.message || "Error al canjear cortesía" });
         setScanState("error");
       } finally {
@@ -266,7 +250,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       processingRef.current = false;
       abortRef.current = null;
     }
-  }, [barLocationId, clearTimers, resetToIdle, scheduleReset]);
+  }, [activeJornadaId, barLocationId, clearTimers, resetToIdle, scheduleReset]);
 
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
