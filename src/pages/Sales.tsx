@@ -1348,19 +1348,21 @@ export default function Sales() {
                               <p className="text-[10px] text-muted-foreground/60">{formatTime(sale.created_at)}</p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 gap-1"
-                                onClick={() => viewSaleQR(sale)}
-                                title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
-                              >
-                                <QrCode className="w-3 h-3" />
-                                <span className="text-[9px]">
-                                  {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
-                                </span>
-                                {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
-                              </Button>
+                              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 gap-1"
+                                  onClick={() => viewSaleQR(sale)}
+                                  title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
+                                >
+                                  <QrCode className="w-3 h-3" />
+                                  <span className="text-[9px]">
+                                    {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
+                                  </span>
+                                  {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
