@@ -5921,6 +5921,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      redeem_courtesy_qr: {
+        Args: { p_code: string; p_jornada_id?: string }
+        Returns: Json
+      }
       redeem_pickup_token: {
         Args: {
           p_bartender_bar_id?: string
