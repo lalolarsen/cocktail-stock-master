@@ -54,7 +54,7 @@ export async function fetchAllByIds<T = any>(
   const results = await Promise.all(
     batches.map(async (batch) => {
       return fetchAllRows<T>(() =>
-        supabase.from(table).select(selectStr).in(column, batch)
+        (supabase.from(table as any) as any).select(selectStr).in(column, batch)
       );
     })
   );

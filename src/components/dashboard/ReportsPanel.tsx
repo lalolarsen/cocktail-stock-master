@@ -150,9 +150,7 @@ export function ReportsPanel() {
           .select("id, full_name, email"),
       ]);
 
-      if (salesRes.error) throw salesRes.error;
-
-      const salesData = salesRes.data || [];
+      const salesData = allSalesData as any[];
       const financialMap = new Map<string, FinancialSnap>();
       (financialRes.data || []).forEach((f: Record<string, unknown>) => {
         financialMap.set(f.jornada_id as string, f as unknown as FinancialSnap);
