@@ -1,31 +1,56 @@
 
 
-# Plan: Fix QR cortesía no reconocido por scanner híbrido
+# Plan: Eliminar límite de 1000 ventas + optimizar carga de Analytics
 
-## Diagnóstico
+## Problema
 
-El QR de cortesía genera el valor `COURTESY:2b9ecb2df26d`. El parser `parseQRToken` tiene la lógica correcta para el prefijo `COURTESY:`, PERO hay dos problemas potenciales:
+1. **Reportes incompletos**: Supabase retorna máximo 1000 filas por query. Los queries de ventas en `ReportsPanel`, `AnalyticsPanel` y `useFinanceMTD` no pagina más allá de 1000, perdiendo datos de jornadas con alto volumen.
 
-1. **Teclado HID y colon (`:`)**: Los scanners Bluetooth en modo HID envían teclas según layout US. Si el sistema operativo tiene layout español, el `:` puede llegar como otro carácter (ej. `Ñ`, `.`, etc.), haciendo que el prefijo `COURTESY:` no se reconozca.
-
-2. **Si el prefijo falla, el fallback hex SÍ debería capturar** el código `2b9ecb2df26d` (12 chars hex) y tratarlo como pickup token → RPC falla → bypass lo marca como éxito. PERO si el scanner envía caracteres extra o el prefijo se concatena sin separador legible, el regex puede no encontrar 12+ hex chars contiguos.
+2. **Analytics lento**: `AnalyticsPanel` hace queries secuenciales (ventas → luego sale_items en batches) creando un waterfall lento.
 
 ## Solución
 
-### `src/lib/qr.ts` — Parser más robusto
+### Utilidad compartida: `fetchAllRows`
 
-- Aceptar `COURTESY` sin colon (o con cualquier separador): usar regex `/^COURTESY[:\-\s]?(.+)$/i`
-- Bajar el mínimo de hex en el fallback de 12 a 8 chars para capturar códigos más cortos
-- Agregar `console.log` temporal del raw input para debugging en producción
+Crear helper en `src/lib/supabase-batch.ts` que pagine automáticamente cualquier query Supabase en bloques de 1000, acumulando todos los resultados:
 
-### `src/components/sales/HybridQRScannerPanel.tsx` — Log del scan raw
+```typescript
+async function fetchAllRows<T>(queryBuilder, pageSize = 1000): Promise<T[]> {
+  let all: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data } = await queryBuilder.range(from, from + pageSize - 1);
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+```
 
-- Agregar `console.log("[HybridQR] raw scan:", raw)` antes de parsear, para que si sigue fallando se pueda ver qué llega exactamente del scanner
-
-## Archivos
+### Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/lib/qr.ts` | Regex más flexible para COURTESY, bajar mínimo hex a 8 |
-| `src/components/sales/HybridQRScannerPanel.tsx` | Log del raw scan para debugging |
+| `src/lib/supabase-batch.ts` | **Nuevo** — helper `fetchAllRows` reutilizable |
+| `src/components/dashboard/ReportsPanel.tsx` | Línea 135-139: paginar ventas por jornada con `fetchAllRows` en vez de query simple |
+| `src/components/dashboard/AnalyticsPanel.tsx` | Línea 107-115: paginar ventas con `fetchAllRows`; paralelizar sale_items batches con `Promise.all` en vez de loop secuencial |
+| `src/hooks/useFinanceMTD.ts` | Líneas 173-191: paginar queries de ventas y sale_items con `fetchAllRows` |
+
+### Detalle por archivo
+
+**ReportsPanel** — El query de ventas (línea 136-139) `.in("jornada_id", jornadaIds)` se reemplaza por paginación automática. Si hay más de 1000 ventas en el mes, se traen todas.
+
+**AnalyticsPanel** — Dos mejoras:
+1. Ventas: paginar con `fetchAllRows` para traer mes completo
+2. Sale items: cambiar loop `for` secuencial (líneas 147-155) por `Promise.all` de todos los batches en paralelo → reduce latencia significativamente
+
+**useFinanceMTD** — Paginar las queries de ventas (líneas 173-181, 186-191) y sale_items (línea 240-243) para no perder datos.
+
+## Lo que NO se toca
+
+- Schema / DB / RPC
+- Lógica de cálculo de métricas
+- UI de los paneles (solo se cambia la capa de fetching)
 
