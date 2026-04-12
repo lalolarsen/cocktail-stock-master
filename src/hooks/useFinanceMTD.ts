@@ -170,26 +170,30 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
-        // Sales
-        supabase
-          .from("sales")
-          .select("total_amount, net_amount, iva_debit_amount")
-          .eq("venue_id", venueId)
-          .eq("payment_status", "paid")
-          .eq("is_cancelled", false)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
+      const [salesRows, cogsSaleIds, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
+        // Sales — paginated
+        fetchAllRows(() =>
+          supabase
+            .from("sales")
+            .select("total_amount, net_amount, iva_debit_amount")
+            .eq("venue_id", venueId)
+            .eq("payment_status", "paid")
+            .eq("is_cancelled", false)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        ),
 
-        // COGS — sales-based: get sale_items + recipes
-        supabase
-          .from("sales")
-          .select("id")
-          .eq("venue_id", venueId)
-          .eq("payment_status", "paid")
-          .eq("is_cancelled", false)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
+        // COGS — sales IDs, paginated
+        fetchAllRows<{ id: string }>(() =>
+          supabase
+            .from("sales")
+            .select("id")
+            .eq("venue_id", venueId)
+            .eq("payment_status", "paid")
+            .eq("is_cancelled", false)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        ).then(rows => rows.map(s => s.id)),
 
         // OPEX (manual expenses)
         supabase
