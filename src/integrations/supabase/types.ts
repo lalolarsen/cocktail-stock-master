@@ -5921,15 +5921,21 @@ export type Database = {
         }
         Returns: undefined
       }
-      redeem_pickup_token: {
-        Args: {
-          p_bartender_bar_id?: string
-          p_delivered_by_worker_id?: string
-          p_mixer_overrides?: Json
-          p_token: string
-        }
+      redeem_courtesy_qr: {
+        Args: { p_code: string; p_jornada_id?: string }
         Returns: Json
       }
+      redeem_pickup_token:
+        | { Args: { p_token: string }; Returns: Json }
+        | {
+            Args: {
+              p_bartender_bar_id?: string
+              p_delivered_by_worker_id?: string
+              p_mixer_overrides?: Json
+              p_token: string
+            }
+            Returns: Json
+          }
       request_sale_void: {
         Args: { p_notes?: string; p_reason: string; p_sale_id: string }
         Returns: string
