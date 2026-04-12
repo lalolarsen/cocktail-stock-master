@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-batch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -105,15 +106,17 @@ export function AnalyticsPanel() {
     const to = endOfMonth(new Date(year, month - 1)).toISOString();
 
     const [salesRes, posRes, jornadaRes, courtesyRes] = await Promise.all([
-      supabase
-        .from("sales")
-        .select("id, total_amount, net_amount, payment_method, pos_id, created_at, jornada_id")
-        .eq("venue_id", venueId)
-        .eq("payment_status", "paid")
-        .eq("is_cancelled", false)
-        .gte("created_at", from)
-        .lte("created_at", to)
-        .order("created_at", { ascending: false }),
+      fetchAllRows(() =>
+        supabase
+          .from("sales")
+          .select("id, total_amount, net_amount, payment_method, pos_id, created_at, jornada_id")
+          .eq("venue_id", venueId)
+          .eq("payment_status", "paid")
+          .eq("is_cancelled", false)
+          .gte("created_at", from)
+          .lte("created_at", to)
+          .order("created_at", { ascending: false })
+      ),
       supabase
         .from("pos_terminals")
         .select("id, name")
