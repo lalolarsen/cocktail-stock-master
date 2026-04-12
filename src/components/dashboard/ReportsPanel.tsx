@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllByIds } from "@/lib/supabase-batch";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -132,11 +133,13 @@ export function ReportsPanel() {
 
       const jornadaIds = jornadasData.map((j) => j.id);
 
-      const [salesRes, financialRes, profilesRes] = await Promise.all([
-        supabase
-          .from("sales")
-          .select("id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id")
-          .in("jornada_id", jornadaIds),
+      const [allSalesData, financialRes, profilesRes] = await Promise.all([
+        fetchAllByIds(
+          "sales",
+          "jornada_id",
+          jornadaIds,
+          "id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id"
+        ),
         supabase
           .from("jornada_financial_summary")
           .select("jornada_id, gross_sales_total, net_sales_total, expenses_total, net_operational_result, cogs_total, gross_margin_pct, cash_difference, tokens_pending_count")
