@@ -378,12 +378,14 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       let courtesyCogs = 0;
       if (courtesySales && courtesySales.length > 0) {
         const courtesySaleIds = courtesySales.map((s) => s.id);
-        const { data: courtesySaleItems } = await supabase
-          .from("sale_items")
-          .select("quantity, cocktail_id")
-          .in("sale_id", courtesySaleIds.slice(0, 200));
+        const courtesySaleItems = await fetchAllByIds(
+          "sale_items",
+          "sale_id",
+          courtesySaleIds,
+          "quantity, cocktail_id"
+        );
 
-        if (courtesySaleItems && courtesySaleItems.length > 0) {
+        if (courtesySaleItems.length > 0) {
           const cCocktailQty = new Map<string, number>();
           for (const si of courtesySaleItems) {
             if (!si.cocktail_id) continue;
