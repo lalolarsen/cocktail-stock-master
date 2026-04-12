@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllByIds } from "@/lib/supabase-batch";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -190,25 +191,29 @@ export function JornadaManagement() {
 
   const fetchJornadaStats = async (jornadaIds: string[]) => {
     try {
-      const { data: salesData } = await supabase
-        .from("sales")
-        .select("id, jornada_id, total_amount, is_cancelled, sale_items(quantity)")
-        .in("jornada_id", jornadaIds)
-        .eq("is_cancelled", false);
-
-      const { data: loginData } = await supabase
-        .from("login_history")
-        .select("jornada_id")
-        .in("jornada_id", jornadaIds);
+      const [salesData, loginData] = await Promise.all([
+        fetchAllByIds(
+          "sales",
+          "jornada_id",
+          jornadaIds,
+          "id, jornada_id, total_amount, is_cancelled, sale_items(quantity)"
+        ).then((rows: any[]) => rows.filter((s: any) => !s.is_cancelled)),
+        fetchAllByIds(
+          "login_history",
+          "jornada_id",
+          jornadaIds,
+          "jornada_id"
+        ),
+      ]);
 
       const stats: Record<string, JornadaStats> = {};
       jornadaIds.forEach(id => {
-        const jornadaSales = salesData?.filter(s => s.jornada_id === id) || [];
-        const jornadaLogins = loginData?.filter(l => l.jornada_id === id) || [];
+        const jornadaSales = salesData.filter((s: any) => s.jornada_id === id);
+        const jornadaLogins = loginData.filter((l: any) => l.jornada_id === id);
         stats[id] = {
-          total_ventas: jornadaSales.reduce((sum, s) => sum + Number(s.total_amount), 0),
+          total_ventas: jornadaSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0),
           cantidad_ventas: jornadaSales.length,
-          productos_vendidos: jornadaSales.reduce((sum, s) => 
+          productos_vendidos: jornadaSales.reduce((sum: number, s: any) => 
             sum + (s.sale_items?.reduce((itemSum: number, item: { quantity: number }) => itemSum + item.quantity, 0) || 0), 0),
           logins: jornadaLogins.length,
         };
