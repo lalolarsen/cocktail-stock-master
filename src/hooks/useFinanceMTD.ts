@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-batch";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { toast } from "sonner";
 
@@ -169,26 +170,30 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRes, cogsRes, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
-        // Sales
-        supabase
-          .from("sales")
-          .select("total_amount, net_amount, iva_debit_amount")
-          .eq("venue_id", venueId)
-          .eq("payment_status", "paid")
-          .eq("is_cancelled", false)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
+      const [salesRows, cogsSaleIds, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
+        // Sales — paginated
+        fetchAllRows(() =>
+          supabase
+            .from("sales")
+            .select("total_amount, net_amount, iva_debit_amount")
+            .eq("venue_id", venueId)
+            .eq("payment_status", "paid")
+            .eq("is_cancelled", false)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        ),
 
-        // COGS — sales-based: get sale_items + recipes
-        supabase
-          .from("sales")
-          .select("id")
-          .eq("venue_id", venueId)
-          .eq("payment_status", "paid")
-          .eq("is_cancelled", false)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
+        // COGS — sales IDs, paginated
+        fetchAllRows<{ id: string }>(() =>
+          supabase
+            .from("sales")
+            .select("id")
+            .eq("venue_id", venueId)
+            .eq("payment_status", "paid")
+            .eq("is_cancelled", false)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        ).then(rows => rows.map(s => s.id)),
 
         // OPEX (manual expenses)
         supabase
@@ -217,10 +222,9 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
           .lte("session_date", end),
       ]);
 
-      // ── Sales ──
-      const salesRows = salesRes.data || [];
+      // ── Sales ── (salesRows already fetched via fetchAllRows)
       let gross = 0, net = 0, ivaD = 0;
-      for (const r of salesRows) {
+      for (const r of salesRows as any[]) {
         const total = Math.abs(Number(r.total_amount || 0));
         const netVal = r.net_amount != null ? Math.abs(Number(r.net_amount)) : Math.round(total / 1.19);
         const ivaVal = r.iva_debit_amount != null ? Math.abs(Number(r.iva_debit_amount)) : total - netVal;
@@ -234,13 +238,14 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
 
       // ── COGS (sales-based: sale_items × recipes × CPP) ──
       let cogs = 0;
-      const cogsSaleIds = (cogsRes.data || []).map((s: any) => s.id);
       if (cogsSaleIds.length > 0) {
-        // Get sale items with cocktail references
-        const { data: saleItems } = await supabase
-          .from("sale_items")
-          .select("quantity, cocktail_id")
-          .in("sale_id", cogsSaleIds);
+        // Get sale items with cocktail references — paginated
+        const saleItems = await fetchAllByIds(
+          "sale_items",
+          "sale_id",
+          cogsSaleIds,
+          "quantity, cocktail_id"
+        );
 
         if (saleItems && saleItems.length > 0) {
           // Aggregate qty per cocktail
@@ -373,12 +378,14 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
       let courtesyCogs = 0;
       if (courtesySales && courtesySales.length > 0) {
         const courtesySaleIds = courtesySales.map((s) => s.id);
-        const { data: courtesySaleItems } = await supabase
-          .from("sale_items")
-          .select("quantity, cocktail_id")
-          .in("sale_id", courtesySaleIds.slice(0, 200));
+        const courtesySaleItems = await fetchAllByIds(
+          "sale_items",
+          "sale_id",
+          courtesySaleIds,
+          "quantity, cocktail_id"
+        );
 
-        if (courtesySaleItems && courtesySaleItems.length > 0) {
+        if (courtesySaleItems.length > 0) {
           const cCocktailQty = new Map<string, number>();
           for (const si of courtesySaleItems) {
             if (!si.cocktail_id) continue;
