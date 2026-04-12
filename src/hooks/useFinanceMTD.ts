@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-batch";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { toast } from "sonner";
 

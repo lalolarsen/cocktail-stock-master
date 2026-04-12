@@ -137,25 +137,20 @@ export function AnalyticsPanel() {
         .lte("created_at", to),
     ]);
 
-    const salesData = (salesRes.data || []) as SaleRow[];
+    const salesData = (salesRes || []) as SaleRow[];
     setSales(salesData);
     setPosTerminals((posRes.data || []) as POSTerminal[]);
     setJornadaCount(jornadaRes.count || 0);
 
-    // Sale items
+    // Sale items — parallel batches
     if (salesData.length > 0) {
       const saleIds = salesData.map((s) => s.id);
-      const allItems: SaleItemRow[] = [];
-      const BATCH = 500;
-      for (let i = 0; i < saleIds.length; i += BATCH) {
-        const batch = saleIds.slice(i, i + BATCH);
-        const { data: items } = await supabase
-          .from("sale_items")
-          .select("quantity, unit_price, cocktail_id, cocktails(name, category)")
-          .in("sale_id", batch)
-          .limit(5000);
-        if (items) allItems.push(...(items as unknown as SaleItemRow[]));
-      }
+      const allItems = await fetchAllByIds<SaleItemRow>(
+        "sale_items",
+        "sale_id",
+        saleIds,
+        "quantity, unit_price, cocktail_id, cocktails(name, category)"
+      );
       setSaleItems(allItems);
     } else {
       setSaleItems([]);
