@@ -10,6 +10,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { ExcelUpload } from "./ExcelUpload";
+import { EditableBatchPreview } from "./EditableBatchPreview";
 import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
@@ -102,6 +103,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [allProducts, setAllProducts] = useState<{ id: string; name: string; code: string | null; capacity_ml: number | null }[]>([]);
 
   const loadDashboard = useCallback(async () => {
     if (!venue?.id) return;
@@ -174,14 +176,20 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const openBatchDetail = async (batch: PendingBatch) => {
     setSelectedBatch(batch);
     setLoadingRows(true);
-    const { data } = await supabase
-      .from("stock_import_rows")
-      .select("*")
-      .eq("batch_id", batch.id)
-      .order("row_index");
+
+    const [rowsRes, prodsRes] = await Promise.all([
+      supabase.from("stock_import_rows").select("*").eq("batch_id", batch.id).order("row_index"),
+      allProducts.length > 0
+        ? Promise.resolve({ data: null })
+        : supabase.from("products").select("id, name, code, capacity_ml").eq("venue_id", venue!.id),
+    ]);
+
+    if (prodsRes.data) {
+      setAllProducts(prodsRes.data.map((p: any) => ({ id: p.id, name: p.name, code: p.code, capacity_ml: p.capacity_ml })));
+    }
 
     setBatchRows(
-      (data || []).map((r: any) => ({
+      (rowsRes.data || []).map((r: any) => ({
         id: r.id, row_index: r.row_index, product_id: r.product_id,
         product_name_excel: r.product_name_excel, product_name_matched: r.product_name_matched,
         match_confidence: r.match_confidence, tipo_consumo: r.tipo_consumo,
@@ -245,6 +253,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         raw_text: r.product_name_excel!.toLowerCase().trim(),
         product_id: r.product_id!,
         venue_id: venueId,
+        wasManualCorrection: r.match_confidence === "alta" && r.product_name_matched !== r.product_name_excel,
       }));
 
     // Deduplicate by raw_text
@@ -261,12 +270,13 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         .maybeSingle();
 
       if (existing) {
+        const baseConf = m.wasManualCorrection ? 0.95 : 0.7;
         await supabase
           .from("learning_product_mappings")
           .update({
             product_id: m.product_id,
             times_used: (existing.times_used || 0) + 1,
-            confidence: Math.min(1, 0.7 + (existing.times_used || 0) * 0.05),
+            confidence: Math.min(1, baseConf + (existing.times_used || 0) * 0.05),
             last_used_at: new Date().toISOString(),
           })
           .eq("id", existing.id);
@@ -277,7 +287,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             raw_text: m.raw_text,
             product_id: m.product_id,
             venue_id: venueId,
-            confidence: 0.7,
+            confidence: m.wasManualCorrection ? 0.95 : 0.7,
             times_used: 1,
           });
       }
@@ -535,12 +545,6 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const pending = pendingBatches.filter((b) => b.status === "pendiente_aprobacion");
   const history = pendingBatches.filter((b) => b.status !== "pendiente_aprobacion");
 
-  const confidenceColor = (c: string | null) => {
-    if (c === "alta") return "text-emerald-600";
-    if (c === "media") return "text-amber-600";
-    if (c === "baja") return "text-orange-600";
-    return "text-destructive";
-  };
 
   return (
     <div className="space-y-6">
@@ -753,45 +757,12 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             {loadingRows ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50 border-b sticky top-0">
-                    <tr>
-                      <th className="py-2 px-2 text-left font-medium">#</th>
-                      <th className="py-2 px-2 text-left font-medium">Producto Excel</th>
-                      <th className="py-2 px-2 text-left font-medium">Match</th>
-                      <th className="py-2 px-2 text-left font-medium">Confianza</th>
-                      <th className="py-2 px-2 text-left font-medium">Tipo</th>
-                      <th className="py-2 px-2 text-right font-medium">Cantidad</th>
-                      <th className="py-2 px-2 text-right font-medium">Costo</th>
-                      <th className="py-2 px-2 text-left font-medium">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {batchRows.map((r) => (
-                      <tr key={r.id} className={`border-b ${!r.is_valid ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
-                        <td className="py-1.5 px-2 text-muted-foreground">{r.row_index}</td>
-                        <td className="py-1.5 px-2 max-w-[140px] truncate">{r.product_name_excel || "—"}</td>
-                        <td className="py-1.5 px-2 max-w-[140px] truncate">{r.product_name_matched || <span className="text-destructive">—</span>}</td>
-                        <td className="py-1.5 px-2">
-                          <span className={`text-[10px] font-medium ${confidenceColor(r.match_confidence)}`}>
-                            {r.match_confidence || "—"}
-                          </span>
-                        </td>
-                        <td className="py-1.5 px-2"><Badge variant="outline" className="text-[10px]">{r.tipo_consumo || "—"}</Badge></td>
-                        <td className="py-1.5 px-2 text-right font-medium">{r.quantity ?? "—"}</td>
-                        <td className="py-1.5 px-2 text-right">{r.unit_cost ? formatCLP(r.unit_cost) : "—"}</td>
-                        <td className="py-1.5 px-2">
-                          {r.is_valid
-                            ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            : <span className="text-[10px] text-destructive">{(r.errors || [])[0] || "Error"}</span>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <EditableBatchPreview
+                rows={batchRows}
+                batchType={selectedBatch?.batch_type || "COMPRA"}
+                products={allProducts}
+                onRowsChange={setBatchRows}
+              />
             )}
           </ScrollArea>
 
@@ -800,11 +771,11 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
               <Button variant="outline" onClick={handleReject} disabled={approving}>
                 <XCircle className="mr-2 h-4 w-4" />Rechazar
               </Button>
-              <Button onClick={handleApprove} disabled={approving || (selectedBatch?.valid_count || 0) === 0} className="primary-gradient">
+              <Button onClick={handleApprove} disabled={approving || batchRows.filter(r => r.is_valid).length === 0} className="primary-gradient">
                 {approving ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
                 ) : (
-                  <><CheckCircle2 className="mr-2 h-4 w-4" />Aprobar ({selectedBatch?.valid_count} filas)</>
+                  <><CheckCircle2 className="mr-2 h-4 w-4" />Aprobar ({batchRows.filter(r => r.is_valid).length} filas)</>
                 )}
               </Button>
             </DialogFooter>
