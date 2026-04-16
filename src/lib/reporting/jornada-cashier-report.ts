@@ -4,6 +4,7 @@
  */
 import jsPDF from "jspdf";
 import { formatCLP } from "@/lib/currency";
+import { calculateCommission, STOCKIA_COMMISSION_RATE } from "@/lib/commission";
 
 export interface CashierReportData {
   venueName: string;
@@ -85,6 +86,15 @@ export function downloadCashierReport(data: CashierReportData): void {
   y += lh;
   doc.setFontSize(9);
   doc.text(`${data.grandCount} ventas`, rightX, y, { align: "right" });
+  y += lh + 2;
+
+  // Comisión STOCKIA (informativa, no descuenta del efectivo a entregar)
+  const commission = calculateCommission(data.grandTotal);
+  const ratePct = (STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "");
+  doc.setFont("courier", "normal");
+  doc.setFontSize(9);
+  doc.text(`Comisión STOCKIA (${ratePct}%)`, pad, y);
+  doc.text(formatCLP(commission), rightX, y, { align: "right" });
   y += lh + 1;
 
   doc.setFontSize(8);

@@ -3,6 +3,7 @@
  * and payment method. Uses the same 80mm receipt styling as QR tickets.
  */
 import printJS from "print-js";
+import { calculateCommission, STOCKIA_COMMISSION_RATE } from "@/lib/commission";
 
 interface POSSalesData {
   jornadaNumber: number;
@@ -90,6 +91,14 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="sep">${dash}</div>
       <div class="total-line">TOTAL: ${fmt(data.grandTotal)}</div>
       <div class="meta">${data.grandCount} ventas</div>
+      <div class="sep">${dash}</div>
+      <table class="items"><tbody>
+        <tr>
+          <td class="item-name"><strong>Comisión STOCKIA (${(STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "")}%)</strong></td>
+          <td class="item-price"><strong>${fmt(calculateCommission(data.grandTotal))}</strong></td>
+        </tr>
+      </tbody></table>
+      <div class="meta" style="font-size:8pt;">Informativo · no afecta caja</div>
       <div class="sep">${sep}</div>
       <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
     </div>

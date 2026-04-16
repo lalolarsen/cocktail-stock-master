@@ -11,6 +11,7 @@
 import printJS from "print-js";
 import { generateQRSvgString } from "./qr-svg";
 import type { PaperWidth } from "./qz";
+import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
 
 const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
 
@@ -64,6 +65,7 @@ function buildCss(paperWidth: PaperWidth): string {
     .ticket-name { text-align: center; font-size: 14pt; font-weight: bold; margin: 4px 0; }
     .ticket-correlative { text-align: center; font-size: 12pt; margin-bottom: 6px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -105,6 +107,7 @@ function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
       <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
       <div class="payment">Pago: ${paymentLabel}</div>
       <div class="footer">Gracias por tu compra</div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
@@ -138,6 +141,7 @@ function buildEntryHtml(
           Presenta este QR en el acceso
         </div>
       </div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
@@ -166,6 +170,7 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
           Presenta este QR o dicta el código en la barra
         </div>
       </div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
