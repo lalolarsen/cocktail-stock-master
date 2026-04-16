@@ -366,12 +366,15 @@ export default function Bar() {
       const r = data as RedemptionResult;
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
 
-      // ── Fallback: force success on error (temporary) ──
+      // RPC now never fails for stock — handle genuine errors normally
       if (!r.success) {
-        console.warn("[Bar] RPC returned error, forcing success (temp bypass):", r.error_code);
-        r.success = true;
-        r._forced = true;
-        if (!r.deliver) r.deliver = { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 };
+        setDebugStep("done-error");
+        setResult(r);
+        logAuditEvent({ action: "redeem_pickup_token", status: "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: r.error_code || "ERROR", tokenShort: token.slice(-6) };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset();
+        return r;
       }
 
       setDebugStep("done-success");
@@ -384,18 +387,13 @@ export default function Bar() {
       return r;
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return undefined;
-      console.warn("[Bar] RPC threw error, forcing success (temp bypass):", err?.message);
-      // ── Fallback: force success on exception (temporary) ──
-      const fallback: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 },
-        _forced: true,
-      };
-      setDebugStep("done-success"); setResult(fallback);
-      logAuditEvent({ action: "redeem_pickup_token", status: "success", metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: selectedBarId, forced: true } });
-      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: "ENTREGAR: Pedido (sin confirmar)", tokenShort: token.slice(-6) };
+      console.error("[Bar] RPC threw error:", err?.message);
+      const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión" };
+      setDebugStep("done-error"); setResult(errorResult);
+      logAuditEvent({ action: "redeem_pickup_token", status: "fail", metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: selectedBarId } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + (err?.message || "").slice(0, 40), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("success"); scheduleAutoReset(); return fallback;
+      releaseLocks("error"); scheduleAutoReset(); return errorResult;
     }
   }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
@@ -403,35 +401,17 @@ export default function Bar() {
   const resolveDeliveredByAndRedeem = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    bottleChecks?: BottleCheckResult[],
   ) => {
     const bartenders = getActiveBartenders();
     if (bartenders.length <= 1) {
-      // Auto-assign: single bartender or none
       const workerId = bartenders[0]?.id || null;
-      if (bottleChecks?.length) {
-        const r = await redeemToken(token, mixerOverrides, workerId);
-        if (r?.success === true) {
-          for (const c of bottleChecks) {
-            if (c.required_ml <= 0) continue;
-            try {
-              await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-            } catch (e: any) {
-              console.error("[Bar] Bottle deduction non-blocking:", e);
-              toast.warning("Canje OK, pero no se pudo registrar consumo de botella.");
-            }
-          }
-        }
-      } else {
-        await redeemToken(token, mixerOverrides, workerId);
-      }
+      await redeemToken(token, mixerOverrides, workerId);
     } else {
-      // Multiple bartenders: show picker
       setPendingDeliveredBy({ token, mixerOverrides });
       if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       setScanState("delivered_by_selection");
     }
-  }, [getActiveBartenders, redeemToken, openBottlesHook, currentUserId]);
+  }, [getActiveBartenders, redeemToken]);
 
   // ── Handle delivered-by selection ──────────────────────────────────────────
   const handleDeliveredBySelect = useCallback(async (workerId: string) => {
@@ -517,8 +497,7 @@ export default function Bar() {
       }
 
       setDebugStep("redeem");
-      const forDeduction: BottleCheckResult[] = ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml, available_ml: i.required_ml, sufficient: true, open_bottles: [] }));
-      await resolveDeliveredByAndRedeem(token, mixerOverrides, forDeduction);
+      await resolveDeliveredByAndRedeem(token, mixerOverrides);
     } catch (err: any) {
       const msg = err?.message || "Error al verificar botellas";
       console.error("[Bar][bottles]", err);
@@ -560,12 +539,8 @@ export default function Bar() {
     try {
       setDebugStep("fetch-token");
 
-      // Direct redeem — with delivered-by gate
-      if (selectedBarId) {
-        await checkBottlesRef.current?.(token, null);
-      } else {
-        await resolveDeliveredByAndRedeem(token, null);
-      }
+      // Direct redeem — no bottle checks needed (stock decoupled)
+      await resolveDeliveredByAndRedeem(token, null);
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return;
       const msg = err?.message || "Error al procesar el código";

@@ -58,8 +58,6 @@ export function HybridPostSaleWizard({
   const [step, setStep] = useState<WizardStep>("processing");
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [missingItems, setMissingItems] = useState<Array<{ product_name: string; required: number; available: number; unit: string }>>([]);
-  const [consumedIngredients, setConsumedIngredients] = useState<Array<{ product_name: string; quantity: number }>>([]);
   const [showReprintQR, setShowReprintQR] = useState(false);
 
   // Auto-redeem on mount
@@ -93,14 +91,9 @@ export function HybridPostSaleWizard({
       };
 
       if (result.success) {
-        setConsumedIngredients(result.consumed || []);
         setStep("deliver");
-      } else if (result.error === "stock_insufficient") {
-        setErrorMessage("Stock insuficiente para auto-canje. El QR queda pendiente para canje manual en barra.");
-        setMissingItems(result.missing_items || []);
-        setStep("error");
       } else {
-        setErrorMessage(result.message || "Error al ejecutar auto-canje.");
+        setErrorMessage(result.message || result.error || "Error al ejecutar auto-canje.");
         setStep("error");
       }
     } catch (err: any) {
@@ -118,7 +111,7 @@ export function HybridPostSaleWizard({
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
         <Loader2 className="w-20 h-20 animate-spin text-primary mb-6" />
         <h2 className="text-3xl font-bold text-foreground">Procesando canje...</h2>
-        <p className="text-muted-foreground mt-2">Descontando stock de {barName}</p>
+        <p className="text-muted-foreground mt-2">Registrando entrega en {barName}</p>
         <Badge variant="outline" className="mt-4 text-sm border-amber-500/40 text-amber-600 bg-amber-500/10">
           Híbrido · Auto-canje
         </Badge>
@@ -140,21 +133,6 @@ export function HybridPostSaleWizard({
             <p className="text-muted-foreground">{errorMessage}</p>
           </div>
 
-          {missingItems.length > 0 && (
-            <Card className="p-4 text-left">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Stock faltante:</h3>
-              <div className="space-y-1.5">
-                {missingItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span>{item.product_name}</span>
-                    <span className="font-mono text-destructive">
-                      {item.available}/{item.required} {item.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
 
           <Card className="p-4 bg-amber-500/10 border-amber-500/30">
             <p className="text-sm text-amber-700 font-medium">

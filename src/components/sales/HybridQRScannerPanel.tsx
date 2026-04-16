@@ -155,12 +155,12 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
         return;
       }
 
-      // ── Fallback: force success on error (temporary) ──
+      // RPC now never fails for stock — handle genuine errors
       if (!r.success) {
-        console.warn("[HybridQR] RPC returned error, forcing success (temp bypass):", r.error_code);
-        r.success = true;
-        (r as any)._forced = true;
-        if (!r.deliver) r.deliver = { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 };
+        setResult(r);
+        setScanState("error");
+        scheduleReset();
+        return;
       }
 
       logAuditEvent({
@@ -175,19 +175,15 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     } catch (err: any) {
       if (signal.aborted) return;
       clearTimers();
-      console.warn("[HybridQR] RPC threw error, forcing success (temp bypass):", err?.message);
-      // ── Fallback: force success on exception (temporary) ──
-      const fallback: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 },
-      };
+      console.error("[HybridQR] RPC threw error:", err?.message);
+      const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión" };
       logAuditEvent({
         action: "redeem_pickup_token",
-        status: "success",
-        metadata: { token: token.slice(0, 8), error: err?.message, bar_id: barLocationId, source: "hybrid_pos", forced: true },
+        status: "fail",
+        metadata: { token: token.slice(0, 8), error: err?.message, bar_id: barLocationId, source: "hybrid_pos" },
       });
-      setResult(fallback);
-      setScanState("success");
+      setResult(errorResult);
+      setScanState("error");
       scheduleReset();
     } finally {
       processingRef.current = false;
