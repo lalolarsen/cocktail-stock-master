@@ -543,12 +543,6 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const pending = pendingBatches.filter((b) => b.status === "pendiente_aprobacion");
   const history = pendingBatches.filter((b) => b.status !== "pendiente_aprobacion");
 
-  const confidenceColor = (c: string | null) => {
-    if (c === "alta") return "text-emerald-600";
-    if (c === "media") return "text-amber-600";
-    if (c === "baja") return "text-orange-600";
-    return "text-destructive";
-  };
 
   return (
     <div className="space-y-6">
