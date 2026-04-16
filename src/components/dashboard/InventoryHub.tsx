@@ -253,6 +253,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         raw_text: r.product_name_excel!.toLowerCase().trim(),
         product_id: r.product_id!,
         venue_id: venueId,
+        wasManualCorrection: r.match_confidence === "alta" && r.product_name_matched !== r.product_name_excel,
       }));
 
     // Deduplicate by raw_text
