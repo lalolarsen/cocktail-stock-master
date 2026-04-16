@@ -497,8 +497,7 @@ export default function Bar() {
       }
 
       setDebugStep("redeem");
-      const forDeduction: BottleCheckResult[] = ingredients.map(i => ({ product_id: i.product_id, product_name: i.product_name, required_ml: i.required_ml, available_ml: i.required_ml, sufficient: true, open_bottles: [] }));
-      await resolveDeliveredByAndRedeem(token, mixerOverrides, forDeduction);
+      await resolveDeliveredByAndRedeem(token, mixerOverrides);
     } catch (err: any) {
       const msg = err?.message || "Error al verificar botellas";
       console.error("[Bar][bottles]", err);
