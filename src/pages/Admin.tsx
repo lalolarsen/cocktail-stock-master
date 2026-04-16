@@ -167,7 +167,7 @@ export default function Admin() {
 
             {activeView === "workers" && (
               <div className="space-y-4 sm:space-y-6">
-                <WorkersManagementNew isReadOnly={isReadOnly} />
+                <WorkersManagementNew isReadOnly={isReadOnly} viewerRole={role as any} />
                 {!isReadOnly && <ActivityPanel />}
               </div>
             )}
