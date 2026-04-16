@@ -242,6 +242,11 @@ export const StockImportPreviewDialog = ({
             {hasErrors ? <AlertCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
             {totalValid} válidas / {summary.invalid} errores
           </Badge>
+          {(summary.omitidos ?? 0) > 0 && (
+            <Badge variant="outline" className="gap-1 bg-muted text-muted-foreground">
+              {summary.omitidos} omitidas (sin contar / vacías)
+            </Badge>
+          )}
           {isPending && (
             <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-700 border-amber-200">
               <Clock className="h-3 w-3" />Pendiente aprobación

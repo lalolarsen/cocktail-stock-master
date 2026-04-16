@@ -69,6 +69,7 @@ export interface ParseResult {
     conteos: number;
     valid: number;
     invalid: number;
+    omitidos?: number;
   };
 }
 
@@ -189,6 +190,7 @@ export function parseCompraSimple(
   const bodega = locations.find((l) => normalize(l.name).includes("bodega")) || locations[0];
   const errors: ValidationError[] = [];
   const resolved: ResolvedRow[] = [];
+  let omitidos = 0;
 
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
@@ -201,6 +203,12 @@ export function parseCompraSimple(
     const formatoMlExcel = num(raw, "formato_ml", "formato", "formato_compra_ml");
     const costoUnit = num(raw, "costo_neto_unitario", "costo_compra", "costo_neto_envase", "costo", "precio", "costo_unitario");
     const documento = str(raw, "documento", "documento_ref", "factura", "doc");
+
+    // Skip silenciosamente: filas hint (#) o totalmente vacías
+    if (nombreExcel.startsWith("#")) { omitidos++; continue; }
+    if (!nombreExcel && cantidadRaw === null && cantidadMl === null && costoUnit === null) {
+      omitidos++; continue;
+    }
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
 
@@ -269,7 +277,7 @@ export function parseCompraSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 export function parseReposicionSimple(
@@ -286,6 +294,7 @@ export function parseReposicionSimple(
 
   const errors: ValidationError[] = [];
   const resolved: ResolvedRow[] = [];
+  let omitidos = 0;
 
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
@@ -296,6 +305,12 @@ export function parseReposicionSimple(
     const cantidadRaw = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades", "botellas", "bot", "envases");
     const cantidadMl = num(raw, "cantidad_ml", "ml", "ml_total", "ml_transferidos");
     const destinoNombre = str(raw, "ubicacion_destino", "destino", "ubicacion");
+
+    // Skip silenciosamente: filas hint (#) o totalmente vacías
+    if (nombreExcel.startsWith("#")) { omitidos++; continue; }
+    if (!nombreExcel && cantidadRaw === null && cantidadMl === null) {
+      omitidos++; continue;
+    }
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
     const locDestino = destinoNombre ? locationByName.get(normalize(destinoNombre)) || null : null;
@@ -364,7 +379,7 @@ export function parseReposicionSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 export function parseConteoSimple(
@@ -391,6 +406,7 @@ export function parseConteoSimple(
 
   const errors: ValidationError[] = [];
   const resolved: ResolvedRow[] = [];
+  let omitidos = 0;
 
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
@@ -404,6 +420,15 @@ export function parseConteoSimple(
     const stockRealBot = num(raw, "stock_real_bot", "botellas", "bot", "envases", "envases_reales");
     const stockRealRaw = num(raw, "stock_real", "stock_real_contado", "real", "contado", "cantidad");
     const ubicNombre = str(raw, "ubicacion", "ubicacion_destino", "destino");
+
+    // Skip silenciosamente: filas hint (#), filas vacías, o productos sin contar (stock_real vacío)
+    if (nombreExcel.startsWith("#")) { omitidos++; continue; }
+    const sinStock = stockRealMl === null && stockRealBot === null && stockRealRaw === null;
+    if (!nombreExcel && sinStock) { omitidos++; continue; }
+    if (sinStock) {
+      // Producto listado pero no contado por el operador → omitir sin error
+      omitidos++; continue;
+    }
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
 
@@ -479,7 +504,7 @@ export function parseConteoSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 // ── Legacy unified parser ────────────────────────────────────────────────────
@@ -669,7 +694,7 @@ function num(raw: Record<string, any>, ...keys: string[]): number | null {
   return null;
 }
 
-function buildResult(resolved: ResolvedRow[], errors: ValidationError[]): ParseResult {
+function buildResult(resolved: ResolvedRow[], errors: ValidationError[], omitidos = 0): ParseResult {
   return {
     rows: resolved,
     errors,
@@ -679,6 +704,7 @@ function buildResult(resolved: ResolvedRow[], errors: ValidationError[]): ParseR
       conteos: resolved.filter((r) => r.tipo_movimiento === "CONTEO").length,
       valid: resolved.filter((r) => r.isValid).length,
       invalid: resolved.filter((r) => !r.isValid).length,
+      omitidos,
     },
   };
 }
