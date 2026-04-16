@@ -772,8 +772,17 @@ export default function Tickets() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 <VenueIndicator variant="header" />
+                <Button
+                  variant="outline" size="sm"
+                  onClick={handleDownloadJornadaReport}
+                  disabled={!activeJornadaId || !selectedPosId}
+                  title="Descargar resultados de jornada"
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" /> <span className="hidden sm:inline">Resultados</span>
+                </Button>
                 <Button
                   variant="outline" size="sm"
                   onClick={async () => { await supabase.auth.signOut(); setCart([]); setSaleResult(null); navigate("/auth"); }}
@@ -1011,19 +1020,34 @@ export default function Tickets() {
                 ) : (
                   <div className="space-y-1">
                     {recentSales.map(sale => (
-                      <div key={sale.id} className="flex items-center justify-between p-2 rounded text-sm">
-                        <div>
-                          <span className="font-mono font-medium">{sale.ticket_number}</span>
-                          <span className="text-xs text-muted-foreground ml-2">
+                      <div key={sale.id} className="flex items-center justify-between gap-2 p-2 rounded text-sm hover:bg-muted/50">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="font-mono font-medium truncate">{sale.ticket_number}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
                             {format(new Date(sale.created_at), "HH:mm", { locale: es })}
                           </span>
+                          <span className="text-xs font-semibold shrink-0">{formatCLP(sale.total)}</span>
+                          {sale.cover_count > 0 && (
+                            <Badge variant="outline" className="text-xs shrink-0">
+                              <QrCode className="h-3 w-3 mr-1" />
+                              {sale.cover_count}
+                            </Badge>
+                          )}
                         </div>
-                        {sale.cover_count > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            <QrCode className="h-3 w-3 mr-1" />
-                            {sale.cover_count}
-                          </Badge>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 shrink-0"
+                          onClick={() => reprintSale(sale.id)}
+                          disabled={reprintingId === sale.id}
+                          title="Reimprimir comprobante + QRs"
+                        >
+                          {reprintingId === sale.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Printer className="h-3 w-3" />
+                          )}
+                        </Button>
                       </div>
                     ))}
                   </div>
