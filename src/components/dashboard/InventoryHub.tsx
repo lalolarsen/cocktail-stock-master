@@ -757,8 +757,8 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             </div>
           )}
 
-          {/* Rows */}
-          <ScrollArea className="flex-1 border rounded-lg">
+          {/* Rows — plain overflow container; ScrollArea wraps tables badly */}
+          <div className="flex-1 min-h-0 overflow-auto border rounded-lg">
             {loadingRows ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
             ) : (
@@ -769,7 +769,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
                 onRowsChange={setBatchRows}
               />
             )}
-          </ScrollArea>
+          </div>
 
           {selectedBatch?.status === "pendiente_aprobacion" && (
             <DialogFooter className="gap-2">
