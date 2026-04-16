@@ -372,7 +372,11 @@ export function parseConteoSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const stockReal = num(raw, "stock_real", "stock_real_contado", "real", "contado");
+    // Multiple column variants: stock_real_ml is explicit ml; stock_real_bot is explicit bottles;
+    // stock_real / real / contado is generic. For bottles we normalize to ml (unidad base).
+    const stockRealMl = num(raw, "stock_real_ml", "ml_real", "ml_contados", "ml");
+    const stockRealBot = num(raw, "stock_real_bot", "botellas", "bot", "envases", "envases_reales");
+    const stockRealRaw = num(raw, "stock_real", "stock_real_contado", "real", "contado", "cantidad");
     const ubicNombre = str(raw, "ubicacion", "ubicacion_destino", "destino");
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
@@ -382,6 +386,26 @@ export function parseConteoSimple(
       locDestino = locations.find((l) => l.id === locationId) || null;
     } else if (ubicNombre) {
       locDestino = locationByName.get(normalize(ubicNombre)) || null;
+    }
+
+    // Normalize stock_real to base unit (ml for bottles, units for discrete).
+    // Decimals always supported (parseFloat-based num()).
+    const isBotella = product ? isBottle(product) : false;
+    const cap = product?.capacity_ml || 0;
+    let stockReal: number | null = null;
+
+    if (isBotella && cap > 0) {
+      if (stockRealMl !== null) {
+        stockReal = stockRealMl;
+      } else if (stockRealBot !== null) {
+        stockReal = stockRealBot * cap;
+      } else if (stockRealRaw !== null) {
+        // Heuristic: if value < 50 → probably bottles (e.g. 2.5 bot); else ml (e.g. 2500).
+        // Threshold 50 covers fractional and small-bottle counts; ml counts are typically ≥ capacity.
+        stockReal = stockRealRaw < 50 ? stockRealRaw * cap : stockRealRaw;
+      }
+    } else {
+      stockReal = stockRealRaw ?? stockRealBot ?? stockRealMl;
     }
 
     if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
@@ -402,9 +426,9 @@ export function parseConteoSimple(
       ubicacion_destino: locDestino?.name || ubicNombre || "",
       sku_base: product?.code || "",
       producto_nombre: nombreExcel,
-      tipo_consumo: product ? (isBottle(product) ? "ML" : "UNIT") : "UNIT",
-      unidad_base: product ? (isBottle(product) ? "ml" : "ud") : "ud",
-      formato_compra_ml: null,
+      tipo_consumo: isBotella ? "ML" : "UNIT",
+      unidad_base: isBotella ? "ml" : "ud",
+      formato_compra_ml: isBotella ? cap : null,
       cantidad_envases: null,
       cantidad_base_movida: null,
       cantidad_base_calculada: null,
