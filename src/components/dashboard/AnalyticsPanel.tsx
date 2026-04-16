@@ -208,6 +208,57 @@ export function AnalyticsPanel() {
       setCourtesyCOGS([]);
     }
 
+    // ── Tickets ──
+    const { data: tSales } = await supabase
+      .from("ticket_sales")
+      .select("id, total_amount, created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", from)
+      .lte("created_at", to);
+    const tSalesData = (tSales || []).map((t: any) => ({ id: t.id, total: Number(t.total_amount) || 0, created_at: t.created_at }));
+    setTicketSales(tSalesData);
+
+    if (tSalesData.length > 0) {
+      const tIds = tSalesData.map(t => t.id);
+      const allItems = await fetchAllByIds<any>(
+        "ticket_sale_items",
+        "ticket_sale_id",
+        tIds,
+        "ticket_type_id, quantity, unit_price, ticket_types(name)"
+      );
+      setTicketItems(allItems as any);
+    } else {
+      setTicketItems([]);
+    }
+
+    // Cover tokens (issued + redeemed) en el mes
+    const { data: coverTokens } = await supabase
+      .from("pickup_tokens")
+      .select("id, status, cover_cocktail_id, cocktails:cover_cocktail_id(name), created_at")
+      .eq("venue_id", venueId)
+      .not("cover_cocktail_id", "is", null)
+      .gte("created_at", from)
+      .lte("created_at", to);
+    if (coverTokens && coverTokens.length > 0) {
+      const byMap = new Map<string, { name: string; issued: number; redeemed: number }>();
+      let totalC = 0, redC = 0;
+      for (const t of coverTokens as any[]) {
+        const name = t.cocktails?.name || "Cover";
+        if (!byMap.has(t.cover_cocktail_id)) byMap.set(t.cover_cocktail_id, { name, issued: 0, redeemed: 0 });
+        const e = byMap.get(t.cover_cocktail_id)!;
+        e.issued++;
+        totalC++;
+        if (t.status === "redeemed") { e.redeemed++; redC++; }
+      }
+      setCoverTokensStats({
+        total: totalC,
+        redeemed: redC,
+        byCocktail: Array.from(byMap.values()).sort((a, b) => b.issued - a.issued),
+      });
+    } else {
+      setCoverTokensStats({ total: 0, redeemed: 0, byCocktail: [] });
+    }
+
     // Reconciliation waste (mermas por comparación)
     const { data: reconMovements } = await supabase
       .from("stock_movements")
@@ -322,6 +373,25 @@ export function AnalyticsPanel() {
   }, [courtesyCOGS]);
 
   const totalCourtesyCOGS = courtesyCOGS.reduce((s, c) => s + c.cogs, 0);
+
+  // Tickets metrics
+  const ticketsRevenue = useMemo(() => ticketSales.reduce((s, t) => s + t.total, 0), [ticketSales]);
+  const ticketsUnits = useMemo(() => ticketItems.reduce((s, i) => s + Number(i.quantity), 0), [ticketItems]);
+  const ticketAvg = ticketSales.length > 0 ? ticketsRevenue / ticketSales.length : 0;
+  const coverRedeemPct = coverTokensStats.total > 0 ? (coverTokensStats.redeemed / coverTokensStats.total) * 100 : 0;
+
+  const ticketTypeRanking = useMemo(() => {
+    const map = new Map<string, { name: string; qty: number; revenue: number }>();
+    for (const it of ticketItems) {
+      const name = it.ticket_types?.name || "Sin nombre";
+      const key = it.ticket_type_id;
+      if (!map.has(key)) map.set(key, { name, qty: 0, revenue: 0 });
+      const e = map.get(key)!;
+      e.qty += Number(it.quantity);
+      e.revenue += Number(it.quantity) * Number(it.unit_price);
+    }
+    return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+  }, [ticketItems]);
 
   if (loading) {
     return (
@@ -524,6 +594,98 @@ export function AnalyticsPanel() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tickets Section */}
+      {(ticketSales.length > 0 || coverTokensStats.total > 0) && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-primary" />
+              Ventas de Entradas
+              <Badge variant="secondary" className="ml-auto text-xs">{formatCLP(ticketsRevenue)}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Entradas vendidas</p>
+                <p className="text-lg font-bold">{ticketsUnits.toLocaleString("es-CL")}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Ingresos</p>
+                <p className="text-lg font-bold">{formatCLP(ticketsRevenue)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Ticket promedio</p>
+                <p className="text-lg font-bold">{formatCLP(ticketAvg)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Covers redimidos</p>
+                <p className="text-lg font-bold">{coverRedeemPct.toFixed(0)}%</p>
+                <p className="text-[10px] text-muted-foreground">{coverTokensStats.redeemed}/{coverTokensStats.total}</p>
+              </div>
+            </div>
+
+            {ticketTypeRanking.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Ranking por tipo</p>
+                {ticketTypeRanking.map((t, i) => {
+                  const max = ticketTypeRanking[0].qty || 1;
+                  const pct = (t.qty / max) * 100;
+                  return (
+                    <div key={i} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono text-xs text-muted-foreground w-5">{i + 1}.</span>
+                          <span className="font-medium truncate">{t.name}</span>
+                        </div>
+                        <div className="text-right shrink-0 ml-2">
+                          <span className="font-semibold tabular-nums">{t.qty}</span>
+                          <span className="text-xs text-muted-foreground ml-1">uds · {formatCLP(t.revenue)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full bg-primary/70 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {coverTokensStats.byCocktail.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Covers asignados / redimidos</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 text-muted-foreground">
+                        <th className="text-left p-2 font-medium">Cocktail</th>
+                        <th className="text-right p-2 font-medium">Asignados</th>
+                        <th className="text-right p-2 font-medium">Redimidos</th>
+                        <th className="text-right p-2 font-medium">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coverTokensStats.byCocktail.map((c, i) => {
+                        const pct = c.issued > 0 ? (c.redeemed / c.issued) * 100 : 0;
+                        return (
+                          <tr key={i} className="border-t border-border/30">
+                            <td className="p-2 font-medium truncate max-w-[180px]">{c.name}</td>
+                            <td className="p-2 text-right tabular-nums">{c.issued}</td>
+                            <td className="p-2 text-right tabular-nums text-emerald-500">{c.redeemed}</td>
+                            <td className="p-2 text-right tabular-nums text-muted-foreground">{pct.toFixed(0)}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
