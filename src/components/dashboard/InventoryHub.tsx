@@ -25,18 +25,15 @@ const WarehouseInventory = lazy(() =>
 const WasteManagement = lazy(() =>
   import("./WasteManagement").then((m) => ({ default: m.WasteManagement }))
 );
-const StockReconciliation = lazy(() =>
-  import("./StockReconciliation").then((m) => ({ default: m.StockReconciliation }))
-);
 const ExternalConsumptionPanel = lazy(() =>
   import("./ExternalConsumptionPanel").then((m) => ({ default: m.ExternalConsumptionPanel }))
 );
-const RedeemReconciliationPanel = lazy(() =>
-  import("./RedeemReconciliationPanel").then((m) => ({ default: m.RedeemReconciliationPanel }))
+const InventoryComparisonModule = lazy(() =>
+  import("./InventoryComparisonModule").then((m) => ({ default: m.InventoryComparisonModule }))
 );
 
 type MovementType = "COMPRA" | "TRANSFERENCIA" | "CONTEO";
-type SecondaryView = "stock" | "waste" | "reconciliation" | "external" | "redeem_recon" | null;
+type SecondaryView = "stock" | "waste" | "comparison" | "external" | null;
 
 interface QuickStats {
   totalProducts: number;
