@@ -196,12 +196,29 @@ export function parseCompraSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const cantidad = num(raw, "cantidad", "cantidad_envases", "qty", "unidades");
-    const formatoMlExcel = num(raw, "formato_ml", "formato", "ml", "formato_compra_ml");
+    const cantidadRaw = num(raw, "cantidad", "cantidad_envases", "qty", "unidades", "botellas", "bot", "envases");
+    const cantidadMl = num(raw, "cantidad_ml", "ml", "ml_total", "ml_comprados");
+    const formatoMlExcel = num(raw, "formato_ml", "formato", "formato_compra_ml");
     const costoUnit = num(raw, "costo_neto_unitario", "costo_compra", "costo_neto_envase", "costo", "precio", "costo_unitario");
     const documento = str(raw, "documento", "documento_ref", "factura", "doc");
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
+
+    const isBotella = product ? isBottle(product) : false;
+    // For bottles: formato_ml from Excel takes priority, else product capacity_ml
+    const formatoMl = formatoMlExcel || (isBotella ? product?.capacity_ml : null) || null;
+
+    // Normalize cantidad to envases (bottles or units). Decimals supported.
+    // - cantidad_ml explicit → derive envases = ml / formato
+    // - cantidadRaw on bottles: heuristic — < 50 → bottles; ≥ 50 and divisible by formato → ml
+    let cantidad: number | null = cantidadRaw;
+    if (isBotella && formatoMl && formatoMl > 0) {
+      if (cantidadMl !== null) {
+        cantidad = cantidadMl / formatoMl;
+      } else if (cantidadRaw !== null && cantidadRaw >= 50) {
+        cantidad = cantidadRaw / formatoMl;
+      }
+    }
 
     if (!product && confidence === "sin_match") {
       rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
@@ -209,9 +226,6 @@ export function parseCompraSimple(
     if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
     if (costoUnit === null || costoUnit < 0) rowErrors.push("Costo neto unitario requerido");
 
-    const isBotella = product ? isBottle(product) : false;
-    // For bottles: formato_ml from Excel takes priority, else product capacity_ml
-    const formatoMl = formatoMlExcel || (isBotella ? product?.capacity_ml : null) || null;
     const computedBaseQty = isBotella && formatoMl ? (cantidad || 0) * formatoMl : (cantidad || 0);
 
     if (isBotella && !formatoMl) {
@@ -279,11 +293,25 @@ export function parseReposicionSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const cantidad = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades");
+    const cantidadRaw = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades", "botellas", "bot", "envases");
+    const cantidadMl = num(raw, "cantidad_ml", "ml", "ml_total", "ml_transferidos");
     const destinoNombre = str(raw, "ubicacion_destino", "destino", "ubicacion");
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
     const locDestino = destinoNombre ? locationByName.get(normalize(destinoNombre)) || null : null;
+
+    const isBotella = product ? isBottle(product) : false;
+    const cap = product?.capacity_ml || 0;
+
+    // Normalize cantidad to envases (bottles or units). Decimals supported.
+    let cantidad: number | null = cantidadRaw;
+    if (isBotella && cap > 0) {
+      if (cantidadMl !== null) {
+        cantidad = cantidadMl / cap;
+      } else if (cantidadRaw !== null && cantidadRaw >= 50) {
+        cantidad = cantidadRaw / cap;
+      }
+    }
 
     if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
     if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
@@ -293,13 +321,11 @@ export function parseReposicionSimple(
     if (product && bodega && cantidad && cantidad > 0) {
       const key = `${product.id}::${bodega.id}`;
       const currentBal = balances.get(key) || 0;
-      const isBotella = isBottle(product);
-      const baseQty = isBotella && product.capacity_ml ? cantidad * product.capacity_ml : cantidad;
+      const baseQty = isBotella && cap ? cantidad * cap : cantidad;
       if (baseQty > currentBal) rowErrors.push(`Stock insuficiente en bodega (disp: ${currentBal})`);
     }
 
-    const isBotella = product ? isBottle(product) : false;
-    const computedBaseQty = isBotella && product?.capacity_ml ? (cantidad || 0) * product.capacity_ml : (cantidad || 0);
+    const computedBaseQty = isBotella && cap ? (cantidad || 0) * cap : (cantidad || 0);
 
     const row: ResolvedRow = {
       rowIndex,
