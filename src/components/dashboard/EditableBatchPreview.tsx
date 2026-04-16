@@ -34,6 +34,11 @@ interface Product {
   capacity_ml: number | null;
 }
 
+const formatNum = (n: number) => {
+  if (Number.isInteger(n)) return n.toString();
+  return Number(n.toFixed(2)).toString();
+};
+
 interface EditableBatchPreviewProps {
   rows: BatchRow[];
   batchType: string;
@@ -160,13 +165,20 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
               <>
                 <th className="py-2 px-2 text-right font-medium">Teórico</th>
                 <th className="py-2 px-2 text-right font-medium">Real</th>
+                <th className="py-2 px-2 text-right font-medium">Diferencia</th>
               </>
             )}
             <th className="py-2 px-2 text-left font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, idx) => (
+          {rows.map((r, idx) => {
+            const product = r.product_id ? products.find(p => p.id === r.product_id) : null;
+            const isBot = product?.capacity_ml ? product.capacity_ml > 0 : false;
+            const cap = product?.capacity_ml || 0;
+            const unitLbl = isBot ? "ml" : "ud";
+            const diff = (r.stock_real ?? 0) - (r.stock_teorico ?? 0);
+            return (
             <tr key={r.id} className={`border-b ${!r.is_valid ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
               <td className="py-1.5 px-2 text-muted-foreground">{r.row_index}</td>
               <td className="py-1.5 px-2 max-w-[140px] truncate text-muted-foreground">{r.product_name_excel || "—"}</td>
@@ -218,15 +230,36 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
               )}
               {batchType === "CONTEO" && (
                 <>
-                  <td className="py-1.5 px-2 text-right text-muted-foreground">{r.stock_teorico ?? "—"}</td>
+                  <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
+                    {r.stock_teorico !== null && r.stock_teorico !== undefined ? (
+                      <div>
+                        <div>{formatNum(r.stock_teorico)} <span className="text-[9px]">{unitLbl}</span></div>
+                        {isBot && cap > 0 && (
+                          <div className="text-[9px] text-muted-foreground">≈ {formatNum(r.stock_teorico / cap)} bot</div>
+                        )}
+                      </div>
+                    ) : "—"}
+                  </td>
                   <td className="py-1.5 px-2 text-right">
                     <Input
                       type="number"
-                      className="h-6 w-16 text-xs text-right p-1 ml-auto"
+                      step="any"
+                      className="h-6 w-20 text-xs text-right p-1 ml-auto tabular-nums"
                       value={r.stock_real ?? ""}
-                      onChange={(e) => updateRow(idx, { stock_real: e.target.value ? Number(e.target.value) : null })}
+                      onChange={(e) => updateRow(idx, { stock_real: e.target.value ? parseFloat(e.target.value) : null })}
                       min={0}
                     />
+                    <div className="text-[9px] text-muted-foreground mt-0.5">
+                      {unitLbl}
+                      {isBot && cap > 0 && r.stock_real != null && (
+                        <> · ≈ {formatNum(r.stock_real / cap)} bot</>
+                      )}
+                    </div>
+                  </td>
+                  <td className={`py-1.5 px-2 text-right tabular-nums font-medium ${diff === 0 ? "text-muted-foreground" : diff > 0 ? "text-emerald-600" : "text-destructive"}`}>
+                    {r.stock_real != null
+                      ? <>{diff > 0 ? "+" : ""}{formatNum(diff)} <span className="text-[9px] font-normal">{unitLbl}</span></>
+                      : "—"}
                   </td>
                 </>
               )}
@@ -237,7 +270,8 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
                 }
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
