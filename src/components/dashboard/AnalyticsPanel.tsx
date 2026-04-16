@@ -374,6 +374,25 @@ export function AnalyticsPanel() {
 
   const totalCourtesyCOGS = courtesyCOGS.reduce((s, c) => s + c.cogs, 0);
 
+  // Tickets metrics
+  const ticketsRevenue = useMemo(() => ticketSales.reduce((s, t) => s + t.total, 0), [ticketSales]);
+  const ticketsUnits = useMemo(() => ticketItems.reduce((s, i) => s + Number(i.quantity), 0), [ticketItems]);
+  const ticketAvg = ticketSales.length > 0 ? ticketsRevenue / ticketSales.length : 0;
+  const coverRedeemPct = coverTokensStats.total > 0 ? (coverTokensStats.redeemed / coverTokensStats.total) * 100 : 0;
+
+  const ticketTypeRanking = useMemo(() => {
+    const map = new Map<string, { name: string; qty: number; revenue: number }>();
+    for (const it of ticketItems) {
+      const name = it.ticket_types?.name || "Sin nombre";
+      const key = it.ticket_type_id;
+      if (!map.has(key)) map.set(key, { name, qty: 0, revenue: 0 });
+      const e = map.get(key)!;
+      e.qty += Number(it.quantity);
+      e.revenue += Number(it.quantity) * Number(it.unit_price);
+    }
+    return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+  }, [ticketItems]);
+
   if (loading) {
     return (
       <div className="space-y-4">
