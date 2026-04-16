@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Scale,
   AlertTriangle,
+  Ticket,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
@@ -91,6 +92,9 @@ export function AnalyticsPanel() {
   const [jornadaCount, setJornadaCount] = useState(0);
   const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
   const [reconciliationWaste, setReconciliationWaste] = useState<ReconciliationWaste[]>([]);
+  const [ticketSales, setTicketSales] = useState<Array<{ id: string; total: number; created_at: string }>>([]);
+  const [ticketItems, setTicketItems] = useState<Array<{ ticket_type_id: string; quantity: number; unit_price: number; ticket_types: { name: string } | null }>>([]);
+  const [coverTokensStats, setCoverTokensStats] = useState<{ total: number; redeemed: number; byCocktail: Array<{ name: string; issued: number; redeemed: number }> }>({ total: 0, redeemed: 0, byCocktail: [] });
 
   const monthOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
