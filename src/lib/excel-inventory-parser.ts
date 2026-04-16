@@ -670,7 +670,7 @@ function num(raw: Record<string, any>, ...keys: string[]): number | null {
   return null;
 }
 
-function buildResult(resolved: ResolvedRow[], errors: ValidationError[]): ParseResult {
+function buildResult(resolved: ResolvedRow[], errors: ValidationError[], omitidos = 0): ParseResult {
   return {
     rows: resolved,
     errors,
@@ -680,6 +680,7 @@ function buildResult(resolved: ResolvedRow[], errors: ValidationError[]): ParseR
       conteos: resolved.filter((r) => r.tipo_movimiento === "CONTEO").length,
       valid: resolved.filter((r) => r.isValid).length,
       invalid: resolved.filter((r) => !r.isValid).length,
+      omitidos,
     },
   };
 }
