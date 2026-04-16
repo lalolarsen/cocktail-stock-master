@@ -79,6 +79,7 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .short-code { text-align: center; margin-top: 8px; font-size: 22pt; font-weight: bold; letter-spacing: 6px; color: #000; }
     .short-code-label { text-align: center; font-size: 11pt; color: #000; margin-top: 2px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -218,6 +219,7 @@ export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidt
       <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
       <div class="payment">Pago: ${paymentLabel}</div>
       <div class="footer">Gracias por tu compra</div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
