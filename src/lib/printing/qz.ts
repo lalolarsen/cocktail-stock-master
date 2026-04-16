@@ -10,6 +10,7 @@
 
 import printJS from "print-js";
 import { generateQRSvgString } from "./qr-svg";
+import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
 
 export type PaperWidth = "58mm" | "80mm";
 
@@ -141,6 +142,7 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
       <div class="payment">Pago: ${paymentLabel}</div>
       ${qrHtml}
       <div class="footer">Gracias por tu compra</div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
@@ -180,6 +182,7 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
           Presenta este QR o dicta el código en la barra
         </div>
       </div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
@@ -232,6 +235,7 @@ export function buildCashierReceiptCss(paperWidth: PaperWidth): string {
     .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
     .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
