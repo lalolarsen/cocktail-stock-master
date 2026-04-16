@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.create_ticket_sale_with_covers(jsonb, text, uuid, uuid, uuid);

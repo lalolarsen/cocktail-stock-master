@@ -5726,28 +5726,17 @@ export type Database = {
         }
         Returns: Json
       }
-      create_ticket_sale_with_covers:
-        | {
-            Args: {
-              p_items: Json
-              p_jornada_id?: string
-              p_payment_method?: string
-              p_pos_id?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_cover_selections?: Json
-              p_items: Json
-              p_jornada_id?: string
-              p_payment_method?: string
-              p_pos_id?: string
-              p_venue_id?: string
-            }
-            Returns: Json
-          }
+      create_ticket_sale_with_covers: {
+        Args: {
+          p_cover_selections?: Json
+          p_items: Json
+          p_jornada_id?: string
+          p_payment_method?: string
+          p_pos_id?: string
+          p_venue_id?: string
+        }
+        Returns: Json
+      }
       deduct_open_bottles: {
         Args: {
           p_actor_user_id: string
