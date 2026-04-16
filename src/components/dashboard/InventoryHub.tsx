@@ -112,7 +112,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     const [balancesRes, movesRes, batchesRes] = await Promise.all([
       supabase
         .from("stock_balances")
-        .select("quantity, product_id, products(name, cost_per_unit)")
+        .select("quantity, product_id, products(name, cost_per_unit, capacity_ml)")
         .eq("venue_id", venue.id),
       supabase
         .from("stock_movements")
@@ -136,7 +136,12 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     for (const b of balances) {
       const qty = Number(b.quantity) || 0;
       const cost = Number((b as any).products?.cost_per_unit) || 0;
-      totalCapital += qty * cost;
+      const capacityMl = Number((b as any).products?.capacity_ml) || 0;
+      const valorStock = isBottle({ capacity_ml: capacityMl }) && capacityMl > 0
+        ? qty * (cost / capacityMl)
+        : qty * cost;
+
+      totalCapital += Math.round(valorStock);
       productIds.add(b.product_id);
       if (qty > 0 && qty <= 5) lowStock++;
     }
@@ -144,7 +149,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     const moves = movesRes.data || [];
     setStats({
       totalProducts: productIds.size,
-      totalCapital,
+        totalCapital: Math.round(totalCapital),
       lastMovement: moves[0]?.created_at || null,
       lowStockCount: lowStock,
     });
@@ -619,7 +624,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
           </CardContent></Card>
           <Card className="border-border/50"><CardContent className="p-4 flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-muted-foreground" />
-            <div><p className="text-2xl font-bold text-foreground">{formatCLP(stats.totalCapital)}</p><p className="text-xs text-muted-foreground">Capital stock</p></div>
+            <div><p className="text-2xl font-bold text-foreground">{formatCLP(Math.round(stats.totalCapital))}</p><p className="text-xs text-muted-foreground">Capital stock</p></div>
           </CardContent></Card>
           <Card className="border-border/50"><CardContent className="p-4 flex items-center gap-3">
             <Clock className="w-5 h-5 text-muted-foreground" />
