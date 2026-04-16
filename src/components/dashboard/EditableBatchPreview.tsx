@@ -34,6 +34,11 @@ interface Product {
   capacity_ml: number | null;
 }
 
+const formatNum = (n: number) => {
+  if (Number.isInteger(n)) return n.toString();
+  return Number(n.toFixed(2)).toString();
+};
+
 interface EditableBatchPreviewProps {
   rows: BatchRow[];
   batchType: string;
