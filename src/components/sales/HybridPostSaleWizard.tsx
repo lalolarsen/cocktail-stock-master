@@ -133,21 +133,6 @@ export function HybridPostSaleWizard({
             <p className="text-muted-foreground">{errorMessage}</p>
           </div>
 
-          {missingItems.length > 0 && (
-            <Card className="p-4 text-left">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Stock faltante:</h3>
-              <div className="space-y-1.5">
-                {missingItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span>{item.product_name}</span>
-                    <span className="font-mono text-destructive">
-                      {item.available}/{item.required} {item.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
 
           <Card className="p-4 bg-amber-500/10 border-amber-500/30">
             <p className="text-sm text-amber-700 font-medium">
