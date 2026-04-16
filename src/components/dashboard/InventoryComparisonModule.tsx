@@ -519,8 +519,8 @@ export function InventoryComparisonModule() {
               <p className="font-medium text-foreground">¿Cómo funciona?</p>
               <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                 <li>Selecciona <strong>jornada</strong> y <strong>ubicación</strong> (barra)</li>
-                <li>Descarga la <strong>plantilla Excel</strong> pre-llenada con los productos de esa barra</li>
-                <li>El bartender llena la columna <strong>"stock_real"</strong> con lo que queda físicamente</li>
+                <li>Descarga la <strong>plantilla Excel</strong> con solo los productos consumidos en esa jornada</li>
+                <li>El bartender llena la columna <strong>"stock_real"</strong> en <strong>botellas aproximadas</strong> (ej: 2.5 = 2 botellas y media)</li>
                 <li>Sube el Excel completado y <strong>confirma</strong> las cantidades</li>
                 <li>Presiona <strong>"Comparar"</strong> para ver diferencias vs consumo teórico</li>
                 <li>Aplica el cuadre para actualizar el inventario</li>
