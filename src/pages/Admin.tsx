@@ -25,6 +25,7 @@ import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
+import { InventoryComparisonModule } from "@/components/dashboard/InventoryComparisonModule";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
