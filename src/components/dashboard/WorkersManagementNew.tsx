@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   Loader2, Users, Key, RefreshCw, Search,
   UserX, Filter, Edit2, History, Power, PowerOff, UserPlus,
-  Shield, ShoppingCart, Wine, Sparkles, Eye
+  Shield, ShoppingCart, Wine, Sparkles, Eye, Download
 } from "lucide-react";
 import {
   AlertDialog,
@@ -449,6 +449,35 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
         </div>
 
         <div className="flex items-center gap-2">
+          {viewerRole === "admin" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const rows = roleFilteredWorkers.map((w) => {
+                  const roles = w.roles.map((r) => {
+                    const info = AVAILABLE_ROLES.find((ar) => ar.value === r);
+                    return info?.label || r;
+                  }).join(", ");
+                  return `${w.full_name || "Sin nombre"},${w.rut_code || "—"},${roles},${w.is_active ? "Activo" : "Inactivo"}`;
+                });
+                const csv = "Nombre,RUT,Roles,Estado\n" + rows.join("\n");
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `credenciales_staff_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast.success("Archivo descargado");
+              }}
+              className="h-9 px-3"
+              title="Descargar credenciales"
+            >
+              <Download className="h-4 w-4 mr-1.5" />
+              Exportar
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={fetchWorkers} title="Recargar" className="h-9 px-3">
             <RefreshCw className="h-4 w-4" />
           </Button>
