@@ -17,6 +17,8 @@ import {
   ShoppingCart,
   Gift,
   CalendarDays,
+  Scale,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
