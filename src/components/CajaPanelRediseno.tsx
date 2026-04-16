@@ -140,7 +140,7 @@ export function CajaPanelRediseno({
 }: CajaPanelProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [category, setCategory] = useState("Todos");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [historialOpen, setHistorialOpen] = useState(false);
@@ -178,6 +178,9 @@ export function CajaPanelRediseno({
 
   const handleCobrar = async () => {
     if (cart.length === 0 || isLoading) return;
+    if (!paymentMethod) {
+      return;
+    }
     if (onConfirmSale) {
       await onConfirmSale({ items: cart, paymentMethod, documentType, isCourtesy, totalAmount: total });
     }
@@ -185,6 +188,7 @@ export function CajaPanelRediseno({
     setTimeout(() => {
       setCobrado(false);
       clearCart();
+      setPaymentMethod(null);
     }, 1600);
   };
 
@@ -315,6 +319,9 @@ export function CajaPanelRediseno({
               <CreditCard size={13} /> Tarjeta
             </button>
           </div>
+          {!paymentMethod && cart.length > 0 && (
+            <p className="text-[10px] text-destructive text-center font-medium">Selecciona medio de pago</p>
+          )}
 
           <Select value={documentType} onValueChange={(v) => setDocumentType(v as DocumentType)}>
             <SelectTrigger className="h-8 border-border bg-muted text-xs text-muted-foreground focus:ring-0">
@@ -335,7 +342,7 @@ export function CajaPanelRediseno({
 
           <Button
             onClick={handleCobrar}
-            disabled={cart.length === 0 || isLoading}
+            disabled={cart.length === 0 || isLoading || !paymentMethod}
             className={cn(
               "h-11 w-full rounded-lg text-sm font-bold tracking-widest uppercase transition-all",
               cobrado
