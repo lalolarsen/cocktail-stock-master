@@ -1320,6 +1320,7 @@ export default function Sales() {
                 <HybridQRScannerPanel
                   barLocationId={selectedPosObj.bar_location_id}
                   barName={barNameForHeader}
+                  activeJornadaId={activeJornadaId}
                 />
               )}
 
