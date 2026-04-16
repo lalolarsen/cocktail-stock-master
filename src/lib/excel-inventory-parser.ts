@@ -771,25 +771,36 @@ export function generateConteoTemplateByLocation(
     if (locBalances.length === 0) continue;
 
     const rows: any[][] = [
-      ["producto_nombre", "stock_real", "ubicacion"],
+      ["producto_nombre", "formato_ml", "stock_teorico", "stock_real", "ubicacion"],
+      // Hint row (will be ignored by parser since stock_real is empty)
+      ["# Botellas: ingresa stock_real en ML (ej: 2500). También aceptamos botellas (ej: 2.5)", "", "", "", ""],
     ];
 
     for (const bal of locBalances) {
       const product = products.find((p) => p.id === bal.productId);
       if (!product) continue;
-      rows.push([product.name, "", loc.name]);
+      const isBot = isBottle(product);
+      rows.push([
+        product.name,
+        isBot ? product.capacity_ml : "",
+        bal.quantity,
+        "",
+        loc.name,
+      ]);
     }
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 22 }];
+    sheet["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 22 }];
     const sheetName = loc.name.substring(0, 31).replace(/[\\\/\?\*\[\]]/g, "_");
     XLSX.utils.book_append_sheet(wb, sheet, sheetName);
   }
 
   // If no balances, create empty template
   if (wb.SheetNames.length === 0) {
-    const sheet = XLSX.utils.aoa_to_sheet([["producto_nombre", "stock_real", "ubicacion"]]);
-    sheet["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 22 }];
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["producto_nombre", "formato_ml", "stock_teorico", "stock_real", "ubicacion"],
+    ]);
+    sheet["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 22 }];
     XLSX.utils.book_append_sheet(wb, sheet, "Conteo");
   }
 
