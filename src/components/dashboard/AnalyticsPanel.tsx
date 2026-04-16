@@ -111,6 +111,13 @@ export function AnalyticsPanel() {
 
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || format(new Date(), "yyyy-MM"));
 
+  // COGS para el mes seleccionado (usa misma lógica que EERR)
+  const cogsRange = useMemo(() => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    return { from: startOfMonth(new Date(y, m - 1)), to: endOfMonth(new Date(y, m - 1)) };
+  }, [selectedMonth]);
+  const { summary: cogsSummary, byProduct: cogsByProduct, loading: cogsLoading } = useCOGSData(cogsRange);
+
   useEffect(() => {
     fetchAll();
   }, [selectedMonth]);
