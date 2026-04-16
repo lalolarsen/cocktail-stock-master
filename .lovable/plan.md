@@ -1,43 +1,19 @@
 
 
-# Plan: Plantilla simplificada para bartender
+# Plan: Extender disponibilidad de QR a 72 horas
 
-## Cambios
+## Cambio
 
-### 1. Template solo con productos consumidos en la jornada+ubicación (`InventoryComparisonModule.tsx`)
+Una migración SQL que actualiza el intervalo de expiración de **2 horas → 72 horas** en dos lugares:
 
-Antes de generar la plantilla, consultar `pickup_redemptions_log` y `courtesy_redemptions` de la jornada seleccionada para obtener los `product_id` que tuvieron consumo. Filtrar la plantilla solo a esos productos.
+1. **Función `generate_pickup_token`**: cambiar `interval '2 hours'` → `interval '72 hours'`
+2. **Default de columna `expires_at`** en tabla `pickup_tokens`: mismo cambio
 
-### 2. Eliminar columna `stock_teorico` de la plantilla
+## Archivo
 
-La plantilla queda con solo 3 columnas útiles para el bartender:
-- `producto_nombre`
-- `sku_base` (oculto/referencia)
-- `stock_real` (lo que llena el bartender)
-
-### 3. Botellas en formato aproximado de botellas, no ml
-
-Para productos bottle (`capacity_ml > 0`):
-- La columna `stock_real` espera un valor en **botellas decimales** (ej: 2.5 = 2 botellas completas + media)
-- Agregar columna `formato` que diga ej: "botella 750ml" para que el bartender sepa qué cuenta
-- Al parsear el Excel de vuelta, convertir: `stock_real_ml = valor_ingresado × capacity_ml`
-
-### 4. Crear nueva función `generateComparisonTemplate` en `excel-inventory-parser.ts`
-
-Nueva función dedicada que:
-- Recibe solo los product IDs consumidos
-- No incluye stock teórico
-- Para botellas: indica formato "bot. 750ml" y espera valor en botellas (ej: 2.5)
-- Para unitarios: espera cantidad entera
-
-### 5. Ajustar parsing del Excel subido (`handleFileUpload`)
-
-Al leer `stock_real` de un producto bottle, multiplicar por `capacity_ml` para obtener ml antes de comparar.
-
-## Archivos
-
-| Archivo | Cambio |
+| Tipo | Detalle |
 |---|---|
-| `src/lib/excel-inventory-parser.ts` | Nueva función `generateComparisonTemplate` |
-| `src/components/dashboard/InventoryComparisonModule.tsx` | Usar nueva función, filtrar por productos consumidos, convertir botellas↔ml al parsear |
+| Migración SQL | `ALTER` default + `CREATE OR REPLACE FUNCTION` con nuevo intervalo |
+
+Sin cambios frontend — la validación de expiración ocurre en `redeem_pickup_token` comparando `expires_at < now()`.
 
