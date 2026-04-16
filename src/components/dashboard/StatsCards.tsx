@@ -27,7 +27,7 @@ export const StatsCards = () => {
   const calcValue = (stock: number, p: typeof products[number]) => {
     const cap = p.capacity_ml;
     const costPerBase = isBottle(p) && cap && cap > 0 ? p.cost_per_unit / cap : p.cost_per_unit;
-    return stock * costPerBase;
+    return Math.round(stock * costPerBase);
   };
   const warehouseTotal = products.reduce((sum, p) => sum + calcValue(p.warehouseStock, p), 0);
   const barTotal = products.reduce((sum, p) => sum + calcValue(p.barStock, p), 0);
