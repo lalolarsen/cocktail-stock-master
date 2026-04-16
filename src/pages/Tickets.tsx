@@ -538,11 +538,13 @@ export default function Tickets() {
         }
       }
 
-      // Auto-print 3 piezas
+      // Auto-print 3 piezas (sin diálogo posterior — la venta queda en Recientes con botón reimprimir)
       await autoPrintSale(sale);
 
-      setStep("success");
-      setShowReceipt(true);
+      // Reset para nueva venta sin pasar por pantalla de éxito
+      setCart([]);
+      setPaymentMethod(undefined);
+      setSaleResult(sale);
       fetchRecentSales();
     } catch (err: any) {
       console.error("Checkout:", err);
