@@ -1260,6 +1260,9 @@ export default function Sales() {
                       <CreditCard className="w-3.5 h-3.5" /> Tarjeta
                     </button>
                   </div>
+                  {!paymentMethod && (
+                    <p className="text-[10px] text-destructive text-center font-medium">Selecciona medio de pago</p>
+                  )}
 
                   {/* Document type */}
                   {(paymentMethod === "cash" || receiptMode === "unified") && (
