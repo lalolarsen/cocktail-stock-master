@@ -165,13 +165,20 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
               <>
                 <th className="py-2 px-2 text-right font-medium">Teórico</th>
                 <th className="py-2 px-2 text-right font-medium">Real</th>
+                <th className="py-2 px-2 text-right font-medium">Diferencia</th>
               </>
             )}
             <th className="py-2 px-2 text-left font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, idx) => (
+          {rows.map((r, idx) => {
+            const product = r.product_id ? products.find(p => p.id === r.product_id) : null;
+            const isBot = product?.capacity_ml ? product.capacity_ml > 0 : false;
+            const cap = product?.capacity_ml || 0;
+            const unitLbl = isBot ? "ml" : "ud";
+            const diff = (r.stock_real ?? 0) - (r.stock_teorico ?? 0);
+            return (
             <tr key={r.id} className={`border-b ${!r.is_valid ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
               <td className="py-1.5 px-2 text-muted-foreground">{r.row_index}</td>
               <td className="py-1.5 px-2 max-w-[140px] truncate text-muted-foreground">{r.product_name_excel || "—"}</td>
