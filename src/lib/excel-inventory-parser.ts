@@ -69,6 +69,7 @@ export interface ParseResult {
     conteos: number;
     valid: number;
     invalid: number;
+    omitidos?: number;
   };
 }
 
