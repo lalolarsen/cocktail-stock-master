@@ -150,6 +150,7 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
                 </td>
                 {type === "COMPRA" && (
                   <>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || "—"}</td>
                     <td className="py-1.5 px-2 text-right">{row.cantidad_envases}</td>
                     <td className="py-1.5 px-2 text-right">{formatCLP(Number(row.costo_neto_envase) || 0)}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.computedBaseQty}</td>
@@ -157,12 +158,14 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
                 )}
                 {type === "TRANSFERENCIA" && (
                   <>
-                    <td className="py-1.5 px-2">{row.ubicacion_destino}</td>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_origen || "—"}</td>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || "—"}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.computedBaseQty}</td>
                   </>
                 )}
                 {type === "CONTEO" && (
                   <>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || row.ubicacion_origen || "—"}</td>
                     <td className="py-1.5 px-2 text-right">{row.stock_teorico_exportado ?? "—"}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.stock_real_contado}</td>
                     <td className={`py-1.5 px-2 text-right font-medium ${diff < 0 ? "text-destructive" : diff > 0 ? "text-emerald-600" : ""}`}>
