@@ -260,7 +260,7 @@ export function ActivityPanel() {
                   <div 
                     key={employee.seller_id} 
                     className={`p-4 rounded-lg border transition-colors ${
-                      index === 0 ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200" : "hover:bg-muted/50"
+                      index === 0 ? "bg-primary/5 border-primary/20" : "hover:bg-muted/50"
                     }`}
                   >
                     <div className="flex items-center gap-3 mb-3">
@@ -272,12 +272,12 @@ export function ActivityPanel() {
                         <p className="font-medium text-sm truncate">
                           {employee.seller_name || "Sin nombre"}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {employee.seller_email}
+                        <p className="text-xs text-muted-foreground">
+                          {employee.total_sales} ventas
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-emerald-600">
+                        <p className="font-bold text-emerald-500">
                           {formatCLP(employee.total_amount)}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -291,15 +291,12 @@ export function ActivityPanel() {
                       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                         <div 
                           className={`h-full rounded-full transition-all ${
-                            index === 0 ? "bg-yellow-400" : index === 1 ? "bg-gray-400" : index === 2 ? "bg-amber-500" : "bg-primary/60"
+                            index === 0 ? "bg-primary" : index === 1 ? "bg-muted-foreground/50" : index === 2 ? "bg-amber-500" : "bg-primary/40"
                           }`}
                           style={{ width: `${percentage}%` }}
                         />
                       </div>
                       <div className="flex items-center gap-3 text-xs shrink-0">
-                        <span className="text-muted-foreground">
-                          {employee.total_sales} ventas
-                        </span>
                         {employee.cancelled_sales > 0 && (
                           <Badge variant="destructive" className="text-xs px-1.5 py-0">
                             {employee.cancelled_sales} anuladas
