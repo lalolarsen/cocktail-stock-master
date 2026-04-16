@@ -89,7 +89,7 @@ export function WorkerCard({
               {worker.full_name || "Sin nombre"}
             </h3>
             <p className="text-xs text-muted-foreground font-mono mt-0.5">
-              PIN: {maskRut(worker.rut_code)}
+              RUT: {maskRut(worker.rut_code)}
             </p>
           </div>
 
