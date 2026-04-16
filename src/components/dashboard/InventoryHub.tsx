@@ -638,17 +638,13 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
               onClick={() => { setSecondaryView(secondaryView === "waste" ? null : "waste"); setShowDetailedStock(false); }}>
               <Trash2 className="w-4 h-4 mr-1" /> Merma
             </Button>
-            <Button variant={secondaryView === "reconciliation" ? "secondary" : "outline"} size="sm"
-              onClick={() => { setSecondaryView(secondaryView === "reconciliation" ? null : "reconciliation"); setShowDetailedStock(false); }}>
-              <Scale className="w-4 h-4 mr-1" /> Cuadre
+            <Button variant={secondaryView === "comparison" ? "secondary" : "outline"} size="sm"
+              onClick={() => { setSecondaryView(secondaryView === "comparison" ? null : "comparison"); setShowDetailedStock(false); }}>
+              <Scale className="w-4 h-4 mr-1" /> Comparación de inventario
             </Button>
             <Button variant={secondaryView === "external" ? "secondary" : "outline"} size="sm"
               onClick={() => { setSecondaryView(secondaryView === "external" ? null : "external"); setShowDetailedStock(false); }}>
               <ClipboardList className="w-4 h-4 mr-1" /> Consumo externo
-            </Button>
-            <Button variant={secondaryView === "redeem_recon" ? "secondary" : "outline"} size="sm"
-              onClick={() => { setSecondaryView(secondaryView === "redeem_recon" ? null : "redeem_recon"); setShowDetailedStock(false); }}>
-              <Scale className="w-4 h-4 mr-1" /> Canjes vs Stock
             </Button>
           </>
         )}
@@ -657,9 +653,8 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
       <Suspense fallback={<div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
         {showDetailedStock && <WarehouseInventory isReadOnly={isReadOnly} />}
         {secondaryView === "waste" && <WasteManagement />}
-        {secondaryView === "reconciliation" && <StockReconciliation />}
+        {secondaryView === "comparison" && <InventoryComparisonModule />}
         {secondaryView === "external" && <ExternalConsumptionPanel />}
-        {secondaryView === "redeem_recon" && <RedeemReconciliationPanel />}
       </Suspense>
 
       {/* ── Upload Dialog ── */}
