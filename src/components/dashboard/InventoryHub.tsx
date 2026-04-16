@@ -270,12 +270,13 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         .maybeSingle();
 
       if (existing) {
+        const baseConf = m.wasManualCorrection ? 0.95 : 0.7;
         await supabase
           .from("learning_product_mappings")
           .update({
             product_id: m.product_id,
             times_used: (existing.times_used || 0) + 1,
-            confidence: Math.min(1, 0.7 + (existing.times_used || 0) * 0.05),
+            confidence: Math.min(1, baseConf + (existing.times_used || 0) * 0.05),
             last_used_at: new Date().toISOString(),
           })
           .eq("id", existing.id);
