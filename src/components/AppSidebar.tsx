@@ -81,10 +81,6 @@ const ADMIN_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    label: "Finanzas",
-    items: [],
-  },
-  {
     label: "Sistema",
     items: [
       { title: "Configuración", value: "settings", icon: Settings },
