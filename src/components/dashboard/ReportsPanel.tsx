@@ -15,6 +15,7 @@ import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesRep
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
+import { calculateCommission, STOCKIA_COMMISSION_RATE, STOCKIA_COMMISSION_LABEL } from "@/lib/commission";
 import {
   Select,
   SelectContent,
@@ -332,6 +333,11 @@ export function ReportsPanel() {
           <SummaryCard label="Margen Bruto" value={`${avgMargin}%`} sub={`COGS ${formatCLP(monthTotals.cogsTotal)}`} icon={TrendingUp} accent={Number(avgMargin) >= 30} />
           <SummaryCard label="Cancelaciones" value={formatCLP(monthTotals.totalCancelled)} sub={`${monthTotals.cancelledCount} ventas`} icon={XCircle} destructive />
         </div>
+      )}
+
+      {/* Comisión STOCKIA del mes */}
+      {!loading && jornadas.length > 0 && (
+        <StockiaCommissionCard monthLabel={monthOptions.find((o) => o.value === monthFilter)?.label || ""} grossSales={monthTotals.totalSales} />
       )}
 
       {/* Jornadas List */}
