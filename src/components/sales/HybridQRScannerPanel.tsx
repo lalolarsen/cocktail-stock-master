@@ -29,6 +29,7 @@ interface RedemptionResult {
 export interface HybridQRScannerPanelProps {
   barLocationId: string;
   barName: string;
+  activeJornadaId?: string | null;
 }
 
 const AUTO_RESET_MS = 6000;
@@ -56,7 +57,7 @@ function deliverSummary(result: RedemptionResult | null): string {
   return "";
 }
 
-export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScannerPanelProps) {
+export function HybridQRScannerPanel({ barLocationId, barName, activeJornadaId }: HybridQRScannerPanelProps) {
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -118,18 +119,34 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
     setScanState("processing");
     setResult(null);
 
-    // ── Courtesy QR bypass ──
+    // ── Courtesy QR — official RPC (validates, decrements, logs redemption) ──
     if (token.startsWith("courtesy:")) {
-      clearTimers();
-      const courtesyResult: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Cortesía", quantity: 1 },
-      };
-      logAuditEvent({ action: "redeem_courtesy_bypass", status: "success", metadata: { token: token.slice(0, 20), bar_id: barLocationId, source: "hybrid_pos" } });
-      setResult(courtesyResult);
-      setScanState("success");
-      processingRef.current = false;
-      scheduleReset();
+      try {
+        const code = token.slice("courtesy:".length);
+        const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
+          p_code: code,
+          p_jornada_id: activeJornadaId ?? null,
+        });
+        clearTimers();
+        if (error) throw error;
+        const r = data as unknown as RedemptionResult;
+        logAuditEvent({
+          action: "redeem_courtesy_qr",
+          status: r.success ? "success" : "fail",
+          metadata: { code: code.slice(0, 8), error_code: r.error_code, bar_id: barLocationId, source: "hybrid_pos", product: r.deliver?.name, qty: r.deliver?.quantity },
+        });
+        setResult(r);
+        setScanState(r.success ? "success" : "error");
+      } catch (err: any) {
+        clearTimers();
+        const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión" };
+        logAuditEvent({ action: "redeem_courtesy_qr", status: "fail", metadata: { error: err?.message, bar_id: barLocationId, source: "hybrid_pos" } });
+        setResult(errorResult);
+        setScanState("error");
+      } finally {
+        processingRef.current = false;
+        scheduleReset();
+      }
       return;
     }
 
@@ -189,7 +206,7 @@ export function HybridQRScannerPanel({ barLocationId, barName }: HybridQRScanner
       processingRef.current = false;
       abortRef.current = null;
     }
-  }, [barLocationId, clearTimers, resetToIdle, scheduleReset]);
+  }, [barLocationId, clearTimers, resetToIdle, scheduleReset, activeJornadaId]);
 
   const handleScannerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {

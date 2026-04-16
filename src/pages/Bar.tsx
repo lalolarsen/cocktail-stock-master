@@ -136,7 +136,7 @@ export default function Bar() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [userName, setUserName] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
-  const { venue } = useAppSession();
+  const { venue, activeJornadaId } = useAppSession();
   const currentVenueId = venue?.id ?? "";
 
   // Scanner
@@ -338,19 +338,42 @@ export default function Bar() {
     abortRef.current = new AbortController();
     setDebugStep("redeem");
 
-    // ── Courtesy QR bypass ──
+    // ── Courtesy QR — official RPC (validates, decrements, logs redemption) ──
     if (token.startsWith("courtesy:")) {
-      const courtesyResult: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Cortesía", quantity: 1 },
-        _courtesy: true,
-      };
-      setDebugStep("done-success"); setResult(courtesyResult);
-      logAuditEvent({ action: "redeem_courtesy_bypass", status: "success", metadata: { token: token.slice(0, 20), bar_id: selectedBarId } });
-      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: "ENTREGAR: Cortesía", tokenShort: token.slice(-6) };
-      setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("success"); scheduleAutoReset();
-      return courtesyResult;
+      try {
+        redeemInFlightRef.current = true;
+        const code = token.slice("courtesy:".length);
+        const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
+          p_code: code,
+          p_jornada_id: activeJornadaId ?? null,
+        });
+        if (abortRef.current?.signal.aborted) return undefined;
+        if (error) throw error;
+        const r = { ...(data as RedemptionResult), _courtesy: true };
+        if (!r.success) {
+          setDebugStep("done-error"); setResult(r);
+          logAuditEvent({ action: "redeem_courtesy_qr", status: "fail", metadata: { code: code.slice(0, 8), error_code: r.error_code, bar_id: selectedBarId } });
+          const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: r.error_code || "ERROR", tokenShort: token.slice(-6) };
+          setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+          releaseLocks("error"); scheduleAutoReset();
+          return r;
+        }
+        setDebugStep("done-success"); setResult(r);
+        logAuditEvent({ action: "redeem_courtesy_qr", status: "success", metadata: { code: code.slice(0, 8), bar_id: selectedBarId, product: r.deliver?.name, qty: r.deliver?.quantity } });
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: historyLabel(r), tokenShort: token.slice(-6) };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("success"); scheduleAutoReset();
+        return r;
+      } catch (err: any) {
+        if (abortRef.current?.signal.aborted) return undefined;
+        const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión", _courtesy: true };
+        setDebugStep("done-error"); setResult(errorResult);
+        logAuditEvent({ action: "redeem_courtesy_qr", status: "fail", metadata: { error: err?.message, bar_id: selectedBarId } });
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + (err?.message || "").slice(0, 40), tokenShort: token.slice(-6) };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset();
+        return errorResult;
+      }
     }
 
     try {
@@ -395,7 +418,7 @@ export default function Bar() {
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
       releaseLocks("error"); scheduleAutoReset(); return errorResult;
     }
-  }, [selectedBarId, releaseLocks, scheduleAutoReset]);
+  }, [selectedBarId, releaseLocks, scheduleAutoReset, activeJornadaId]);
 
   // ── Resolve delivered-by then redeem ────────────────────────────────────────
   const resolveDeliveredByAndRedeem = useCallback(async (
