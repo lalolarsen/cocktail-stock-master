@@ -202,7 +202,7 @@ export const useStockData = () => {
         const cap = p.capacity_ml;
         const bottle = isBottle(p);
         const costPerBase = bottle && cap && cap > 0 ? p.cost_per_unit / cap : p.cost_per_unit;
-        return sum + p.totalStock * costPerBase;
+        return sum + Math.round(p.totalStock * costPerBase);
       }, 0);
 
       setProducts(productsWithStock);
