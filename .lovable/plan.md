@@ -2,62 +2,66 @@
 
 ## Diagnóstico
 
-Analizando el flujo de Tickets (POS), hay 4 problemas relacionados:
+Cuando se escanea un QR de cortesía en la **Caja Híbrida** (`HybridQRScannerPanel`) o en el **Bar** (`Bar.tsx`), el código entra al "Courtesy QR bypass" y muestra de forma hardcodeada:
 
-1. **Recientes no imprimibles** — `RecentSalesPanel` (usado por Sales/Alcohol) tiene reimpresión, pero el POS de Tickets (`/tickets` → `Tickets.tsx`) probablemente no lo monta o usa un panel propio sin botón de reimprimir QRs/comprobante.
+```ts
+deliver: { type: "cover", name: "Cortesía", quantity: 1 }
+```
 
-2. **Sin "Descargar Resultados de Jornada"** — Existe `RedeemReportButton` y el reporte de cajero PDF (`pos-cashier-session-results-pdf`) en el POS de alcohol, pero el POS de Tickets no lo expone.
+Por eso el operador nunca ve **qué producto** ni **qué cantidad** se está canjeando. Además:
 
-3. **No pide selección de Cover** — La RPC `create_ticket_sale_with_covers` ya acepta `p_cover_selections jsonb`, y existe la memoria `mem://features/tickets/cover-multi-option-and-printing`. El frontend de Tickets debe abrir un selector cuando un ticket type tiene múltiples cocktails/opciones de cover, pero actualmente lo está creando directamente sin abrir el dialog de selección.
+1. **No se consulta `courtesy_qr`**, por lo que no se valida el código contra la BD (un QR cancelado, expirado o ya canjeado pasaría como válido).
+2. **No se decrementa `used_count` ni se actualiza `status`**, así que el mismo QR puede usarse infinitas veces.
+3. **No se inserta nada en `courtesy_redemptions`**, por lo que:
+   - El KPI de "QRs Canjeados" del dashboard no los cuenta.
+   - El módulo de Reconciliación (`RedeemReconciliationPanel`) y Comparación de Inventario (`InventoryComparisonModule`) no detectan el consumo.
+   - La lógica de COGS de cortesía en `useFinanceMTD` no los descuenta.
 
-4. **Impresión 3 piezas** — `printTicketSale` existe en `src/lib/printing/ticket-print.ts` pero es posible que `Tickets.tsx` no lo invoque, o lo invoque sin esperar covers seleccionados.
-
-Necesito leer `src/pages/Tickets.tsx` y los componentes asociados para confirmar el alcance exacto antes de planificar.
-
-## Exploración necesaria (en implementación)
-
-- `src/pages/Tickets.tsx` — flujo actual de venta + qué panel de recientes usa
-- `src/components/dashboard/TicketTypesManagement.tsx` — cómo se configuran las opciones de cover por ticket type
-- `mem://features/tickets/cover-multi-option-and-printing` — regla canónica del flujo de covers
-- Revisar si existe un `CoverSelectionDialog` o equivalente
+Lo curioso: ya existe en BD un RPC **`redeem_courtesy_qr(p_code, p_jornada_id)`** (SECURITY DEFINER) que hace **todo** correctamente — valida, decrementa, registra en `courtesy_redemptions` y devuelve `{ deliver: { name: "🎁 <product>", quantity: <qty> }, courtesy: { code, product_name, qty, used_count, max_uses, status } }`. Simplemente no se está llamando.
 
 ## Plan de corrección
 
-### A. Selector de Cover obligatorio antes de cobrar
-- Antes de llamar a `create_ticket_sale_with_covers`, si **alguno de los items del carrito es un ticket type con `cover_options.length >= 1`**, abrir un dialog modal:
-  - Listar cada unidad de cover (ej: "Cover #1 de 3") con un select de las opciones disponibles (cocktails configurados en el ticket type).
-  - Bloquear "Cobrar" hasta que todas las unidades tengan cocktail asignado.
-  - Construir `p_cover_selections` como `[{ ticket_type_id, cover_index, cocktail_product_id, cocktail_name }, ...]`.
-- Pasar `cover_selections` a la RPC + a `printTicketSale` para que cada cover impreso muestre el cocktail correcto.
+### A. Reemplazar el bypass por la RPC oficial
 
-### B. Impresión 3 piezas correctamente disparada
-- Tras éxito de la RPC, leer los `pickup_tokens` recién creados (entryTokens + coverTokens con `short_code`) y llamar a `printTicketSale({ ..., entryTokens, coverTokens })`.
-- Respetar `paperWidth` desde `localStorage` igual que el POS de alcohol.
+**`src/pages/Bar.tsx`** (líneas ~341-354) y **`src/components/sales/HybridQRScannerPanel.tsx`** (líneas ~121-134):
 
-### C. Panel de Recientes con reimprimir en Tickets
-- Montar `RecentSalesPanel` (o una variante) en `Tickets.tsx` con:
-  - Filtrado por `pos_id` y jornada activa.
-  - Botón "Reimprimir" por venta que recupera tokens asociados y vuelve a llamar a `printTicketSale` (aplica regla de reimpresión Hybrid/POS de la memoria `pos-sales-history-reprint-v2` — para Tickets sí debe permitirse reimprimir QRs porque son la entrada física).
+Sustituir el atajo hardcodeado por:
 
-### D. Botón "Descargar Resultados de Jornada"
-- Añadir el mismo botón que aparece en POS de Alcohol (`pos-cashier-session-results-pdf`) en el header/footer de `Tickets.tsx`.
-- Genera el PDF de cierre parcial del cajero usando los datos de la jornada activa filtrados por el `pos_id` de Tickets.
+```ts
+if (token.startsWith("courtesy:")) {
+  const code = token.slice("courtesy:".length);
+  const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
+    p_code: code,
+    p_jornada_id: activeJornadaId ?? null,
+  });
+  // tratar respuesta como un RedemptionResult normal
+}
+```
+
+Mapear los `error_code` retornados (`TOKEN_NOT_FOUND`, `TOKEN_EXPIRED`, `TOKEN_CANCELLED`, `ALREADY_REDEEMED`, `FORBIDDEN`, `UNAUTHENTICATED`) a los mismos estados visuales que ya maneja el panel para QRs normales (badges YA CANJEADO / EXPIRADO / INVÁLIDO).
+
+En el caso de éxito, el `deliver` viene ya con `name: "🎁 <product>"` y `quantity: <qty>`, por lo que la UI (que ya sabe renderizar `deliver.name × deliver.quantity`) mostrará automáticamente el producto correcto.
+
+### B. Histórico y feedback visual
+- En `setScanHistory` reemplazar la etiqueta fija `"ENTREGAR: Cortesía"` por la del producto real (`historyLabel(r)` ya lo construye desde `deliver`).
+- Marcar el flag `_courtesy: true` cuando `r.courtesy` esté presente, para conservar el badge dorado actual.
+
+### C. Pasar `activeJornadaId`
+- En `Bar.tsx` ya se usa `useAppSession`; añadir `activeJornadaId` a la llamada.
+- En `HybridQRScannerPanel` agregar la prop `activeJornadaId` (ya está disponible en `Sales.tsx`, pasarla por props) y enviarla al RPC.
+
+### D. Limpieza secundaria
+- Mantener `CourtesyRedeemDialog.tsx` (entrada manual desde `Sales.tsx`) sin cambios — sigue funcionando para el flujo de "agregar al carrito" (no es el flujo de Bar).
 
 ## Archivos a tocar
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/Tickets.tsx` | Integrar selector de cover, impresión 3 piezas, panel de recientes con reimpresión, botón descargar PDF |
-| `src/components/sales/CoverSelectionDialog.tsx` (nuevo) | Modal de asignación de cocktails por unidad de cover |
-| `src/components/sales/RecentTicketSalesPanel.tsx` (nuevo o reuso de RecentSalesPanel) | Listado de ventas recientes con botón reimprimir |
-| `src/lib/printing/ticket-print.ts` | (verificar) que acepte selecciones de cover y las inyecte por pieza |
-| `src/components/dashboard/TicketTypesManagement.tsx` | (verificar) que las opciones de cover queden expuestas en el ticket type que consume el POS |
+| `src/pages/Bar.tsx` | Reemplazar bypass por `supabase.rpc("redeem_courtesy_qr", ...)` con `activeJornadaId` |
+| `src/components/sales/HybridQRScannerPanel.tsx` | Mismo reemplazo + nueva prop `activeJornadaId` |
+| `src/pages/Sales.tsx` | Pasar `activeJornadaId` al `HybridQRScannerPanel` |
 
 ## Memoria a actualizar
 
-`mem://features/tickets/cover-multi-option-and-printing` — confirmar que el flujo POS:
-1. Bloquea cobro hasta selección de cover por unidad.
-2. Imprime 3 piezas (comprobante + N entradas + N covers con cocktail asignado).
-3. Permite reimprimir desde Recientes.
-4. Expone descarga de PDF de resultados de jornada.
+`mem://features/sales/courtesy-qr-system` y `mem://architecture/courtesy-redemption-rls-bypass`: dejar explícito que **el canje de cortesía en Bar e Hybrid POS debe pasar SIEMPRE por el RPC `redeem_courtesy_qr`**, no por bypass cliente. El RPC es la fuente única que valida, decrementa `used_count` y registra `courtesy_redemptions` (requerido para KPIs, reconciliación y COGS).
 
