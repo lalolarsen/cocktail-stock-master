@@ -5,11 +5,30 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Loader2, Ticket, Plus, Minus, CreditCard, Wine, QrCode, Clock, Check, LogOut, Store, Banknote, ShieldAlert } from "lucide-react";
+import {
+  Loader2,
+  Ticket,
+  Plus,
+  Minus,
+  CreditCard,
+  Wine,
+  QrCode,
+  Clock,
+  Check,
+  LogOut,
+  Store,
+  Banknote,
+  ShieldAlert,
+  AlertCircle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
-import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDemoLogging } from "@/hooks/useDemoLogging";
@@ -23,8 +42,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  TicketReceiptDialog,
+  type SaleResult as ReceiptSaleResult,
+} from "@/components/tickets/TicketReceiptDialog";
+import { printTicketSale, type TicketSalePrintData } from "@/lib/printing/ticket-print";
+import { getPreferredPaperWidthStorageKey } from "@/lib/printing/qz";
+import type { PaperWidth } from "@/lib/printing/qz";
 
 type PaymentMethodType = "cash" | "card";
+
+interface CoverOption {
+  cocktail_id: string;
+  cocktail_name: string;
+  display_order: number;
+}
+
 interface TicketType {
   id: string;
   name: string;
@@ -32,18 +65,22 @@ interface TicketType {
   includes_cover: boolean;
   cover_cocktail_id: string | null;
   cover_quantity: number;
-  cover_cocktail?: { name: string } | null;
+  cover_options: CoverOption[];
 }
 
 interface CartItem {
   ticketType: TicketType;
   quantity: number;
+  /** Length = quantity * cover_quantity. cocktail_id per cover slot. Empty string = pending. */
+  coverSelections: string[];
 }
 
 interface CoverToken {
   token_id: string;
   token: string;
+  short_code?: string | null;
   cocktail_id: string;
+  cocktail_name?: string;
   ticket_type: string;
 }
 
@@ -73,79 +110,63 @@ type Step = "select-pos" | "select-tickets" | "success";
 export default function Tickets() {
   const navigate = useNavigate();
   const { logDemoEvent, isDemoMode } = useDemoLogging();
-  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
-  const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
+  const { activeJornadaId } = useAppSession();
+
+  const [step, setStep] = useState<Step>("select-pos");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
-  const { activeJornadaId, hasActiveJornada } = useAppSession();
-  const [step, setStep] = useState<Step>("select-pos");
-  
-  // POS selection
+
+  // POS
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
   const [selectedPosId, setSelectedPosId] = useState<string>("");
   const [selectedPosName, setSelectedPosName] = useState<string>("");
-  
+
+  // Catalog & cart
+  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Payment — undefined means not selected
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | undefined>(undefined);
+
+  // Sale result + receipt dialog
+  const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+
   // Recent sales
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
-  const [selectedHistorySale, setSelectedHistorySale] = useState<string | null>(null);
-  const [historyTokens, setHistoryTokens] = useState<Array<{ id: string; token: string; status: string; cocktail_name?: string }>>([]);
-  const [loadingTokens, setLoadingTokens] = useState(false);
-  
-  // Payment method selection - undefined means not selected (placeholder state)
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | undefined>(undefined);
-  useEffect(() => {
-    fetchPosTerminals();
-  }, []);
 
+  /* ─── Load POS terminals ─── */
+  useEffect(() => { fetchPosTerminals(); }, []);
   const fetchPosTerminals = async () => {
     try {
       const { data, error } = await supabase
         .from("pos_terminals")
         .select("id, name, pos_type, is_cash_register")
         .eq("is_active", true)
-        .eq("pos_type", "ticket_sales") // Only ticket sales POS for this module
+        .eq("pos_type", "ticket_sales")
         .order("name");
-
       if (!error && data) {
         setPosTerminals(data);
-        // Restore saved selection
         const savedPosId = localStorage.getItem("selectedTicketPosId");
         if (savedPosId && data.some(p => p.id === savedPosId)) {
           const pos = data.find(p => p.id === savedPosId);
           setSelectedPosId(savedPosId);
           setSelectedPosName(pos?.name || "");
         }
-        // Auto-proceed if only one POS
         if (data.length === 1) {
           setSelectedPosId(data[0].id);
           setSelectedPosName(data[0].name);
         }
       }
-    } catch (error) {
-      console.error("Error fetching POS terminals:", error);
+    } catch (err) {
+      console.error("Error fetching POS:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && cart.size > 0 && !processing && step === "select-tickets" && paymentMethod) {
-        e.preventDefault();
-        handleCheckout();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart, processing, step, paymentMethod]);
-
   const confirmPosSelection = () => {
-    if (!selectedPosId) {
-      toast.error("Selecciona una caja");
-      return;
-    }
+    if (!selectedPosId) return toast.error("Selecciona una caja");
     const pos = posTerminals.find(p => p.id === selectedPosId);
     if (pos) {
       setSelectedPosName(pos.name);
@@ -156,27 +177,45 @@ export default function Tickets() {
     setStep("select-tickets");
   };
 
+  /* ─── Load ticket types + cover options ─── */
   const fetchTicketTypes = async () => {
     try {
       const { data, error } = await supabase
         .from("ticket_types")
         .select(`
-          id,
-          name,
-          price,
-          includes_cover,
-          cover_cocktail_id,
-          cover_quantity,
-          cover_cocktail:cocktails(name)
+          id, name, price, includes_cover, cover_cocktail_id, cover_quantity,
+          ticket_type_cover_options (
+            cocktail_id,
+            display_order,
+            cocktails ( name )
+          )
         `)
         .eq("is_active", true)
         .order("price", { ascending: true });
-
       if (error) throw error;
-      setTicketTypes(data || []);
-    } catch (error: any) {
-      console.error("Error fetching ticket types:", error);
-      toast.error("Error al cargar tipos de entrada");
+
+      const mapped: TicketType[] = (data || []).map((t: any) => {
+        const opts: CoverOption[] = (t.ticket_type_cover_options || [])
+          .map((o: any) => ({
+            cocktail_id: o.cocktail_id,
+            cocktail_name: o.cocktails?.name || "Cover",
+            display_order: o.display_order ?? 0,
+          }))
+          .sort((a: CoverOption, b: CoverOption) => a.display_order - b.display_order);
+        return {
+          id: t.id,
+          name: t.name,
+          price: t.price,
+          includes_cover: t.includes_cover,
+          cover_cocktail_id: t.cover_cocktail_id,
+          cover_quantity: t.cover_quantity || 1,
+          cover_options: opts,
+        };
+      });
+      setTicketTypes(mapped);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Error al cargar entradas");
     } finally {
       setLoading(false);
     }
@@ -189,184 +228,251 @@ export default function Tickets() {
         .select("id, ticket_number, created_at")
         .order("created_at", { ascending: false })
         .limit(5);
-
       if (error) throw error;
-      
-      // Get cover counts for each sale
-      const salesWithCovers = await Promise.all(
+      const withCovers = await Promise.all(
         (data || []).map(async (sale) => {
           const { count } = await supabase
             .from("pickup_tokens")
             .select("*", { count: "exact", head: true })
             .eq("ticket_sale_id", sale.id);
-          
           return { ...sale, cover_count: count || 0 };
         })
       );
-      
-      setRecentSales(salesWithCovers);
-    } catch (error) {
-      console.error("Error fetching recent sales:", error);
+      setRecentSales(withCovers);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const addToCart = (ticketType: TicketType) => {
+  /* ─── Cart helpers ─── */
+  const addToCart = (tt: TicketType) => {
     setCart(prev => {
-      const newCart = new Map(prev);
-      const existing = newCart.get(ticketType.id);
-      if (existing) {
-        newCart.set(ticketType.id, { ...existing, quantity: existing.quantity + 1 });
-      } else {
-        newCart.set(ticketType.id, { ticketType, quantity: 1 });
+      const idx = prev.findIndex(it => it.ticketType.id === tt.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        const item = next[idx];
+        const newQty = item.quantity + 1;
+        const totalCovers = newQty * (tt.cover_quantity || 1);
+        // Auto-assign if only 1 option, else leave empty (pending)
+        const autoId = tt.includes_cover && tt.cover_options.length === 1
+          ? tt.cover_options[0].cocktail_id
+          : "";
+        const newSelections = tt.includes_cover
+          ? [...item.coverSelections, ...Array(totalCovers - item.coverSelections.length).fill(autoId)]
+          : [];
+        next[idx] = { ...item, quantity: newQty, coverSelections: newSelections };
+        return next;
       }
-      return newCart;
+      const totalCovers = (tt.cover_quantity || 1);
+      const autoId = tt.includes_cover && tt.cover_options.length === 1
+        ? tt.cover_options[0].cocktail_id
+        : "";
+      return [
+        ...prev,
+        {
+          ticketType: tt,
+          quantity: 1,
+          coverSelections: tt.includes_cover ? Array(totalCovers).fill(autoId) : [],
+        },
+      ];
     });
   };
 
   const removeFromCart = (ticketTypeId: string) => {
     setCart(prev => {
-      const newCart = new Map(prev);
-      const existing = newCart.get(ticketTypeId);
-      if (existing && existing.quantity > 1) {
-        newCart.set(ticketTypeId, { ...existing, quantity: existing.quantity - 1 });
-      } else {
-        newCart.delete(ticketTypeId);
-      }
-      return newCart;
+      const idx = prev.findIndex(it => it.ticketType.id === ticketTypeId);
+      if (idx < 0) return prev;
+      const item = prev[idx];
+      if (item.quantity <= 1) return prev.filter(it => it.ticketType.id !== ticketTypeId);
+      const next = [...prev];
+      const newQty = item.quantity - 1;
+      const totalCovers = newQty * (item.ticketType.cover_quantity || 1);
+      next[idx] = {
+        ...item,
+        quantity: newQty,
+        coverSelections: item.coverSelections.slice(0, totalCovers),
+      };
+      return next;
     });
   };
 
-  const getCartTotal = () => {
-    let total = 0;
-    cart.forEach(item => {
-      total += item.ticketType.price * item.quantity;
-    });
-    return total;
+  const updateCoverSelection = (ticketTypeId: string, slotIndex: number, cocktailId: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.ticketType.id !== ticketTypeId) return item;
+      const sel = [...item.coverSelections];
+      sel[slotIndex] = cocktailId;
+      return { ...item, coverSelections: sel };
+    }));
   };
 
-  const getCartItems = () => {
-    return Array.from(cart.values());
-  };
+  const getCartTotal = () => cart.reduce((s, i) => s + i.ticketType.price * i.quantity, 0);
+  const getTotalCoversIncluded = () =>
+    cart.reduce((s, i) => i.ticketType.includes_cover ? s + i.coverSelections.length : s, 0);
+  const getPendingCoversCount = () =>
+    cart.reduce((s, i) => s + i.coverSelections.filter(x => !x).length, 0);
 
-  /**
-   * Calculate total covers that will be generated.
-   * Only ticket types with includes_cover=true AND valid cover_cocktail_id generate covers.
-   */
-  const getTotalCoversIncluded = () => {
-    let total = 0;
-    cart.forEach(item => {
-      // Only count covers if includes_cover=true AND cover_cocktail_id exists
-      if (item.ticketType.includes_cover && item.ticketType.cover_cocktail_id) {
-        total += (item.ticketType.cover_quantity || 1) * item.quantity;
-      }
-    });
-    return total;
-  };
-
+  /* ─── Checkout ─── */
   const handleCheckout = async () => {
-    if (cart.size === 0) {
-      toast.error("El carrito está vacío");
-      return;
-    }
-
-    if (!paymentMethod) {
-      toast.error("Selecciona un método de pago");
-      return;
-    }
-
-    // CRITICAL: Block sales if no active jornada (jornada_id is now NOT NULL)
-    if (!activeJornadaId) {
-      toast.error("No hay jornada activa. Contacta a un administrador.");
-      return;
-    }
+    if (cart.length === 0) return toast.error("Carrito vacío");
+    if (!paymentMethod) return toast.error("Selecciona un método de pago");
+    if (!activeJornadaId) return toast.error("No hay jornada activa");
+    if (getPendingCoversCount() > 0) return toast.error("Hay covers sin asignar");
 
     setProcessing(true);
-
     try {
-      // Build items payload - only ticket_type_id and quantity
-      // Backend will determine covers based on ticket_type configuration
-      const items = getCartItems().map(item => ({
-        ticket_type_id: item.ticketType.id,
-        quantity: item.quantity
+      const items = cart.map(it => ({
+        ticket_type_id: it.ticketType.id,
+        quantity: it.quantity,
       }));
+      // cover_selections is parallel array of arrays: position matches items[]
+      const cover_selections = cart.map(it =>
+        it.ticketType.includes_cover ? it.coverSelections : []
+      );
 
       const { data, error } = await supabase.rpc("create_ticket_sale_with_covers", {
         p_items: items,
         p_payment_method: paymentMethod,
         p_jornada_id: activeJornadaId,
-        p_pos_id: selectedPosId || null
+        p_pos_id: selectedPosId || null,
+        p_cover_selections: cover_selections,
       });
-
       if (error) throw error;
-      
-      const result = data as unknown as { success: boolean; error?: string; ticket_sale_id?: string; ticket_number?: string; total?: number; cover_tokens?: CoverToken[] };
 
-      if (!result.success) {
-        throw new Error(result.error || "Error al procesar venta");
-      }
+      const result = data as unknown as {
+        success: boolean;
+        error?: string;
+        ticket_sale_id?: string;
+        ticket_number?: string;
+        total?: number;
+        cover_tokens?: CoverToken[];
+      };
+      if (!result.success) throw new Error(result.error || "Error al procesar venta");
 
-      // Record gross income entry
+      // Gross income
       const { data: session } = await supabase.auth.getSession();
       if (session.session?.user) {
-        await supabase
-          .from("gross_income_entries")
-          .insert({
-            venue_id: "00000000-0000-0000-0000-000000000000", // Will use profile venue
-            source_type: "ticket",
-            source_id: result.ticket_sale_id,
-            amount: result.total!,
-            description: `Entrada ${result.ticket_number}`,
-            jornada_id: activeJornadaId,
-            created_by: session.session.user.id
-          });
+        await supabase.from("gross_income_entries").insert({
+          venue_id: "00000000-0000-0000-0000-000000000000",
+          source_type: "ticket",
+          source_id: result.ticket_sale_id,
+          amount: result.total!,
+          description: `Entrada ${result.ticket_number}`,
+          jornada_id: activeJornadaId,
+          created_by: session.session.user.id,
+        });
       }
 
-      toast.success(`Venta completada: ${result.ticket_number}`);
-      
-      // Log demo event for ticket sale
+      const sale: SaleResult = {
+        ticket_sale_id: result.ticket_sale_id!,
+        ticket_number: result.ticket_number!,
+        total: result.total!,
+        cover_tokens: result.cover_tokens || [],
+      };
+      setSaleResult(sale);
+
+      toast.success(`Venta ${result.ticket_number}`);
+
+      // Demo logging
       if (isDemoMode) {
-        const cartItems = getCartItems();
-        for (const item of cartItems) {
-          const hasCover = item.ticketType.includes_cover && item.ticketType.cover_cocktail_id;
+        for (const it of cart) {
           logDemoEvent({
             event_type: "ticket_sale",
             user_role: "ticket_seller",
             payload: {
-              ticket_type: item.ticketType.name,
-              quantity: item.quantity,
-              cover_included: hasCover,
-              cover_type: hasCover ? item.ticketType.cover_cocktail?.name : null,
+              ticket_type: it.ticketType.name,
+              quantity: it.quantity,
+              cover_included: it.ticketType.includes_cover,
               ticket_number: result.ticket_number,
-              qr_count: hasCover ? (item.ticketType.cover_quantity || 1) * item.quantity : 0,
+              qr_count: it.coverSelections.length,
               qr_status: "generated",
             },
           });
         }
       }
-      
-      setSaleResult({
-        ticket_sale_id: result.ticket_sale_id!,
-        ticket_number: result.ticket_number!,
-        total: result.total!,
-        cover_tokens: result.cover_tokens || []
-      });
-      
+
+      // Auto-print 3 piezas
+      await autoPrintSale(sale);
+
       setStep("success");
+      setShowReceipt(true);
       fetchRecentSales();
-    } catch (error: any) {
-      console.error("Checkout error:", error);
-      toast.error(error.message || "Error al procesar la venta");
+    } catch (err: any) {
+      console.error("Checkout:", err);
+      toast.error(err.message || "Error al procesar la venta");
     } finally {
       setProcessing(false);
     }
   };
 
+  const autoPrintSale = async (sale: SaleResult) => {
+    try {
+      // Build entry tokens (1 per ticket unit)
+      // Note: backend currently issues only cover tokens; entries don't have separate access tokens.
+      // So we print covers + comprobante. If future schema adds entry tokens, expand here.
+      const paperKey = getPreferredPaperWidthStorageKey();
+      const paperWidth = (localStorage.getItem(paperKey) as PaperWidth) || "80mm";
+
+      const items = cart.map(it => ({
+        name: it.ticketType.name,
+        quantity: it.quantity,
+        price: it.ticketType.price,
+      }));
+
+      // Generate one synthetic "entry piece" per ticket sold (uses the cover token if available, else
+      // we still print a header-only ticket without QR for access). Strategy: for each ticket unit,
+      // emit a piece. If that unit has a cover, reuse its token as access QR; otherwise just header.
+      // Simpler & correct: print a comprobante + 1 access piece per unit (without QR, just ticket
+      // number + ticket type), and then 1 cover piece per cover token.
+      const entryTokens: TicketSalePrintData["entryTokens"] = [];
+      for (const it of cart) {
+        for (let i = 0; i < it.quantity; i++) {
+          // Use a tokenized entry only if there's no cover (so access is via the cover ticket).
+          // For simplicity we always emit an entry piece using the sale ticket_number as fallback.
+          entryTokens.push({
+            token: sale.ticket_number,
+            short_code: null,
+            ticket_type: it.ticketType.name,
+          });
+        }
+      }
+
+      const coverTokens: TicketSalePrintData["coverTokens"] = (sale.cover_tokens || []).map(t => ({
+        token: t.token,
+        short_code: t.short_code || null,
+        ticket_type: t.ticket_type,
+        cocktail_name: t.cocktail_name || null,
+      }));
+
+      const printData: TicketSalePrintData = {
+        saleNumber: sale.ticket_number,
+        posName: selectedPosName,
+        dateTime: format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }),
+        items,
+        total: sale.total,
+        paymentMethod: paymentMethod!,
+        entryTokens,
+        coverTokens,
+      };
+
+      await printTicketSale(printData, paperWidth);
+    } catch (err) {
+      console.error("Auto-print failed:", err);
+      toast.warning("Venta OK, pero la impresión falló. Usa 'Reimprimir'.");
+    }
+  };
+
   const handleNewSale = () => {
-    setCart(new Map());
+    setCart([]);
     setSaleResult(null);
+    setShowReceipt(false);
+    setPaymentMethod(undefined);
     setStep("select-tickets");
-    setSelectedHistorySale(null);
-    setPaymentMethod(undefined); // Reset payment method for new sale
+  };
+
+  const handleReprint = async () => {
+    if (!saleResult) return;
+    await autoPrintSale(saleResult);
+    toast.success("Reimprimiendo");
   };
 
   const paymentMethodLabels: Record<PaymentMethodType, { label: string; icon: React.ReactNode }> = {
@@ -374,40 +480,7 @@ export default function Tickets() {
     card: { label: "Tarjeta", icon: <CreditCard className="h-4 w-4" /> },
   };
 
-  const viewSaleQRs = async (saleId: string) => {
-    if (selectedHistorySale === saleId) {
-      setSelectedHistorySale(null);
-      return;
-    }
-    
-    setLoadingTokens(true);
-    setSelectedHistorySale(saleId);
-    
-    try {
-      const { data, error } = await supabase
-        .from("pickup_tokens")
-        .select(`
-          id, 
-          token, 
-          status,
-          cover_cocktail:cocktails(name)
-        `)
-        .eq("ticket_sale_id", saleId)
-        .eq("source_type", "ticket");
-
-      if (error) throw error;
-      setHistoryTokens((data || []).map(t => ({
-        id: t.id,
-        token: t.token,
-        status: t.status,
-        cocktail_name: (t.cover_cocktail as any)?.name
-      })));
-    } catch (error) {
-      console.error("Error fetching tokens:", error);
-    } finally {
-      setLoadingTokens(false);
-    }
-  };
+  /* ─── Renders ─── */
 
   if (loading) {
     return (
@@ -417,167 +490,128 @@ export default function Tickets() {
     );
   }
 
-  // POS Selection Screen
+  // POS Selection
   if (step === "select-pos") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-          <div className="max-w-lg mx-auto space-y-6 pt-12">
-            <div className="text-center space-y-2">
-              <Ticket className="w-16 h-16 mx-auto text-primary" />
-              <h1 className="text-3xl font-bold">Configurar Caja</h1>
-              <p className="text-muted-foreground">Selecciona tu punto de venta de tickets</p>
+        <div className="max-w-lg mx-auto space-y-6 pt-12">
+          <div className="text-center space-y-2">
+            <Ticket className="w-16 h-16 mx-auto text-primary" />
+            <h1 className="text-3xl font-bold">Configurar Caja</h1>
+            <p className="text-muted-foreground">Selecciona tu punto de venta de tickets</p>
+          </div>
+          <Card className="p-6 space-y-6">
+            <div className="space-y-3">
+              <p className="flex items-center gap-2 text-lg font-medium">
+                <Store className="w-5 h-5" />
+                Caja de Tickets
+              </p>
+              {posTerminals.length === 0 ? (
+                <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
+                  No hay cajas de tickets disponibles. Contacta al administrador.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {posTerminals.map(pos => (
+                    <Card
+                      key={pos.id}
+                      onClick={() => setSelectedPosId(pos.id)}
+                      className={`p-4 cursor-pointer transition-all hover:scale-105 ${
+                        selectedPosId === pos.id ? "border-primary bg-primary/10 ring-2 ring-primary" : "hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="text-center">
+                        <Store className={`w-8 h-8 mx-auto mb-2 ${selectedPosId === pos.id ? "text-primary" : "text-muted-foreground"}`} />
+                        <p className="font-semibold">{pos.name}</p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
-
-            <Card className="p-6 space-y-6">
-              <div className="space-y-3">
-                <p className="flex items-center gap-2 text-lg font-medium">
-                  <Store className="w-5 h-5" />
-                  Caja de Tickets
-                </p>
-                {posTerminals.length === 0 ? (
-                  <div className="p-4 bg-muted rounded-lg text-center text-muted-foreground">
-                    No hay cajas de tickets disponibles. Contacta al administrador.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {posTerminals.map((pos) => (
-                      <Card
-                        key={pos.id}
-                        onClick={() => setSelectedPosId(pos.id)}
-                        className={`p-4 cursor-pointer transition-all hover:scale-105 ${
-                          selectedPosId === pos.id
-                            ? "border-primary bg-primary/10 ring-2 ring-primary"
-                            : "hover:border-primary/50"
-                        }`}
-                      >
-                        <div className="text-center">
-                          <Store className={`w-8 h-8 mx-auto mb-2 ${selectedPosId === pos.id ? "text-primary" : "text-muted-foreground"}`} />
-                          <p className="font-semibold">{pos.name}</p>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <Button
-                onClick={confirmPosSelection}
-                disabled={!selectedPosId || posTerminals.length === 0}
-                className="w-full"
-                size="lg"
-              >
-                Comenzar a Vender
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  navigate("/auth");
-                }}
-                className="w-full gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                Cerrar Sesión
-              </Button>
-            </Card>
+            <Button onClick={confirmPosSelection} disabled={!selectedPosId || posTerminals.length === 0} className="w-full" size="lg">
+              Comenzar a Vender
+            </Button>
+            <Button variant="outline" onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }} className="w-full gap-2">
+              <LogOut className="h-4 w-4" /> Cerrar Sesión
+            </Button>
+          </Card>
         </div>
       </div>
     );
   }
 
-  // Success Screen
-  if (step === "success" && saleResult) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center">
-          <Card className="w-full max-w-lg p-6 text-center space-y-6">
-            <div className="flex items-center justify-center gap-2 text-green-600">
-              <Check className="h-8 w-8" />
-              <span className="text-2xl font-bold">Venta Completada</span>
-            </div>
-          
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">Número de ticket</p>
-            <p className="text-3xl font-mono font-bold">{saleResult.ticket_number}</p>
-            <p className="text-lg font-semibold text-primary">{formatCLP(saleResult.total)}</p>
-          </div>
-
-          {saleResult.cover_tokens.length > 0 && (
-            <div className="space-y-4">
-              <p className="text-sm font-medium text-muted-foreground">
-                Códigos QR de Cover ({saleResult.cover_tokens.length})
-              </p>
-              <ScrollArea className="h-[300px]">
-                <div className="grid gap-4">
-                  {saleResult.cover_tokens.map((token) => (
-                    <div key={token.token_id} className="p-4 border rounded-lg bg-card">
-                      <p className="text-sm font-medium mb-2">{token.ticket_type}</p>
-                      <div className="flex justify-center bg-white p-4 rounded-lg">
-                        <QRCodeSVG value={token.token} size={150} level="M" />
-                      </div>
-                      <p className="font-mono text-xs text-muted-foreground mt-2">{token.token}</p>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-          )}
-
-          <Button size="lg" className="w-full" onClick={handleNewSale}>
-            Nueva Venta
-          </Button>
-        </Card>
-      </div>
-    );
-  }
-
-  // Main ticket selection screen
-  const coversIncluded = getTotalCoversIncluded();
-
-  // Block UI if no active jornada
   if (!activeJornadaId && step === "select-tickets") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-          <div className="max-w-lg mx-auto space-y-6 pt-12">
-            <div className="text-center space-y-2">
-              <ShieldAlert className="w-16 h-16 mx-auto text-destructive" />
-              <h1 className="text-3xl font-bold">Ventas Bloqueadas</h1>
-            </div>
-
-            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
-              <ShieldAlert className="h-5 w-5" />
-              <AlertTitle className="font-semibold">No hay jornada activa</AlertTitle>
-              <AlertDescription>
-                Un administrador debe abrir una jornada para poder vender entradas.
-                Contacta a gerencia para iniciar operaciones.
-              </AlertDescription>
-            </Alert>
-
-            <Card className="p-6">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  navigate("/auth");
-                }}
-                className="w-full gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                Cerrar Sesión
-              </Button>
-            </Card>
+        <div className="max-w-lg mx-auto space-y-6 pt-12">
+          <div className="text-center space-y-2">
+            <ShieldAlert className="w-16 h-16 mx-auto text-destructive" />
+            <h1 className="text-3xl font-bold">Ventas Bloqueadas</h1>
           </div>
+          <Alert variant="destructive">
+            <ShieldAlert className="h-5 w-5" />
+            <AlertTitle>No hay jornada activa</AlertTitle>
+            <AlertDescription>Un administrador debe abrir una jornada para vender entradas.</AlertDescription>
+          </Alert>
+          <Card className="p-6">
+            <Button variant="outline" onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }} className="w-full gap-2">
+              <LogOut className="h-4 w-4" /> Cerrar Sesión
+            </Button>
+          </Card>
         </div>
+      </div>
     );
   }
 
+  // Success
+  if (step === "success" && saleResult) {
+    const receiptCart: ReceiptSaleResult["__cartItems"] = cart.map(it => ({
+      ticketType: { id: it.ticketType.id, name: it.ticketType.name, price: it.ticketType.price, includes_cover: it.ticketType.includes_cover },
+      quantity: it.quantity,
+    }));
+    return (
+      <>
+        <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 flex items-center justify-center">
+          <Card className="w-full max-w-lg p-8 text-center space-y-6">
+            <div className="flex items-center justify-center gap-2 text-primary">
+              <Check className="h-10 w-10" />
+              <span className="text-2xl font-bold">Venta Completada</span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Número de ticket</p>
+              <p className="text-3xl font-mono font-bold">{saleResult.ticket_number}</p>
+              <p className="text-lg font-semibold text-primary">{formatCLP(saleResult.total)}</p>
+              {saleResult.cover_tokens.length > 0 && (
+                <p className="text-sm text-muted-foreground">{saleResult.cover_tokens.length} QR de cover generados</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowReceipt(true)}>Ver QRs</Button>
+              <Button className="flex-1" onClick={handleNewSale}>Nueva Venta</Button>
+            </div>
+          </Card>
+        </div>
+        <TicketReceiptDialog
+          open={showReceipt}
+          onClose={() => setShowReceipt(false)}
+          saleResult={saleResult ? { ...saleResult, __cartItems: receiptCart } : null}
+          onReprint={handleReprint}
+        />
+      </>
+    );
+  }
+
+  // Main selling screen
+  const coversIncluded = getTotalCoversIncluded();
+  const pendingCovers = getPendingCoversCount();
+
   return (
     <VenueGuard>
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="flex flex-col lg:flex-row min-h-screen">
-          {/* Left: Ticket Grid (70%) */}
+          {/* Left grid */}
           <div className="flex-1 lg:w-[70%] p-4 space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Ticket className="h-7 w-7 text-primary" />
@@ -585,8 +619,7 @@ export default function Tickets() {
                   <h1 className="text-2xl font-bold">Venta de Entradas</h1>
                   {selectedPosName && (
                     <p className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Store className="h-3 w-3" />
-                      {selectedPosName}
+                      <Store className="h-3 w-3" /> {selectedPosName}
                     </p>
                   )}
                 </div>
@@ -594,232 +627,243 @@ export default function Tickets() {
               <div className="flex items-center gap-4">
                 <VenueIndicator variant="header" />
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    setCart(new Map());
-                    setSaleResult(null);
-                    navigate("/auth");
-                  }}
+                  variant="outline" size="sm"
+                  onClick={async () => { await supabase.auth.signOut(); setCart([]); setSaleResult(null); navigate("/auth"); }}
                   className="gap-2"
                 >
-                  <LogOut className="h-4 w-4" />
-                  <span className="hidden sm:inline">Salir</span>
+                  <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Salir</span>
                 </Button>
               </div>
             </div>
 
-          {/* Ticket Types Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {ticketTypes.map(ticketType => {
-              const cartItem = cart.get(ticketType.id);
-              const quantity = cartItem?.quantity || 0;
-              // Only show cover badge if includes_cover=true AND has a valid cocktail
-              const hasCover = ticketType.includes_cover && ticketType.cover_cocktail_id;
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {ticketTypes.map(tt => {
+                const item = cart.find(c => c.ticketType.id === tt.id);
+                const qty = item?.quantity || 0;
+                const hasCover = tt.includes_cover && tt.cover_options.length > 0;
+                return (
+                  <Card
+                    key={tt.id}
+                    className={`transition-all cursor-pointer hover:shadow-md ${qty > 0 ? "ring-2 ring-primary shadow-md" : ""}`}
+                    onClick={() => addToCart(tt)}
+                  >
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg leading-tight">{tt.name}</h3>
+                          {hasCover && (
+                            <Badge variant="secondary" className="mt-1 text-xs">
+                              <Wine className="h-3 w-3 mr-1" />
+                              {tt.cover_quantity}x cover · {tt.cover_options.length} opc.
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-2xl font-bold text-primary">{formatCLP(tt.price)}</p>
+                      {qty > 0 && (
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <Button variant="outline" size="icon" className="h-10 w-10"
+                            onClick={(e) => { e.stopPropagation(); removeFromCart(tt.id); }}>
+                            <Minus className="h-5 w-5" />
+                          </Button>
+                          <span className="text-xl font-bold">{qty}</span>
+                          <Button size="icon" className="h-10 w-10"
+                            onClick={(e) => { e.stopPropagation(); addToCart(tt); }}>
+                            <Plus className="h-5 w-5" />
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
 
-              return (
-                <Card 
-                  key={ticketType.id} 
-                  className={`transition-all cursor-pointer hover:shadow-md ${quantity > 0 ? 'ring-2 ring-primary shadow-md' : ''}`}
-                  onClick={() => addToCart(ticketType)}
-                >
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg leading-tight">{ticketType.name}</h3>
-                        {hasCover && (
-                          <Badge variant="secondary" className="mt-1 text-xs">
-                            <Wine className="h-3 w-3 mr-1" />
-                            {ticketType.cover_quantity || 1} Cover
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <p className="text-2xl font-bold text-primary">
-                      {formatCLP(ticketType.price)}
-                    </p>
-                    
-                    {quantity > 0 && (
-                      <div className="flex items-center justify-between pt-2 border-t">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-10 w-10"
-                          onClick={(e) => { e.stopPropagation(); removeFromCart(ticketType.id); }}
-                        >
-                          <Minus className="h-5 w-5" />
-                        </Button>
-                        <span className="text-xl font-bold">{quantity}</span>
-                        <Button
-                          size="icon"
-                          className="h-10 w-10"
-                          onClick={(e) => { e.stopPropagation(); addToCart(ticketType); }}
-                        >
-                          <Plus className="h-5 w-5" />
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+            {ticketTypes.length === 0 && (
+              <Card className="p-8 text-center">
+                <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No hay tipos de entrada configurados</p>
+              </Card>
+            )}
           </div>
 
-          {ticketTypes.length === 0 && (
-            <Card className="p-8 text-center">
-              <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay tipos de entrada configurados</p>
-            </Card>
-          )}
-        </div>
-
-        {/* Right: Cart & History (30%) */}
-        <div className="lg:w-[30%] bg-card border-l p-4 flex flex-col gap-4">
-          {/* Cart */}
-          <Card className="flex-1">
-            <CardContent className="p-4 flex flex-col h-full">
-              <h2 className="font-bold text-lg mb-4">Carrito</h2>
-              
-              {cart.size === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                  <p className="text-sm">Toca una entrada para agregar</p>
-                </div>
-              ) : (
-                <>
-                  <ScrollArea className="flex-1 mb-4">
-                    <div className="space-y-2">
-                      {getCartItems().map(item => {
-                        const hasCover = item.ticketType.includes_cover && item.ticketType.cover_cocktail_id;
-                        return (
-                          <div key={item.ticketType.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                            <div className="flex-1">
-                              <p className="font-medium text-sm">{item.ticketType.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatCLP(item.ticketType.price)}
-                                {hasCover && (
-                                  <span className="ml-1 text-primary">
-                                    (+{(item.ticketType.cover_quantity || 1) * item.quantity} QR)
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => removeFromCart(item.ticketType.id)}
-                              >
-                                <Minus className="h-4 w-4" />
-                              </Button>
-                              <span className="w-6 text-center font-bold">{item.quantity}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => addToCart(item.ticketType)}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-
-                  <div className="border-t pt-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Total</span>
-                      <span className="text-2xl font-bold">{formatCLP(getCartTotal())}</span>
-                    </div>
-
-                    {coversIncluded > 0 && (
-                      <p className="text-xs text-center text-primary flex items-center justify-center gap-1">
-                        <QrCode className="h-3 w-3" />
-                        Incluye {coversIncluded} código{coversIncluded > 1 ? 's' : ''} QR de cover
-                      </p>
-                    )}
-
-                    {/* Payment Method Selection */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Método de Pago *</label>
-                      <Select
-                        value={paymentMethod ?? ""}
-                        onValueChange={(value) => {
-                          if (value) {
-                            setPaymentMethod(value as PaymentMethodType);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className={!paymentMethod ? "text-muted-foreground" : ""}>
-                          <SelectValue placeholder="Seleccionar método">
-                            {paymentMethod && (
-                              <span className="flex items-center gap-2">
-                                {paymentMethodLabels[paymentMethod].icon}
-                                {paymentMethodLabels[paymentMethod].label}
-                              </span>
-                            )}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">
-                            <span className="flex items-center gap-2">
-                              <Banknote className="h-4 w-4" />
-                              Efectivo
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="card">
-                            <span className="flex items-center gap-2">
-                              <CreditCard className="h-4 w-4" />
-                              Tarjeta
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button
-                      size="lg"
-                      className="w-full h-12"
-                      onClick={handleCheckout}
-                      disabled={processing || cart.size === 0 || !paymentMethod}
-                    >
-                      {processing ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <>
-                          {paymentMethod ? paymentMethodLabels[paymentMethod].icon : <CreditCard className="h-5 w-5" />}
-                          <span className="ml-2">Cobrar</span>
-                        </>
-                      )}
-                    </Button>
+          {/* Right cart */}
+          <div className="lg:w-[30%] bg-card border-l p-4 flex flex-col gap-4">
+            <Card className="flex-1">
+              <CardContent className="p-4 flex flex-col h-full">
+                <h2 className="font-bold text-lg mb-4">Carrito</h2>
+                {cart.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                    <p className="text-sm">Toca una entrada para agregar</p>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                ) : (
+                  <>
+                    <ScrollArea className="flex-1 mb-4">
+                      <div className="space-y-3">
+                        {cart.map(item => {
+                          const tt = item.ticketType;
+                          const itemPending = item.coverSelections.filter(x => !x).length;
+                          return (
+                            <div key={tt.id} className="p-2 bg-muted/50 rounded space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm truncate">{tt.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatCLP(tt.price)}
+                                    {tt.includes_cover && (
+                                      <span className="ml-1 text-primary">(+{item.coverSelections.length} QR)</span>
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeFromCart(tt.id)}>
+                                    <Minus className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <span className="w-5 text-center text-sm font-bold">{item.quantity}</span>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => addToCart(tt)}>
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
 
-          {/* Recent Sales */}
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Ventas Recientes
-              </h3>
-              
-              {recentSales.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Sin ventas recientes</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentSales.map(sale => (
-                    <div key={sale.id}>
-                      <div 
-                        className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                        onClick={() => viewSaleQRs(sale.id)}
+                              {/* Cover slot selectors */}
+                              {tt.includes_cover && tt.cover_options.length > 1 && (
+                                <div className="space-y-1 pl-1 border-l-2 border-primary/30">
+                                  {item.coverSelections.map((sel, slotIdx) => {
+                                    const selectedOpt = tt.cover_options.find(o => o.cocktail_id === sel);
+                                    return (
+                                      <Popover key={slotIdx}>
+                                        <PopoverTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className={`w-full text-left text-xs px-2 py-1 rounded border transition-colors ${
+                                              sel ? "border-border bg-background" : "border-destructive/50 bg-destructive/10 text-destructive font-medium"
+                                            }`}
+                                          >
+                                            <span className="flex items-center gap-1">
+                                              <Wine className="h-3 w-3 shrink-0" />
+                                              <span className="truncate">
+                                                Cover {slotIdx + 1}: {selectedOpt?.cocktail_name || "Elegir cover…"}
+                                              </span>
+                                            </span>
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-56 p-1" align="start">
+                                          <div className="space-y-1">
+                                            {tt.cover_options.map(opt => (
+                                              <button
+                                                key={opt.cocktail_id}
+                                                type="button"
+                                                onClick={() => updateCoverSelection(tt.id, slotIdx, opt.cocktail_id)}
+                                                className={`w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted ${
+                                                  sel === opt.cocktail_id ? "bg-primary/10 font-medium" : ""
+                                                }`}
+                                              >
+                                                {opt.cocktail_name}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    );
+                                  })}
+                                  {itemPending > 0 && (
+                                    <p className="text-[10px] text-destructive flex items-center gap-1 px-1">
+                                      <AlertCircle className="h-3 w-3" />
+                                      {itemPending} cover sin elegir
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+
+                    <div className="border-t pt-4 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Total</span>
+                        <span className="text-2xl font-bold">{formatCLP(getCartTotal())}</span>
+                      </div>
+
+                      {coversIncluded > 0 && (
+                        <p className="text-xs text-center text-primary flex items-center justify-center gap-1">
+                          <QrCode className="h-3 w-3" />
+                          {coversIncluded} cover{coversIncluded > 1 ? "s" : ""} incluido{coversIncluded > 1 ? "s" : ""}
+                        </p>
+                      )}
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Método de Pago *</label>
+                        <Select
+                          value={paymentMethod ?? ""}
+                          onValueChange={(v) => v && setPaymentMethod(v as PaymentMethodType)}
+                        >
+                          <SelectTrigger className={!paymentMethod ? "text-muted-foreground border-destructive/50" : ""}>
+                            <SelectValue placeholder="Seleccionar método">
+                              {paymentMethod && (
+                                <span className="flex items-center gap-2">
+                                  {paymentMethodLabels[paymentMethod].icon}
+                                  {paymentMethodLabels[paymentMethod].label}
+                                </span>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">
+                              <span className="flex items-center gap-2"><Banknote className="h-4 w-4" /> Efectivo</span>
+                            </SelectItem>
+                            <SelectItem value="card">
+                              <span className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Tarjeta</span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {!paymentMethod && (
+                          <p className="text-[11px] text-destructive">Selecciona un método de pago</p>
+                        )}
+                      </div>
+
+                      {pendingCovers > 0 && (
+                        <Alert variant="destructive" className="py-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription className="text-xs">
+                            {pendingCovers} cover{pendingCovers > 1 ? "s" : ""} sin asignar
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <Button
+                        size="lg" className="w-full h-12"
+                        onClick={handleCheckout}
+                        disabled={processing || cart.length === 0 || !paymentMethod || pendingCovers > 0}
                       >
+                        {processing ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <>
+                            {paymentMethod ? paymentMethodLabels[paymentMethod].icon : <CreditCard className="h-5 w-5" />}
+                            <span className="ml-2">Cobrar</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> Ventas Recientes
+                </h3>
+                {recentSales.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Sin ventas recientes</p>
+                ) : (
+                  <div className="space-y-1">
+                    {recentSales.map(sale => (
+                      <div key={sale.id} className="flex items-center justify-between p-2 rounded text-sm">
                         <div>
                           <span className="font-mono font-medium">{sale.ticket_number}</span>
                           <span className="text-xs text-muted-foreground ml-2">
@@ -833,48 +877,14 @@ export default function Tickets() {
                           </Badge>
                         )}
                       </div>
-                      
-                      {/* Expanded QR view */}
-                      {selectedHistorySale === sale.id && (
-                        <div className="mt-2 p-2 bg-muted/30 rounded">
-                          {loadingTokens ? (
-                            <div className="flex justify-center py-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            </div>
-                          ) : historyTokens.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center">Sin códigos de cover</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {historyTokens.map(token => (
-                                <div 
-                                  key={token.id}
-                                  className={`p-2 bg-card rounded border text-center ${token.status === 'redeemed' ? 'opacity-60' : ''}`}
-                                >
-                                  <p className="text-xs font-medium mb-1">{token.cocktail_name || "Cover"}</p>
-                                  <div className="flex justify-center bg-white p-2 rounded">
-                                    <QRCodeSVG value={token.token} size={80} level="L" />
-                                  </div>
-                                  <Badge 
-                                    variant={token.status === 'issued' ? 'default' : 'secondary'}
-                                    className="text-xs mt-1"
-                                  >
-                                    {token.status === 'issued' ? 'Válido' : token.status === 'redeemed' ? 'Usado' : token.status}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
     </VenueGuard>
   );
 }
