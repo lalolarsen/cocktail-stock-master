@@ -319,6 +319,9 @@ export function CajaPanelRediseno({
               <CreditCard size={13} /> Tarjeta
             </button>
           </div>
+          {!paymentMethod && cart.length > 0 && (
+            <p className="text-[10px] text-destructive text-center font-medium">Selecciona medio de pago</p>
+          )}
 
           <Select value={documentType} onValueChange={(v) => setDocumentType(v as DocumentType)}>
             <SelectTrigger className="h-8 border-border bg-muted text-xs text-muted-foreground focus:ring-0">
