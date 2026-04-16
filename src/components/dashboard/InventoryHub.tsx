@@ -175,14 +175,20 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const openBatchDetail = async (batch: PendingBatch) => {
     setSelectedBatch(batch);
     setLoadingRows(true);
-    const { data } = await supabase
-      .from("stock_import_rows")
-      .select("*")
-      .eq("batch_id", batch.id)
-      .order("row_index");
+
+    const [rowsRes, prodsRes] = await Promise.all([
+      supabase.from("stock_import_rows").select("*").eq("batch_id", batch.id).order("row_index"),
+      allProducts.length > 0
+        ? Promise.resolve({ data: null })
+        : supabase.from("products").select("id, name, code, capacity_ml").eq("venue_id", venue!.id),
+    ]);
+
+    if (prodsRes.data) {
+      setAllProducts(prodsRes.data.map((p: any) => ({ id: p.id, name: p.name, code: p.code, capacity_ml: p.capacity_ml })));
+    }
 
     setBatchRows(
-      (data || []).map((r: any) => ({
+      (rowsRes.data || []).map((r: any) => ({
         id: r.id, row_index: r.row_index, product_id: r.product_id,
         product_name_excel: r.product_name_excel, product_name_matched: r.product_name_matched,
         match_confidence: r.match_confidence, tipo_consumo: r.tipo_consumo,
