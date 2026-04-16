@@ -14,7 +14,7 @@ import {
   Package, Info, BarChart3, Scale, Upload, FileSpreadsheet, Search,
 } from "lucide-react";
 import { isBottle } from "@/lib/product-type";
-import { generateConteoTemplate, type ProductRef, type LocationRef } from "@/lib/excel-inventory-parser";
+import { generateComparisonTemplate, type ProductRef } from "@/lib/excel-inventory-parser";
 
 interface Jornada { id: string; nombre: string; numero_jornada: number; fecha: string; estado: string }
 interface Location { id: string; name: string; type: string }
@@ -110,16 +110,66 @@ export function InventoryComparisonModule() {
   };
 
   // ── Download template ──────────────────────────────────────────────────────
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     const loc = locations.find(l => l.id === selectedLocation);
-    if (!loc) return;
+    if (!loc || !venueId || !selectedJornada) return;
+
+    // Fetch consumed product IDs for this jornada + location
+    const consumedIds = new Set<string>();
+
+    // From pickup redemptions
+    const { data: logs } = await supabase
+      .from("pickup_redemptions_log")
+      .select("theoretical_consumption")
+      .eq("jornada_id", selectedJornada)
+      .eq("bar_location_id", selectedLocation)
+      .eq("result", "success");
+
+    for (const log of logs || []) {
+      const consumption = Array.isArray(log.theoretical_consumption) ? log.theoretical_consumption : [];
+      for (const rawC of consumption) {
+        const c = rawC as Record<string, unknown>;
+        if (c.product_id) consumedIds.add(c.product_id as string);
+      }
+    }
+
+    // From courtesy redemptions
+    const { data: courtesyLogs } = await supabase
+      .from("courtesy_redemptions")
+      .select("courtesy_id")
+      .eq("jornada_id", selectedJornada)
+      .eq("result", "success");
+
+    if (courtesyLogs && courtesyLogs.length > 0) {
+      const cIds = courtesyLogs.map((c: any) => c.courtesy_id);
+      const { data: courtesyQrs } = await supabase
+        .from("courtesy_qr").select("id, product_id, qty").in("id", cIds);
+      if (courtesyQrs && courtesyQrs.length > 0) {
+        const cocktailIds = [...new Set(courtesyQrs.map((q: any) => q.product_id))];
+        const { data: ingredients } = await supabase
+          .from("cocktail_ingredients").select("cocktail_id, product_id").in("cocktail_id", cocktailIds);
+        for (const item of ingredients || []) {
+          if (item.product_id) consumedIds.add(item.product_id);
+        }
+        // Also add direct product references
+        for (const qr of courtesyQrs) {
+          consumedIds.add(qr.product_id);
+        }
+      }
+    }
+
+    if (consumedIds.size === 0) {
+      toast.info("No hay productos consumidos en esta jornada/ubicación");
+      return;
+    }
+
     const prodRefs: ProductRef[] = productsCache.map(p => ({
       id: p.id, code: p.code || "", name: p.name,
       capacity_ml: p.capacity_ml, cost_per_unit: 0, current_stock: 0,
     }));
-    const locRef: LocationRef = { id: loc.id, name: loc.name, type: loc.type };
-    const wb = generateConteoTemplate(prodRefs, locRef, balancesCache);
-    XLSX.writeFile(wb, `plantilla_conteo_${loc.name}.xlsx`);
+
+    const wb = generateComparisonTemplate(prodRefs, [...consumedIds]);
+    XLSX.writeFile(wb, `conteo_${loc.name}.xlsx`);
     toast.success("Plantilla descargada");
   };
 
@@ -147,7 +197,7 @@ export function InventoryComparisonModule() {
         for (const raw of rawRows) {
           const nombre = String(raw["producto_nombre"] || raw["producto"] || raw["nombre"] || "").trim();
           const sku = String(raw["sku_base"] || raw["codigo"] || "").trim();
-          const stockReal = Number(raw["stock_real"] || raw["real"] || raw["contado"] || 0);
+          const stockRealRaw = Number(raw["stock_real"] || raw["real"] || raw["contado"] || 0);
 
           if (!nombre && !sku) continue;
 
@@ -155,6 +205,12 @@ export function InventoryComparisonModule() {
           let matched: typeof productsCache[0] | undefined;
           if (sku) matched = productByCode.get(sku.toLowerCase());
           if (!matched && nombre) matched = productByName.get(nombre.toLowerCase());
+
+          // Convert bottle decimals to ml
+          let stockReal = stockRealRaw;
+          if (matched && isBottle(matched) && matched.capacity_ml && matched.capacity_ml > 0) {
+            stockReal = Math.round(stockRealRaw * matched.capacity_ml);
+          }
 
           parsed.push({
             producto_nombre: nombre,
@@ -463,8 +519,8 @@ export function InventoryComparisonModule() {
               <p className="font-medium text-foreground">¿Cómo funciona?</p>
               <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                 <li>Selecciona <strong>jornada</strong> y <strong>ubicación</strong> (barra)</li>
-                <li>Descarga la <strong>plantilla Excel</strong> pre-llenada con los productos de esa barra</li>
-                <li>El bartender llena la columna <strong>"stock_real"</strong> con lo que queda físicamente</li>
+                <li>Descarga la <strong>plantilla Excel</strong> con solo los productos consumidos en esa jornada</li>
+                <li>El bartender llena la columna <strong>"stock_real"</strong> en <strong>botellas aproximadas</strong> (ej: 2.5 = 2 botellas y media)</li>
                 <li>Sube el Excel completado y <strong>confirma</strong> las cantidades</li>
                 <li>Presiona <strong>"Comparar"</strong> para ver diferencias vs consumo teórico</li>
                 <li>Aplica el cuadre para actualizar el inventario</li>
