@@ -397,6 +397,36 @@ function SummaryCard({ label, value, sub, icon: Icon, accent, destructive }: {
   );
 }
 
+/* ── Comisión STOCKIA del mes ── */
+
+function StockiaCommissionCard({ monthLabel, grossSales }: { monthLabel: string; grossSales: number }) {
+  const commission = calculateCommission(grossSales);
+  const ratePct = (STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "");
+  return (
+    <Card className="p-4 border-primary/30 bg-primary/5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">{STOCKIA_COMMISSION_LABEL}</span>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{ratePct}%</Badge>
+          </div>
+          <p className="text-[11px] text-muted-foreground capitalize">
+            {monthLabel} · sobre ventas brutas {formatCLP(grossSales)}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            Informativo · base para la facturación semanal de STOCKIA. No afecta caja ni cierre operacional.
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-2xl font-bold tabular-nums text-primary">{formatCLP(commission)}</p>
+          <p className="text-[10px] text-muted-foreground">a facturar este mes</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /* ── Jornada Report Row ── */
 
 function JornadaReportRow({
