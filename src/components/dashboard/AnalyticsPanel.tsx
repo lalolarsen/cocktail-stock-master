@@ -598,6 +598,98 @@ export function AnalyticsPanel() {
         </Card>
       )}
 
+      {/* Tickets Section */}
+      {(ticketSales.length > 0 || coverTokensStats.total > 0) && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-primary" />
+              Ventas de Entradas
+              <Badge variant="secondary" className="ml-auto text-xs">{formatCLP(ticketsRevenue)}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Entradas vendidas</p>
+                <p className="text-lg font-bold">{ticketsUnits.toLocaleString("es-CL")}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Ingresos</p>
+                <p className="text-lg font-bold">{formatCLP(ticketsRevenue)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Ticket promedio</p>
+                <p className="text-lg font-bold">{formatCLP(ticketAvg)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-xs text-muted-foreground">Covers redimidos</p>
+                <p className="text-lg font-bold">{coverRedeemPct.toFixed(0)}%</p>
+                <p className="text-[10px] text-muted-foreground">{coverTokensStats.redeemed}/{coverTokensStats.total}</p>
+              </div>
+            </div>
+
+            {ticketTypeRanking.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Ranking por tipo</p>
+                {ticketTypeRanking.map((t, i) => {
+                  const max = ticketTypeRanking[0].qty || 1;
+                  const pct = (t.qty / max) * 100;
+                  return (
+                    <div key={i} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono text-xs text-muted-foreground w-5">{i + 1}.</span>
+                          <span className="font-medium truncate">{t.name}</span>
+                        </div>
+                        <div className="text-right shrink-0 ml-2">
+                          <span className="font-semibold tabular-nums">{t.qty}</span>
+                          <span className="text-xs text-muted-foreground ml-1">uds · {formatCLP(t.revenue)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full bg-primary/70 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {coverTokensStats.byCocktail.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Covers asignados / redimidos</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 text-muted-foreground">
+                        <th className="text-left p-2 font-medium">Cocktail</th>
+                        <th className="text-right p-2 font-medium">Asignados</th>
+                        <th className="text-right p-2 font-medium">Redimidos</th>
+                        <th className="text-right p-2 font-medium">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coverTokensStats.byCocktail.map((c, i) => {
+                        const pct = c.issued > 0 ? (c.redeemed / c.issued) * 100 : 0;
+                        return (
+                          <tr key={i} className="border-t border-border/30">
+                            <td className="p-2 font-medium truncate max-w-[180px]">{c.name}</td>
+                            <td className="p-2 text-right tabular-nums">{c.issued}</td>
+                            <td className="p-2 text-right tabular-nums text-emerald-500">{c.redeemed}</td>
+                            <td className="p-2 text-right tabular-nums text-muted-foreground">{pct.toFixed(0)}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Reconciliation Waste Section */}
       {reconciliationWaste.length > 0 && (
         <Card className="border-border/50">
