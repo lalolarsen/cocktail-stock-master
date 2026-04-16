@@ -197,7 +197,7 @@ export function InventoryComparisonModule() {
         for (const raw of rawRows) {
           const nombre = String(raw["producto_nombre"] || raw["producto"] || raw["nombre"] || "").trim();
           const sku = String(raw["sku_base"] || raw["codigo"] || "").trim();
-          const stockReal = Number(raw["stock_real"] || raw["real"] || raw["contado"] || 0);
+          const stockRealRaw = Number(raw["stock_real"] || raw["real"] || raw["contado"] || 0);
 
           if (!nombre && !sku) continue;
 
@@ -205,6 +205,12 @@ export function InventoryComparisonModule() {
           let matched: typeof productsCache[0] | undefined;
           if (sku) matched = productByCode.get(sku.toLowerCase());
           if (!matched && nombre) matched = productByName.get(nombre.toLowerCase());
+
+          // Convert bottle decimals to ml
+          let stockReal = stockRealRaw;
+          if (matched && isBottle(matched) && matched.capacity_ml && matched.capacity_ml > 0) {
+            stockReal = Math.round(stockRealRaw * matched.capacity_ml);
+          }
 
           parsed.push({
             producto_nombre: nombre,
