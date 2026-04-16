@@ -208,6 +208,57 @@ export function AnalyticsPanel() {
       setCourtesyCOGS([]);
     }
 
+    // ── Tickets ──
+    const { data: tSales } = await supabase
+      .from("ticket_sales")
+      .select("id, total_amount, created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", from)
+      .lte("created_at", to);
+    const tSalesData = (tSales || []).map((t: any) => ({ id: t.id, total: Number(t.total_amount) || 0, created_at: t.created_at }));
+    setTicketSales(tSalesData);
+
+    if (tSalesData.length > 0) {
+      const tIds = tSalesData.map(t => t.id);
+      const allItems = await fetchAllByIds<any>(
+        "ticket_sale_items",
+        "ticket_sale_id",
+        tIds,
+        "ticket_type_id, quantity, unit_price, ticket_types(name)"
+      );
+      setTicketItems(allItems as any);
+    } else {
+      setTicketItems([]);
+    }
+
+    // Cover tokens (issued + redeemed) en el mes
+    const { data: coverTokens } = await supabase
+      .from("pickup_tokens")
+      .select("id, status, cover_cocktail_id, cocktails:cover_cocktail_id(name), created_at")
+      .eq("venue_id", venueId)
+      .not("cover_cocktail_id", "is", null)
+      .gte("created_at", from)
+      .lte("created_at", to);
+    if (coverTokens && coverTokens.length > 0) {
+      const byMap = new Map<string, { name: string; issued: number; redeemed: number }>();
+      let totalC = 0, redC = 0;
+      for (const t of coverTokens as any[]) {
+        const name = t.cocktails?.name || "Cover";
+        if (!byMap.has(t.cover_cocktail_id)) byMap.set(t.cover_cocktail_id, { name, issued: 0, redeemed: 0 });
+        const e = byMap.get(t.cover_cocktail_id)!;
+        e.issued++;
+        totalC++;
+        if (t.status === "redeemed") { e.redeemed++; redC++; }
+      }
+      setCoverTokensStats({
+        total: totalC,
+        redeemed: redC,
+        byCocktail: Array.from(byMap.values()).sort((a, b) => b.issued - a.issued),
+      });
+    } else {
+      setCoverTokensStats({ total: 0, redeemed: 0, byCocktail: [] });
+    }
+
     // Reconciliation waste (mermas por comparación)
     const { data: reconMovements } = await supabase
       .from("stock_movements")
