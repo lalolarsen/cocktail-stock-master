@@ -20,11 +20,13 @@ import {
   Scale,
   AlertTriangle,
   Ticket,
+  Flame,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
+import { useCOGSData } from "@/hooks/useCOGSData";
 
 /* ─────────────── types ─────────────── */
 
