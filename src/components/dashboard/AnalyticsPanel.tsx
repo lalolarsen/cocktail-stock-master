@@ -204,6 +204,36 @@ export function AnalyticsPanel() {
       setCourtesyCOGS([]);
     }
 
+    // Reconciliation waste (mermas por comparación)
+    const { data: reconMovements } = await supabase
+      .from("stock_movements")
+      .select("product_id, quantity, from_location_id, to_location_id, products(name, unit, cost_per_unit)")
+      .eq("venue_id", venueId)
+      .eq("movement_type", "reconciliation")
+      .gte("created_at", from)
+      .lte("created_at", to);
+
+    if (reconMovements && reconMovements.length > 0) {
+      const wasteMap = new Map<string, { name: string; unit: string; shortage: number; cost: number }>();
+      for (const m of reconMovements as any[]) {
+        const isShortage = !!m.from_location_id && !m.to_location_id;
+        if (!isShortage) continue;
+        const prod = m.products;
+        if (!prod) continue;
+        const key = m.product_id;
+        if (!wasteMap.has(key)) wasteMap.set(key, { name: prod.name, unit: prod.unit || "ud", shortage: 0, cost: Number(prod.cost_per_unit) || 0 });
+        const entry = wasteMap.get(key)!;
+        entry.shortage += Number(m.quantity) || 0;
+      }
+      setReconciliationWaste(
+        Array.from(wasteMap.values())
+          .map(w => ({ productName: w.name, unit: w.unit, shortage: w.shortage, costPerUnit: w.cost, estimatedLoss: Math.round(w.shortage * w.cost) }))
+          .sort((a, b) => b.estimatedLoss - a.estimatedLoss)
+      );
+    } else {
+      setReconciliationWaste([]);
+    }
+
     setLoading(false);
   };
 
