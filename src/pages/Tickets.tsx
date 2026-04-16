@@ -26,7 +26,11 @@ import {
   Banknote,
   ShieldAlert,
   AlertCircle,
+  Printer,
+  Download,
 } from "lucide-react";
+import { useActiveVenue } from "@/hooks/useActiveVenue";
+import { downloadCashierReport, type CashierReportData } from "@/lib/reporting/jornada-cashier-report";
 import { useNavigate } from "react-router-dom";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
@@ -96,6 +100,8 @@ interface RecentSale {
   ticket_number: string;
   created_at: string;
   cover_count: number;
+  total: number;
+  payment_method: string;
 }
 
 interface POSTerminal {
@@ -111,6 +117,8 @@ export default function Tickets() {
   const navigate = useNavigate();
   const { logDemoEvent, isDemoMode } = useDemoLogging();
   const { activeJornadaId } = useAppSession();
+  const { venue } = useActiveVenue();
+  const [reprintingId, setReprintingId] = useState<string | null>(null);
 
   const [step, setStep] = useState<Step>("select-pos");
   const [loading, setLoading] = useState(true);
@@ -223,24 +231,164 @@ export default function Tickets() {
 
   const fetchRecentSales = async () => {
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from("ticket_sales")
-        .select("id, ticket_number, created_at")
+        .select("id, ticket_number, created_at, total, payment_method, pos_id, jornada_id")
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(10);
+      if (activeJornadaId) q = q.eq("jornada_id", activeJornadaId);
+      if (selectedPosId) q = q.eq("pos_id", selectedPosId);
+      const { data, error } = await q;
       if (error) throw error;
       const withCovers = await Promise.all(
-        (data || []).map(async (sale) => {
+        (data || []).map(async (sale: any) => {
           const { count } = await supabase
             .from("pickup_tokens")
             .select("*", { count: "exact", head: true })
             .eq("ticket_sale_id", sale.id);
-          return { ...sale, cover_count: count || 0 };
+          return {
+            id: sale.id,
+            ticket_number: sale.ticket_number,
+            created_at: sale.created_at,
+            total: sale.total || 0,
+            payment_method: sale.payment_method || "cash",
+            cover_count: count || 0,
+          };
         })
       );
       setRecentSales(withCovers);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  /* ─── Reprint a past sale by id ─── */
+  const reprintSale = async (saleId: string) => {
+    setReprintingId(saleId);
+    try {
+      const [saleRes, itemsRes, tokensRes] = await Promise.all([
+        supabase
+          .from("ticket_sales")
+          .select("id, ticket_number, total, payment_method, created_at")
+          .eq("id", saleId)
+          .single(),
+        supabase
+          .from("ticket_sale_items")
+          .select("quantity, unit_price, ticket_type_id, ticket_types(name)")
+          .eq("ticket_sale_id", saleId),
+        supabase
+          .from("pickup_tokens")
+          .select("token, short_code, metadata, cover_cocktail_id, cocktails:cover_cocktail_id(name)")
+          .eq("ticket_sale_id", saleId),
+      ]);
+      if (saleRes.error) throw saleRes.error;
+      if (itemsRes.error) throw itemsRes.error;
+      if (tokensRes.error) throw tokensRes.error;
+
+      const sale = saleRes.data;
+      const items = (itemsRes.data || []).map((it: any) => ({
+        name: it.ticket_types?.name || "Entrada",
+        quantity: it.quantity,
+        price: it.unit_price,
+      }));
+
+      const allTokens = (tokensRes.data || []) as any[];
+      // entries vs covers via metadata.kind (fallback: covers if has cocktail)
+      const entryTokens: TicketSalePrintData["entryTokens"] = [];
+      const coverTokens: TicketSalePrintData["coverTokens"] = [];
+      for (const t of allTokens) {
+        const kind = t.metadata?.kind;
+        const ticketTypeName = t.metadata?.ticket_type_name || "Entrada";
+        if (kind === "cover" || t.cover_cocktail_id) {
+          coverTokens.push({
+            token: t.token,
+            short_code: t.short_code || null,
+            ticket_type: ticketTypeName,
+            cocktail_name: t.cocktails?.name || null,
+          });
+        } else {
+          entryTokens.push({
+            token: t.token,
+            short_code: t.short_code || null,
+            ticket_type: ticketTypeName,
+          });
+        }
+      }
+
+      // Fallback: synthesize entry pieces if backend didn't emit entry tokens
+      if (entryTokens.length === 0) {
+        for (const it of itemsRes.data || []) {
+          for (let i = 0; i < (it.quantity || 0); i++) {
+            entryTokens.push({
+              token: sale.ticket_number,
+              short_code: null,
+              ticket_type: (it as any).ticket_types?.name || "Entrada",
+            });
+          }
+        }
+      }
+
+      const paperKey = getPreferredPaperWidthStorageKey();
+      const paperWidth = (localStorage.getItem(paperKey) as PaperWidth) || "80mm";
+
+      const printData: TicketSalePrintData = {
+        saleNumber: sale.ticket_number,
+        posName: selectedPosName,
+        dateTime: format(new Date(sale.created_at), "dd/MM/yyyy HH:mm", { locale: es }),
+        items,
+        total: sale.total,
+        paymentMethod: sale.payment_method,
+        entryTokens,
+        coverTokens,
+      };
+      await printTicketSale(printData, paperWidth);
+      toast.success("Reimprimiendo venta " + sale.ticket_number);
+    } catch (err: any) {
+      console.error("Reprint error:", err);
+      toast.error(err.message || "Error al reimprimir");
+    } finally {
+      setReprintingId(null);
+    }
+  };
+
+  /* ─── Download cashier session results PDF ─── */
+  const handleDownloadJornadaReport = async () => {
+    if (!activeJornadaId) return toast.error("No hay jornada activa");
+    if (!selectedPosId) return toast.error("Selecciona una caja primero");
+    try {
+      const { data: jornada } = await supabase
+        .from("jornadas")
+        .select("numero_jornada, fecha")
+        .eq("id", activeJornadaId)
+        .single();
+
+      const { data: sales } = await supabase
+        .from("ticket_sales")
+        .select("total, payment_method")
+        .eq("jornada_id", activeJornadaId)
+        .eq("pos_id", selectedPosId);
+
+      const cashSales = (sales || []).filter((s: any) => s.payment_method === "cash");
+      const cardSales = (sales || []).filter((s: any) => s.payment_method === "card");
+
+      const reportData: CashierReportData = {
+        venueName: venue?.name || "",
+        posName: selectedPosName || "Caja Tickets",
+        jornadaNumber: jornada?.numero_jornada || 0,
+        fecha: jornada?.fecha || new Date().toISOString().slice(0, 10),
+        downloadTime: new Date().toLocaleString("es-CL"),
+        cashTotal: cashSales.reduce((s, r: any) => s + (r.total || 0), 0),
+        cashCount: cashSales.length,
+        cardTotal: cardSales.reduce((s, r: any) => s + (r.total || 0), 0),
+        cardCount: cardSales.length,
+        grandTotal: (sales || []).reduce((s, r: any) => s + (r.total || 0), 0),
+        grandCount: (sales || []).length,
+      };
+      downloadCashierReport(reportData);
+      toast.success("Reporte descargado");
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Error al generar reporte");
     }
   };
 
@@ -624,8 +772,17 @@ export default function Tickets() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 <VenueIndicator variant="header" />
+                <Button
+                  variant="outline" size="sm"
+                  onClick={handleDownloadJornadaReport}
+                  disabled={!activeJornadaId || !selectedPosId}
+                  title="Descargar resultados de jornada"
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" /> <span className="hidden sm:inline">Resultados</span>
+                </Button>
                 <Button
                   variant="outline" size="sm"
                   onClick={async () => { await supabase.auth.signOut(); setCart([]); setSaleResult(null); navigate("/auth"); }}
@@ -863,19 +1020,34 @@ export default function Tickets() {
                 ) : (
                   <div className="space-y-1">
                     {recentSales.map(sale => (
-                      <div key={sale.id} className="flex items-center justify-between p-2 rounded text-sm">
-                        <div>
-                          <span className="font-mono font-medium">{sale.ticket_number}</span>
-                          <span className="text-xs text-muted-foreground ml-2">
+                      <div key={sale.id} className="flex items-center justify-between gap-2 p-2 rounded text-sm hover:bg-muted/50">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="font-mono font-medium truncate">{sale.ticket_number}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
                             {format(new Date(sale.created_at), "HH:mm", { locale: es })}
                           </span>
+                          <span className="text-xs font-semibold shrink-0">{formatCLP(sale.total)}</span>
+                          {sale.cover_count > 0 && (
+                            <Badge variant="outline" className="text-xs shrink-0">
+                              <QrCode className="h-3 w-3 mr-1" />
+                              {sale.cover_count}
+                            </Badge>
+                          )}
                         </div>
-                        {sale.cover_count > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            <QrCode className="h-3 w-3 mr-1" />
-                            {sale.cover_count}
-                          </Badge>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 shrink-0"
+                          onClick={() => reprintSale(sale.id)}
+                          disabled={reprintingId === sale.id}
+                          title="Reimprimir comprobante + QRs"
+                        >
+                          {reprintingId === sale.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Printer className="h-3 w-3" />
+                          )}
+                        </Button>
                       </div>
                     ))}
                   </div>
