@@ -73,8 +73,10 @@ const ExecutiveSummary = ({ rows, type }: { rows: ResolvedRow[]; type: string })
     const positivos = diffs.filter((d) => d > 0).length;
     const mermas = diffs.filter((d) => d < 0).length;
     const sinCambio = diffs.filter((d) => d === 0).length;
+    const ubicacion = validRows[0]?.ubicacion_destino || validRows[0]?.ubicacion_origen || "—";
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 bg-muted/30 rounded-lg text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3 bg-muted/30 rounded-lg text-sm">
+        <div><span className="text-muted-foreground">Ubicación</span><p className="font-semibold">{ubicacion}</p></div>
         <div><span className="text-muted-foreground">Productos</span><p className="font-semibold">{productCount}</p></div>
         <div><span className="text-muted-foreground">Ajustes +</span><p className="font-semibold text-emerald-600">{positivos}</p></div>
         <div><span className="text-muted-foreground">Mermas −</span><p className="font-semibold text-destructive">{mermas}</p></div>
