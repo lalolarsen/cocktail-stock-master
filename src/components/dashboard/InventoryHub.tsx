@@ -10,6 +10,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { ExcelUpload } from "./ExcelUpload";
+import { EditableBatchPreview } from "./EditableBatchPreview";
 import { InventoryFreezeBanner } from "@/components/InventoryFreezeBanner";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
@@ -760,45 +761,12 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             {loadingRows ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50 border-b sticky top-0">
-                    <tr>
-                      <th className="py-2 px-2 text-left font-medium">#</th>
-                      <th className="py-2 px-2 text-left font-medium">Producto Excel</th>
-                      <th className="py-2 px-2 text-left font-medium">Match</th>
-                      <th className="py-2 px-2 text-left font-medium">Confianza</th>
-                      <th className="py-2 px-2 text-left font-medium">Tipo</th>
-                      <th className="py-2 px-2 text-right font-medium">Cantidad</th>
-                      <th className="py-2 px-2 text-right font-medium">Costo</th>
-                      <th className="py-2 px-2 text-left font-medium">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {batchRows.map((r) => (
-                      <tr key={r.id} className={`border-b ${!r.is_valid ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
-                        <td className="py-1.5 px-2 text-muted-foreground">{r.row_index}</td>
-                        <td className="py-1.5 px-2 max-w-[140px] truncate">{r.product_name_excel || "—"}</td>
-                        <td className="py-1.5 px-2 max-w-[140px] truncate">{r.product_name_matched || <span className="text-destructive">—</span>}</td>
-                        <td className="py-1.5 px-2">
-                          <span className={`text-[10px] font-medium ${confidenceColor(r.match_confidence)}`}>
-                            {r.match_confidence || "—"}
-                          </span>
-                        </td>
-                        <td className="py-1.5 px-2"><Badge variant="outline" className="text-[10px]">{r.tipo_consumo || "—"}</Badge></td>
-                        <td className="py-1.5 px-2 text-right font-medium">{r.quantity ?? "—"}</td>
-                        <td className="py-1.5 px-2 text-right">{r.unit_cost ? formatCLP(r.unit_cost) : "—"}</td>
-                        <td className="py-1.5 px-2">
-                          {r.is_valid
-                            ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            : <span className="text-[10px] text-destructive">{(r.errors || [])[0] || "Error"}</span>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <EditableBatchPreview
+                rows={batchRows}
+                batchType={selectedBatch?.batch_type || "COMPRA"}
+                products={allProducts}
+                onRowsChange={setBatchRows}
+              />
             )}
           </ScrollArea>
 
@@ -807,11 +775,11 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
               <Button variant="outline" onClick={handleReject} disabled={approving}>
                 <XCircle className="mr-2 h-4 w-4" />Rechazar
               </Button>
-              <Button onClick={handleApprove} disabled={approving || (selectedBatch?.valid_count || 0) === 0} className="primary-gradient">
+              <Button onClick={handleApprove} disabled={approving || batchRows.filter(r => r.is_valid).length === 0} className="primary-gradient">
                 {approving ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
                 ) : (
-                  <><CheckCircle2 className="mr-2 h-4 w-4" />Aprobar ({selectedBatch?.valid_count} filas)</>
+                  <><CheckCircle2 className="mr-2 h-4 w-4" />Aprobar ({batchRows.filter(r => r.is_valid).length} filas)</>
                 )}
               </Button>
             </DialogFooter>
