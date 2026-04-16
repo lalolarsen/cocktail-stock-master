@@ -105,6 +105,7 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
             <th className="py-2 px-2 text-left font-medium">Tipo</th>
             {type === "COMPRA" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Destino</th>
                 <th className="py-2 px-2 text-right font-medium">Cantidad</th>
                 <th className="py-2 px-2 text-right font-medium">Costo/Env</th>
                 <th className="py-2 px-2 text-right font-medium">Base Calc.</th>
@@ -112,12 +113,14 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
             )}
             {type === "TRANSFERENCIA" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Origen</th>
                 <th className="py-2 px-2 text-left font-medium">Destino</th>
                 <th className="py-2 px-2 text-right font-medium">Cant. Base</th>
               </>
             )}
             {type === "CONTEO" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Ubicación</th>
                 <th className="py-2 px-2 text-right font-medium">Teórico</th>
                 <th className="py-2 px-2 text-right font-medium">Real</th>
                 <th className="py-2 px-2 text-right font-medium">Diferencia</th>
