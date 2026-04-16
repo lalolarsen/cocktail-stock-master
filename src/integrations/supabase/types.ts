@@ -5115,6 +5115,55 @@ export type Database = {
           },
         ]
       }
+      ticket_type_cover_options: {
+        Row: {
+          cocktail_id: string
+          created_at: string
+          display_order: number
+          id: string
+          ticket_type_id: string
+          venue_id: string
+        }
+        Insert: {
+          cocktail_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          ticket_type_id: string
+          venue_id: string
+        }
+        Update: {
+          cocktail_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          ticket_type_id?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_type_cover_options_cocktail_id_fkey"
+            columns: ["cocktail_id"]
+            isOneToOne: false
+            referencedRelation: "cocktails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_type_cover_options_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_type_cover_options_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_types: {
         Row: {
           cover_cocktail_id: string | null
@@ -5677,16 +5726,28 @@ export type Database = {
         }
         Returns: Json
       }
-      create_ticket_sale_with_covers: {
-        Args: {
-          p_items: Json
-          p_jornada_id?: string
-          p_payment_method?: string
-          p_pos_id?: string
-          p_venue_id?: string
-        }
-        Returns: Json
-      }
+      create_ticket_sale_with_covers:
+        | {
+            Args: {
+              p_items: Json
+              p_jornada_id?: string
+              p_payment_method?: string
+              p_pos_id?: string
+              p_venue_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_cover_selections?: Json
+              p_items: Json
+              p_jornada_id?: string
+              p_payment_method?: string
+              p_pos_id?: string
+              p_venue_id?: string
+            }
+            Returns: Json
+          }
       deduct_open_bottles: {
         Args: {
           p_actor_user_id: string
