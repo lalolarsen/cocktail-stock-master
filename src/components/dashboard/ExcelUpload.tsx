@@ -12,11 +12,14 @@ import {
   parseReposicionSimple,
   parseConteoSimple,
   parseExcelInventory,
+  generateCompraTemplate,
+  generateReposicionTemplate,
+  generateConteoTemplateByLocation,
   generateTemplate,
-  generateConteoTemplate,
   type ParseResult,
   type ProductRef,
   type LocationRef,
+  type LearningMapping,
 } from "@/lib/excel-inventory-parser";
 
 interface ExcelUploadProps {
@@ -37,10 +40,11 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
   const loadReferenceData = useCallback(async () => {
     if (!venue?.id) return null;
 
-    const [productsRes, locationsRes, balancesRes] = await Promise.all([
+    const [productsRes, locationsRes, balancesRes, learningsRes] = await Promise.all([
       supabase.from("products").select("id, code, name, capacity_ml, cost_per_unit, current_stock").eq("venue_id", venue.id),
       supabase.from("stock_locations").select("id, name, type").eq("venue_id", venue.id),
       supabase.from("stock_balances").select("product_id, location_id, quantity").eq("venue_id", venue.id),
+      supabase.from("learning_product_mappings").select("raw_text, product_id, confidence, times_used").eq("venue_id", venue.id),
     ]);
 
     if (productsRes.error || locationsRes.error || balancesRes.error) {
@@ -64,16 +68,40 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
       return { productId: b.product_id, locationId: b.location_id, quantity: qty };
     });
 
-    return { products, locations, balancesMap, balancesArray };
+    const learnings: LearningMapping[] = (learningsRes.data || []).map((l) => ({
+      raw_text: l.raw_text,
+      product_id: l.product_id,
+      confidence: l.confidence,
+      times_used: l.times_used,
+    }));
+
+    return { products, locations, balancesMap, balancesArray, learnings };
   }, [venue?.id]);
 
-  // ── Download template ──────────────────────────────────────────────────────
+  // ── Download template (specific per type) ──────────────────────────────────
 
   const handleDownloadTemplate = async () => {
     const ref = await loadReferenceData();
     if (!ref) return;
-    const wb = generateTemplate(ref.products, ref.locations, ref.balancesArray);
-    XLSX.writeFile(wb, `plantilla_inventario_${venue?.name || "stockia"}.xlsx`);
+
+    let wb: XLSX.WorkBook;
+    let filename: string;
+
+    if (defaultMovementType === "COMPRA") {
+      wb = generateCompraTemplate(ref.products);
+      filename = `plantilla_compra_${venue?.name || "stockia"}.xlsx`;
+    } else if (defaultMovementType === "TRANSFERENCIA") {
+      wb = generateReposicionTemplate(ref.products, ref.locations);
+      filename = `plantilla_reposicion_${venue?.name || "stockia"}.xlsx`;
+    } else if (defaultMovementType === "CONTEO") {
+      wb = generateConteoTemplateByLocation(ref.products, ref.locations, ref.balancesArray);
+      filename = `plantilla_conteo_${venue?.name || "stockia"}.xlsx`;
+    } else {
+      wb = generateTemplate(ref.products, ref.locations, ref.balancesArray);
+      filename = `plantilla_inventario_${venue?.name || "stockia"}.xlsx`;
+    }
+
+    XLSX.writeFile(wb, filename);
     toast.success("Plantilla descargada");
   };
 
@@ -90,19 +118,67 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
     toast.success("Stock actual exportado");
   };
 
-  // ── Download conteo template ───────────────────────────────────────────────
+  // ── AI fallback for low-confidence matches ─────────────────────────────────
 
-  const handleDownloadConteo = async () => {
-    const ref = await loadReferenceData();
-    if (!ref) return;
+  const tryAIMatching = async (result: ParseResult, products: ProductRef[]): Promise<ParseResult> => {
+    const lowConfRows = result.rows.filter(
+      (r) => (r.matchConfidence === "baja" || r.matchConfidence === "sin_match") && r.producto_nombre
+    );
 
-    // Generate for first location — in a full UI this would have a selector
-    const bodega = ref.locations.find((l) => l.name.toLowerCase().includes("bodega")) || ref.locations[0];
-    if (!bodega) { toast.error("No hay ubicaciones"); return; }
+    if (lowConfRows.length === 0) return result;
 
-    const wb = generateConteoTemplate(ref.products, bodega, ref.balancesArray);
-    XLSX.writeFile(wb, `conteo_${bodega.name}_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Plantilla de conteo generada para ${bodega.name}`);
+    try {
+      const items = lowConfRows.map((r) => ({
+        raw_name: r.producto_nombre,
+        candidates: products.map((p) => ({ id: p.id, name: p.name })),
+      }));
+
+      const { data, error } = await supabase.functions.invoke("match-products", {
+        body: { items },
+      });
+
+      if (error || !data?.matches) return result;
+
+      const matchMap = new Map<string, { product_id: string; confidence: number }>();
+      for (const m of data.matches) {
+        if (m.product_id && m.confidence >= 0.6) {
+          matchMap.set(m.raw_name.toLowerCase().trim(), m);
+        }
+      }
+
+      const updatedRows = result.rows.map((row) => {
+        if (row.matchConfidence !== "baja" && row.matchConfidence !== "sin_match") return row;
+
+        const aiMatch = matchMap.get(row.producto_nombre.toLowerCase().trim());
+        if (!aiMatch) return row;
+
+        const product = products.find((p) => p.id === aiMatch.product_id);
+        if (!product) return row;
+
+        const newErrors = row.errors.filter((e) => !e.includes("no encontrado"));
+        return {
+          ...row,
+          productId: product.id,
+          productNameMatched: product.name,
+          matchConfidence: (aiMatch.confidence >= 0.85 ? "alta" : aiMatch.confidence >= 0.7 ? "media" : "baja") as any,
+          errors: newErrors,
+          isValid: newErrors.length === 0,
+        };
+      });
+
+      return {
+        ...result,
+        rows: updatedRows,
+        summary: {
+          ...result.summary,
+          valid: updatedRows.filter((r) => r.isValid).length,
+          invalid: updatedRows.filter((r) => !r.isValid).length,
+        },
+      };
+    } catch {
+      console.warn("AI matching failed, continuing with fuzzy results");
+      return result;
+    }
   };
 
   // ── File upload ────────────────────────────────────────────────────────────
@@ -118,19 +194,21 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
       if (!ref) return;
 
       const data = await file.arrayBuffer();
-
       let result: ParseResult;
 
-      // Use simplified parser based on movement type
       if (defaultMovementType === "COMPRA") {
-        result = parseCompraSimple(data, ref.products, ref.locations);
+        result = parseCompraSimple(data, ref.products, ref.locations, ref.learnings);
       } else if (defaultMovementType === "TRANSFERENCIA") {
-        result = parseReposicionSimple(data, ref.products, ref.locations, ref.balancesMap);
+        result = parseReposicionSimple(data, ref.products, ref.locations, ref.balancesMap, ref.learnings);
       } else if (defaultMovementType === "CONTEO") {
-        result = parseConteoSimple(data, ref.products, ref.locations, ref.balancesMap);
+        result = parseConteoSimple(data, ref.products, ref.locations, ref.balancesMap, ref.learnings);
       } else {
-        // Legacy: unified template
         result = parseExcelInventory(data, ref.products, ref.locations, ref.balancesMap);
+      }
+
+      // Try AI matching for low confidence results
+      if (result.rows.some((r) => r.matchConfidence === "baja" || r.matchConfidence === "sin_match")) {
+        result = await tryAIMatching(result, ref.products);
       }
 
       if (result.rows.length === 0) {
@@ -169,7 +247,6 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
         (parseResult.rows[0]?.tipo_movimiento as "COMPRA" | "TRANSFERENCIA" | "CONTEO") ||
         "COMPRA";
 
-      // Build summary
       const summaryJson: Record<string, any> = {
         totalFilas: parseResult.rows.length,
         productosAfectados: new Set(validRows.map((r) => r.productId).filter(Boolean)).size,
@@ -186,7 +263,6 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
         summaryJson.diferenciaNeta = diffs.reduce((s, d) => s + d, 0);
       }
 
-      // Insert batch
       const { data: batch, error: batchError } = await supabase
         .from("stock_import_batches")
         .insert({
@@ -204,7 +280,6 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
 
       if (batchError || !batch) throw batchError;
 
-      // Insert rows
       const rowInserts = parseResult.rows.map((r) => ({
         batch_id: batch.id,
         row_index: r.rowIndex,
@@ -255,13 +330,20 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const templateLabel = defaultMovementType === "COMPRA" ? "Plantilla Compra"
+    : defaultMovementType === "TRANSFERENCIA" ? "Plantilla Reposición"
+    : defaultMovementType === "CONTEO" ? "Plantilla Conteo"
+    : "Descargar Plantilla";
+
   return (
     <>
       <Card className="glass-effect shadow-elegant">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <FileSpreadsheet className="h-5 w-5 text-primary" />
-            Inventario Excel
+            {defaultMovementType === "COMPRA" ? "Subir Compra" :
+             defaultMovementType === "TRANSFERENCIA" ? "Subir Reposición" :
+             defaultMovementType === "CONTEO" ? "Subir Conteo" : "Inventario Excel"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -269,9 +351,9 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
             <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-border rounded-lg hover:border-primary transition-smooth">
               <Upload className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-sm text-muted-foreground mb-4 text-center">
-                {defaultMovementType === "COMPRA" && "Sube un Excel con columnas: producto_nombre, cantidad, costo_compra"}
-                {defaultMovementType === "TRANSFERENCIA" && "Sube un Excel con columnas: producto_nombre, cantidad, ubicacion_destino"}
-                {defaultMovementType === "CONTEO" && "Sube la plantilla de conteo con la columna stock_real completada"}
+                {defaultMovementType === "COMPRA" && "Columnas: producto_nombre, cantidad, formato_ml, costo_neto_unitario"}
+                {defaultMovementType === "TRANSFERENCIA" && "Columnas: producto_nombre, cantidad, ubicacion_destino"}
+                {defaultMovementType === "CONTEO" && "Columnas: producto_nombre, stock_real, ubicacion"}
                 {!defaultMovementType && "Sube la plantilla unificada con compras, transferencias o conteos."}
               </p>
               <input
@@ -286,7 +368,7 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
                 <Button asChild disabled={uploading} className="primary-gradient">
                   <span>
                     {uploading ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Leyendo archivo...</>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Procesando...</>
                     ) : (
                       <><Upload className="mr-2 h-4 w-4" />Subir Archivo</>
                     )}
@@ -298,14 +380,9 @@ export const ExcelUpload = ({ defaultMovementType, onBatchSaved }: ExcelUploadPr
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Button variant="outline" onClick={handleDownloadTemplate}>
                 <Download className="mr-2 h-4 w-4" />
-                Descargar Plantilla
+                {templateLabel}
               </Button>
-              {defaultMovementType === "CONTEO" ? (
-                <Button variant="outline" onClick={handleDownloadConteo}>
-                  <DownloadCloud className="mr-2 h-4 w-4" />
-                  Generar Conteo
-                </Button>
-              ) : (
+              {defaultMovementType !== "CONTEO" && (
                 <Button variant="outline" onClick={handleDownloadStock}>
                   <DownloadCloud className="mr-2 h-4 w-4" />
                   Exportar Stock Actual
