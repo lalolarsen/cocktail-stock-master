@@ -469,24 +469,25 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
           .filter((r) => r.count > 0 || viewerRole === "admin")
           .map((r) => {
             const Icon = r.icon;
+            const isActive = roleFilter.includes(r.value);
             return (
               <button
                 key={r.value}
                 onClick={() => {
-                  if (roleFilter.includes(r.value)) {
+                  if (isActive) {
                     setRoleFilter(roleFilter.filter((f) => f !== r.value));
                   } else {
                     setRoleFilter([r.value]);
                   }
                 }}
                 className={`flex items-center gap-2.5 p-3 rounded-lg border transition-all text-left ${
-                  roleFilter.includes(r.value)
-                    ? `${r.bgColor} border-transparent ring-1 ring-primary/20`
+                  isActive
+                    ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20"
                     : "bg-card border-border hover:border-primary/30"
                 }`}
               >
-                <div className={`w-8 h-8 rounded-md ${r.bgColor} flex items-center justify-center`}>
-                  <Icon className={`h-4 w-4 ${r.textColor}`} />
+                <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center">
+                  <Icon className={`h-4 w-4 ${r.color}`} />
                 </div>
                 <div>
                   <p className="text-lg font-semibold text-foreground leading-none">{r.count}</p>
