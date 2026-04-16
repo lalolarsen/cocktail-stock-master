@@ -325,21 +325,21 @@ export function RedeemReconciliationPanel() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <Gift className="h-5 w-5 mx-auto mb-1 text-amber-500" />
+                <Gift className="h-5 w-5 mx-auto mb-1 text-accent-foreground" />
                 <p className="text-2xl font-bold">{courtesyCount}</p>
                 <p className="text-xs text-muted-foreground">Cortesías</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <Package className="h-5 w-5 mx-auto mb-1 text-blue-500" />
+                <Package className="h-5 w-5 mx-auto mb-1 text-secondary-foreground" />
                 <p className="text-2xl font-bold">{totalProducts}</p>
                 <p className="text-xs text-muted-foreground">Insumos distintos</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <BarChart3 className="h-5 w-5 mx-auto mb-1 text-green-500" />
+                <BarChart3 className="h-5 w-5 mx-auto mb-1 text-primary" />
                 <p className="text-2xl font-bold">{Math.round(totalConsumption).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Consumo total (ud)</p>
               </CardContent>
