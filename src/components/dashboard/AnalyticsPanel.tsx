@@ -523,6 +523,50 @@ export function AnalyticsPanel() {
           </CardContent>
         </Card>
       )}
+
+      {/* Reconciliation Waste Section */}
+      {reconciliationWaste.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Scale className="w-4 h-4 text-destructive" />
+              Mermas por Comparación
+              <Badge variant="destructive" className="ml-auto text-xs">
+                {formatCLP(reconciliationWaste.reduce((s, w) => s + w.estimatedLoss, 0))}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Faltantes detectados en comparaciones de inventario del mes. Solo incluye productos con diferencia negativa (merma).
+            </p>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-muted-foreground">
+                    <th className="text-left p-2 font-medium">Producto</th>
+                    <th className="text-right p-2 font-medium">Faltante</th>
+                    <th className="text-right p-2 font-medium">Costo unit.</th>
+                    <th className="text-right p-2 font-medium">Pérdida est.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliationWaste.map((w, i) => (
+                    <tr key={i} className="border-t border-border/30">
+                      <td className="p-2 font-medium truncate max-w-[180px]">{w.productName}</td>
+                      <td className="p-2 text-right tabular-nums text-destructive font-medium">
+                        {w.shortage} {w.unit}
+                      </td>
+                      <td className="p-2 text-right tabular-nums text-muted-foreground">{formatCLP(w.costPerUnit)}</td>
+                      <td className="p-2 text-right tabular-nums font-semibold text-destructive">{formatCLP(w.estimatedLoss)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
