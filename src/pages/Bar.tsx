@@ -401,35 +401,17 @@ export default function Bar() {
   const resolveDeliveredByAndRedeem = useCallback(async (
     token: string,
     mixerOverrides: { slot_index: number; product_id: string }[] | null,
-    bottleChecks?: BottleCheckResult[],
   ) => {
     const bartenders = getActiveBartenders();
     if (bartenders.length <= 1) {
-      // Auto-assign: single bartender or none
       const workerId = bartenders[0]?.id || null;
-      if (bottleChecks?.length) {
-        const r = await redeemToken(token, mixerOverrides, workerId);
-        if (r?.success === true) {
-          for (const c of bottleChecks) {
-            if (c.required_ml <= 0) continue;
-            try {
-              await openBottlesHook.deductMl({ productId: c.product_id, mlToDeduct: c.required_ml, actorUserId: currentUserId, reason: `Canje QR ${token.slice(-6)}` });
-            } catch (e: any) {
-              console.error("[Bar] Bottle deduction non-blocking:", e);
-              toast.warning("Canje OK, pero no se pudo registrar consumo de botella.");
-            }
-          }
-        }
-      } else {
-        await redeemToken(token, mixerOverrides, workerId);
-      }
+      await redeemToken(token, mixerOverrides, workerId);
     } else {
-      // Multiple bartenders: show picker
       setPendingDeliveredBy({ token, mixerOverrides });
       if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       setScanState("delivered_by_selection");
     }
-  }, [getActiveBartenders, redeemToken, openBottlesHook, currentUserId]);
+  }, [getActiveBartenders, redeemToken]);
 
   // ── Handle delivered-by selection ──────────────────────────────────────────
   const handleDeliveredBySelect = useCallback(async (workerId: string) => {
@@ -558,12 +540,8 @@ export default function Bar() {
     try {
       setDebugStep("fetch-token");
 
-      // Direct redeem — with delivered-by gate
-      if (selectedBarId) {
-        await checkBottlesRef.current?.(token, null);
-      } else {
-        await resolveDeliveredByAndRedeem(token, null);
-      }
+      // Direct redeem — no bottle checks needed (stock decoupled)
+      await resolveDeliveredByAndRedeem(token, null);
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return;
       const msg = err?.message || "Error al procesar el código";
