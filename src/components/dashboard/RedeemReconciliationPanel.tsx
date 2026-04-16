@@ -384,7 +384,7 @@ export function RedeemReconciliationPanel() {
                         {row.theoretical_consumption}
                       </TableCell>
                       {totalCourtesy > 0 && (
-                        <TableCell className="text-right font-mono text-sm tabular-nums text-amber-600">
+                        <TableCell className="text-right font-mono text-sm tabular-nums text-accent-foreground">
                           {row.courtesy_consumption > 0 ? row.courtesy_consumption : "—"}
                         </TableCell>
                       )}
