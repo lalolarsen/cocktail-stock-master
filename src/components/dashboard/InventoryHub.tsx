@@ -217,6 +217,9 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         await applyConteos(validRows, userId, venue.id);
       }
 
+      // Save learned product mappings
+      await saveLearnings(validRows, venue.id);
+
       await supabase
         .from("stock_import_batches")
         .update({ status: "aprobado", approved_by: userId, approved_at: new Date().toISOString() })
@@ -230,6 +233,54 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
       toast.error("Error al aplicar el lote");
     } finally {
       setApproving(false);
+    }
+  };
+
+  // ── Save learnings ────────────────────────────────────────────────────────
+
+  const saveLearnings = async (rows: BatchRow[], venueId: string) => {
+    const mappings = rows
+      .filter((r) => r.product_id && r.product_name_excel)
+      .map((r) => ({
+        raw_text: r.product_name_excel!.toLowerCase().trim(),
+        product_id: r.product_id!,
+        venue_id: venueId,
+      }));
+
+    // Deduplicate by raw_text
+    const unique = new Map<string, typeof mappings[0]>();
+    for (const m of mappings) unique.set(m.raw_text, m);
+
+    for (const m of unique.values()) {
+      // Try to upsert: if exists, increment times_used
+      const { data: existing } = await supabase
+        .from("learning_product_mappings")
+        .select("id, times_used")
+        .eq("raw_text", m.raw_text)
+        .eq("venue_id", venueId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from("learning_product_mappings")
+          .update({
+            product_id: m.product_id,
+            times_used: (existing.times_used || 0) + 1,
+            confidence: Math.min(1, 0.7 + (existing.times_used || 0) * 0.05),
+            last_used_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+      } else {
+        await supabase
+          .from("learning_product_mappings")
+          .insert({
+            raw_text: m.raw_text,
+            product_id: m.product_id,
+            venue_id: venueId,
+            confidence: 0.7,
+            times_used: 1,
+          });
+      }
     }
   };
 

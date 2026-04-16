@@ -1,11 +1,12 @@
 /**
  * Excel-First Inventory Parser
  *
- * Supports two modes:
- * 1. Legacy unified template (21 columns, sku_base matching)
- * 2. Simplified per-type templates (fuzzy name matching)
+ * Three distinct template/parser modes:
+ * 1. Compra: producto_nombre | cantidad | formato_ml | costo_neto_unitario
+ * 2. Reposición: producto_nombre | cantidad | ubicacion_destino
+ * 3. Conteo: producto_nombre | stock_real | ubicacion
  *
- * Resolves products via code OR fuzzy name similarity.
+ * Matching pipeline: learning_product_mappings → fuzzy bigram → AI fallback
  */
 
 import * as XLSX from "xlsx";
@@ -86,6 +87,13 @@ export interface LocationRef {
   type: string;
 }
 
+export interface LearningMapping {
+  raw_text: string;
+  product_id: string;
+  confidence: number;
+  times_used: number;
+}
+
 // ── Fuzzy matching ───────────────────────────────────────────────────────────
 
 function normalize(s: string): string {
@@ -97,11 +105,8 @@ function similarity(a: string, b: string): number {
   const nb = normalize(b);
   if (na === nb) return 1;
   if (!na || !nb) return 0;
-
-  // Check if one contains the other
   if (na.includes(nb) || nb.includes(na)) return 0.9;
 
-  // Bigram similarity
   const bigramsA = bigrams(na);
   const bigramsB = bigrams(nb);
   if (bigramsA.size === 0 && bigramsB.size === 0) return 1;
@@ -121,18 +126,32 @@ function bigrams(s: string): Set<string> {
   return set;
 }
 
-export function fuzzyMatchProduct(
+/**
+ * Match with learning memory first, then fuzzy bigram.
+ */
+export function fuzzyMatchWithLearning(
   name: string,
   products: ProductRef[],
+  learnings?: LearningMapping[],
 ): { product: ProductRef | null; confidence: MatchConfidence } {
   if (!name || !name.trim()) return { product: null, confidence: "sin_match" };
 
-  // Try exact code match first
   const norm = normalize(name);
+
+  // Step 1: Check learning memory
+  if (learnings && learnings.length > 0) {
+    const learned = learnings.find((l) => normalize(l.raw_text) === norm);
+    if (learned) {
+      const product = products.find((p) => p.id === learned.product_id);
+      if (product) return { product, confidence: "alta" };
+    }
+  }
+
+  // Step 2: Try exact code match
   const byCode = products.find((p) => p.code && normalize(p.code) === norm);
   if (byCode) return { product: byCode, confidence: "alta" };
 
-  // Fuzzy name match
+  // Step 3: Fuzzy name match
   let best: ProductRef | null = null;
   let bestScore = 0;
 
@@ -150,31 +169,13 @@ export function fuzzyMatchProduct(
   return { product: null, confidence: "sin_match" };
 }
 
-// ── Column mapping (legacy) ──────────────────────────────────────────────────
-
-const COLUMN_MAP: Record<string, keyof ExcelInventoryRow> = {
-  tipo_movimiento: "tipo_movimiento",
-  fecha: "fecha",
-  documento_ref: "documento_ref",
-  proveedor: "proveedor",
-  ubicacion_origen: "ubicacion_origen",
-  ubicacion_destino: "ubicacion_destino",
-  sku_base: "sku_base",
-  producto_nombre: "producto_nombre",
-  tipo_consumo: "tipo_consumo",
-  unidad_base: "unidad_base",
-  formato_compra_ml: "formato_compra_ml",
-  cantidad_envases: "cantidad_envases",
-  cantidad_base_movida: "cantidad_base_movida",
-  cantidad_base_calculada: "cantidad_base_calculada",
-  costo_neto_envase: "costo_neto_envase",
-  valor_neto_linea: "valor_neto_linea",
-  cpp_base_calculado: "cpp_base_calculado",
-  stock_teorico_exportado: "stock_teorico_exportado",
-  stock_real_contado: "stock_real_contado",
-  motivo_ajuste: "motivo_ajuste",
-  observaciones: "observaciones",
-};
+/** Legacy alias */
+export function fuzzyMatchProduct(
+  name: string,
+  products: ProductRef[],
+): { product: ProductRef | null; confidence: MatchConfidence } {
+  return fuzzyMatchWithLearning(name, products);
+}
 
 // ── Simplified parsers ───────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ export function parseCompraSimple(
   fileData: ArrayBuffer,
   products: ProductRef[],
   locations: LocationRef[],
+  learnings?: LearningMapping[],
 ): ParseResult {
   const rawRows = readFirstSheet(fileData);
   const bodega = locations.find((l) => normalize(l.name).includes("bodega")) || locations[0];
@@ -194,21 +196,27 @@ export function parseCompraSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const cantidad = num(raw, "cantidad", "cantidad_envases", "qty");
-    const costo = num(raw, "costo_compra", "costo_neto_envase", "costo", "precio", "costo_unitario");
+    const cantidad = num(raw, "cantidad", "cantidad_envases", "qty", "unidades");
+    const formatoMlExcel = num(raw, "formato_ml", "formato", "ml", "formato_compra_ml");
+    const costoUnit = num(raw, "costo_neto_unitario", "costo_compra", "costo_neto_envase", "costo", "precio", "costo_unitario");
     const documento = str(raw, "documento", "documento_ref", "factura", "doc");
 
-    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+    const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
 
     if (!product && confidence === "sin_match") {
       rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
     }
     if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
-    if (costo === null || costo < 0) rowErrors.push("Costo requerido");
+    if (costoUnit === null || costoUnit < 0) rowErrors.push("Costo neto unitario requerido");
 
     const isBotella = product ? isBottle(product) : false;
-    const formatoMl = product?.capacity_ml || null;
+    // For bottles: formato_ml from Excel takes priority, else product capacity_ml
+    const formatoMl = formatoMlExcel || (isBotella ? product?.capacity_ml : null) || null;
     const computedBaseQty = isBotella && formatoMl ? (cantidad || 0) * formatoMl : (cantidad || 0);
+
+    if (isBotella && !formatoMl) {
+      rowErrors.push("Formato ML requerido para producto volumétrico");
+    }
 
     const row: ResolvedRow = {
       rowIndex,
@@ -226,8 +234,8 @@ export function parseCompraSimple(
       cantidad_envases: cantidad,
       cantidad_base_movida: null,
       cantidad_base_calculada: null,
-      costo_neto_envase: costo,
-      valor_neto_linea: (costo || 0) * (cantidad || 0),
+      costo_neto_envase: costoUnit,
+      valor_neto_linea: (costoUnit || 0) * (cantidad || 0),
       cpp_base_calculado: null,
       stock_teorico_exportado: null,
       stock_real_contado: null,
@@ -255,6 +263,7 @@ export function parseReposicionSimple(
   products: ProductRef[],
   locations: LocationRef[],
   balances: Map<string, number>,
+  learnings?: LearningMapping[],
 ): ParseResult {
   const rawRows = readFirstSheet(fileData);
   const bodega = locations.find((l) => normalize(l.name).includes("bodega")) || locations[0];
@@ -270,10 +279,10 @@ export function parseReposicionSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const cantidad = num(raw, "cantidad", "cantidad_base_movida", "qty");
+    const cantidad = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades");
     const destinoNombre = str(raw, "ubicacion_destino", "destino", "ubicacion");
 
-    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+    const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
     const locDestino = destinoNombre ? locationByName.get(normalize(destinoNombre)) || null : null;
 
     if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
@@ -281,7 +290,6 @@ export function parseReposicionSimple(
     if (!locDestino && destinoNombre) rowErrors.push(`Ubicación "${destinoNombre}" no encontrada`);
     if (!destinoNombre) rowErrors.push("Ubicación destino requerida");
 
-    // Check stock at origin (bodega)
     if (product && bodega && cantidad && cantidad > 0) {
       const key = `${product.id}::${bodega.id}`;
       const currentBal = balances.get(key) || 0;
@@ -338,8 +346,19 @@ export function parseConteoSimple(
   products: ProductRef[],
   locations: LocationRef[],
   balances: Map<string, number>,
-  locationId?: string,
+  learningsOrLocationId?: LearningMapping[] | string,
+  locationIdParam?: string,
 ): ParseResult {
+  // Handle overloaded params for backwards compat
+  let learnings: LearningMapping[] | undefined;
+  let locationId: string | undefined;
+  if (typeof learningsOrLocationId === "string") {
+    locationId = learningsOrLocationId;
+  } else {
+    learnings = learningsOrLocationId;
+    locationId = locationIdParam;
+  }
+
   const rawRows = readFirstSheet(fileData);
   const locationByName = new Map<string, LocationRef>();
   locations.forEach((l) => locationByName.set(normalize(l.name), l));
@@ -356,9 +375,8 @@ export function parseConteoSimple(
     const stockReal = num(raw, "stock_real", "stock_real_contado", "real", "contado");
     const ubicNombre = str(raw, "ubicacion", "ubicacion_destino", "destino");
 
-    const { product, confidence } = fuzzyMatchProduct(nombreExcel, products);
+    const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
 
-    // Resolve location
     let locDestino: LocationRef | null = null;
     if (locationId) {
       locDestino = locations.find((l) => l.id === locationId) || null;
@@ -370,7 +388,6 @@ export function parseConteoSimple(
     if (stockReal === null || stockReal < 0) rowErrors.push("Stock real requerido ≥ 0");
     if (!locDestino) rowErrors.push("Ubicación no encontrada");
 
-    // Get theoretical stock
     const stockTeorico = product && locDestino
       ? balances.get(`${product.id}::${locDestino.id}`) || 0
       : 0;
@@ -417,6 +434,30 @@ export function parseConteoSimple(
 
 // ── Legacy unified parser ────────────────────────────────────────────────────
 
+const COLUMN_MAP: Record<string, keyof ExcelInventoryRow> = {
+  tipo_movimiento: "tipo_movimiento",
+  fecha: "fecha",
+  documento_ref: "documento_ref",
+  proveedor: "proveedor",
+  ubicacion_origen: "ubicacion_origen",
+  ubicacion_destino: "ubicacion_destino",
+  sku_base: "sku_base",
+  producto_nombre: "producto_nombre",
+  tipo_consumo: "tipo_consumo",
+  unidad_base: "unidad_base",
+  formato_compra_ml: "formato_compra_ml",
+  cantidad_envases: "cantidad_envases",
+  cantidad_base_movida: "cantidad_base_movida",
+  cantidad_base_calculada: "cantidad_base_calculada",
+  costo_neto_envase: "costo_neto_envase",
+  valor_neto_linea: "valor_neto_linea",
+  cpp_base_calculado: "cpp_base_calculado",
+  stock_teorico_exportado: "stock_teorico_exportado",
+  stock_real_contado: "stock_real_contado",
+  motivo_ajuste: "motivo_ajuste",
+  observaciones: "observaciones",
+};
+
 export function parseExcelInventory(
   fileData: ArrayBuffer,
   products: ProductRef[],
@@ -458,7 +499,6 @@ export function parseExcelInventory(
 
     const rowErrors: string[] = [];
 
-    // Resolve product: try code first, then fuzzy name
     const sku = (row.sku_base || "").toLowerCase().trim();
     let product = sku ? productByCode.get(sku) : null;
     let confidence: MatchConfidence = "sin_match";
@@ -557,7 +597,6 @@ function readFirstSheet(fileData: ArrayBuffer): Record<string, any>[] {
   return XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
 }
 
-/** Get string value from raw row by trying multiple possible column names */
 function str(raw: Record<string, any>, ...keys: string[]): string {
   for (const key of keys) {
     for (const [k, v] of Object.entries(raw)) {
@@ -567,7 +606,6 @@ function str(raw: Record<string, any>, ...keys: string[]): string {
   return "";
 }
 
-/** Get numeric value from raw row by trying multiple possible column names */
 function num(raw: Record<string, any>, ...keys: string[]): number | null {
   for (const key of keys) {
     for (const [k, v] of Object.entries(raw)) {
@@ -614,7 +652,127 @@ function toNum(val: any): number | null {
   return isNaN(n) ? null : n;
 }
 
-// ── Template generator ───────────────────────────────────────────────────────
+// ── Template generators (differentiated) ─────────────────────────────────────
+
+/**
+ * COMPRA template: producto_nombre | cantidad | formato_ml | costo_neto_unitario
+ * + Reference sheet with product catalog
+ */
+export function generateCompraTemplate(products: ProductRef[]): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+
+  const headers = ["producto_nombre", "cantidad", "formato_ml", "costo_neto_unitario"];
+  const instructions = [
+    headers,
+    ["Ejemplo: Absolut Vodka", 5, 750, 8500],
+    ["Ejemplo: Vasos plásticos", 100, "", 150],
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(instructions);
+  sheet["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, sheet, "Compra");
+
+  // Reference sheet
+  const refRows: any[][] = [
+    ["CATÁLOGO DE PRODUCTOS (referencia, no editar)"],
+    ["producto_nombre", "tipo", "formato_ml", "costo_actual"],
+    ...products.map((p) => [
+      p.name,
+      isBottle(p) ? "Botella" : "Unidad",
+      isBottle(p) ? p.capacity_ml : "",
+      p.cost_per_unit,
+    ]),
+  ];
+  const refSheet = XLSX.utils.aoa_to_sheet(refRows);
+  refSheet["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, refSheet, "Referencia_Productos");
+
+  return wb;
+}
+
+/**
+ * REPOSICION template: producto_nombre | cantidad | ubicacion_destino
+ * + Reference sheet with product catalog and valid locations
+ */
+export function generateReposicionTemplate(
+  products: ProductRef[],
+  locations: LocationRef[],
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+
+  const headers = ["producto_nombre", "cantidad", "ubicacion_destino"];
+  const barLocations = locations.filter((l) => !normalize(l.name).includes("bodega"));
+  const instructions = [
+    headers,
+    ["Ejemplo: Absolut Vodka", 3, barLocations[0]?.name || "Barra Principal"],
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(instructions);
+  sheet["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 22 }];
+  XLSX.utils.book_append_sheet(wb, sheet, "Reposicion");
+
+  // Reference
+  const refRows: any[][] = [
+    ["PRODUCTOS"],
+    ["producto_nombre", "tipo", "formato"],
+    ...products.map((p) => [
+      p.name,
+      isBottle(p) ? "Botella" : "Unidad",
+      isBottle(p) ? `${p.capacity_ml}ml` : "ud",
+    ]),
+    [],
+    ["UBICACIONES DESTINO VÁLIDAS"],
+    ["nombre", "tipo"],
+    ...barLocations.map((l) => [l.name, l.type]),
+  ];
+  const refSheet = XLSX.utils.aoa_to_sheet(refRows);
+  refSheet["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, refSheet, "Referencia");
+
+  return wb;
+}
+
+/**
+ * CONTEO template: producto_nombre | stock_real | ubicacion
+ * Pre-filled with all products at a given location
+ */
+export function generateConteoTemplateByLocation(
+  products: ProductRef[],
+  locations: LocationRef[],
+  balances: { productId: string; locationId: string; quantity: number }[],
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+
+  // One sheet per location with existing balances
+  for (const loc of locations) {
+    const locBalances = balances.filter((b) => b.locationId === loc.id);
+    if (locBalances.length === 0) continue;
+
+    const rows: any[][] = [
+      ["producto_nombre", "stock_real", "ubicacion"],
+    ];
+
+    for (const bal of locBalances) {
+      const product = products.find((p) => p.id === bal.productId);
+      if (!product) continue;
+      rows.push([product.name, "", loc.name]);
+    }
+
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 22 }];
+    const sheetName = loc.name.substring(0, 31).replace(/[\\\/\?\*\[\]]/g, "_");
+    XLSX.utils.book_append_sheet(wb, sheet, sheetName);
+  }
+
+  // If no balances, create empty template
+  if (wb.SheetNames.length === 0) {
+    const sheet = XLSX.utils.aoa_to_sheet([["producto_nombre", "stock_real", "ubicacion"]]);
+    sheet["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, sheet, "Conteo");
+  }
+
+  return wb;
+}
+
+// ── Legacy template generators (kept for backwards compat) ───────────────────
 
 export function generateTemplate(
   products: ProductRef[],
@@ -623,7 +781,6 @@ export function generateTemplate(
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: Plantilla_Unica (empty template)
   const headers = [
     "tipo_movimiento", "fecha", "documento_ref", "proveedor",
     "ubicacion_origen", "ubicacion_destino", "sku_base", "producto_nombre",
@@ -637,7 +794,6 @@ export function generateTemplate(
   templateSheet["!cols"] = headers.map(() => ({ wch: 18 }));
   XLSX.utils.book_append_sheet(wb, templateSheet, "Plantilla_Unica");
 
-  // Sheet 2: Referencia
   const refData = [
     ["=== PRODUCTOS ===", "", "", ""],
     ["sku_base", "producto_nombre", "tipo_consumo", "unidad_base", "capacity_ml", "cpp_actual"],
@@ -653,7 +809,6 @@ export function generateTemplate(
   refSheet["!cols"] = [{ wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, refSheet, "Referencia");
 
-  // Sheet 3: Export_Stock_Actual
   const locationMap = new Map<string, LocationRef>();
   locations.forEach((l) => locationMap.set(l.id, l));
   const productMap = new Map<string, ProductRef>();
@@ -693,8 +848,6 @@ export function generateTemplate(
   return wb;
 }
 
-// ── Conteo template generator ────────────────────────────────────────────────
-
 export function generateComparisonTemplate(
   products: ProductRef[],
   consumedProductIds: string[],
@@ -715,7 +868,7 @@ export function generateComparisonTemplate(
       product.name,
       product.code,
       bottle ? `bot. ${product.capacity_ml}ml` : "unidad",
-      "", // bartender fills this: decimal bottles (e.g. 2.5) or units
+      "",
     ]);
   }
 
@@ -736,7 +889,7 @@ export function generateConteoTemplate(
   products.forEach((p) => productMap.set(p.id, p));
 
   const rows: any[][] = [
-    ["producto_nombre", "sku_base", "unidad", "formato", "stock_teorico", "stock_real"],
+    ["producto_nombre", "stock_real", "ubicacion"],
   ];
 
   const locationBalances = balances.filter((b) => b.locationId === location.id);
@@ -744,19 +897,11 @@ export function generateConteoTemplate(
   for (const bal of locationBalances) {
     const product = productMap.get(bal.productId);
     if (!product) continue;
-    const bottle = isBottle(product);
-    rows.push([
-      product.name,
-      product.code,
-      bottle ? "ml" : "ud",
-      bottle ? (product.capacity_ml || "") : "",
-      bal.quantity,
-      "", // stock_real → user fills this
-    ]);
+    rows.push([product.name, "", location.name]);
   }
 
   const sheet = XLSX.utils.aoa_to_sheet(rows);
-  sheet["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
+  sheet["!cols"] = [{ wch: 30 }, { wch: 14 }, { wch: 22 }];
   XLSX.utils.book_append_sheet(wb, sheet, `Conteo_${location.name}`);
 
   return wb;
