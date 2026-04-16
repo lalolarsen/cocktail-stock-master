@@ -130,7 +130,7 @@ export default function Sales() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("boleta");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("card");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | null>(null);
   const [historialOpen, setHistorialOpen] = useState(false);
   const [voidSaleId, setVoidSaleId] = useState<string | null>(null);
   
@@ -447,6 +447,11 @@ export default function Sales() {
       return;
     }
 
+    if (!paymentMethod) {
+      toast.error("Selecciona un medio de pago antes de cobrar");
+      return;
+    }
+
     if (!selectedPosId) {
       toast.error("Selecciona una caja");
       return;
@@ -684,6 +689,7 @@ export default function Sales() {
       });
       setShowSuccessScreen(true);
       clearCartStore();
+      setPaymentMethod(null);
       fetchRecentSales();
 
       // ── Auto-print receipt + QR ──
@@ -1285,7 +1291,7 @@ export default function Sales() {
                   {/* Cobrar */}
                   <Button
                     onClick={processSale}
-                    disabled={loading || !hasActiveJornada}
+                    disabled={loading || !hasActiveJornada || !paymentMethod}
                     className="w-full h-11 text-sm font-bold tracking-widest uppercase"
                     size="lg"
                   >
