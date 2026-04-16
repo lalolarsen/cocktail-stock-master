@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,12 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  Search, Loader2, CheckCircle2, AlertTriangle, Download, QrCode, Gift,
-  Package, Info, BarChart3, ArrowDown, Scale,
+  Loader2, CheckCircle2, AlertTriangle, Download, QrCode, Gift,
+  Package, Info, BarChart3, Scale, Upload, FileSpreadsheet, Search,
 } from "lucide-react";
 import { isBottle } from "@/lib/product-type";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { generateConteoTemplate, type ProductRef, type LocationRef } from "@/lib/excel-inventory-parser";
 
 interface Jornada { id: string; nombre: string; numero_jornada: number; fecha: string; estado: string }
 interface Location { id: string; name: string; type: string }
@@ -22,6 +22,7 @@ interface Location { id: string; name: string; type: string }
 interface ComparisonLine {
   product_id: string;
   product_name: string;
+  sku_base: string;
   unit: string;
   capacity_ml: number | null;
   is_bottle: boolean;
@@ -33,6 +34,16 @@ interface ComparisonLine {
   real_count: number | null;
   difference: number;
 }
+
+interface ParsedExcelRow {
+  producto_nombre: string;
+  sku_base: string;
+  stock_real: number;
+  matched_product_id: string | null;
+  matched_product_name: string | null;
+}
+
+type Step = "select" | "upload" | "preview" | "compare";
 
 export function InventoryComparisonModule() {
   const { venue, user } = useAppSession();
@@ -47,32 +58,138 @@ export function InventoryComparisonModule() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [redeemCount, setRedeemCount] = useState(0);
   const [courtesyCount, setCourtesyCount] = useState(0);
 
-  // Load jornadas + locations
+  // Excel flow state
+  const [step, setStep] = useState<Step>("select");
+  const [parsedRows, setParsedRows] = useState<ParsedExcelRow[]>([]);
+  const [confirmed, setConfirmed] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Products cache for matching
+  const [productsCache, setProductsCache] = useState<{ id: string; name: string; code: string; unit: string; capacity_ml: number | null }[]>([]);
+  const [balancesCache, setBalancesCache] = useState<{ productId: string; locationId: string; quantity: number }[]>([]);
+
+  // Load jornadas + locations + products
   useEffect(() => {
     if (!venueId) return;
     (async () => {
-      const [jRes, lRes] = await Promise.all([
+      const [jRes, lRes, pRes] = await Promise.all([
         supabase.from("jornadas").select("id, nombre, numero_jornada, fecha, estado")
           .eq("venue_id", venueId).order("fecha", { ascending: false }).limit(30),
         supabase.from("stock_locations").select("id, name, type")
           .eq("venue_id", venueId).eq("is_active", true),
+        supabase.from("products").select("id, name, code, unit, capacity_ml")
+          .eq("venue_id", venueId).order("name"),
       ]);
       setJornadas((jRes.data || []) as Jornada[]);
       setLocations((lRes.data || []) as Location[]);
+      setProductsCache((pRes.data || []) as any[]);
       setInitialLoading(false);
     })();
   }, [venueId]);
 
-  // ── Calculate ──────────────────────────────────────────────────────────────
+  // Load balances when location changes
+  useEffect(() => {
+    if (!venueId || !selectedLocation) return;
+    supabase.from("stock_balances").select("product_id, quantity, location_id")
+      .eq("venue_id", venueId)
+      .eq("location_id", selectedLocation)
+      .then(({ data }) => {
+        setBalancesCache((data || []).map(b => ({ productId: b.product_id, locationId: b.location_id, quantity: Number(b.quantity) || 0 })));
+      });
+  }, [venueId, selectedLocation]);
 
-  const loadComparison = async () => {
+  const resetFlow = () => {
+    setStep("select");
+    setParsedRows([]);
+    setConfirmed(false);
+    setLines([]);
+    setSearchTerm("");
+  };
+
+  // ── Download template ──────────────────────────────────────────────────────
+  const handleDownloadTemplate = () => {
+    const loc = locations.find(l => l.id === selectedLocation);
+    if (!loc) return;
+    const prodRefs: ProductRef[] = productsCache.map(p => ({
+      id: p.id, code: p.code || "", name: p.name,
+      capacity_ml: p.capacity_ml, cost_per_unit: 0, current_stock: 0,
+    }));
+    const locRef: LocationRef = { id: loc.id, name: loc.name, type: loc.type };
+    const wb = generateConteoTemplate(prodRefs, locRef, balancesCache);
+    XLSX.writeFile(wb, `plantilla_conteo_${loc.name}.xlsx`);
+    toast.success("Plantilla descargada");
+  };
+
+  // ── Upload Excel ───────────────────────────────────────────────────────────
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = ev.target?.result;
+        if (!data) return;
+        const wb = XLSX.read(data, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+        const productByCode = new Map<string, typeof productsCache[0]>();
+        const productByName = new Map<string, typeof productsCache[0]>();
+        productsCache.forEach(p => {
+          if (p.code) productByCode.set(p.code.toLowerCase().trim(), p);
+          productByName.set(p.name.toLowerCase().trim(), p);
+        });
+
+        const parsed: ParsedExcelRow[] = [];
+        for (const raw of rawRows) {
+          const nombre = String(raw["producto_nombre"] || raw["producto"] || raw["nombre"] || "").trim();
+          const sku = String(raw["sku_base"] || raw["codigo"] || "").trim();
+          const stockReal = Number(raw["stock_real"] || raw["real"] || raw["contado"] || 0);
+
+          if (!nombre && !sku) continue;
+
+          // Match product
+          let matched: typeof productsCache[0] | undefined;
+          if (sku) matched = productByCode.get(sku.toLowerCase());
+          if (!matched && nombre) matched = productByName.get(nombre.toLowerCase());
+
+          parsed.push({
+            producto_nombre: nombre,
+            sku_base: sku,
+            stock_real: stockReal,
+            matched_product_id: matched?.id || null,
+            matched_product_name: matched?.name || null,
+          });
+        }
+
+        if (parsed.length === 0) {
+          toast.error("No se encontraron filas válidas en el Excel");
+          return;
+        }
+
+        setParsedRows(parsed);
+        setStep("preview");
+        toast.success(`${parsed.length} filas parseadas`);
+      } catch {
+        toast.error("Error al leer el archivo Excel");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // ── Confirm & Compare ─────────────────────────────────────────────────────
+  const handleConfirm = () => {
+    setConfirmed(true);
+    toast.success("Conteo confirmado. Puedes comparar ahora.");
+  };
+
+  const handleCompare = async () => {
     if (!selectedJornada || !selectedLocation || !venueId) return;
     setLoading(true);
-    setHasLoaded(true);
     try {
       // 1. Stock balances for this location
       const { data: balData } = await supabase
@@ -81,14 +198,7 @@ export function InventoryComparisonModule() {
         .eq("venue_id", venueId)
         .eq("location_id", selectedLocation);
 
-      // 2. Products metadata
-      const { data: prodData } = await supabase
-        .from("products")
-        .select("id, name, code, unit, capacity_ml")
-        .eq("venue_id", venueId)
-        .order("name");
-
-      // 3. Pickup redemption logs (sales consumption)
+      // 2. Pickup redemption logs (sales consumption)
       const { data: logs } = await supabase
         .from("pickup_redemptions_log")
         .select("theoretical_consumption, bar_location_id")
@@ -98,7 +208,7 @@ export function InventoryComparisonModule() {
       const locationLogs = (logs || []).filter((l: any) => l.bar_location_id === selectedLocation);
       setRedeemCount(locationLogs.length);
 
-      // 4. Courtesy redemptions
+      // 3. Courtesy redemptions
       const { data: courtesyLogs } = await supabase
         .from("courtesy_redemptions")
         .select("courtesy_id, result")
@@ -124,17 +234,11 @@ export function InventoryComparisonModule() {
       const courtesyMap = new Map<string, number>();
       if (courtesyIds.length > 0) {
         const { data: courtesyQrs } = await supabase
-          .from("courtesy_qr")
-          .select("id, product_id, qty")
-          .in("id", courtesyIds);
-
+          .from("courtesy_qr").select("id, product_id, qty").in("id", courtesyIds);
         if (courtesyQrs && courtesyQrs.length > 0) {
           const cocktailIds = [...new Set(courtesyQrs.map((q: any) => q.product_id))];
           const { data: ingredients } = await supabase
-            .from("cocktail_ingredients")
-            .select("cocktail_id, product_id, quantity")
-            .in("cocktail_id", cocktailIds);
-
+            .from("cocktail_ingredients").select("cocktail_id, product_id, quantity").in("cocktail_id", cocktailIds);
           for (const qr of courtesyQrs as any[]) {
             const recipeItems = (ingredients || []).filter((i: any) => i.cocktail_id === qr.product_id);
             if (recipeItems.length > 0) {
@@ -149,14 +253,23 @@ export function InventoryComparisonModule() {
         }
       }
 
-      // Merge all product IDs with consumption or stock
+      // Build real count map from parsed Excel
+      const realCountMap = new Map<string, number>();
+      for (const row of parsedRows) {
+        if (row.matched_product_id) {
+          realCountMap.set(row.matched_product_id, row.stock_real);
+        }
+      }
+
+      // Merge all
       const balMap = new Map((balData || []).map(b => [b.product_id, Number(b.quantity) || 0]));
-      const prodMap = new Map((prodData || []).map(p => [p.id, p]));
+      const prodMap = new Map(productsCache.map(p => [p.id, p]));
 
       const allProductIds = new Set<string>();
       for (const id of balMap.keys()) allProductIds.add(id);
       for (const id of salesMap.keys()) allProductIds.add(id);
       for (const id of courtesyMap.keys()) allProductIds.add(id);
+      for (const id of realCountMap.keys()) allProductIds.add(id);
 
       const newLines: ComparisonLine[] = [];
       for (const pid of allProductIds) {
@@ -168,12 +281,15 @@ export function InventoryComparisonModule() {
         const totalCons = Math.round((salesCons + courtesyCons) * 10) / 10;
         const expected = Math.round((currentStock - totalCons) * 10) / 10;
 
-        // Only show if there's stock or consumption
-        if (currentStock === 0 && totalCons === 0) continue;
+        const realCount = realCountMap.has(pid) ? realCountMap.get(pid)! : null;
+        const difference = realCount !== null ? Math.round((realCount - expected) * 10) / 10 : 0;
+
+        if (currentStock === 0 && totalCons === 0 && realCount === null) continue;
 
         newLines.push({
           product_id: pid,
           product_name: prod.name,
+          sku_base: prod.code || "",
           unit: prod.unit || "ud",
           capacity_ml: prod.capacity_ml,
           is_bottle: isBottle(prod),
@@ -182,13 +298,21 @@ export function InventoryComparisonModule() {
           courtesy_consumption: courtesyCons,
           total_consumption: totalCons,
           expected_stock: expected,
-          real_count: null,
-          difference: 0,
+          real_count: realCount,
+          difference,
         });
       }
 
-      newLines.sort((a, b) => b.total_consumption - a.total_consumption || a.product_name.localeCompare(b.product_name));
+      newLines.sort((a, b) => {
+        // Products with real count first, then by consumption
+        const aHas = a.real_count !== null ? 0 : 1;
+        const bHas = b.real_count !== null ? 0 : 1;
+        if (aHas !== bHas) return aHas - bHas;
+        return b.total_consumption - a.total_consumption || a.product_name.localeCompare(b.product_name);
+      });
+
       setLines(newLines);
+      setStep("compare");
 
       if (newLines.length === 0) toast.info("No hay datos para esta combinación");
     } catch (err: any) {
@@ -199,21 +323,9 @@ export function InventoryComparisonModule() {
     }
   };
 
-  // ── Update real count ──────────────────────────────────────────────────────
-
-  const updateRealCount = (productId: string, value: string) => {
-    const numVal = value === "" ? null : parseFloat(value);
-    setLines(prev => prev.map(l => {
-      if (l.product_id !== productId) return l;
-      const difference = numVal !== null ? Math.round((numVal - l.expected_stock) * 10) / 10 : 0;
-      return { ...l, real_count: numVal, difference };
-    }));
-  };
-
   // ── Apply reconciliation ───────────────────────────────────────────────────
-
   const linesWithDifference = lines.filter(l => l.real_count !== null && l.difference !== 0);
-  const linesEdited = lines.filter(l => l.real_count !== null).length;
+  const linesWithCount = lines.filter(l => l.real_count !== null).length;
 
   const handleApply = async () => {
     if (linesWithDifference.length === 0) {
@@ -251,7 +363,6 @@ export function InventoryComparisonModule() {
         if (balErr) throw balErr;
       }
 
-      // Update products.current_stock cache
       for (const line of linesWithDifference) {
         const { data: allBals } = await supabase
           .from("stock_balances").select("quantity").eq("venue_id", venueId!).eq("product_id", line.product_id);
@@ -260,7 +371,6 @@ export function InventoryComparisonModule() {
       }
 
       toast.success(`Cuadre aplicado: ${linesWithDifference.length} productos ajustados`);
-      // Reset real counts, update expected to match new reality
       setLines(prev => prev.map(l => ({
         ...l,
         current_stock: l.real_count !== null ? l.real_count + l.total_consumption : l.current_stock,
@@ -276,7 +386,6 @@ export function InventoryComparisonModule() {
   };
 
   // ── CSV Export ─────────────────────────────────────────────────────────────
-
   const handleExportCSV = () => {
     if (lines.length === 0) return;
     const jornada = jornadas.find(j => j.id === selectedJornada);
@@ -284,27 +393,26 @@ export function InventoryComparisonModule() {
 
     const csvLines: string[] = [];
     csvLines.push("COMPARACIÓN DE INVENTARIO");
-    csvLines.push(`Jornada,#${jornada?.numero_jornada || "?"} - ${jornada?.fecha || ""}`);
+    csvLines.push(`Jornada,${jornada?.nombre || "?"}`);
     csvLines.push(`Ubicación,${location?.name || "?"}`);
     csvLines.push(`Canjes QR,${redeemCount}`);
     csvLines.push(`Cortesías,${courtesyCount}`);
     csvLines.push("");
-    csvLines.push("Insumo,Unidad,Stock actual,Consumo ventas,Consumo cortesías,Consumo total,Stock esperado,Conteo real,Diferencia,Estado");
+    csvLines.push("Insumo,SKU,Unidad,Stock actual,Consumo ventas,Consumo cortesías,Stock esperado,Conteo real,Diferencia,Estado");
     lines.forEach(l => {
       const estado = l.real_count === null ? "Sin contar" : l.difference === 0 ? "Calza" : l.difference > 0 ? "Sobrante" : "Faltante";
-      csvLines.push(`"${l.product_name}",${l.unit},${l.current_stock},${l.sales_consumption},${l.courtesy_consumption},${l.total_consumption},${l.expected_stock},${l.real_count ?? ""},${l.real_count !== null ? l.difference : ""},${estado}`);
+      csvLines.push(`"${l.product_name}","${l.sku_base}",${l.unit},${l.current_stock},${l.sales_consumption},${l.courtesy_consumption},${l.expected_stock},${l.real_count ?? ""},${l.real_count !== null ? l.difference : ""},${estado}`);
     });
 
     const blob = new Blob(["\uFEFF" + csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `comparacion_inv_j${jornada?.numero_jornada}_${location?.name}_${jornada?.fecha}.csv`;
+    link.download = `comparacion_${jornada?.nombre}_${location?.name}.csv`;
     link.click();
     toast.success("CSV descargado");
   };
 
   // ── Display helpers ────────────────────────────────────────────────────────
-
   const getDisplayQty = (line: ComparisonLine, qty: number) => {
     if (line.is_bottle && line.capacity_ml && line.capacity_ml > 0) {
       const bottles = Math.floor(qty / line.capacity_ml);
@@ -326,6 +434,9 @@ export function InventoryComparisonModule() {
   const shortageCount = linesWithDifference.filter(l => l.difference < 0).length;
   const surplusCount = linesWithDifference.filter(l => l.difference > 0).length;
 
+  const selectedJornadaObj = jornadas.find(j => j.id === selectedJornada);
+  const unmatchedCount = parsedRows.filter(r => !r.matched_product_id).length;
+
   if (initialLoading) {
     return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
@@ -339,7 +450,7 @@ export function InventoryComparisonModule() {
           Comparación de Inventario
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Compara stock actual vs consumo teórico, ingresa conteo real y aplica ajustes directamente.
+          Sube el conteo del bartender en Excel, compara con el consumo teórico y ajusta el inventario.
         </p>
       </div>
 
@@ -351,37 +462,36 @@ export function InventoryComparisonModule() {
             <div className="space-y-2 text-sm">
               <p className="font-medium text-foreground">¿Cómo funciona?</p>
               <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                <li>Selecciona una <strong>jornada</strong> y una <strong>ubicación</strong> (barra)</li>
-                <li>El sistema calcula el <strong>consumo teórico</strong> según canjes QR y cortesías</li>
-                <li><strong>Stock esperado</strong> = Stock actual − Consumo teórico</li>
-                <li>Ingresa tu <strong>conteo real</strong> por producto</li>
-                <li>Las diferencias se muestran automáticamente: <span className="text-destructive font-medium">faltante</span> o <span className="text-blue-500 font-medium">sobrante</span></li>
-                <li>Presiona <strong>"Aplicar cuadre"</strong> para actualizar el inventario</li>
+                <li>Selecciona <strong>jornada</strong> y <strong>ubicación</strong> (barra)</li>
+                <li>Descarga la <strong>plantilla Excel</strong> pre-llenada con los productos de esa barra</li>
+                <li>El bartender llena la columna <strong>"stock_real"</strong> con lo que queda físicamente</li>
+                <li>Sube el Excel completado y <strong>confirma</strong> las cantidades</li>
+                <li>Presiona <strong>"Comparar"</strong> para ver diferencias vs consumo teórico</li>
+                <li>Aplica el cuadre para actualizar el inventario</li>
               </ol>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Filters */}
+      {/* Step 1: Select jornada + location */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Parámetros</CardTitle>
-          <CardDescription>Selecciona jornada y ubicación para calcular</CardDescription>
+          <CardTitle className="text-base">1. Parámetros</CardTitle>
+          <CardDescription>Selecciona jornada y ubicación</CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="flex items-end gap-3 flex-wrap">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-muted-foreground">Jornada</label>
-              <Select value={selectedJornada} onValueChange={v => { setSelectedJornada(v); setHasLoaded(false); setLines([]); }}>
-                <SelectTrigger className="w-[240px] h-10">
+              <Select value={selectedJornada} onValueChange={v => { setSelectedJornada(v); resetFlow(); }}>
+                <SelectTrigger className="w-[260px] h-10">
                   <SelectValue placeholder="Seleccionar jornada…" />
                 </SelectTrigger>
                 <SelectContent>
                   {jornadas.map(j => (
                     <SelectItem key={j.id} value={j.id}>
-                      #{j.numero_jornada} — {format(new Date(j.fecha + "T12:00:00"), "d MMM yyyy", { locale: es })}
-                      {j.estado === "abierta" ? " 🟢" : ""}
+                      {j.nombre}{j.estado === "abierta" ? " 🟢" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -389,7 +499,7 @@ export function InventoryComparisonModule() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-muted-foreground">Ubicación</label>
-              <Select value={selectedLocation} onValueChange={v => { setSelectedLocation(v); setHasLoaded(false); setLines([]); }}>
+              <Select value={selectedLocation} onValueChange={v => { setSelectedLocation(v); resetFlow(); }}>
                 <SelectTrigger className="w-[200px] h-10">
                   <SelectValue placeholder="Seleccionar…" />
                 </SelectTrigger>
@@ -402,27 +512,120 @@ export function InventoryComparisonModule() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={loadComparison} disabled={!selectedJornada || !selectedLocation || loading} className="h-10">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
-              Calcular
-            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Empty state */}
-      {!hasLoaded && (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <ArrowDown className="h-8 w-8 mx-auto mb-3 text-muted-foreground/30 animate-bounce" />
-            <p className="text-muted-foreground font-medium">Selecciona jornada y ubicación</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">Luego presiona "Calcular" para ver la comparación</p>
+      {/* Step 2: Download template + Upload */}
+      {selectedJornada && selectedLocation && step !== "compare" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">2. Plantilla y Carga</CardTitle>
+            <CardDescription>Descarga la plantilla, el bartender la completa, y súbela aquí</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-4">
+            <div className="flex gap-3 flex-wrap">
+              <Button variant="outline" onClick={handleDownloadTemplate} className="gap-2">
+                <Download className="h-4 w-4" />
+                Descargar plantilla
+              </Button>
+              <div className="relative">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                <Button variant="secondary" className="gap-2 pointer-events-none">
+                  <Upload className="h-4 w-4" />
+                  Subir Excel completado
+                </Button>
+              </div>
+            </div>
+
+            {selectedJornadaObj && (
+              <p className="text-xs text-muted-foreground">
+                Jornada: <strong>{selectedJornadaObj.nombre}</strong> · Ubicación: <strong>{locations.find(l => l.id === selectedLocation)?.name}</strong>
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Results */}
-      {hasLoaded && lines.length > 0 && (
+      {/* Step 3: Preview parsed Excel */}
+      {step === "preview" && parsedRows.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-primary" />
+              3. Preview del Conteo
+              <Badge variant="secondary" className="ml-auto">{parsedRows.length} filas</Badge>
+              {unmatchedCount > 0 && (
+                <Badge variant="destructive" className="text-xs">{unmatchedCount} sin match</Badge>
+              )}
+            </CardTitle>
+            <CardDescription>Revisa que las cantidades sean correctas antes de confirmar</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="overflow-auto max-h-[400px] border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto (Excel)</TableHead>
+                    <TableHead>Producto (Sistema)</TableHead>
+                    <TableHead className="text-right">Stock Real</TableHead>
+                    <TableHead className="text-center">Match</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {parsedRows.map((row, i) => (
+                    <TableRow key={i} className={!row.matched_product_id ? "bg-destructive/5" : ""}>
+                      <TableCell className="text-sm">{row.producto_nombre || row.sku_base}</TableCell>
+                      <TableCell className="text-sm">
+                        {row.matched_product_name || <span className="text-destructive text-xs">No encontrado</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{row.stock_real}</TableCell>
+                      <TableCell className="text-center">
+                        {row.matched_product_id
+                          ? <CheckCircle2 className="h-4 w-4 text-primary mx-auto" />
+                          : <AlertTriangle className="h-4 w-4 text-destructive mx-auto" />
+                        }
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-sm text-muted-foreground">
+                {parsedRows.filter(r => r.matched_product_id).length} de {parsedRows.length} productos con match
+                {unmatchedCount > 0 && " — los sin match serán ignorados"}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => { setStep("select"); setParsedRows([]); }}>
+                  Cancelar
+                </Button>
+                {!confirmed ? (
+                  <Button onClick={handleConfirm} className="gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirmar conteo
+                  </Button>
+                ) : (
+                  <Button onClick={handleCompare} disabled={loading} className="gap-2">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+                    Comparar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 4: Comparison results */}
+      {step === "compare" && lines.length > 0 && (
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -438,20 +641,20 @@ export function InventoryComparisonModule() {
             </CardContent></Card>
             <Card><CardContent className="p-4 text-center">
               <Package className="h-5 w-5 mx-auto mb-1 text-primary" />
-              <p className="text-2xl font-bold">{lines.length}</p>
-              <p className="text-xs text-muted-foreground">Productos</p>
+              <p className="text-2xl font-bold">{linesWithCount}</p>
+              <p className="text-xs text-muted-foreground">Contados</p>
             </CardContent></Card>
             <Card><CardContent className="p-4 text-center">
               <BarChart3 className="h-5 w-5 mx-auto mb-1 text-primary" />
-              <p className="text-2xl font-bold">{linesEdited}/{lines.length}</p>
-              <p className="text-xs text-muted-foreground">Contados</p>
+              <p className="text-2xl font-bold">{totalDifferences}</p>
+              <p className="text-xs text-muted-foreground">Con diferencia</p>
             </CardContent></Card>
           </div>
 
           {/* Status badges */}
           <div className="flex gap-3 text-sm flex-wrap">
-            <Badge variant="outline">{linesEdited}/{lines.length} editados</Badge>
-            {totalDifferences > 0 && (
+            <Badge variant="outline">{linesWithCount}/{lines.length} contados</Badge>
+            {shortageCount > 0 && (
               <Badge variant="destructive" className="text-xs">
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 {shortageCount} faltante{shortageCount !== 1 ? "s" : ""}
@@ -462,22 +665,27 @@ export function InventoryComparisonModule() {
                 {surplusCount} sobrante{surplusCount !== 1 ? "s" : ""}
               </Badge>
             )}
-            {linesEdited > 0 && totalDifferences === 0 && (
+            {linesWithCount > 0 && totalDifferences === 0 && (
               <Badge variant="outline" className="text-xs border-primary/30 text-primary">
                 <CheckCircle2 className="h-3 w-3 mr-1" /> Todo cuadra
               </Badge>
             )}
           </div>
 
-          {/* Search + CSV */}
+          {/* Search + actions */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input placeholder="Buscar insumo…" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-8 h-9" />
             </div>
-            <Button variant="outline" size="sm" className="gap-1.5 ml-auto" onClick={handleExportCSV}>
-              <Download className="h-4 w-4" /> Descargar CSV
-            </Button>
+            <div className="flex gap-2 ml-auto">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}>
+                <Download className="h-4 w-4" /> CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={resetFlow}>
+                Nueva comparación
+              </Button>
+            </div>
           </div>
 
           {/* Main Table */}
@@ -491,7 +699,7 @@ export function InventoryComparisonModule() {
                     <TableHead className="text-right">Ventas</TableHead>
                     <TableHead className="text-right">Cortesías</TableHead>
                     <TableHead className="text-right font-semibold">Esperado</TableHead>
-                    <TableHead className="text-center w-28">Conteo real</TableHead>
+                    <TableHead className="text-right">Conteo real</TableHead>
                     <TableHead className="text-right w-28">Diferencia</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -520,16 +728,8 @@ export function InventoryComparisonModule() {
                       <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
                         {getDisplayQty(line, line.expected_stock)}
                       </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={line.real_count !== null ? line.real_count : ""}
-                          onChange={e => updateRealCount(line.product_id, e.target.value)}
-                          placeholder={String(Math.round(line.expected_stock * 10) / 10)}
-                          className="h-8 text-center w-24 mx-auto font-mono"
-                        />
+                      <TableCell className="text-right font-mono text-sm tabular-nums">
+                        {line.real_count !== null ? getDisplayQty(line, line.real_count) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
                         {line.real_count !== null ? (
@@ -551,7 +751,7 @@ export function InventoryComparisonModule() {
             </div>
 
             {/* Apply bar */}
-            {linesEdited > 0 && (
+            {linesWithCount > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
                 <span className="text-sm text-muted-foreground">
                   {totalDifferences} producto{totalDifferences !== 1 ? "s" : ""} con diferencia
@@ -570,15 +770,16 @@ export function InventoryComparisonModule() {
           {/* Help footer */}
           <Card className="border-muted bg-muted/30">
             <CardContent className="p-4 text-xs text-muted-foreground space-y-1">
-              <p><strong>Faltante (rojo):</strong> El conteo real es menor al esperado. Puede indicar merma, robo, o error de registro.</p>
-              <p><strong>Sobrante (azul):</strong> El conteo real es mayor al esperado. Puede indicar una devolución no registrada o error en receta.</p>
-              <p><strong>Al aplicar</strong>, el inventario se actualiza al valor del conteo real y se registra un movimiento de tipo "reconciliation" para auditoría.</p>
+              <p><strong>Faltante (rojo):</strong> El conteo real es menor al esperado → posible merma, robo, o error de registro.</p>
+              <p><strong>Sobrante (azul):</strong> El conteo real es mayor al esperado → posible devolución no registrada o error en receta.</p>
+              <p><strong>Sin contar:</strong> Productos sin dato en el Excel se asumen correctos (no se ajustan).</p>
+              <p><strong>Al aplicar</strong>, el inventario se actualiza al valor del conteo real y se registra un movimiento "reconciliation".</p>
             </CardContent>
           </Card>
         </>
       )}
 
-      {hasLoaded && lines.length === 0 && !loading && (
+      {step === "compare" && lines.length === 0 && !loading && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
             <Package className="h-8 w-8 mx-auto mb-3 text-muted-foreground/30" />

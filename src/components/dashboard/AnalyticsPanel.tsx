@@ -17,6 +17,8 @@ import {
   ShoppingCart,
   Gift,
   CalendarDays,
+  Scale,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
@@ -72,6 +74,14 @@ interface CourtesyCOGSItem {
   cogs: number;
 }
 
+interface ReconciliationWaste {
+  productName: string;
+  unit: string;
+  shortage: number;
+  costPerUnit: number;
+  estimatedLoss: number;
+}
+
 export function AnalyticsPanel() {
   const venueId = DEFAULT_VENUE_ID;
   const [loading, setLoading] = useState(true);
@@ -80,6 +90,7 @@ export function AnalyticsPanel() {
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
   const [jornadaCount, setJornadaCount] = useState(0);
   const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
+  const [reconciliationWaste, setReconciliationWaste] = useState<ReconciliationWaste[]>([]);
 
   const monthOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
@@ -191,6 +202,36 @@ export function AnalyticsPanel() {
       setCourtesyCOGS(items);
     } else {
       setCourtesyCOGS([]);
+    }
+
+    // Reconciliation waste (mermas por comparación)
+    const { data: reconMovements } = await supabase
+      .from("stock_movements")
+      .select("product_id, quantity, from_location_id, to_location_id, products(name, unit, cost_per_unit)")
+      .eq("venue_id", venueId)
+      .eq("movement_type", "reconciliation")
+      .gte("created_at", from)
+      .lte("created_at", to);
+
+    if (reconMovements && reconMovements.length > 0) {
+      const wasteMap = new Map<string, { name: string; unit: string; shortage: number; cost: number }>();
+      for (const m of reconMovements as any[]) {
+        const isShortage = !!m.from_location_id && !m.to_location_id;
+        if (!isShortage) continue;
+        const prod = m.products;
+        if (!prod) continue;
+        const key = m.product_id;
+        if (!wasteMap.has(key)) wasteMap.set(key, { name: prod.name, unit: prod.unit || "ud", shortage: 0, cost: Number(prod.cost_per_unit) || 0 });
+        const entry = wasteMap.get(key)!;
+        entry.shortage += Number(m.quantity) || 0;
+      }
+      setReconciliationWaste(
+        Array.from(wasteMap.values())
+          .map(w => ({ productName: w.name, unit: w.unit, shortage: w.shortage, costPerUnit: w.cost, estimatedLoss: Math.round(w.shortage * w.cost) }))
+          .sort((a, b) => b.estimatedLoss - a.estimatedLoss)
+      );
+    } else {
+      setReconciliationWaste([]);
     }
 
     setLoading(false);
@@ -474,6 +515,50 @@ export function AnalyticsPanel() {
                       <td className="p-2 text-center tabular-nums">{c.qty}</td>
                       <td className="p-2 text-muted-foreground truncate max-w-[150px]">{c.note}</td>
                       <td className="p-2 text-right tabular-nums font-medium">{formatCLP(c.cogs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reconciliation Waste Section */}
+      {reconciliationWaste.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Scale className="w-4 h-4 text-destructive" />
+              Mermas por Comparación
+              <Badge variant="destructive" className="ml-auto text-xs">
+                {formatCLP(reconciliationWaste.reduce((s, w) => s + w.estimatedLoss, 0))}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Faltantes detectados en comparaciones de inventario del mes. Solo incluye productos con diferencia negativa (merma).
+            </p>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-muted-foreground">
+                    <th className="text-left p-2 font-medium">Producto</th>
+                    <th className="text-right p-2 font-medium">Faltante</th>
+                    <th className="text-right p-2 font-medium">Costo unit.</th>
+                    <th className="text-right p-2 font-medium">Pérdida est.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliationWaste.map((w, i) => (
+                    <tr key={i} className="border-t border-border/30">
+                      <td className="p-2 font-medium truncate max-w-[180px]">{w.productName}</td>
+                      <td className="p-2 text-right tabular-nums text-destructive font-medium">
+                        {w.shortage} {w.unit}
+                      </td>
+                      <td className="p-2 text-right tabular-nums text-muted-foreground">{formatCLP(w.costPerUnit)}</td>
+                      <td className="p-2 text-right tabular-nums font-semibold text-destructive">{formatCLP(w.estimatedLoss)}</td>
                     </tr>
                   ))}
                 </tbody>
