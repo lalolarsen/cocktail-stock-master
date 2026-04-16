@@ -74,6 +74,14 @@ interface CourtesyCOGSItem {
   cogs: number;
 }
 
+interface ReconciliationWaste {
+  productName: string;
+  unit: string;
+  shortage: number;
+  costPerUnit: number;
+  estimatedLoss: number;
+}
+
 export function AnalyticsPanel() {
   const venueId = DEFAULT_VENUE_ID;
   const [loading, setLoading] = useState(true);
@@ -82,6 +90,7 @@ export function AnalyticsPanel() {
   const [posTerminals, setPosTerminals] = useState<POSTerminal[]>([]);
   const [jornadaCount, setJornadaCount] = useState(0);
   const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
+  const [reconciliationWaste, setReconciliationWaste] = useState<ReconciliationWaste[]>([]);
 
   const monthOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
