@@ -439,6 +439,38 @@ export function AnalyticsPanel() {
         <KPICard icon={ShoppingCart} label="Productos Vendidos" value={saleItems.reduce((s, si) => s + Number(si.quantity), 0).toLocaleString("es-CL")} sub={`${topProducts.length} productos distintos`} accent="text-amber-500" />
       </div>
 
+      {/* COGS del mes */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard
+          icon={Flame}
+          label="COGS del mes"
+          value={cogsLoading ? "…" : formatCLP(Math.round(cogsSummary.total_cogs))}
+          sub={`${cogsSummary.products_count} productos · ${cogsSummary.redemptions_count} servicios`}
+          accent="text-orange-500"
+        />
+        <KPICard
+          icon={TrendingUp}
+          label="Margen Bruto"
+          value={cogsLoading || totalRevenue === 0 ? "…" : formatCLP(Math.round(totalRevenue - cogsSummary.total_cogs))}
+          sub={totalRevenue > 0 ? `${(((totalRevenue - cogsSummary.total_cogs) / totalRevenue) * 100).toFixed(1)}% margen` : "Sin ventas"}
+          accent="text-emerald-500"
+        />
+        <KPICard
+          icon={Receipt}
+          label="Costo / Servicio"
+          value={cogsLoading ? "…" : formatCLP(Math.round(cogsSummary.avg_cost_per_redemption))}
+          sub="Promedio receta"
+          accent="text-blue-500"
+        />
+        <KPICard
+          icon={BarChart3}
+          label="COGS / Ingreso"
+          value={cogsLoading || totalRevenue === 0 ? "…" : `${((cogsSummary.total_cogs / totalRevenue) * 100).toFixed(1)}%`}
+          sub="% del ingreso"
+          accent="text-violet-500"
+        />
+      </div>
+
       {/* Payment Distribution */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
