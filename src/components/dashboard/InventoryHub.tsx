@@ -102,6 +102,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [allProducts, setAllProducts] = useState<{ id: string; name: string; code: string | null; capacity_ml: number | null }[]>([]);
 
   const loadDashboard = useCallback(async () => {
     if (!venue?.id) return;
