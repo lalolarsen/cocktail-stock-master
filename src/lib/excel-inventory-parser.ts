@@ -293,11 +293,25 @@ export function parseReposicionSimple(
     const rowErrors: string[] = [];
 
     const nombreExcel = str(raw, "producto_nombre", "producto", "nombre");
-    const cantidad = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades");
+    const cantidadRaw = num(raw, "cantidad", "cantidad_base_movida", "qty", "unidades", "botellas", "bot", "envases");
+    const cantidadMl = num(raw, "cantidad_ml", "ml", "ml_total", "ml_transferidos");
     const destinoNombre = str(raw, "ubicacion_destino", "destino", "ubicacion");
 
     const { product, confidence } = fuzzyMatchWithLearning(nombreExcel, products, learnings);
     const locDestino = destinoNombre ? locationByName.get(normalize(destinoNombre)) || null : null;
+
+    const isBotella = product ? isBottle(product) : false;
+    const cap = product?.capacity_ml || 0;
+
+    // Normalize cantidad to envases (bottles or units). Decimals supported.
+    let cantidad: number | null = cantidadRaw;
+    if (isBotella && cap > 0) {
+      if (cantidadMl !== null) {
+        cantidad = cantidadMl / cap;
+      } else if (cantidadRaw !== null && cantidadRaw >= 50) {
+        cantidad = cantidadRaw / cap;
+      }
+    }
 
     if (!product && confidence === "sin_match") rowErrors.push(`Producto "${nombreExcel}" no encontrado`);
     if (!cantidad || cantidad <= 0) rowErrors.push("Cantidad requerida > 0");
@@ -307,13 +321,11 @@ export function parseReposicionSimple(
     if (product && bodega && cantidad && cantidad > 0) {
       const key = `${product.id}::${bodega.id}`;
       const currentBal = balances.get(key) || 0;
-      const isBotella = isBottle(product);
-      const baseQty = isBotella && product.capacity_ml ? cantidad * product.capacity_ml : cantidad;
+      const baseQty = isBotella && cap ? cantidad * cap : cantidad;
       if (baseQty > currentBal) rowErrors.push(`Stock insuficiente en bodega (disp: ${currentBal})`);
     }
 
-    const isBotella = product ? isBottle(product) : false;
-    const computedBaseQty = isBotella && product?.capacity_ml ? (cantidad || 0) * product.capacity_ml : (cantidad || 0);
+    const computedBaseQty = isBotella && cap ? (cantidad || 0) * cap : (cantidad || 0);
 
     const row: ResolvedRow = {
       rowIndex,
