@@ -366,12 +366,15 @@ export default function Bar() {
       const r = data as RedemptionResult;
       if (r.error_code === "TOO_FAST") { releaseLocks("idle"); setDebugStep("idle"); return undefined; }
 
-      // ── Fallback: force success on error (temporary) ──
+      // RPC now never fails for stock — handle genuine errors normally
       if (!r.success) {
-        console.warn("[Bar] RPC returned error, forcing success (temp bypass):", r.error_code);
-        r.success = true;
-        r._forced = true;
-        if (!r.deliver) r.deliver = { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 };
+        setDebugStep("done-error");
+        setResult(r);
+        logAuditEvent({ action: "redeem_pickup_token", status: "fail", metadata: { token: token.slice(0, 8) + "...", error_code: r.error_code, bar_id: selectedBarId } });
+        const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: r.error_code || "ERROR", tokenShort: token.slice(-6) };
+        setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
+        releaseLocks("error"); scheduleAutoReset();
+        return r;
       }
 
       setDebugStep("done-success");
@@ -384,18 +387,13 @@ export default function Bar() {
       return r;
     } catch (err: any) {
       if (abortRef.current?.signal.aborted) return undefined;
-      console.warn("[Bar] RPC threw error, forcing success (temp bypass):", err?.message);
-      // ── Fallback: force success on exception (temporary) ──
-      const fallback: RedemptionResult = {
-        success: true,
-        deliver: { type: "cover", name: "Pedido (sin confirmar)", quantity: 1 },
-        _forced: true,
-      };
-      setDebugStep("done-success"); setResult(fallback);
-      logAuditEvent({ action: "redeem_pickup_token", status: "success", metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: selectedBarId, forced: true } });
-      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: "ENTREGAR: Pedido (sin confirmar)", tokenShort: token.slice(-6) };
+      console.error("[Bar] RPC threw error:", err?.message);
+      const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión" };
+      setDebugStep("done-error"); setResult(errorResult);
+      logAuditEvent({ action: "redeem_pickup_token", status: "fail", metadata: { token: token.slice(0, 8) + "...", error: err?.message, bar_id: selectedBarId } });
+      const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + (err?.message || "").slice(0, 40), tokenShort: token.slice(-6) };
       setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-      releaseLocks("success"); scheduleAutoReset(); return fallback;
+      releaseLocks("error"); scheduleAutoReset(); return errorResult;
     }
   }, [selectedBarId, releaseLocks, scheduleAutoReset]);
 
