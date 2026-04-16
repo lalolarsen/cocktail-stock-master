@@ -236,7 +236,7 @@ export function ActivityPanel() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold text-emerald-600">{formatCLP(totalSalesAmount)}</p>
+              <p className="text-lg font-bold text-emerald-500">{formatCLP(totalSalesAmount)}</p>
               <p className="text-xs text-muted-foreground">{totalTransactions} ventas</p>
             </div>
           </div>
