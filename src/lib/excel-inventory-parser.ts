@@ -277,7 +277,7 @@ export function parseCompraSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 export function parseReposicionSimple(
@@ -379,7 +379,7 @@ export function parseReposicionSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 export function parseConteoSimple(
@@ -504,7 +504,7 @@ export function parseConteoSimple(
     resolved.push(row);
   }
 
-  return buildResult(resolved, errors);
+  return buildResult(resolved, errors, omitidos);
 }
 
 // ── Legacy unified parser ────────────────────────────────────────────────────
