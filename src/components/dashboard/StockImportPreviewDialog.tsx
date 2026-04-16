@@ -73,8 +73,10 @@ const ExecutiveSummary = ({ rows, type }: { rows: ResolvedRow[]; type: string })
     const positivos = diffs.filter((d) => d > 0).length;
     const mermas = diffs.filter((d) => d < 0).length;
     const sinCambio = diffs.filter((d) => d === 0).length;
+    const ubicacion = validRows[0]?.ubicacion_destino || validRows[0]?.ubicacion_origen || "—";
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 bg-muted/30 rounded-lg text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3 bg-muted/30 rounded-lg text-sm">
+        <div><span className="text-muted-foreground">Ubicación</span><p className="font-semibold">{ubicacion}</p></div>
         <div><span className="text-muted-foreground">Productos</span><p className="font-semibold">{productCount}</p></div>
         <div><span className="text-muted-foreground">Ajustes +</span><p className="font-semibold text-emerald-600">{positivos}</p></div>
         <div><span className="text-muted-foreground">Mermas −</span><p className="font-semibold text-destructive">{mermas}</p></div>
@@ -103,6 +105,7 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
             <th className="py-2 px-2 text-left font-medium">Tipo</th>
             {type === "COMPRA" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Destino</th>
                 <th className="py-2 px-2 text-right font-medium">Cantidad</th>
                 <th className="py-2 px-2 text-right font-medium">Costo/Env</th>
                 <th className="py-2 px-2 text-right font-medium">Base Calc.</th>
@@ -110,12 +113,14 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
             )}
             {type === "TRANSFERENCIA" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Origen</th>
                 <th className="py-2 px-2 text-left font-medium">Destino</th>
                 <th className="py-2 px-2 text-right font-medium">Cant. Base</th>
               </>
             )}
             {type === "CONTEO" && (
               <>
+                <th className="py-2 px-2 text-left font-medium">Ubicación</th>
                 <th className="py-2 px-2 text-right font-medium">Teórico</th>
                 <th className="py-2 px-2 text-right font-medium">Real</th>
                 <th className="py-2 px-2 text-right font-medium">Diferencia</th>
@@ -145,6 +150,7 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
                 </td>
                 {type === "COMPRA" && (
                   <>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || "—"}</td>
                     <td className="py-1.5 px-2 text-right">{row.cantidad_envases}</td>
                     <td className="py-1.5 px-2 text-right">{formatCLP(Number(row.costo_neto_envase) || 0)}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.computedBaseQty}</td>
@@ -152,12 +158,14 @@ const MovementTable = ({ rows, type }: { rows: ResolvedRow[]; type: string }) =>
                 )}
                 {type === "TRANSFERENCIA" && (
                   <>
-                    <td className="py-1.5 px-2">{row.ubicacion_destino}</td>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_origen || "—"}</td>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || "—"}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.computedBaseQty}</td>
                   </>
                 )}
                 {type === "CONTEO" && (
                   <>
+                    <td className="py-1.5 px-2 max-w-[120px] truncate">{row.ubicacion_destino || row.ubicacion_origen || "—"}</td>
                     <td className="py-1.5 px-2 text-right">{row.stock_teorico_exportado ?? "—"}</td>
                     <td className="py-1.5 px-2 text-right font-medium">{row.stock_real_contado}</td>
                     <td className={`py-1.5 px-2 text-right font-medium ${diff < 0 ? "text-destructive" : diff > 0 ? "text-emerald-600" : ""}`}>
