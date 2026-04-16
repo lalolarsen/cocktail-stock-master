@@ -695,6 +695,37 @@ export function generateTemplate(
 
 // ── Conteo template generator ────────────────────────────────────────────────
 
+export function generateComparisonTemplate(
+  products: ProductRef[],
+  consumedProductIds: string[],
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const productMap = new Map<string, ProductRef>();
+  products.forEach((p) => productMap.set(p.id, p));
+
+  const rows: any[][] = [
+    ["producto_nombre", "sku_base", "formato", "stock_real"],
+  ];
+
+  for (const pid of consumedProductIds) {
+    const product = productMap.get(pid);
+    if (!product) continue;
+    const bottle = isBottle(product);
+    rows.push([
+      product.name,
+      product.code,
+      bottle ? `bot. ${product.capacity_ml}ml` : "unidad",
+      "", // bartender fills this: decimal bottles (e.g. 2.5) or units
+    ]);
+  }
+
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 16 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, sheet, "Conteo");
+
+  return wb;
+}
+
 export function generateConteoTemplate(
   products: ProductRef[],
   location: LocationRef,

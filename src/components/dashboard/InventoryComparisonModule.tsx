@@ -14,7 +14,7 @@ import {
   Package, Info, BarChart3, Scale, Upload, FileSpreadsheet, Search,
 } from "lucide-react";
 import { isBottle } from "@/lib/product-type";
-import { generateConteoTemplate, type ProductRef, type LocationRef } from "@/lib/excel-inventory-parser";
+import { generateComparisonTemplate, type ProductRef } from "@/lib/excel-inventory-parser";
 
 interface Jornada { id: string; nombre: string; numero_jornada: number; fecha: string; estado: string }
 interface Location { id: string; name: string; type: string }
