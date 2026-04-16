@@ -287,7 +287,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
             raw_text: m.raw_text,
             product_id: m.product_id,
             venue_id: venueId,
-            confidence: 0.7,
+            confidence: m.wasManualCorrection ? 0.95 : 0.7,
             times_used: 1,
           });
       }
