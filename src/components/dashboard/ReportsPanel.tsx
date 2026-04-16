@@ -32,6 +32,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
+import { RedeemReportButton } from "./RedeemReportButton";
 
 /* ── types ─────────────────────────────────────────── */
 
@@ -437,6 +438,7 @@ function JornadaReportRow({
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
             <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
+            <RedeemReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} />
             {isClosed && (
               <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={(e) => { e.stopPropagation(); onExport(); }}>
                 <Download className="h-3.5 w-3.5" />

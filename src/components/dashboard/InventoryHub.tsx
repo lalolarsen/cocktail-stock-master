@@ -31,9 +31,12 @@ const StockReconciliation = lazy(() =>
 const ExternalConsumptionPanel = lazy(() =>
   import("./ExternalConsumptionPanel").then((m) => ({ default: m.ExternalConsumptionPanel }))
 );
+const RedeemReconciliationPanel = lazy(() =>
+  import("./RedeemReconciliationPanel").then((m) => ({ default: m.RedeemReconciliationPanel }))
+);
 
 type MovementType = "COMPRA" | "TRANSFERENCIA" | "CONTEO";
-type SecondaryView = "stock" | "waste" | "reconciliation" | "external" | null;
+type SecondaryView = "stock" | "waste" | "reconciliation" | "external" | "redeem_recon" | null;
 
 interface QuickStats {
   totalProducts: number;
@@ -646,6 +649,10 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
               onClick={() => { setSecondaryView(secondaryView === "external" ? null : "external"); setShowDetailedStock(false); }}>
               <ClipboardList className="w-4 h-4 mr-1" /> Consumo externo
             </Button>
+            <Button variant={secondaryView === "redeem_recon" ? "secondary" : "outline"} size="sm"
+              onClick={() => { setSecondaryView(secondaryView === "redeem_recon" ? null : "redeem_recon"); setShowDetailedStock(false); }}>
+              <Scale className="w-4 h-4 mr-1" /> Canjes vs Stock
+            </Button>
           </>
         )}
       </div>
@@ -655,6 +662,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         {secondaryView === "waste" && <WasteManagement />}
         {secondaryView === "reconciliation" && <StockReconciliation />}
         {secondaryView === "external" && <ExternalConsumptionPanel />}
+        {secondaryView === "redeem_recon" && <RedeemReconciliationPanel />}
       </Suspense>
 
       {/* ── Upload Dialog ── */}
