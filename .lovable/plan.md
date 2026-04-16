@@ -2,52 +2,62 @@
 
 ## Diagnóstico
 
-El usuario sube la plantilla CONTEO con 85 filas (1 hint + 84 productos). Solo ~50 tienen `stock_real`; el resto está en blanco porque no contó esos productos. El parser actual (`parseConteoSimple` en `excel-inventory-parser.ts` línea 438) marca **toda fila con `stock_real` vacío como inválida** ("Stock real requerido ≥ 0"), incluyendo:
+Analizando el flujo de Tickets (POS), hay 4 problemas relacionados:
 
-1. **Fila hint** (`# Botellas: ingresa stock_real en ML...`) — el comentario en `generateConteoTemplateByLocation` dice "will be ignored" pero el parser no la ignora, genera error "sin_match".
-2. **Productos no contados** (stock_real en blanco) — se marcan inválidos en vez de omitirse.
+1. **Recientes no imprimibles** — `RecentSalesPanel` (usado por Sales/Alcohol) tiene reimpresión, pero el POS de Tickets (`/tickets` → `Tickets.tsx`) probablemente no lo monta o usa un panel propio sin botón de reimprimir QRs/comprobante.
 
-Resultado: el preview muestra ~35 errores y el botón Confirmar queda con muy pocas filas válidas o el usuario lo percibe como roto. Los flujos COMPRA/REPOSICIÓN tienen el mismo patrón (filas vacías = error en lugar de skip).
+2. **Sin "Descargar Resultados de Jornada"** — Existe `RedeemReportButton` y el reporte de cajero PDF (`pos-cashier-session-results-pdf`) en el POS de alcohol, pero el POS de Tickets no lo expone.
 
-## Solución
+3. **No pide selección de Cover** — La RPC `create_ticket_sale_with_covers` ya acepta `p_cover_selections jsonb`, y existe la memoria `mem://features/tickets/cover-multi-option-and-printing`. El frontend de Tickets debe abrir un selector cuando un ticket type tiene múltiples cocktails/opciones de cover, pero actualmente lo está creando directamente sin abrir el dialog de selección.
 
-### A. Skip inteligente de filas vacías y comentarios
+4. **Impresión 3 piezas** — `printTicketSale` existe en `src/lib/printing/ticket-print.ts` pero es posible que `Tickets.tsx` no lo invoque, o lo invoque sin esperar covers seleccionados.
 
-En `parseConteoSimple`, `parseCompraSimple`, `parseReposicionSimple`:
+Necesito leer `src/pages/Tickets.tsx` y los componentes asociados para confirmar el alcance exacto antes de planificar.
 
-- **Skip silencioso** (no emitir fila ni error) cuando:
-  - `producto_nombre` empieza con `#` (comentario/hint).
-  - `producto_nombre` está vacío Y todos los campos de cantidad también.
-  - **Específico CONTEO:** `stock_real` está vacío/null → skip (operador no contó ese producto).
-  - **Específico COMPRA/REPOSICIÓN:** `cantidad` y `cantidad_ml` ambos vacíos → skip.
+## Exploración necesaria (en implementación)
 
-- Solo emitir error si el operador puso algo (nombre + cantidad parcial pero inválida).
+- `src/pages/Tickets.tsx` — flujo actual de venta + qué panel de recientes usa
+- `src/components/dashboard/TicketTypesManagement.tsx` — cómo se configuran las opciones de cover por ticket type
+- `mem://features/tickets/cover-multi-option-and-printing` — regla canónica del flujo de covers
+- Revisar si existe un `CoverSelectionDialog` o equivalente
 
-### B. Heurística ml/botellas refinada
+## Plan de corrección
 
-Mantener la regla "< 50 → botellas, ≥ 50 → ml" que ya está, **pero**:
-- Si el valor es entero pequeño (≤ capacity_ml/100) y product es botella → tratar como botellas enteras/decimales.
-- Documentar claramente en el hint del template.
+### A. Selector de Cover obligatorio antes de cobrar
+- Antes de llamar a `create_ticket_sale_with_covers`, si **alguno de los items del carrito es un ticket type con `cover_options.length >= 1`**, abrir un dialog modal:
+  - Listar cada unidad de cover (ej: "Cover #1 de 3") con un select de las opciones disponibles (cocktails configurados en el ticket type).
+  - Bloquear "Cobrar" hasta que todas las unidades tengan cocktail asignado.
+  - Construir `p_cover_selections` como `[{ ticket_type_id, cover_index, cocktail_product_id, cocktail_name }, ...]`.
+- Pasar `cover_selections` a la RPC + a `printTicketSale` para que cada cover impreso muestre el cocktail correcto.
 
-### C. Hint mejorado y robusto
+### B. Impresión 3 piezas correctamente disparada
+- Tras éxito de la RPC, leer los `pickup_tokens` recién creados (entryTokens + coverTokens con `short_code`) y llamar a `printTicketSale({ ..., entryTokens, coverTokens })`.
+- Respetar `paperWidth` desde `localStorage` igual que el POS de alcohol.
 
-En `generateConteoTemplateByLocation`:
-- Mover el hint a una columna separada o a un sheet "Instrucciones" para que no aparezca como fila de datos.
-- Alternativa más simple: marcar el hint con un prefijo `#` y asegurar que el parser lo ignore por código (ya estará por A).
+### C. Panel de Recientes con reimprimir en Tickets
+- Montar `RecentSalesPanel` (o una variante) en `Tickets.tsx` con:
+  - Filtrado por `pos_id` y jornada activa.
+  - Botón "Reimprimir" por venta que recupera tokens asociados y vuelve a llamar a `printTicketSale` (aplica regla de reimpresión Hybrid/POS de la memoria `pos-sales-history-reprint-v2` — para Tickets sí debe permitirse reimprimir QRs porque son la entrada física).
 
-### D. Mensaje de resumen claro
-
-En `StockImportPreviewDialog` (sección CONTEO):
-- Mostrar "X productos contados / Y omitidos (sin contar)" en vez de tratar omitidos como errores.
+### D. Botón "Descargar Resultados de Jornada"
+- Añadir el mismo botón que aparece en POS de Alcohol (`pos-cashier-session-results-pdf`) en el header/footer de `Tickets.tsx`.
+- Genera el PDF de cierre parcial del cajero usando los datos de la jornada activa filtrados por el `pos_id` de Tickets.
 
 ## Archivos a tocar
 
 | Archivo | Cambio |
 |---|---|
-| `src/lib/excel-inventory-parser.ts` | Skip de filas hint/vacías en los 3 parsers; ajuste de validación |
-| `src/components/dashboard/StockImportPreviewDialog.tsx` | Etiqueta "omitidos" para CONTEO en lugar de errores |
+| `src/pages/Tickets.tsx` | Integrar selector de cover, impresión 3 piezas, panel de recientes con reimpresión, botón descargar PDF |
+| `src/components/sales/CoverSelectionDialog.tsx` (nuevo) | Modal de asignación de cocktails por unidad de cover |
+| `src/components/sales/RecentTicketSalesPanel.tsx` (nuevo o reuso de RecentSalesPanel) | Listado de ventas recientes con botón reimprimir |
+| `src/lib/printing/ticket-print.ts` | (verificar) que acepte selecciones de cover y las inyecte por pieza |
+| `src/components/dashboard/TicketTypesManagement.tsx` | (verificar) que las opciones de cover queden expuestas en el ticket type que consume el POS |
 
-## Memoria
+## Memoria a actualizar
 
-Actualizar `mem://features/inventory/movement-logic-compra-transferencia-conteo`: añadir regla "filas con producto vacío o `#` se omiten silenciosamente; en CONTEO, `stock_real` vacío significa 'no contado' (skip), no error".
+`mem://features/tickets/cover-multi-option-and-printing` — confirmar que el flujo POS:
+1. Bloquea cobro hasta selección de cover por unidad.
+2. Imprime 3 piezas (comprobante + N entradas + N covers con cocktail asignado).
+3. Permite reimprimir desde Recientes.
+4. Expone descarga de PDF de resultados de jornada.
 
