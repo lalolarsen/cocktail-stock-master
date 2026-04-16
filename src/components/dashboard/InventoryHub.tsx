@@ -31,9 +31,12 @@ const StockReconciliation = lazy(() =>
 const ExternalConsumptionPanel = lazy(() =>
   import("./ExternalConsumptionPanel").then((m) => ({ default: m.ExternalConsumptionPanel }))
 );
+const RedeemReconciliationPanel = lazy(() =>
+  import("./RedeemReconciliationPanel").then((m) => ({ default: m.RedeemReconciliationPanel }))
+);
 
 type MovementType = "COMPRA" | "TRANSFERENCIA" | "CONTEO";
-type SecondaryView = "stock" | "waste" | "reconciliation" | "external" | null;
+type SecondaryView = "stock" | "waste" | "reconciliation" | "external" | "redeem_recon" | null;
 
 interface QuickStats {
   totalProducts: number;
