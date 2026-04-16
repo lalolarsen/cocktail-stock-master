@@ -79,9 +79,10 @@ export function RedeemReconciliationPanel() {
       const consumptionMap = new Map<string, { name: string; qty: number; unit: string }>();
       for (const log of locationLogs) {
         const consumption = Array.isArray(log.theoretical_consumption) ? log.theoretical_consumption : [];
-        for (const c of consumption) {
-          const key = c.product_id || c.product_name;
-          const existing = consumptionMap.get(key) || { name: c.product_name || "?", qty: 0, unit: c.unit || "ud" };
+        for (const rawC of consumption) {
+          const c = rawC as Record<string, unknown>;
+          const key = (c.product_id as string) || (c.product_name as string) || "?";
+          const existing = consumptionMap.get(key) || { name: (c.product_name as string) || "?", qty: 0, unit: (c.unit as string) || "ud" };
           existing.qty += Number(c.quantity) || 0;
           consumptionMap.set(key, existing);
         }
