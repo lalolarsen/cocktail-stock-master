@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllByIds, fetchAllRows } from "@/lib/supabase-batch";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { DateRange } from "react-day-picker";
 import { startOfDay, endOfDay } from "date-fns";
 
@@ -79,31 +81,37 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
         ? endOfDay(dateRange.to).toISOString()
         : endOfDay(new Date()).toISOString();
 
-      // 1. Get paid, non-cancelled sales
-      let salesQuery = supabase
-        .from("sales")
-        .select("id")
-        .eq("payment_status", "paid")
-        .eq("is_cancelled", false)
-        .gte("created_at", fromTimestamp)
-        .lte("created_at", toTimestamp);
+      // 1. Get paid, non-cancelled sales (paginated to avoid 1000-row cap)
+      const sales = await fetchAllRows<{ id: string }>(() => {
+        let query: any = supabase
+          .from("sales")
+          .select("id")
+          .eq("venue_id", DEFAULT_VENUE_ID)
+          .eq("payment_status", "paid")
+          .eq("is_cancelled", false)
+          .gte("created_at", fromTimestamp)
+          .lte("created_at", toTimestamp);
 
-      if (jornadaId) {
-        salesQuery = salesQuery.eq("jornada_id", jornadaId);
-      }
+        if (jornadaId) {
+          query = query.eq("jornada_id", jornadaId);
+        }
 
-      const { data: sales } = await salesQuery;
-      const saleIds = sales?.map(s => s.id) || [];
+        return query;
+      });
+
+      const saleIds = sales.map((sale) => sale.id);
       if (saleIds.length === 0) {
         resetState();
         return;
       }
 
-      // 2. Get sale items with cocktail info
-      const { data: saleItems } = await supabase
-        .from("sale_items")
-        .select("quantity, cocktail_id, cocktails(id, name)")
-        .in("sale_id", saleIds);
+      // 2. Get sale items with cocktail info (batched to avoid long URLs)
+      const saleItems = await fetchAllByIds<any>(
+        "sale_items",
+        "sale_id",
+        saleIds,
+        "quantity, cocktail_id, cocktails(id, name)"
+      );
 
       if (!saleItems || saleItems.length === 0) {
         resetState();
@@ -130,10 +138,12 @@ export function useCOGSData(dateRange?: DateRange, jornadaId?: string): UseCOGSD
       }
 
       // 4. Get recipe ingredients with product costs (CPP)
-      const { data: ingredients } = await supabase
-        .from("cocktail_ingredients")
-        .select("cocktail_id, product_id, quantity, products(name, category, subcategory, unit, cost_per_unit, capacity_ml)")
-        .in("cocktail_id", cocktailIds);
+      const ingredients = await fetchAllByIds<any>(
+        "cocktail_ingredients",
+        "cocktail_id",
+        cocktailIds,
+        "cocktail_id, product_id, quantity, products(name, category, subcategory, unit, cost_per_unit, capacity_ml)"
+      );
 
       if (!ingredients) {
         resetState();
