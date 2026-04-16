@@ -2251,10 +2251,12 @@ export type Database = {
       }
       pickup_redemptions_log: {
         Row: {
+          bar_location_id: string | null
           bartender_id: string
           created_at: string
           delivered_by_worker_id: string | null
           id: string
+          items_snapshot: Json | null
           jornada_id: string | null
           metadata: Json | null
           pickup_token_id: string | null
@@ -2262,13 +2264,16 @@ export type Database = {
           redeemed_at: string
           result: Database["public"]["Enums"]["redemption_result"]
           sale_id: string | null
+          theoretical_consumption: Json | null
           venue_id: string
         }
         Insert: {
+          bar_location_id?: string | null
           bartender_id: string
           created_at?: string
           delivered_by_worker_id?: string | null
           id?: string
+          items_snapshot?: Json | null
           jornada_id?: string | null
           metadata?: Json | null
           pickup_token_id?: string | null
@@ -2276,13 +2281,16 @@ export type Database = {
           redeemed_at?: string
           result: Database["public"]["Enums"]["redemption_result"]
           sale_id?: string | null
+          theoretical_consumption?: Json | null
           venue_id: string
         }
         Update: {
+          bar_location_id?: string | null
           bartender_id?: string
           created_at?: string
           delivered_by_worker_id?: string | null
           id?: string
+          items_snapshot?: Json | null
           jornada_id?: string | null
           metadata?: Json | null
           pickup_token_id?: string | null
@@ -2290,9 +2298,17 @@ export type Database = {
           redeemed_at?: string
           result?: Database["public"]["Enums"]["redemption_result"]
           sale_id?: string | null
+          theoretical_consumption?: Json | null
           venue_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pickup_redemptions_log_bar_location_id_fkey"
+            columns: ["bar_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pickup_redemptions_log_jornada_id_fkey"
             columns: ["jornada_id"]
@@ -5925,17 +5941,15 @@ export type Database = {
         Args: { p_code: string; p_jornada_id?: string }
         Returns: Json
       }
-      redeem_pickup_token:
-        | { Args: { p_token: string }; Returns: Json }
-        | {
-            Args: {
-              p_bartender_bar_id?: string
-              p_delivered_by_worker_id?: string
-              p_mixer_overrides?: Json
-              p_token: string
-            }
-            Returns: Json
-          }
+      redeem_pickup_token: {
+        Args: {
+          p_bartender_bar_id?: string
+          p_delivered_by_worker_id?: string
+          p_mixer_overrides?: Json
+          p_token: string
+        }
+        Returns: Json
+      }
       request_sale_void: {
         Args: { p_notes?: string; p_reason: string; p_sale_id: string }
         Returns: string
