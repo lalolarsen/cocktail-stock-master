@@ -110,16 +110,66 @@ export function InventoryComparisonModule() {
   };
 
   // ── Download template ──────────────────────────────────────────────────────
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     const loc = locations.find(l => l.id === selectedLocation);
-    if (!loc) return;
+    if (!loc || !venueId || !selectedJornada) return;
+
+    // Fetch consumed product IDs for this jornada + location
+    const consumedIds = new Set<string>();
+
+    // From pickup redemptions
+    const { data: logs } = await supabase
+      .from("pickup_redemptions_log")
+      .select("theoretical_consumption")
+      .eq("jornada_id", selectedJornada)
+      .eq("bar_location_id", selectedLocation)
+      .eq("result", "success");
+
+    for (const log of logs || []) {
+      const consumption = Array.isArray(log.theoretical_consumption) ? log.theoretical_consumption : [];
+      for (const rawC of consumption) {
+        const c = rawC as Record<string, unknown>;
+        if (c.product_id) consumedIds.add(c.product_id as string);
+      }
+    }
+
+    // From courtesy redemptions
+    const { data: courtesyLogs } = await supabase
+      .from("courtesy_redemptions")
+      .select("courtesy_id")
+      .eq("jornada_id", selectedJornada)
+      .eq("result", "success");
+
+    if (courtesyLogs && courtesyLogs.length > 0) {
+      const cIds = courtesyLogs.map((c: any) => c.courtesy_id);
+      const { data: courtesyQrs } = await supabase
+        .from("courtesy_qr").select("id, product_id, qty").in("id", cIds);
+      if (courtesyQrs && courtesyQrs.length > 0) {
+        const cocktailIds = [...new Set(courtesyQrs.map((q: any) => q.product_id))];
+        const { data: ingredients } = await supabase
+          .from("cocktail_ingredients").select("cocktail_id, product_id").in("cocktail_id", cocktailIds);
+        for (const item of ingredients || []) {
+          if (item.product_id) consumedIds.add(item.product_id);
+        }
+        // Also add direct product references
+        for (const qr of courtesyQrs) {
+          consumedIds.add(qr.product_id);
+        }
+      }
+    }
+
+    if (consumedIds.size === 0) {
+      toast.info("No hay productos consumidos en esta jornada/ubicación");
+      return;
+    }
+
     const prodRefs: ProductRef[] = productsCache.map(p => ({
       id: p.id, code: p.code || "", name: p.name,
       capacity_ml: p.capacity_ml, cost_per_unit: 0, current_stock: 0,
     }));
-    const locRef: LocationRef = { id: loc.id, name: loc.name, type: loc.type };
-    const wb = generateConteoTemplate(prodRefs, locRef, balancesCache);
-    XLSX.writeFile(wb, `plantilla_conteo_${loc.name}.xlsx`);
+
+    const wb = generateComparisonTemplate(prodRefs, [...consumedIds]);
+    XLSX.writeFile(wb, `conteo_${loc.name}.xlsx`);
     toast.success("Plantilla descargada");
   };
 
