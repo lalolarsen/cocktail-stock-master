@@ -230,15 +230,36 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
               )}
               {batchType === "CONTEO" && (
                 <>
-                  <td className="py-1.5 px-2 text-right text-muted-foreground">{r.stock_teorico ?? "—"}</td>
+                  <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
+                    {r.stock_teorico !== null && r.stock_teorico !== undefined ? (
+                      <div>
+                        <div>{formatNum(r.stock_teorico)} <span className="text-[9px]">{unitLbl}</span></div>
+                        {isBot && cap > 0 && (
+                          <div className="text-[9px] text-muted-foreground">≈ {formatNum(r.stock_teorico / cap)} bot</div>
+                        )}
+                      </div>
+                    ) : "—"}
+                  </td>
                   <td className="py-1.5 px-2 text-right">
                     <Input
                       type="number"
-                      className="h-6 w-16 text-xs text-right p-1 ml-auto"
+                      step="any"
+                      className="h-6 w-20 text-xs text-right p-1 ml-auto tabular-nums"
                       value={r.stock_real ?? ""}
-                      onChange={(e) => updateRow(idx, { stock_real: e.target.value ? Number(e.target.value) : null })}
+                      onChange={(e) => updateRow(idx, { stock_real: e.target.value ? parseFloat(e.target.value) : null })}
                       min={0}
                     />
+                    <div className="text-[9px] text-muted-foreground mt-0.5">
+                      {unitLbl}
+                      {isBot && cap > 0 && r.stock_real != null && (
+                        <> · ≈ {formatNum(r.stock_real / cap)} bot</>
+                      )}
+                    </div>
+                  </td>
+                  <td className={`py-1.5 px-2 text-right tabular-nums font-medium ${diff === 0 ? "text-muted-foreground" : diff > 0 ? "text-emerald-600" : "text-destructive"}`}>
+                    {r.stock_real != null
+                      ? <>{diff > 0 ? "+" : ""}{formatNum(diff)} <span className="text-[9px] font-normal">{unitLbl}</span></>
+                      : "—"}
                   </td>
                 </>
               )}
@@ -249,7 +270,8 @@ export function EditableBatchPreview({ rows, batchType, products, onRowsChange }
                 }
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
