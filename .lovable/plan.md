@@ -1,56 +1,53 @@
 
-## Problema
 
-3 issues en el parseo de plantilla de Conteo:
+## Diagnóstico
 
-1. **Preview sin scroll ni edición** — el dialog usa `BulkStockIntakeGrid` pero el flujo de Excel CONTEO va por otro componente que renderiza tabla simple sin scroll ni inputs editables.
-2. **No reconoce fracciones volumétricas** — para botellas (capacity_ml > 0), si Excel reporta `2500ml` de un producto de `1000ml`, el sistema debe interpretarlo como `2.5 botellas` (o guardar `2500ml` como stock_real en ml). Hoy parece tomar el número literal sin convertir.
-3. **Comparación teórico vs real incorrecta** — al no convertir unidades, `stock_teorico` (en unidades base) vs `stock_real` (en lo que venga del Excel) compara peras con manzanas.
+El usuario sube la plantilla CONTEO con 85 filas (1 hint + 84 productos). Solo ~50 tienen `stock_real`; el resto está en blanco porque no contó esos productos. El parser actual (`parseConteoSimple` en `excel-inventory-parser.ts` línea 438) marca **toda fila con `stock_real` vacío como inválida** ("Stock real requerido ≥ 0"), incluyendo:
 
-## Exploración necesaria (antes de implementar)
+1. **Fila hint** (`# Botellas: ingresa stock_real en ML...`) — el comentario en `generateConteoTemplateByLocation` dice "will be ignored" pero el parser no la ignora, genera error "sin_match".
+2. **Productos no contados** (stock_real en blanco) — se marcan inválidos en vez de omitirse.
 
-Leer:
-- `src/components/dashboard/InventoryHub.tsx` — flujo de carga Excel CONTEO
-- Componente que renderiza el preview de CONTEO actualmente (probablemente `EditableBatchPreview` ya existe pero no se usa, o se usa una versión read-only)
-- `src/lib/excel-inventory-parser.ts` — lógica de parseo y cálculo de `computed_base_qty` / `stock_real`
-- Edge function o RPC que valida/inserta el batch de CONTEO
+Resultado: el preview muestra ~35 errores y el botón Confirmar queda con muy pocas filas válidas o el usuario lo percibe como roto. Los flujos COMPRA/REPOSICIÓN tienen el mismo patrón (filas vacías = error en lugar de skip).
 
-## Solución propuesta
+## Solución
 
-### A. Parser — interpretar ml correctamente para botellas
-En `excel-inventory-parser.ts` (rama CONTEO):
-- Si `isBottle(product)`:
-  - Si Excel trae columna `ml` o el valor es claramente volumétrico → guardar `stock_real` en **ml** (unidad base de botellas).
-  - Si Excel trae unidades fraccionarias (ej. `2.5`) → convertir a ml: `stock_real_ml = qty * capacity_ml`.
-  - Aceptar decimales (parseFloat, no parseInt).
-- Si `isUnit(product)`: dejar como entero/decimal de unidades.
-- `stock_teorico` debe traerse en la **misma unidad** (ml para botellas, unidades para discretos) consultando `stock_balances`.
+### A. Skip inteligente de filas vacías y comentarios
 
-### B. Preview editable con scroll
-Reemplazar el componente actual del preview de CONTEO por `EditableBatchPreview` (ya existe y soporta CONTEO con columnas Teórico/Real editables). Envolver en contenedor con `max-h-[60vh] overflow-auto` para scroll vertical real.
+En `parseConteoSimple`, `parseCompraSimple`, `parseReposicionSimple`:
 
-Asegurar que la columna "Real" para botellas:
-- Muestra/edita en **ml** con label dinámico (`ml` para botellas, `ud` para unitarios).
-- Mostrar también equivalente en botellas (ej. `2500 ml ≈ 2.5 bot`) como hint debajo del input.
+- **Skip silencioso** (no emitir fila ni error) cuando:
+  - `producto_nombre` empieza con `#` (comentario/hint).
+  - `producto_nombre` está vacío Y todos los campos de cantidad también.
+  - **Específico CONTEO:** `stock_real` está vacío/null → skip (operador no contó ese producto).
+  - **Específico COMPRA/REPOSICIÓN:** `cantidad` y `cantidad_ml` ambos vacíos → skip.
 
-### C. Validación y diferencia
-En el resumen del CONTEO:
-- Diferencia = `stock_real - stock_teorico` en unidad base.
-- Mostrar en columna extra "Diferencia" coloreada (verde/rojo).
-- Permitir que el usuario edite `stock_real` y la diferencia se recalcule en vivo.
+- Solo emitir error si el operador puso algo (nombre + cantidad parcial pero inválida).
 
-### D. Persistencia
-Asegurar que el insert al batch usa `stock_real` ya normalizado en unidad base (ml para botellas) y que el ajuste posterior (`adjust_stock` o equivalente) genera el movimiento correcto.
+### B. Heurística ml/botellas refinada
+
+Mantener la regla "< 50 → botellas, ≥ 50 → ml" que ya está, **pero**:
+- Si el valor es entero pequeño (≤ capacity_ml/100) y product es botella → tratar como botellas enteras/decimales.
+- Documentar claramente en el hint del template.
+
+### C. Hint mejorado y robusto
+
+En `generateConteoTemplateByLocation`:
+- Mover el hint a una columna separada o a un sheet "Instrucciones" para que no aparezca como fila de datos.
+- Alternativa más simple: marcar el hint con un prefijo `#` y asegurar que el parser lo ignore por código (ya estará por A).
+
+### D. Mensaje de resumen claro
+
+En `StockImportPreviewDialog` (sección CONTEO):
+- Mostrar "X productos contados / Y omitidos (sin contar)" en vez de tratar omitidos como errores.
 
 ## Archivos a tocar
 
 | Archivo | Cambio |
 |---|---|
-| `src/lib/excel-inventory-parser.ts` | Parseo decimal + conversión ml para botellas en CONTEO |
-| `src/components/dashboard/InventoryHub.tsx` (o donde se renderice el preview de CONTEO) | Usar `EditableBatchPreview` en lugar del read-only actual; envolver en scroll |
-| `src/components/dashboard/EditableBatchPreview.tsx` | Para CONTEO: label dinámico ml/ud, hint de equivalente en botellas, columna Diferencia |
-| Edge function de validación CONTEO (si existe) | Aceptar decimales en stock_real |
+| `src/lib/excel-inventory-parser.ts` | Skip de filas hint/vacías en los 3 parsers; ajuste de validación |
+| `src/components/dashboard/StockImportPreviewDialog.tsx` | Etiqueta "omitidos" para CONTEO en lugar de errores |
 
-## Memoria a actualizar
+## Memoria
 
-`mem://features/inventory/movement-logic-compra-transferencia-conteo` — añadir regla: CONTEO de botellas se ingresa/almacena en **ml** (unidad base); decimales permitidos; conversión automática desde botellas fraccionarias si el Excel lo trae así.
+Actualizar `mem://features/inventory/movement-logic-compra-transferencia-conteo`: añadir regla "filas con producto vacío o `#` se omiten silenciosamente; en CONTEO, `stock_real` vacío significa 'no contado' (skip), no error".
+
