@@ -164,17 +164,13 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
         .eq("jornada_id", jornadaId),
     ]);
 
-    // Count QR redemptions linked to this jornada's sales
-    const saleIds = salesData?.map(s => s.id) || [];
-    let qrCount = 0;
-    if (saleIds.length > 0) {
-      const { count } = await supabase
-        .from("pickup_redemptions_log")
-        .select("*", { count: "exact", head: true })
-        .in("sale_id", saleIds)
-        .eq("result", "success");
-      qrCount = count || 0;
-    }
+    // Count QR redemptions for this jornada (covers both alcohol sales and ticket covers)
+    const { count: qrCountRaw } = await supabase
+      .from("pickup_redemptions_log")
+      .select("*", { count: "exact", head: true })
+      .eq("jornada_id", jornadaId)
+      .eq("result", "success");
+    const qrCount = qrCountRaw || 0;
 
 
     const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
