@@ -611,28 +611,48 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
     e.stopPropagation();
     setLoading(true);
     try {
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select("total_amount, payment_method, point_of_sale, is_cancelled")
-        .eq("jornada_id", jornadaId)
-        .eq("is_cancelled", false);
+      const [salesRes, ticketSalesRes, posRes] = await Promise.all([
+        supabase
+          .from("sales")
+          .select("total_amount, payment_method, point_of_sale, is_cancelled")
+          .eq("jornada_id", jornadaId)
+          .eq("is_cancelled", false),
+        supabase
+          .from("ticket_sales")
+          .select("total, payment_method, pos_id")
+          .eq("jornada_id", jornadaId)
+          .eq("payment_status", "paid"),
+        supabase.from("pos_terminals").select("id, name"),
+      ]);
 
-      if (error) throw error;
-      if (!sales || sales.length === 0) {
+      if (salesRes.error) throw salesRes.error;
+      if (ticketSalesRes.error) throw ticketSalesRes.error;
+
+      const sales = salesRes.data || [];
+      const ticketSales = ticketSalesRes.data || [];
+      const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
+
+      if (sales.length === 0 && ticketSales.length === 0) {
         const { toast } = await import("sonner");
         toast.info("No hay ventas en esta jornada");
         return;
       }
 
       const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-      for (const s of sales) {
-        const pos = s.point_of_sale || "Sin POS";
-        const entry = posMap.get(pos) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
-        const amt = Number(s.total_amount);
-        if (s.payment_method === "cash") { entry.cash += amt; entry.cashN++; }
-        else if (s.payment_method === "card") { entry.card += amt; entry.cardN++; }
+      const accumulate = (posName: string, paymentMethod: string, amt: number) => {
+        const entry = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
+        if (paymentMethod === "cash") { entry.cash += amt; entry.cashN++; }
+        else if (paymentMethod === "card") { entry.card += amt; entry.cardN++; }
         else { entry.other += amt; entry.otherN++; }
-        posMap.set(pos, entry);
+        posMap.set(posName, entry);
+      };
+
+      for (const s of sales) {
+        accumulate(s.point_of_sale || "Sin POS", s.payment_method, Number(s.total_amount));
+      }
+      for (const t of ticketSales) {
+        const posName = (t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets";
+        accumulate(posName, t.payment_method, Number(t.total));
       }
 
       const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
