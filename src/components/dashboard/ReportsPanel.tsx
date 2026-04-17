@@ -171,21 +171,31 @@ export function ReportsPanel() {
 
       const reports: JornadaReport[] = jornadasData.map((jornada) => {
         const jornadaSales = salesData.filter((s) => s.jornada_id === jornada.id);
+        const jornadaTickets = ticketSalesData.filter((t) => t.jornada_id === jornada.id && t.payment_status === "paid");
         const activeSales = jornadaSales.filter((s) => !s.is_cancelled);
         const cancelledSales = jornadaSales.filter((s) => s.is_cancelled);
 
-        const totalSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const alcoholSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const ticketSales = jornadaTickets.reduce((sum, t) => sum + Number(t.total), 0);
+        const totalSales = alcoholSales + ticketSales;
         const totalCancelled = cancelledSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const alcoholSales = activeSales.filter((s) => s.sale_category === "alcohol").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const ticketSales = activeSales.filter((s) => s.sale_category === "ticket").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const cashSales = activeSales.filter((s) => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const cardSales = activeSales.filter((s) => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const cashSales =
+          activeSales.filter((s) => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) +
+          jornadaTickets.filter((t) => t.payment_method === "cash").reduce((sum, t) => sum + Number(t.total), 0);
+        const cardSales =
+          activeSales.filter((s) => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total_amount), 0) +
+          jornadaTickets.filter((t) => t.payment_method === "card").reduce((sum, t) => sum + Number(t.total), 0);
         const otherPayments = totalSales - cashSales - cardSales;
 
         const sellerTotals = new Map<string, { total: number; count: number }>();
         activeSales.forEach((sale) => {
           const ex = sellerTotals.get(sale.seller_id) || { total: 0, count: 0 };
           sellerTotals.set(sale.seller_id, { total: ex.total + Number(sale.total_amount), count: ex.count + 1 });
+        });
+        jornadaTickets.forEach((t) => {
+          if (!t.sold_by_worker_id) return;
+          const ex = sellerTotals.get(t.sold_by_worker_id) || { total: 0, count: 0 };
+          sellerTotals.set(t.sold_by_worker_id, { total: ex.total + Number(t.total), count: ex.count + 1 });
         });
         const topSellers = Array.from(sellerTotals.entries())
           .map(([sid, d]) => ({
@@ -200,7 +210,7 @@ export function ReportsPanel() {
           jornada,
           totalSales,
           totalCancelled,
-          salesCount: activeSales.length,
+          salesCount: activeSales.length + jornadaTickets.length,
           cancelledCount: cancelledSales.length,
           alcoholSales,
           ticketSales,
