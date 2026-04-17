@@ -135,12 +135,18 @@ export function ReportsPanel() {
 
       const jornadaIds = jornadasData.map((j) => j.id);
 
-      const [allSalesData, financialRes, profilesRes] = await Promise.all([
+      const [allSalesData, allTicketSalesData, financialRes, profilesRes] = await Promise.all([
         fetchAllByIds(
           "sales",
           "jornada_id",
           jornadaIds,
           "id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id"
+        ),
+        fetchAllByIds(
+          "ticket_sales",
+          "jornada_id",
+          jornadaIds,
+          "id, jornada_id, total, payment_method, payment_status, sold_by_worker_id"
         ),
         supabase
           .from("jornada_financial_summary")
@@ -153,6 +159,7 @@ export function ReportsPanel() {
       ]);
 
       const salesData = allSalesData as any[];
+      const ticketSalesData = (allTicketSalesData || []) as any[];
       const financialMap = new Map<string, FinancialSnap>();
       (financialRes.data || []).forEach((f: Record<string, unknown>) => {
         financialMap.set(f.jornada_id as string, f as unknown as FinancialSnap);
