@@ -1,67 +1,95 @@
 
-
 ## Diagnóstico
 
-Cuando se escanea un QR de cortesía en la **Caja Híbrida** (`HybridQRScannerPanel`) o en el **Bar** (`Bar.tsx`), el código entra al "Courtesy QR bypass" y muestra de forma hardcodeada:
+Hay dos fallas separadas que explican exactamente lo que ves:
 
-```ts
-deliver: { type: "cover", name: "Cortesía", quantity: 1 }
+1. **Los canjes de tickets no quedan cayendo en la jornada correcta del log de redención**
+   - El CSV que subiste muestra: **401 emitidos, 0 canjeados**.
+   - `RedeemReportButton`, `RedeemReconciliationPanel` e `InventoryComparisonModule` leen desde `pickup_redemptions_log` filtrando por `jornada_id`.
+   - Pero el flujo de tickets usa `ticket_sales` + `pickup_tokens`, y el RPC `redeem_pickup_token` hoy no garantiza que el canje de un token de ticket se registre con la **jornada fuente del token**. Si no hay jornada abierta, o si cambia la jornada activa, el log queda en otra jornada o nulo.
+   - Resultado: el token existe y fue emitido para la jornada, pero el canje no aparece en el reporte ni en Comparación.
+
+2. **El reporte general POS no integra bien `ticket_sales`**
+   - Varias vistas/reportes siguen agregando solo desde `sales`.
+   - Las entradas se venden en `ticket_sales`, así que quedan fuera del consolidado POS general aunque sí existan en caja tickets.
+
+## Qué voy a corregir
+
+### 1) Arreglar el backend del canje para tickets
+Crear una migración para ajustar `redeem_pickup_token` y resolver una `effective_jornada_id` así:
+
+```text
+effective_jornada_id =
+  jornada abierta actual
+  o pickup_tokens.jornada_id
+  o sales.jornada_id
+  o ticket_sales.jornada_id
 ```
 
-Por eso el operador nunca ve **qué producto** ni **qué cantidad** se está canjeando. Además:
+Luego usar esa jornada efectiva en **todos los inserts** a `pickup_redemptions_log` del flujo ticket/covers.
 
-1. **No se consulta `courtesy_qr`**, por lo que no se valida el código contra la BD (un QR cancelado, expirado o ya canjeado pasaría como válido).
-2. **No se decrementa `used_count` ni se actualiza `status`**, así que el mismo QR puede usarse infinitas veces.
-3. **No se inserta nada en `courtesy_redemptions`**, por lo que:
-   - El KPI de "QRs Canjeados" del dashboard no los cuenta.
-   - El módulo de Reconciliación (`RedeemReconciliationPanel`) y Comparación de Inventario (`InventoryComparisonModule`) no detectan el consumo.
-   - La lógica de COGS de cortesía en `useFinanceMTD` no los descuenta.
+También dejaré en el log metadata explícita del origen ticket para auditoría más clara.
 
-Lo curioso: ya existe en BD un RPC **`redeem_courtesy_qr(p_code, p_jornada_id)`** (SECURITY DEFINER) que hace **todo** correctamente — valida, decrementa, registra en `courtesy_redemptions` y devuelve `{ deliver: { name: "🎁 <product>", quantity: <qty> }, courtesy: { code, product_name, qty, used_count, max_uses, status } }`. Simplemente no se está llamando.
+### 2) Integrar tickets al reporte general POS
+Actualizar frontend para que el consolidado de jornada sume ambas fuentes:
 
-## Plan de corrección
+- `sales`
+- `ticket_sales`
 
-### A. Reemplazar el bypass por la RPC oficial
+Afecta principalmente:
+- `src/components/dashboard/ReportsPanel.tsx`
+- `POSReportButton` dentro de ese mismo archivo
+- `src/components/dashboard/AdminOverview.tsx`
 
-**`src/pages/Bar.tsx`** (líneas ~341-354) y **`src/components/sales/HybridQRScannerPanel.tsx`** (líneas ~121-134):
+Con eso:
+- el reporte POS general mostrará ventas de entradas,
+- los totales por medio de pago incluirán tickets,
+- el resumen de jornada no quedará subcontado.
 
-Sustituir el atajo hardcodeado por:
+### 3) Hacer que los KPIs de canje usen el log correcto
+Donde hoy se cuentan redenciones solo por `sale_id` de `sales`, los cambiaré a la lógica canónica:
+- contar `pickup_redemptions_log`
+- filtrar por `jornada_id`
+- `result = 'success'`
 
-```ts
-if (token.startsWith("courtesy:")) {
-  const code = token.slice("courtesy:".length);
-  const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
-    p_code: code,
-    p_jornada_id: activeJornadaId ?? null,
-  });
-  // tratar respuesta como un RedemptionResult normal
-}
-```
+Eso permite contar también canjes de tickets/covers.
 
-Mapear los `error_code` retornados (`TOKEN_NOT_FOUND`, `TOKEN_EXPIRED`, `TOKEN_CANCELLED`, `ALREADY_REDEEMED`, `FORBIDDEN`, `UNAUTHENTICATED`) a los mismos estados visuales que ya maneja el panel para QRs normales (badges YA CANJEADO / EXPIRADO / INVÁLIDO).
+### 4) Recuperar la jornada 45 históricamente
+Además del fix hacia adelante, haré una corrección de datos para los registros ya existentes:
+- tomar `pickup_redemptions_log` de tickets con jornada nula o incorrecta,
+- resolver la jornada desde `pickup_token_id -> pickup_tokens.jornada_id`,
+- reasignarlos a la jornada correcta.
 
-En el caso de éxito, el `deliver` viene ya con `name: "🎁 <product>"` y `quantity: <qty>`, por lo que la UI (que ya sabe renderizar `deliver.name × deliver.quantity`) mostrará automáticamente el producto correcto.
+Así no solo quedará arreglado lo nuevo: también debería aparecer la actividad faltante de la última jornada.
 
-### B. Histórico y feedback visual
-- En `setScanHistory` reemplazar la etiqueta fija `"ENTREGAR: Cortesía"` por la del producto real (`historyLabel(r)` ya lo construye desde `deliver`).
-- Marcar el flag `_courtesy: true` cuando `r.courtesy` esté presente, para conservar el badge dorado actual.
+## Impacto esperado
 
-### C. Pasar `activeJornadaId`
-- En `Bar.tsx` ya se usa `useAppSession`; añadir `activeJornadaId` a la llamada.
-- En `HybridQRScannerPanel` agregar la prop `activeJornadaId` (ya está disponible en `Sales.tsx`, pasarla por props) y enviarla al RPC.
+Después del arreglo:
 
-### D. Limpieza secundaria
-- Mantener `CourtesyRedeemDialog.tsx` (entrada manual desde `Sales.tsx`) sin cambios — sigue funcionando para el flujo de "agregar al carrito" (no es el flujo de Bar).
+- el reporte de canjes de la jornada ya no mostrará “Emitidos 401 / Canjeados 0” si sí hubo canjes,
+- `Comparación` e `InventoryComparisonModule` volverán a mostrar consumo teórico de tickets/covers,
+- el reporte general POS incluirá ventas de tickets junto con alcohol,
+- los KPIs de “QRs Canjeados” dejarán de ignorar tickets.
 
-## Archivos a tocar
+## Archivos / piezas a tocar
 
-| Archivo | Cambio |
-|---|---|
-| `src/pages/Bar.tsx` | Reemplazar bypass por `supabase.rpc("redeem_courtesy_qr", ...)` con `activeJornadaId` |
-| `src/components/sales/HybridQRScannerPanel.tsx` | Mismo reemplazo + nueva prop `activeJornadaId` |
-| `src/pages/Sales.tsx` | Pasar `activeJornadaId` al `HybridQRScannerPanel` |
+- `supabase/migrations/...sql` — patch de `redeem_pickup_token` + backfill de logs
+- `src/components/dashboard/ReportsPanel.tsx`
+- `src/components/dashboard/AdminOverview.tsx`
 
-## Memoria a actualizar
+Posibles ajustes menores según revisión final:
+- `src/components/dashboard/RedeemReportButton.tsx`
+- `src/components/dashboard/RedeemReconciliationPanel.tsx`
+- `src/components/dashboard/InventoryComparisonModule.tsx`
 
-`mem://features/sales/courtesy-qr-system` y `mem://architecture/courtesy-redemption-rls-bypass`: dejar explícito que **el canje de cortesía en Bar e Hybrid POS debe pasar SIEMPRE por el RPC `redeem_courtesy_qr`**, no por bypass cliente. El RPC es la fuente única que valida, decrementa `used_count` y registra `courtesy_redemptions` (requerido para KPIs, reconciliación y COGS).
+## Validación final
 
+Voy a dejar validado este flujo:
+
+1. vender ticket en Caja Tickets,
+2. canjear el QR,
+3. revisar que aparezca en:
+   - reporte de canjes de la jornada,
+   - comparación de inventario,
+   - consolidado POS general,
+4. volver a exportar la jornada 45 para confirmar que ahora sí muestre los canjes.
