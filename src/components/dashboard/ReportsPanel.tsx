@@ -135,12 +135,18 @@ export function ReportsPanel() {
 
       const jornadaIds = jornadasData.map((j) => j.id);
 
-      const [allSalesData, financialRes, profilesRes] = await Promise.all([
+      const [allSalesData, allTicketSalesData, financialRes, profilesRes] = await Promise.all([
         fetchAllByIds(
           "sales",
           "jornada_id",
           jornadaIds,
           "id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id"
+        ),
+        fetchAllByIds(
+          "ticket_sales",
+          "jornada_id",
+          jornadaIds,
+          "id, jornada_id, total, payment_method, payment_status, sold_by_worker_id"
         ),
         supabase
           .from("jornada_financial_summary")
@@ -153,6 +159,7 @@ export function ReportsPanel() {
       ]);
 
       const salesData = allSalesData as any[];
+      const ticketSalesData = (allTicketSalesData || []) as any[];
       const financialMap = new Map<string, FinancialSnap>();
       (financialRes.data || []).forEach((f: Record<string, unknown>) => {
         financialMap.set(f.jornada_id as string, f as unknown as FinancialSnap);
@@ -164,21 +171,31 @@ export function ReportsPanel() {
 
       const reports: JornadaReport[] = jornadasData.map((jornada) => {
         const jornadaSales = salesData.filter((s) => s.jornada_id === jornada.id);
+        const jornadaTickets = ticketSalesData.filter((t) => t.jornada_id === jornada.id && t.payment_status === "paid");
         const activeSales = jornadaSales.filter((s) => !s.is_cancelled);
         const cancelledSales = jornadaSales.filter((s) => s.is_cancelled);
 
-        const totalSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const alcoholSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const ticketSales = jornadaTickets.reduce((sum, t) => sum + Number(t.total), 0);
+        const totalSales = alcoholSales + ticketSales;
         const totalCancelled = cancelledSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const alcoholSales = activeSales.filter((s) => s.sale_category === "alcohol").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const ticketSales = activeSales.filter((s) => s.sale_category === "ticket").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const cashSales = activeSales.filter((s) => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const cardSales = activeSales.filter((s) => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total_amount), 0);
+        const cashSales =
+          activeSales.filter((s) => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) +
+          jornadaTickets.filter((t) => t.payment_method === "cash").reduce((sum, t) => sum + Number(t.total), 0);
+        const cardSales =
+          activeSales.filter((s) => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total_amount), 0) +
+          jornadaTickets.filter((t) => t.payment_method === "card").reduce((sum, t) => sum + Number(t.total), 0);
         const otherPayments = totalSales - cashSales - cardSales;
 
         const sellerTotals = new Map<string, { total: number; count: number }>();
         activeSales.forEach((sale) => {
           const ex = sellerTotals.get(sale.seller_id) || { total: 0, count: 0 };
           sellerTotals.set(sale.seller_id, { total: ex.total + Number(sale.total_amount), count: ex.count + 1 });
+        });
+        jornadaTickets.forEach((t) => {
+          if (!t.sold_by_worker_id) return;
+          const ex = sellerTotals.get(t.sold_by_worker_id) || { total: 0, count: 0 };
+          sellerTotals.set(t.sold_by_worker_id, { total: ex.total + Number(t.total), count: ex.count + 1 });
         });
         const topSellers = Array.from(sellerTotals.entries())
           .map(([sid, d]) => ({
@@ -193,7 +210,7 @@ export function ReportsPanel() {
           jornada,
           totalSales,
           totalCancelled,
-          salesCount: activeSales.length,
+          salesCount: activeSales.length + jornadaTickets.length,
           cancelledCount: cancelledSales.length,
           alcoholSales,
           ticketSales,
@@ -594,28 +611,48 @@ function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornada
     e.stopPropagation();
     setLoading(true);
     try {
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select("total_amount, payment_method, point_of_sale, is_cancelled")
-        .eq("jornada_id", jornadaId)
-        .eq("is_cancelled", false);
+      const [salesRes, ticketSalesRes, posRes] = await Promise.all([
+        supabase
+          .from("sales")
+          .select("total_amount, payment_method, point_of_sale, is_cancelled")
+          .eq("jornada_id", jornadaId)
+          .eq("is_cancelled", false),
+        supabase
+          .from("ticket_sales")
+          .select("total, payment_method, pos_id")
+          .eq("jornada_id", jornadaId)
+          .eq("payment_status", "paid"),
+        supabase.from("pos_terminals").select("id, name"),
+      ]);
 
-      if (error) throw error;
-      if (!sales || sales.length === 0) {
+      if (salesRes.error) throw salesRes.error;
+      if (ticketSalesRes.error) throw ticketSalesRes.error;
+
+      const sales = salesRes.data || [];
+      const ticketSales = ticketSalesRes.data || [];
+      const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
+
+      if (sales.length === 0 && ticketSales.length === 0) {
         const { toast } = await import("sonner");
         toast.info("No hay ventas en esta jornada");
         return;
       }
 
       const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-      for (const s of sales) {
-        const pos = s.point_of_sale || "Sin POS";
-        const entry = posMap.get(pos) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
-        const amt = Number(s.total_amount);
-        if (s.payment_method === "cash") { entry.cash += amt; entry.cashN++; }
-        else if (s.payment_method === "card") { entry.card += amt; entry.cardN++; }
+      const accumulate = (posName: string, paymentMethod: string, amt: number) => {
+        const entry = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
+        if (paymentMethod === "cash") { entry.cash += amt; entry.cashN++; }
+        else if (paymentMethod === "card") { entry.card += amt; entry.cardN++; }
         else { entry.other += amt; entry.otherN++; }
-        posMap.set(pos, entry);
+        posMap.set(posName, entry);
+      };
+
+      for (const s of sales) {
+        accumulate(s.point_of_sale || "Sin POS", s.payment_method, Number(s.total_amount));
+      }
+      for (const t of ticketSales) {
+        const posName = (t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets";
+        accumulate(posName, t.payment_method, Number(t.total));
       }
 
       const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
