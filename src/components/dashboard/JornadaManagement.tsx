@@ -47,6 +47,7 @@ import { logAuditEvent } from "@/lib/monitoring";
 import { JornadaHistoryTable } from "./jornada/JornadaHistoryTable";
 import { JornadaDetailDrawer } from "./jornada/JornadaDetailDrawer";
 import { useAppSession } from "@/contexts/AppSessionContext";
+import { fetchAllRows } from "@/lib/supabase-batch";
 
 const STALE_JORNADA_THRESHOLD_HOURS = 24;
 
@@ -67,6 +68,9 @@ interface JornadaStats {
   cantidad_ventas: number;
   productos_vendidos: number;
   logins: number;
+  cash_sales: number;
+  card_sales: number;
+  other_sales: number;
 }
 
 interface FinancialSummary {
@@ -199,12 +203,21 @@ export function JornadaManagement() {
           "id, jornada_id, total_amount, is_cancelled, sale_items(quantity)"
         ).then((rows: any[]) => rows.filter((s: any) => !s.is_cancelled)),
         fetchAllByIds(
+          "ticket_sales",
+          "jornada_id",
+          jornadaIds,
+          "id, jornada_id, total, payment_method, payment_status"
+        ).then((rows: any[]) => rows.filter((s: any) => s.payment_status === "paid")),
+        fetchAllByIds(
           "login_history",
           "jornada_id",
           jornadaIds,
           "jornada_id"
         ),
       ]);
+
+      const ticketSaleIds = salesData.length === 0 ? [] : [];
+      const paidTicketSales = arguments[0] ? [] : [];
 
       const stats: Record<string, JornadaStats> = {};
       jornadaIds.forEach(id => {

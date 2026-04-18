@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { RedeemReportButton } from "./RedeemReportButton";
+import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 
 /* ── types ─────────────────────────────────────────── */
 
@@ -233,22 +234,24 @@ export function ReportsPanel() {
   const fetchJornadaSales = async (jornadaId: string) => {
     setLoadingSales(jornadaId);
     try {
-      const { data: salesData, error } = await supabase
-        .from("sales")
-        .select("id, sale_number, created_at, total_amount, point_of_sale, is_cancelled, sale_category, payment_method, seller_id")
-        .eq("jornada_id", jornadaId)
-        .order("created_at", { ascending: false })
-        .limit(PAGE_SIZE);
-
-      if (error) throw error;
-
-      const sellerIds = [...new Set(salesData?.map((s) => s.seller_id) || [])];
-      const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email").in("id", sellerIds);
+      const liveReport = await fetchJornadaLiveReport(jornadaId);
+      const salesSlice = liveReport.combinedSales.slice(0, PAGE_SIZE);
+      const sellerIds = [...new Set(salesSlice.map((s) => s.sellerId).filter(Boolean))] as string[];
+      const { data: profilesData } = sellerIds.length
+        ? await supabase.from("profiles").select("id, full_name, email").in("id", sellerIds)
+        : { data: [] };
       const profilesMap = new Map((profilesData || []).map((p) => [p.id, p]));
 
-      const salesWithNames: SaleDetail[] = (salesData || []).map((sale) => ({
-        ...sale,
-        seller_name: profilesMap.get(sale.seller_id)?.full_name || profilesMap.get(sale.seller_id)?.email || "Desconocido",
+      const salesWithNames: SaleDetail[] = salesSlice.map((sale) => ({
+        id: sale.id,
+        sale_number: sale.saleNumber,
+        created_at: sale.createdAt,
+        total_amount: sale.totalAmount,
+        point_of_sale: sale.pointOfSale,
+        is_cancelled: sale.isCancelled,
+        sale_category: sale.saleCategory,
+        payment_method: sale.paymentMethod,
+        seller_name: profilesMap.get(sale.sellerId || "")?.full_name || profilesMap.get(sale.sellerId || "")?.email || "Desconocido",
       }));
 
       setJornadas((prev) => prev.map((j) => (j.jornada.id === jornadaId ? { ...j, sales: salesWithNames } : j)));
