@@ -81,17 +81,41 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
 
       // ── Summary counters ──
       const issued = allTokens.length;
-      const redeemed = allLogs.filter(l => l.result === "success").length;
+      const successLogs = allLogs.filter(l => l.result === "success");
+      const redeemed = successLogs.length;
       const pending = allTokens.filter(t => t.status === "issued").length;
       const duplicates = allLogs.filter(l => l.result === "already_redeemed").length;
       const expired = allLogs.filter(l => l.result === "expired").length;
       const notFound = allLogs.filter(l => l.result === "not_found").length;
       const insufficientStock = allLogs.filter(l => l.result === "insufficient_stock").length;
       const cancelled = allLogs.filter(l => l.result === "cancelled").length;
+      const redemptionRate = issued > 0 ? ((redeemed / issued) * 100).toFixed(1) : "0.0";
+
+      const SEP = "========================================";
+      const SUB = "----------------------------------------";
+
+      // ── Canjes por ubicación ──
+      type LocStat = { redeemed: number; items: number; products: Map<string, number> };
+      const locationStats = new Map<string, LocStat>();
+      successLogs.forEach(l => {
+        const locName = l.bar_location_id
+          ? (locationMap.get(l.bar_location_id) || "Ubicación desconocida")
+          : (l.metadata?.bar || "Sin ubicación");
+        const stat = locationStats.get(locName) || { redeemed: 0, items: 0, products: new Map() };
+        stat.redeemed += 1;
+        const items = Array.isArray(l.items_snapshot) ? l.items_snapshot : [];
+        items.forEach((item: any) => {
+          const name = item.cocktail_name || item.name || "?";
+          const qty = Number(item.quantity) || 1;
+          stat.items += qty;
+          stat.products.set(name, (stat.products.get(name) || 0) + qty);
+        });
+        locationStats.set(locName, stat);
+      });
 
       // ── Product breakdown from items_snapshot ──
       const productTotals = new Map<string, number>();
-      allLogs.filter(l => l.result === "success" && l.items_snapshot).forEach(l => {
+      successLogs.filter(l => l.items_snapshot).forEach(l => {
         const items = Array.isArray(l.items_snapshot) ? l.items_snapshot : [];
         items.forEach((item: any) => {
           const name = item.cocktail_name || item.name || "?";
@@ -102,7 +126,7 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
 
       // ── Ingredient breakdown from theoretical_consumption ──
       const ingredientTotals = new Map<string, { qty: number; unit: string }>();
-      allLogs.filter(l => l.result === "success" && l.theoretical_consumption).forEach(l => {
+      successLogs.filter(l => l.theoretical_consumption).forEach(l => {
         const cons = Array.isArray(l.theoretical_consumption) ? l.theoretical_consumption : [];
         cons.forEach((c: any) => {
           const name = c.product_name || "?";
@@ -115,11 +139,17 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
 
       // ── Build CSV ──
       const lines: string[] = [];
-      lines.push(`REPORTE DE CANJES - Jornada #${jornadaNumber} - ${fecha}`);
+      lines.push(SEP);
+      lines.push(`REPORTE DE CANJES`);
+      lines.push(`Jornada #${jornadaNumber}  -  ${fecha}`);
+      lines.push(SEP);
       lines.push("");
-      lines.push("RESUMEN GENERAL");
+
+      lines.push("=== RESUMEN GENERAL ===");
+      lines.push("Métrica,Valor");
       lines.push(`Emitidos,${issued}`);
       lines.push(`Canjeados,${redeemed}`);
+      lines.push(`Tasa de canje (%),${redemptionRate}`);
       lines.push(`Pendientes,${pending}`);
       lines.push(`Duplicados,${duplicates}`);
       lines.push(`Expirados,${expired}`);
@@ -128,8 +158,31 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
       lines.push(`Cancelados,${cancelled}`);
       lines.push("");
 
-      // Product breakdown
-      lines.push("DESGLOSE POR PRODUCTO");
+      // Location breakdown — NEW prominent section
+      lines.push("=== CANJES POR UBICACIÓN ===");
+      lines.push("Ubicación,Canjes (QRs),Items entregados,% del total");
+      const sortedLocs = Array.from(locationStats.entries()).sort((a, b) => b[1].redeemed - a[1].redeemed);
+      sortedLocs.forEach(([loc, stat]) => {
+        const pct = redeemed > 0 ? ((stat.redeemed / redeemed) * 100).toFixed(1) : "0.0";
+        lines.push(`"${loc}",${stat.redeemed},${stat.items},${pct}%`);
+      });
+      lines.push(`TOTAL,${redeemed},${Array.from(locationStats.values()).reduce((s, x) => s + x.items, 0)},100%`);
+      lines.push("");
+
+      // Per-location product detail
+      lines.push("=== PRODUCTOS CANJEADOS POR UBICACIÓN ===");
+      lines.push("Ubicación,Producto,Cantidad");
+      sortedLocs.forEach(([loc, stat]) => {
+        const sortedProds = Array.from(stat.products.entries()).sort((a, b) => b[1] - a[1]);
+        sortedProds.forEach(([name, qty]) => {
+          lines.push(`"${loc}","${name}",${qty}`);
+        });
+        lines.push(SUB);
+      });
+      lines.push("");
+
+      // Product breakdown (global)
+      lines.push("=== DESGLOSE POR PRODUCTO (TOTAL) ===");
       lines.push("Producto,Cantidad canjeada");
       Array.from(productTotals.entries())
         .sort((a, b) => b[1] - a[1])
@@ -137,7 +190,7 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
       lines.push("");
 
       // Ingredient breakdown
-      lines.push("CONSUMO TEÓRICO POR INSUMO");
+      lines.push("=== CONSUMO TEÓRICO POR INSUMO ===");
       lines.push("Insumo,Cantidad,Unidad");
       Array.from(ingredientTotals.entries())
         .sort((a, b) => b[1].qty - a[1].qty)
@@ -145,8 +198,8 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
       lines.push("");
 
       // Detail log
-      lines.push("DETALLE DE INTENTOS");
-      lines.push("Fecha/Hora,Resultado,Bartender,Entregado por,Ubicación,Items,POS");
+      lines.push("=== DETALLE DE INTENTOS ===");
+      lines.push("Fecha/Hora,Resultado,Ubicación,Bartender,Entregado por,Items,POS");
       allLogs
         .sort((a, b) => new Date(a.redeemed_at).getTime() - new Date(b.redeemed_at).getTime())
         .forEach(l => {
@@ -158,7 +211,7 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
             ? (Array.isArray(l.items_snapshot) ? l.items_snapshot.map((i: any) => `${i.cocktail_name || i.name || "?"} x${i.quantity || 1}`).join("; ") : "-")
             : (l.metadata?.deliver?.name || "-");
           const posId = l.pos_id || "-";
-          lines.push(`"${time}","${l.result}","${bartender}","${deliveredBy}","${location}","${items}","${posId}"`);
+          lines.push(`"${time}","${l.result}","${location}","${bartender}","${deliveredBy}","${items}","${posId}"`);
         });
 
       const csvContent = lines.join("\n");
