@@ -20,6 +20,7 @@ import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
+import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 
 interface Jornada {
   id: string;
@@ -146,22 +147,12 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const fetchTodayStats = async (jornadaId?: string) => {
     if (!jornadaId) return;
 
-    const [{ data: salesData }, { data: ticketData }, { data: incomeData }] = await Promise.all([
-      supabase
-        .from("sales")
-        .select("id, total_amount, payment_method")
-        .eq("jornada_id", jornadaId)
-        .eq("payment_status", "paid")
-        .eq("is_cancelled", false),
-      supabase
-        .from("ticket_sales")
-        .select("total")
-        .eq("jornada_id", jornadaId)
-        .eq("payment_status", "paid"),
+    const [{ data: incomeData }, liveReport] = await Promise.all([
       supabase
         .from("gross_income_entries")
         .select("amount")
         .eq("jornada_id", jornadaId),
+      fetchJornadaLiveReport(jornadaId),
     ]);
 
     // Count QR redemptions for this jornada (covers both alcohol sales and ticket covers)
@@ -173,15 +164,10 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
     const qrCount = qrCountRaw || 0;
 
 
-    const barSalesTotal = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
-    const ticketSalesTotal = ticketData?.reduce((sum, t) => sum + t.total, 0) || 0;
-    const transactionsCount = (salesData?.length || 0) + (ticketData?.length || 0);
     const grossIncomeTotal = incomeData?.reduce((sum, i) => sum + i.amount, 0) || 0;
-    const totalSales = barSalesTotal + ticketSalesTotal;
+    const totalSales = liveReport.overall.grossSalesTotal;
+    const transactionsCount = liveReport.overall.transactionsCount;
     const avgTicket = transactionsCount > 0 ? Math.round(totalSales / transactionsCount) : 0;
-
-    const cashSales = salesData?.filter(s => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
-    const cardSales = salesData?.filter(s => s.payment_method !== "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
 
     setTodayStats({
       salesToday: totalSales,
@@ -189,8 +175,8 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
       qrsRedeemed: qrCount || 0,
       grossIncome: grossIncomeTotal,
       avgTicket,
-      cashSales,
-      cardSales,
+      cashSales: liveReport.overall.cashSales,
+      cardSales: liveReport.overall.cardSales + liveReport.overall.otherSales,
     });
   };
 

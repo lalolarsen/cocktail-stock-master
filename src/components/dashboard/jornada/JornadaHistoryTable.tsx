@@ -19,6 +19,7 @@ import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
 import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
+import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 
 interface Jornada {
   id: string;
@@ -137,7 +138,7 @@ export function JornadaHistoryTable({
                   <span>{horario}</span>
                   {(summary || stats) && (
                     <span className="font-medium text-foreground">
-                      {summary ? formatCLP(summary.gross_sales_total) : stats ? formatCLP(stats.total_ventas) : ""}
+                      {summary && summary.gross_sales_total > 0 ? formatCLP(summary.gross_sales_total) : stats ? formatCLP(stats.total_ventas) : ""}
                     </span>
                   )}
                 </div>
@@ -203,36 +204,24 @@ function POSReportBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId:
   const handle = async () => {
     setLoading(true);
     try {
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select("total_amount, payment_method, point_of_sale, is_cancelled")
-        .eq("jornada_id", jornadaId)
-        .eq("is_cancelled", false);
-
-      if (error) throw error;
-      if (!sales || sales.length === 0) {
+      const liveReport = await fetchJornadaLiveReport(jornadaId);
+      if (liveReport.perPos.length === 0) {
         const { toast } = await import("sonner");
         toast.info("No hay ventas en esta jornada");
         return;
       }
 
-      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-      for (const s of sales) {
-        const pos = s.point_of_sale || "Sin POS";
-        const entry = posMap.get(pos) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
-        const amt = Number(s.total_amount);
-        if (s.payment_method === "cash") { entry.cash += amt; entry.cashN++; }
-        else if (s.payment_method === "card") { entry.card += amt; entry.cardN++; }
-        else { entry.other += amt; entry.otherN++; }
-        posMap.set(pos, entry);
-      }
-
-      const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
-        .map(([posName, d]) => ({
-          posName, cashTotal: d.cash, cashCount: d.cashN, cardTotal: d.card, cardCount: d.cardN,
-          otherTotal: d.other, otherCount: d.otherN, total: d.cash + d.card + d.other, totalCount: d.cashN + d.cardN + d.otherN,
-        }))
-        .sort((a, b) => b.total - a.total);
+      const posSummary: POSSalesData["posSummary"] = liveReport.perPos.map((pos) => ({
+        posName: pos.posName,
+        cashTotal: pos.cashSales,
+        cashCount: 0,
+        cardTotal: pos.cardSales,
+        cardCount: 0,
+        otherTotal: pos.otherSales,
+        otherCount: 0,
+        total: pos.grossSalesTotal,
+        totalCount: pos.transactionsCount,
+      }));
 
       printPOSSalesReport({
         jornadaNumber, fecha, horario, posSummary,
