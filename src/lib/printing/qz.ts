@@ -79,7 +79,7 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .short-code { text-align: center; margin-top: 8px; font-size: 22pt; font-weight: bold; letter-spacing: 6px; color: #000; }
     .short-code-label { text-align: center; font-size: 11pt; color: #000; margin-top: 2px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -237,7 +237,7 @@ export function buildCashierReceiptCss(paperWidth: PaperWidth): string {
     .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
     .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
