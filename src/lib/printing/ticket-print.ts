@@ -65,7 +65,7 @@ function buildCss(paperWidth: PaperWidth): string {
     .ticket-name { text-align: center; font-size: 14pt; font-weight: bold; margin: 4px 0; }
     .ticket-correlative { text-align: center; font-size: 12pt; margin-bottom: 6px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #000; font-size: 9pt; font-style: italic; color: #000; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
