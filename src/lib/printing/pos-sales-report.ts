@@ -108,25 +108,27 @@ function buildReportHtml(data: POSSalesData): string {
 function buildReportCss(): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
-    .receipt { width: 100%; padding: 0 2px; color: #000; }
-    .venue-name { font-size: 14pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; font-size: 8pt; }
-    .meta { text-align: center; font-size: 9pt; color: #000; }
-    .section-title { text-align: center; font-size: 11pt; font-weight: bold; margin: 6px 0 2px; color: #000; }
-    .items { width: 100%; border-collapse: collapse; }
-    .items td { padding: 1px 0; vertical-align: top; font-size: 9.5pt; color: #000; }
-    .item-name { text-align: left; color: #000; }
-    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; color: #000; }
-    .total-line { font-size: 13pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
+    html, body { width: 80mm; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 9pt; color: #000; background: #fff; padding: 0; margin: 0; }
+    .receipt { width: 100%; padding: 0; color: #000; }
+    .venue-name { font-size: 13pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
+    .sep { margin: 2px 0; white-space: nowrap; overflow: hidden; text-align: center; color: #000; font-size: 7pt; letter-spacing: -0.5px; }
+    .meta { text-align: center; font-size: 8.5pt; color: #000; }
+    .section-title { text-align: center; font-size: 10pt; font-weight: bold; margin: 6px 0 2px; color: #000; }
+    .items { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .items td { padding: 1px 0; vertical-align: top; font-size: 9pt; color: #000; word-wrap: break-word; }
+    .item-name { text-align: left; color: #000; width: 60%; }
+    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; color: #000; width: 40%; }
+    .total-line { font-size: 12pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
     .pos-block { margin: 4px 0; }
-    .pos-name { font-size: 10pt; font-weight: bold; margin: 4px 0 2px; color: #000; }
-    .pos-total { display: flex; justify-content: space-between; font-size: 9.5pt; font-weight: bold; margin: 2px 0; color: #000; }
+    .pos-name { font-size: 10pt; font-weight: bold; margin: 4px 0 2px; color: #000; word-wrap: break-word; }
+    .pos-total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: bold; margin: 2px 0; color: #000; }
     .pos-total-amount { font-weight: bold; }
     .footer { text-align: center; margin-top: 10px; font-size: 8pt; color: #000; }
     @media print {
       @page { margin: 0; size: 80mm auto; }
-      body { margin: 2mm; }
+      html, body { width: 80mm; margin: 0; padding: 0; }
+      body { padding: 1mm 2mm 4mm 2mm; }
     }
   `;
 }
