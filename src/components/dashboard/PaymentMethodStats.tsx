@@ -82,18 +82,28 @@ export function PaymentMethodStats() {
   const fetchPaymentStats = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let salesQuery = supabase
         .from("sales")
         .select("total_amount, payment_method")
         .eq("is_cancelled", false);
 
+      let ticketQuery = supabase
+        .from("ticket_sales")
+        .select("total, payment_method")
+        .eq("payment_status", "paid");
+
       if (selectedJornada !== "all") {
-        query = query.eq("jornada_id", selectedJornada);
+        salesQuery = salesQuery.eq("jornada_id", selectedJornada);
+        ticketQuery = ticketQuery.eq("jornada_id", selectedJornada);
       }
 
-      const { data: sales, error } = await query;
+      const [{ data: sales, error }, { data: tickets, error: ticketsError }] = await Promise.all([
+        salesQuery,
+        ticketQuery,
+      ]);
 
       if (error) throw error;
+      if (ticketsError) throw ticketsError;
 
       // Group by payment method
       const grouped: Record<string, { total: number; count: number }> = {};
@@ -101,12 +111,19 @@ export function PaymentMethodStats() {
 
       (sales || []).forEach((sale: any) => {
         const method = sale.payment_method || "cash";
-        if (!grouped[method]) {
-          grouped[method] = { total: 0, count: 0 };
-        }
+        if (!grouped[method]) grouped[method] = { total: 0, count: 0 };
         grouped[method].total += Number(sale.total_amount);
         grouped[method].count += 1;
         grandTotal += Number(sale.total_amount);
+      });
+
+      // Tickets también agregan al desglose por medio de pago
+      (tickets || []).forEach((t: any) => {
+        const method = t.payment_method || "cash";
+        if (!grouped[method]) grouped[method] = { total: 0, count: 0 };
+        grouped[method].total += Number(t.total);
+        grouped[method].count += 1;
+        grandTotal += Number(t.total);
       });
 
       // Convert to stats array
@@ -126,7 +143,7 @@ export function PaymentMethodStats() {
       );
 
       setStats(statsData);
-      setTotalSales(sales?.length || 0);
+      setTotalSales((sales?.length || 0) + (tickets?.length || 0));
       setTotalAmount(grandTotal);
     } catch (error) {
       console.error("Error fetching payment stats:", error);

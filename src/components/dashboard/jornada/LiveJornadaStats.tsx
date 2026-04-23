@@ -40,45 +40,38 @@ interface TopProduct {
 }
 
 export function LiveJornadaStats({ jornadaId }: LiveJornadaStatsProps) {
-  // Fetch sales by POS
-  const { 
-    data: salesByPOS, 
+  // Fetch sales by POS — incluye sales (alcohol) + ticket_sales
+  const {
+    data: salesByPOS,
     isLoading: loadingPOS,
-    refetch: refetchPOS 
+    refetch: refetchPOS
   } = useQuery({
     queryKey: ["live-jornada-pos-sales", jornadaId],
     queryFn: async () => {
-      // First get all sales for this jornada
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select(`
-          id,
-          total_amount,
-          payment_method,
-          pos_id,
-          is_cancelled
-        `)
-        .eq("jornada_id", jornadaId)
-        .eq("is_cancelled", false);
+      const [{ data: sales, error }, { data: tickets, error: tErr }, { data: posTerminals }] = await Promise.all([
+        supabase
+          .from("sales")
+          .select("id, total_amount, payment_method, pos_id, is_cancelled")
+          .eq("jornada_id", jornadaId)
+          .eq("is_cancelled", false),
+        supabase
+          .from("ticket_sales")
+          .select("id, total, payment_method, pos_id, payment_status")
+          .eq("jornada_id", jornadaId)
+          .eq("payment_status", "paid"),
+        supabase.from("pos_terminals").select("id, name, code, zone, business_type"),
+      ]);
 
       if (error) throw error;
+      if (tErr) throw tErr;
 
-      // Get POS terminals info
-      const { data: posTerminals } = await supabase
-        .from("pos_terminals")
-        .select("id, name, code, zone, business_type");
-
-      // Aggregate by POS
       const posMap = new Map<string, SalesByPOS>();
-      
-      sales?.forEach((sale) => {
-        const posId = sale.pos_id || "sin_pos";
-        const pos = posTerminals?.find(p => p.id === posId);
-        
+      const ensure = (posId: string, fallbackName: string) => {
         if (!posMap.has(posId)) {
+          const pos = posTerminals?.find(p => p.id === posId);
           posMap.set(posId, {
             pos_id: posId,
-            pos_name: pos?.name || "Sin POS asignado",
+            pos_name: pos?.name || fallbackName,
             pos_code: pos?.code || null,
             zone: pos?.zone || null,
             business_type: pos?.business_type || null,
@@ -88,22 +81,32 @@ export function LiveJornadaStats({ jornadaId }: LiveJornadaStatsProps) {
             card_sales: 0,
           });
         }
-        
-        const current = posMap.get(posId)!;
+        return posMap.get(posId)!;
+      };
+
+      sales?.forEach((sale) => {
+        const posId = sale.pos_id || "sin_pos";
+        const cur = ensure(posId, "Sin POS asignado");
         const amount = Number(sale.total_amount) || 0;
-        current.total_sales += amount;
-        current.transaction_count += 1;
-        
-        if (sale.payment_method === "cash") {
-          current.cash_sales += amount;
-        } else if (sale.payment_method === "card") {
-          current.card_sales += amount;
-        }
+        cur.total_sales += amount;
+        cur.transaction_count += 1;
+        if (sale.payment_method === "cash") cur.cash_sales += amount;
+        else if (sale.payment_method === "card") cur.card_sales += amount;
+      });
+
+      tickets?.forEach((t: any) => {
+        const posId = t.pos_id || "caja_tickets";
+        const cur = ensure(posId, "Caja Tickets");
+        const amount = Number(t.total) || 0;
+        cur.total_sales += amount;
+        cur.transaction_count += 1;
+        if (t.payment_method === "cash") cur.cash_sales += amount;
+        else if (t.payment_method === "card") cur.card_sales += amount;
       });
 
       return Array.from(posMap.values()).sort((a, b) => b.total_sales - a.total_sales);
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
     enabled: !!jornadaId,
   });
 

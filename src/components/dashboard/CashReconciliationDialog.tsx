@@ -92,7 +92,7 @@ export function CashReconciliationDialog({
     setLoading(true);
     try {
       // Parallel fetches — pos query WITHOUT join (no FK exists for location_id)
-      const [posResult, locationsResult, openingsResult, salesResult, expensesResult] = await Promise.all([
+      const [posResult, locationsResult, openingsResult, salesResult, ticketSalesResult, expensesResult] = await Promise.all([
         supabase.from("pos_terminals").select("id, name, location_id")
           .eq("is_active", true).eq("is_cash_register", true),
         supabase.from("stock_locations").select("id, name"),
@@ -100,6 +100,8 @@ export function CashReconciliationDialog({
           .eq("jornada_id", jornadaId),
         supabase.from("sales").select("pos_id, total_amount, payment_method, is_cancelled")
           .eq("jornada_id", jornadaId),
+        supabase.from("ticket_sales").select("pos_id, total, payment_method, payment_status")
+          .eq("jornada_id", jornadaId).eq("payment_status", "paid"),
         supabase.from("expenses").select("pos_id, amount, payment_method")
           .eq("jornada_id", jornadaId).eq("payment_method", "cash"),
       ]);
@@ -114,8 +116,9 @@ export function CashReconciliationDialog({
       const allSales = salesResult.data || [];
       const activeSales = allSales.filter((s: any) => !s.is_cancelled);
       const cancelledSales = allSales.filter((s: any) => s.is_cancelled);
+      const paidTickets = (ticketSalesResult.data || []) as any[];
 
-      // Build summary
+      // Build summary — incluye tickets en totales y por medio de pago
       let cashSales = 0, cardSales = 0, transferSales = 0;
       activeSales.forEach((s: any) => {
         const amt = Number(s.total_amount);
@@ -123,17 +126,26 @@ export function CashReconciliationDialog({
         else if (s.payment_method === "card") cardSales += amt;
         else if (s.payment_method === "transfer") transferSales += amt;
       });
+      paidTickets.forEach((t: any) => {
+        const amt = Number(t.total);
+        if (t.payment_method === "cash") cashSales += amt;
+        else if (t.payment_method === "card") cardSales += amt;
+        else if (t.payment_method === "transfer") transferSales += amt;
+      });
+
+      const alcoholGross = activeSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0);
+      const ticketGross = paidTickets.reduce((sum: number, t: any) => sum + Number(t.total), 0);
 
       setJornadaSummary({
-        grossSales: activeSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0),
-        netSales: activeSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0),
-        transactionCount: activeSales.length,
+        grossSales: alcoholGross + ticketGross,
+        netSales: alcoholGross + ticketGross,
+        transactionCount: activeSales.length + paidTickets.length,
         cancelledCount: cancelledSales.length,
         cancelledTotal: cancelledSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0),
         cashSales, cardSales, transferSales,
       });
 
-      // Build per-POS data
+      // Build per-POS data — ventas en efectivo (alcohol + tickets)
       const openingsMap: Record<string, number> = {};
       (openingsResult.data || []).forEach((o: any) => { openingsMap[o.pos_id] = Number(o.opening_cash_amount); });
 
@@ -141,6 +153,10 @@ export function CashReconciliationDialog({
       activeSales.filter((s: any) => s.payment_method === "cash").forEach((s: any) => {
         const pid = s.pos_id || "unknown";
         cashSalesByPos[pid] = (cashSalesByPos[pid] || 0) + Number(s.total_amount);
+      });
+      paidTickets.filter((t: any) => t.payment_method === "cash").forEach((t: any) => {
+        const pid = t.pos_id || "unknown";
+        cashSalesByPos[pid] = (cashSalesByPos[pid] || 0) + Number(t.total);
       });
 
       const cashExpensesByPos: Record<string, number> = {};

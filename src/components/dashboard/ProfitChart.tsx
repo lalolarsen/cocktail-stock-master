@@ -45,32 +45,43 @@ export const ProfitChart = () => {
       const endDate = new Date(dateRange.to);
       endDate.setHours(23, 59, 59, 999);
 
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select(`
-          id,
-          total_amount,
-          created_at,
-          sale_items (
-            quantity,
-            cocktails (
-              cocktail_ingredients (
-                quantity,
-                products (
-                  cost_per_unit
+      const [salesRes, ticketRes] = await Promise.all([
+        supabase
+          .from("sales")
+          .select(`
+            id,
+            total_amount,
+            created_at,
+            sale_items (
+              quantity,
+              cocktails (
+                cocktail_ingredients (
+                  quantity,
+                  products (
+                    cost_per_unit,
+                    capacity_ml
+                  )
                 )
               )
             )
-          )
-        `)
-        .eq("is_cancelled", false)
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
-        .order("created_at", { ascending: true });
+          `)
+          .eq("is_cancelled", false)
+          .gte("created_at", startDate.toISOString())
+          .lte("created_at", endDate.toISOString())
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("ticket_sales")
+          .select("total, created_at")
+          .eq("payment_status", "paid")
+          .gte("created_at", startDate.toISOString())
+          .lte("created_at", endDate.toISOString()),
+      ]);
 
+      const { data: sales, error: salesError } = salesRes;
       if (salesError) throw salesError;
+      const tickets = ticketRes.data || [];
 
-      if (!sales || sales.length === 0) {
+      if ((!sales || sales.length === 0) && tickets.length === 0) {
         setData([]);
         setTotalProfit(0);
         return;
@@ -79,7 +90,7 @@ export const ProfitChart = () => {
       // Agrupar por fecha y calcular ganancias
       const profitByDate = new Map<string, { ingresos: number; costos: number }>();
 
-      sales.forEach((sale: any) => {
+      sales?.forEach((sale: any) => {
         const date = new Date(sale.created_at).toLocaleDateString("es-ES", {
           day: "2-digit",
           month: "short",
@@ -104,8 +115,21 @@ export const ProfitChart = () => {
 
         const existing = profitByDate.get(date) || { ingresos: 0, costos: 0 };
         profitByDate.set(date, {
-          ingresos: existing.ingresos + sale.total_amount,
+          ingresos: existing.ingresos + Number(sale.total_amount),
           costos: existing.costos + saleCost,
+        });
+      });
+
+      // ── Sumar tickets como ingresos puros (sin COGS) ──
+      tickets.forEach((t: any) => {
+        const date = new Date(t.created_at).toLocaleDateString("es-ES", {
+          day: "2-digit",
+          month: "short",
+        });
+        const existing = profitByDate.get(date) || { ingresos: 0, costos: 0 };
+        profitByDate.set(date, {
+          ingresos: existing.ingresos + Number(t.total || 0),
+          costos: existing.costos,
         });
       });
 

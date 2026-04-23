@@ -65,27 +65,27 @@ export function ActivityPanel() {
 
       setLoginActivity(loginActivityData);
 
-      // Fetch sales data grouped by seller
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select("id, seller_id, total_amount, is_cancelled");
+      // Fetch sales (alcohol) and ticket sales grouped by seller
+      const [{ data: sales, error: salesError }, { data: ticketSales, error: ticketError }] = await Promise.all([
+        supabase.from("sales").select("id, seller_id, total_amount, is_cancelled"),
+        supabase
+          .from("ticket_sales")
+          .select("id, sold_by_worker_id, total, payment_status"),
+      ]);
 
       if (salesError) throw salesError;
+      if (ticketError) throw ticketError;
 
       // Calculate sales per employee
-      const salesByEmployee: Record<string, { 
-        total_sales: number; 
-        total_amount: number; 
+      const salesByEmployee: Record<string, {
+        total_sales: number;
+        total_amount: number;
         cancelled_sales: number;
       }> = {};
 
       (sales || []).forEach((sale) => {
         if (!salesByEmployee[sale.seller_id]) {
-          salesByEmployee[sale.seller_id] = {
-            total_sales: 0,
-            total_amount: 0,
-            cancelled_sales: 0,
-          };
+          salesByEmployee[sale.seller_id] = { total_sales: 0, total_amount: 0, cancelled_sales: 0 };
         }
         salesByEmployee[sale.seller_id].total_sales += 1;
         if (sale.is_cancelled) {
@@ -93,6 +93,17 @@ export function ActivityPanel() {
         } else {
           salesByEmployee[sale.seller_id].total_amount += Number(sale.total_amount);
         }
+      });
+
+      // Tickets — solo pagados
+      (ticketSales || []).forEach((t: any) => {
+        if (!t.sold_by_worker_id) return;
+        if ((t.payment_status ?? "paid") !== "paid") return;
+        if (!salesByEmployee[t.sold_by_worker_id]) {
+          salesByEmployee[t.sold_by_worker_id] = { total_sales: 0, total_amount: 0, cancelled_sales: 0 };
+        }
+        salesByEmployee[t.sold_by_worker_id].total_sales += 1;
+        salesByEmployee[t.sold_by_worker_id].total_amount += Number(t.total);
       });
 
       // Map to employee sales array with names

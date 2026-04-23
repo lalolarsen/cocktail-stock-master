@@ -27,7 +27,6 @@ export function TopProductsChart() {
 
   const fetchTopProducts = async () => {
     try {
-      // Get active jornada
       const { data: jornada } = await supabase
         .from("jornadas")
         .select("id")
@@ -40,52 +39,67 @@ export function TopProductsChart() {
         return;
       }
 
-      // Get sales from this jornada
-      const { data: sales } = await supabase
-        .from("sales")
-        .select("id")
-        .eq("jornada_id", jornada.id)
-        .eq("payment_status", "paid")
-        .eq("is_cancelled", false);
+      const [{ data: sales }, { data: tickets }] = await Promise.all([
+        supabase
+          .from("sales")
+          .select("id")
+          .eq("jornada_id", jornada.id)
+          .eq("payment_status", "paid")
+          .eq("is_cancelled", false),
+        supabase
+          .from("ticket_sales")
+          .select("id")
+          .eq("jornada_id", jornada.id)
+          .eq("payment_status", "paid"),
+      ]);
 
-      if (!sales?.length) {
-        setTopProducts([]);
-        setLoading(false);
-        return;
-      }
-
-      const saleIds = sales.map(s => s.id);
-
-      // Get sale items with cocktail info
-      const { data: saleItems } = await supabase
-        .from("sale_items")
-        .select(`
-          quantity,
-          subtotal,
-          cocktail:cocktails(id, name)
-        `)
-        .in("sale_id", saleIds);
-
-      // Aggregate by product
       const productMap = new Map<string, TopProduct>();
 
-      saleItems?.forEach(item => {
-        if (!item.cocktail) return;
-        const cocktail = item.cocktail as { id: string; name: string };
-        
-        if (productMap.has(cocktail.id)) {
-          const existing = productMap.get(cocktail.id)!;
-          existing.quantity += item.quantity;
-          existing.revenue += Number(item.subtotal);
-        } else {
-          productMap.set(cocktail.id, {
-            id: cocktail.id,
-            name: cocktail.name,
-            quantity: item.quantity,
-            revenue: Number(item.subtotal)
-          });
-        }
-      });
+      if (sales?.length) {
+        const saleIds = sales.map(s => s.id);
+        const { data: saleItems } = await supabase
+          .from("sale_items")
+          .select(`quantity, subtotal, cocktail:cocktails(id, name)`)
+          .in("sale_id", saleIds);
+
+        saleItems?.forEach(item => {
+          if (!item.cocktail) return;
+          const c = item.cocktail as { id: string; name: string };
+          const existing = productMap.get(c.id);
+          if (existing) {
+            existing.quantity += item.quantity;
+            existing.revenue += Number(item.subtotal);
+          } else {
+            productMap.set(c.id, { id: c.id, name: c.name, quantity: item.quantity, revenue: Number(item.subtotal) });
+          }
+        });
+      }
+
+      if (tickets?.length) {
+        const ticketIds = tickets.map(t => t.id);
+        const { data: ticketItems } = await supabase
+          .from("ticket_sale_items")
+          .select(`quantity, line_total, ticket_type_id, ticket_types(name)`)
+          .in("ticket_sale_id", ticketIds);
+
+        ticketItems?.forEach((item: any) => {
+          const tt = item.ticket_types;
+          if (!tt) return;
+          const key = `ticket:${item.ticket_type_id}`;
+          const existing = productMap.get(key);
+          if (existing) {
+            existing.quantity += Number(item.quantity);
+            existing.revenue += Number(item.line_total);
+          } else {
+            productMap.set(key, {
+              id: key,
+              name: `🎫 ${tt.name}`,
+              quantity: Number(item.quantity),
+              revenue: Number(item.line_total),
+            });
+          }
+        });
+      }
 
       const sorted = Array.from(productMap.values())
         .sort((a, b) => b.quantity - a.quantity)

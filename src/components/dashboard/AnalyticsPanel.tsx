@@ -94,7 +94,7 @@ export function AnalyticsPanel() {
   const [jornadaCount, setJornadaCount] = useState(0);
   const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
   const [reconciliationWaste, setReconciliationWaste] = useState<ReconciliationWaste[]>([]);
-  const [ticketSales, setTicketSales] = useState<Array<{ id: string; total: number; created_at: string }>>([]);
+  const [ticketSales, setTicketSales] = useState<Array<{ id: string; total: number; payment_method: string; pos_id: string | null; created_at: string }>>([]);
   const [ticketItems, setTicketItems] = useState<Array<{ ticket_type_id: string; quantity: number; unit_price: number; ticket_types: { name: string } | null }>>([]);
   const [coverTokensStats, setCoverTokensStats] = useState<{ total: number; redeemed: number; byCocktail: Array<{ name: string; issued: number; redeemed: number }> }>({ total: 0, redeemed: 0, byCocktail: [] });
 
@@ -220,12 +220,19 @@ export function AnalyticsPanel() {
     // ── Tickets ──
     const { data: tSales } = await supabase
       .from("ticket_sales")
-      .select("id, total_amount, created_at")
+      .select("id, total, payment_method, pos_id, created_at")
       .eq("venue_id", venueId)
+      .eq("payment_status", "paid")
       .gte("created_at", from)
       .lte("created_at", to);
-    const tSalesData = (tSales || []).map((t: any) => ({ id: t.id, total: Number(t.total_amount) || 0, created_at: t.created_at }));
-    setTicketSales(tSalesData);
+    const tSalesData = (tSales || []).map((t: any) => ({
+      id: t.id,
+      total: Number(t.total) || 0,
+      payment_method: (t.payment_method || "cash") as string,
+      pos_id: t.pos_id as string | null,
+      created_at: t.created_at as string,
+    }));
+    setTicketSales(tSalesData as any);
 
     if (tSalesData.length > 0) {
       const tIds = tSalesData.map(t => t.id);
@@ -301,39 +308,60 @@ export function AnalyticsPanel() {
     setLoading(false);
   };
 
-  // Computed metrics
-  const totalRevenue = useMemo(() => sales.reduce((s, r) => s + Math.abs(Number(r.total_amount)), 0), [sales]);
-  const totalTransactions = sales.length;
+  // Computed metrics — incluyen alcohol + tickets
+  const ticketsRevenueRaw = useMemo(() => ticketSales.reduce((s, t) => s + t.total, 0), [ticketSales]);
+  const totalRevenue = useMemo(
+    () => sales.reduce((s, r) => s + Math.abs(Number(r.total_amount)), 0) + ticketsRevenueRaw,
+    [sales, ticketsRevenueRaw]
+  );
+  const totalTransactions = sales.length + ticketSales.length;
   const avgTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-  const cashTotal = useMemo(() =>
-    sales.filter((s) => s.payment_method === "cash").reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0),
-    [sales]
-  );
-  const cardTotal = useMemo(() =>
-    sales.filter((s) => s.payment_method === "card").reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0),
-    [sales]
-  );
+  const cashTotal = useMemo(() => {
+    const alcoholCash = sales
+      .filter((s) => s.payment_method === "cash")
+      .reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0);
+    const ticketCash = ticketSales
+      .filter((t) => t.payment_method === "cash")
+      .reduce((acc, t) => acc + t.total, 0);
+    return alcoholCash + ticketCash;
+  }, [sales, ticketSales]);
+
+  const cardTotal = useMemo(() => {
+    const alcoholCard = sales
+      .filter((s) => s.payment_method === "card")
+      .reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0);
+    const ticketCard = ticketSales
+      .filter((t) => t.payment_method === "card")
+      .reduce((acc, t) => acc + t.total, 0);
+    return alcoholCard + ticketCard;
+  }, [sales, ticketSales]);
 
   const avgPerJornada = jornadaCount > 0 ? totalRevenue / jornadaCount : 0;
 
-  // POS breakdown
+  // POS breakdown — incluye tickets como filas adicionales
   const posStats: POSStats[] = useMemo(() => {
     const posMap = new Map<string, { sales: number; count: number; cash: number; card: number }>();
-    for (const s of sales) {
-      const pid = s.pos_id || "sin-pos";
+    const upsert = (pid: string, amt: number, method: string) => {
       if (!posMap.has(pid)) posMap.set(pid, { sales: 0, count: 0, cash: 0, card: 0 });
       const b = posMap.get(pid)!;
-      const amt = Math.abs(Number(s.total_amount));
       b.sales += amt;
       b.count++;
-      if (s.payment_method === "cash") b.cash += amt;
-      else b.card += amt;
+      if (method === "cash") b.cash += amt;
+      else if (method === "card") b.card += amt;
+    };
+    for (const s of sales) {
+      upsert(s.pos_id || "sin-pos", Math.abs(Number(s.total_amount)), s.payment_method);
+    }
+    for (const t of ticketSales) {
+      upsert(t.pos_id || "caja-tickets", t.total, t.payment_method);
     }
     return Array.from(posMap.entries())
       .map(([pid, d]) => ({
         posId: pid,
-        posName: posTerminals.find((p) => p.id === pid)?.name || (pid === "sin-pos" ? "Sin POS" : pid.slice(0, 8)),
+        posName:
+          posTerminals.find((p) => p.id === pid)?.name ||
+          (pid === "sin-pos" ? "Sin POS" : pid === "caja-tickets" ? "Caja Tickets" : pid.slice(0, 8)),
         totalSales: d.sales,
         transactionCount: d.count,
         avgTicket: d.count > 0 ? d.sales / d.count : 0,
@@ -341,7 +369,7 @@ export function AnalyticsPanel() {
         cardTotal: d.card,
       }))
       .sort((a, b) => b.totalSales - a.totalSales);
-  }, [sales, posTerminals]);
+  }, [sales, ticketSales, posTerminals]);
 
   // Top products
   const topProducts: TopProduct[] = useMemo(() => {
@@ -436,7 +464,7 @@ export function AnalyticsPanel() {
         <KPICard icon={DollarSign} label="Ingreso Total" value={formatCLP(totalRevenue)} sub={`${totalTransactions} ventas`} accent="text-emerald-500" />
         <KPICard icon={Receipt} label="Ticket Promedio" value={formatCLP(avgTicket)} sub={`${jornadaCount} jornadas`} accent="text-blue-500" />
         <KPICard icon={Store} label="Promedio / Jornada" value={formatCLP(avgPerJornada)} sub={`${posStats.length} POS activos`} accent="text-violet-500" />
-        <KPICard icon={ShoppingCart} label="Productos Vendidos" value={saleItems.reduce((s, si) => s + Number(si.quantity), 0).toLocaleString("es-CL")} sub={`${topProducts.length} productos distintos`} accent="text-amber-500" />
+        <KPICard icon={ShoppingCart} label="Productos Vendidos" value={(saleItems.reduce((s, si) => s + Number(si.quantity), 0) + ticketItems.reduce((s, ti) => s + Number(ti.quantity || 0), 0)).toLocaleString("es-CL")} sub={`${topProducts.length} productos · ${ticketItems.reduce((s, ti) => s + Number(ti.quantity || 0), 0)} entradas`} accent="text-amber-500" />
       </div>
 
       {/* COGS del mes */}
