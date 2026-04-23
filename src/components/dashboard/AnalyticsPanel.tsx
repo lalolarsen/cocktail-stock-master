@@ -220,12 +220,19 @@ export function AnalyticsPanel() {
     // ── Tickets ──
     const { data: tSales } = await supabase
       .from("ticket_sales")
-      .select("id, total_amount, created_at")
+      .select("id, total, payment_method, pos_id, created_at")
       .eq("venue_id", venueId)
+      .eq("payment_status", "paid")
       .gte("created_at", from)
       .lte("created_at", to);
-    const tSalesData = (tSales || []).map((t: any) => ({ id: t.id, total: Number(t.total_amount) || 0, created_at: t.created_at }));
-    setTicketSales(tSalesData);
+    const tSalesData = (tSales || []).map((t: any) => ({
+      id: t.id,
+      total: Number(t.total) || 0,
+      payment_method: (t.payment_method || "cash") as string,
+      pos_id: t.pos_id as string | null,
+      created_at: t.created_at as string,
+    }));
+    setTicketSales(tSalesData as any);
 
     if (tSalesData.length > 0) {
       const tIds = tSalesData.map(t => t.id);
