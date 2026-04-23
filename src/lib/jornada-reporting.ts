@@ -244,3 +244,113 @@ export async function fetchJornadaLiveReport(jornadaId: string): Promise<Jornada
     combinedSales: combinedSales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Period-based helper: unifies sales + ticket_sales for arbitrary date ranges
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface UnifiedSaleRow {
+  id: string;
+  source: "alcohol" | "ticket";
+  posId: string | null;
+  posName: string;
+  posType: string | null;
+  saleNumber: string;
+  createdAt: string;
+  totalAmount: number;
+  paymentMethod: string;
+  sellerId: string | null;
+  jornadaId: string | null;
+  isCancelled: boolean;
+}
+
+export interface SalesPeriodReport {
+  rows: UnifiedSaleRow[];
+  totals: JornadaLiveTotals;
+}
+
+export async function fetchSalesPeriodReport(
+  venueId: string,
+  fromISO: string,
+  toISO: string,
+): Promise<SalesPeriodReport> {
+  const [salesRows, ticketSalesRows, posRes] = await Promise.all([
+    fetchAllRows<SalesRow & { jornada_id: string | null; venue_id?: string }>(() =>
+      supabase
+        .from("sales")
+        .select("id, pos_id, sale_number, created_at, total_amount, payment_method, is_cancelled, payment_status, sale_category, seller_id, point_of_sale, jornada_id")
+        .eq("venue_id", venueId)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO)
+    ),
+    fetchAllRows<TicketSalesRow & { jornada_id: string | null }>(() =>
+      supabase
+        .from("ticket_sales")
+        .select("id, pos_id, ticket_number, created_at, total, payment_method, payment_status, sold_by_worker_id, jornada_id")
+        .eq("venue_id", venueId)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO)
+    ),
+    supabase.from("pos_terminals").select("id, name, pos_type"),
+  ]);
+
+  if (posRes.error) throw posRes.error;
+
+  const posMap = new Map((posRes.data as PosTerminalRow[] | null || []).map((pos) => [pos.id, pos]));
+  const totals = createEmptyTotals();
+  const rows: UnifiedSaleRow[] = [];
+
+  const activeSales = salesRows.filter((s) => !s.is_cancelled && (s.payment_status ?? "paid") === "paid");
+  const paidTickets = ticketSalesRows.filter((s) => (s.payment_status ?? "paid") === "paid");
+
+  activeSales.forEach((sale) => {
+    const amount = Number(sale.total_amount || 0);
+    const pos = sale.pos_id ? posMap.get(sale.pos_id) : null;
+    totals.grossSalesTotal += amount;
+    totals.netSalesTotal += amount;
+    totals.alcoholSalesTotal += amount;
+    totals.transactionsCount += 1;
+    addPaymentAmount(totals, sale.payment_method, amount);
+    rows.push({
+      id: sale.id,
+      source: "alcohol",
+      posId: sale.pos_id,
+      posName: pos?.name || sale.point_of_sale || "Sin POS",
+      posType: pos?.pos_type || "alcohol_sales",
+      saleNumber: sale.sale_number || sale.id.slice(0, 8),
+      createdAt: sale.created_at,
+      totalAmount: amount,
+      paymentMethod: sale.payment_method || "cash",
+      sellerId: sale.seller_id,
+      jornadaId: (sale as any).jornada_id ?? null,
+      isCancelled: false,
+    });
+  });
+
+  paidTickets.forEach((sale) => {
+    const amount = Number(sale.total || 0);
+    const pos = sale.pos_id ? posMap.get(sale.pos_id) : null;
+    totals.grossSalesTotal += amount;
+    totals.netSalesTotal += amount;
+    totals.ticketSalesTotal += amount;
+    totals.transactionsCount += 1;
+    addPaymentAmount(totals, sale.payment_method, amount);
+    rows.push({
+      id: sale.id,
+      source: "ticket",
+      posId: sale.pos_id,
+      posName: pos?.name || "Caja Tickets",
+      posType: pos?.pos_type || "ticket_sales",
+      saleNumber: sale.ticket_number || sale.id.slice(0, 8),
+      createdAt: sale.created_at,
+      totalAmount: amount,
+      paymentMethod: sale.payment_method || "cash",
+      sellerId: sale.sold_by_worker_id,
+      jornadaId: (sale as any).jornada_id ?? null,
+      isCancelled: false,
+    });
+  });
+
+  rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return { rows, totals };
+}
