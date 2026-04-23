@@ -464,7 +464,7 @@ export function AnalyticsPanel() {
         <KPICard icon={DollarSign} label="Ingreso Total" value={formatCLP(totalRevenue)} sub={`${totalTransactions} ventas`} accent="text-emerald-500" />
         <KPICard icon={Receipt} label="Ticket Promedio" value={formatCLP(avgTicket)} sub={`${jornadaCount} jornadas`} accent="text-blue-500" />
         <KPICard icon={Store} label="Promedio / Jornada" value={formatCLP(avgPerJornada)} sub={`${posStats.length} POS activos`} accent="text-violet-500" />
-        <KPICard icon={ShoppingCart} label="Productos Vendidos" value={saleItems.reduce((s, si) => s + Number(si.quantity), 0).toLocaleString("es-CL")} sub={`${topProducts.length} productos distintos`} accent="text-amber-500" />
+        <KPICard icon={ShoppingCart} label="Productos Vendidos" value={(saleItems.reduce((s, si) => s + Number(si.quantity), 0) + ticketItems.reduce((s, ti) => s + Number(ti.quantity || 0), 0)).toLocaleString("es-CL")} sub={`${topProducts.length} productos · ${ticketItems.reduce((s, ti) => s + Number(ti.quantity || 0), 0)} entradas`} accent="text-amber-500" />
       </div>
 
       {/* COGS del mes */}
