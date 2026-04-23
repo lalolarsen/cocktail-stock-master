@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Search, Undo2, Clock } from "lucide-react";
+import { ChevronDown, Search, Undo2, Clock, Ticket } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { format } from "date-fns";
 import { VoidRequestDialog } from "./VoidRequestDialog";
@@ -18,6 +18,17 @@ interface RecentSalesPanelProps {
   posId: string | null;
 }
 
+interface UnifiedSale {
+  id: string;
+  source: "alcohol" | "ticket";
+  sale_number: string | null;
+  total_amount: number;
+  payment_method: string | null;
+  created_at: string;
+  is_cancelled: boolean;
+  pos_id: string | null;
+}
+
 export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -26,27 +37,63 @@ export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
   const venueId = venue?.id;
 
   const { data: sales, refetch } = useQuery({
-    queryKey: ["recent-sales", jornadaId, posId, venueId],
+    queryKey: ["recent-sales-unified", jornadaId, posId, venueId],
     enabled: !!jornadaId && !!venueId && open,
-    queryFn: async () => {
-      let q = supabase
+    queryFn: async (): Promise<UnifiedSale[]> => {
+      // Alcohol sales
+      let alcoholQ = supabase
         .from("sales")
-        .select("id, sale_number, total_amount, payment_method, created_at, is_cancelled, point_of_sale, pos_id")
+        .select("id, sale_number, total_amount, payment_method, created_at, is_cancelled, pos_id")
         .eq("venue_id", venueId!)
         .eq("jornada_id", jornadaId!)
         .order("created_at", { ascending: false })
         .limit(30);
+      if (posId) alcoholQ = alcoholQ.eq("pos_id", posId);
 
-      if (posId) q = q.eq("pos_id", posId);
+      // Ticket sales
+      let ticketQ = supabase
+        .from("ticket_sales")
+        .select("id, sale_number, total, payment_method, created_at, payment_status, pos_id")
+        .eq("venue_id", venueId!)
+        .eq("jornada_id", jornadaId!)
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (posId) ticketQ = ticketQ.eq("pos_id", posId);
 
-      const { data, error } = await q;
-      if (error) throw error;
-      return data || [];
+      const [alcoholRes, ticketRes] = await Promise.all([alcoholQ, ticketQ]);
+      if (alcoholRes.error) throw alcoholRes.error;
+      if (ticketRes.error) throw ticketRes.error;
+
+      const merged: UnifiedSale[] = [
+        ...(alcoholRes.data || []).map((s: any) => ({
+          id: s.id,
+          source: "alcohol" as const,
+          sale_number: s.sale_number,
+          total_amount: Number(s.total_amount) || 0,
+          payment_method: s.payment_method,
+          created_at: s.created_at,
+          is_cancelled: !!s.is_cancelled,
+          pos_id: s.pos_id,
+        })),
+        ...(ticketRes.data || []).map((s: any) => ({
+          id: s.id,
+          source: "ticket" as const,
+          sale_number: s.sale_number,
+          total_amount: Number(s.total) || 0,
+          payment_method: s.payment_method,
+          created_at: s.created_at,
+          is_cancelled: s.payment_status && s.payment_status !== "paid",
+          pos_id: s.pos_id,
+        })),
+      ];
+
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return merged.slice(0, 40);
     },
   });
 
-  // Fetch void requests for these sales
-  const saleIds = sales?.map((s) => s.id) || [];
+  // Fetch void requests only for alcohol sales
+  const saleIds = sales?.filter((s) => s.source === "alcohol").map((s) => s.id) || [];
   const { data: voidRequests } = useQuery({
     queryKey: ["void-requests-for-sales", saleIds],
     enabled: saleIds.length > 0 && open,
@@ -110,10 +157,11 @@ export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
                 <p className="text-xs text-muted-foreground text-center py-4">Sin ventas recientes</p>
               )}
               {filtered?.map((sale) => {
-                const hasActiveVoid = voidMap.has(sale.id);
+                const hasActiveVoid = sale.source === "alcohol" && voidMap.has(sale.id);
+                const canVoid = sale.source === "alcohol" && !sale.is_cancelled && !hasActiveVoid;
                 return (
                   <div
-                    key={sale.id}
+                    key={`${sale.source}-${sale.id}`}
                     className={`flex items-center justify-between p-2 rounded-md text-xs ${
                       sale.is_cancelled ? "opacity-50 bg-muted/30" : "hover:bg-muted/50"
                     }`}
@@ -123,12 +171,18 @@ export function RecentSalesPanel({ jornadaId, posId }: RecentSalesPanelProps) {
                         {format(new Date(sale.created_at), "HH:mm")}
                       </span>
                       <span className="font-medium">{formatCLP(sale.total_amount)}</span>
+                      {sale.source === "ticket" && (
+                        <Badge variant="outline" className="text-[10px] border-blue-500 text-blue-600 gap-1">
+                          <Ticket className="w-2.5 h-2.5" />
+                          Ticket
+                        </Badge>
+                      )}
                       <Badge variant="secondary" className="text-[10px]">
-                        {sale.payment_method === "cash" ? "Efectivo" : "Tarjeta"}
+                        {sale.payment_method === "cash" ? "Efectivo" : sale.payment_method === "card" ? "Tarjeta" : sale.payment_method || "—"}
                       </Badge>
-                      {getVoidBadge(sale.id, sale.is_cancelled)}
+                      {sale.source === "alcohol" && getVoidBadge(sale.id, sale.is_cancelled)}
                     </div>
-                    {!sale.is_cancelled && !hasActiveVoid && (
+                    {canVoid && (
                       <Button
                         variant="ghost"
                         size="sm"
