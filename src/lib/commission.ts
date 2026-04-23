@@ -11,7 +11,7 @@ export const STOCKIA_COMMISSION_RATE = 0.025; // 2.5%
 export const STOCKIA_COMMISSION_LABEL = "Comisión STOCKIA";
 
 export const STOCKIA_PRINT_FOOTER =
-  "Estás utilizando STOCKIA, el estándar del control nocturno";
+  "Estás utilizando STOCKIA, el estándar del control nocturno :)";
 
 /** Calcula la comisión informativa sobre un total bruto en CLP (entero). */
 export function calculateCommission(grossAmount: number): number {
