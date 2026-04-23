@@ -30,8 +30,8 @@ interface POSSalesData {
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
 
 function buildReportHtml(data: POSSalesData): string {
-  const sep = "================================================";
-  const dash = "------------------------------------------------";
+  const sep = "========================================";
+  const dash = "----------------------------------------";
 
   const posBlocks = data.posSummary
     .map(
