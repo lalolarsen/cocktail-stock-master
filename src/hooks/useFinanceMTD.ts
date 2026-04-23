@@ -170,7 +170,7 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
     const toISO = `${end}T23:59:59-03:00`;
 
     try {
-      const [salesRows, cogsSaleIds, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
+      const [salesRows, ticketSalesRows, cogsSaleIds, opexRes, manualIncomeRes, passlineRes] = await Promise.all([
         // Sales — paginated
         fetchAllRows(() =>
           supabase
@@ -179,6 +179,17 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
             .eq("venue_id", venueId)
             .eq("payment_status", "paid")
             .eq("is_cancelled", false)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        ),
+
+        // Ticket sales — paid only
+        fetchAllRows<{ total: number }>(() =>
+          supabase
+            .from("ticket_sales")
+            .select("total")
+            .eq("venue_id", venueId)
+            .eq("payment_status", "paid")
             .gte("created_at", fromISO)
             .lte("created_at", toISO)
         ),
@@ -231,6 +242,12 @@ export function useFinanceMTD(year: number, month: number): FinanceMTD {
         gross += total;
         net += netVal;
         ivaD += ivaVal;
+      }
+      // ── Tickets: agregar a ventas brutas y netas (sin IVA separado, total = neto) ──
+      for (const t of ticketSalesRows as any[]) {
+        const amt = Math.abs(Number(t.total || 0));
+        gross += amt;
+        net += amt;
       }
       setSalesGross(gross);
       setSalesNet(net);
