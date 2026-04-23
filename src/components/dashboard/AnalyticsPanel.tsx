@@ -94,7 +94,7 @@ export function AnalyticsPanel() {
   const [jornadaCount, setJornadaCount] = useState(0);
   const [courtesyCOGS, setCourtesyCOGS] = useState<CourtesyCOGSItem[]>([]);
   const [reconciliationWaste, setReconciliationWaste] = useState<ReconciliationWaste[]>([]);
-  const [ticketSales, setTicketSales] = useState<Array<{ id: string; total: number; created_at: string }>>([]);
+  const [ticketSales, setTicketSales] = useState<Array<{ id: string; total: number; payment_method: string; pos_id: string | null; created_at: string }>>([]);
   const [ticketItems, setTicketItems] = useState<Array<{ ticket_type_id: string; quantity: number; unit_price: number; ticket_types: { name: string } | null }>>([]);
   const [coverTokensStats, setCoverTokensStats] = useState<{ total: number; redeemed: number; byCocktail: Array<{ name: string; issued: number; redeemed: number }> }>({ total: 0, redeemed: 0, byCocktail: [] });
 
