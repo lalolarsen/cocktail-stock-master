@@ -308,39 +308,60 @@ export function AnalyticsPanel() {
     setLoading(false);
   };
 
-  // Computed metrics
-  const totalRevenue = useMemo(() => sales.reduce((s, r) => s + Math.abs(Number(r.total_amount)), 0), [sales]);
-  const totalTransactions = sales.length;
+  // Computed metrics — incluyen alcohol + tickets
+  const ticketsRevenueRaw = useMemo(() => ticketSales.reduce((s, t) => s + t.total, 0), [ticketSales]);
+  const totalRevenue = useMemo(
+    () => sales.reduce((s, r) => s + Math.abs(Number(r.total_amount)), 0) + ticketsRevenueRaw,
+    [sales, ticketsRevenueRaw]
+  );
+  const totalTransactions = sales.length + ticketSales.length;
   const avgTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-  const cashTotal = useMemo(() =>
-    sales.filter((s) => s.payment_method === "cash").reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0),
-    [sales]
-  );
-  const cardTotal = useMemo(() =>
-    sales.filter((s) => s.payment_method === "card").reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0),
-    [sales]
-  );
+  const cashTotal = useMemo(() => {
+    const alcoholCash = sales
+      .filter((s) => s.payment_method === "cash")
+      .reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0);
+    const ticketCash = ticketSales
+      .filter((t) => t.payment_method === "cash")
+      .reduce((acc, t) => acc + t.total, 0);
+    return alcoholCash + ticketCash;
+  }, [sales, ticketSales]);
+
+  const cardTotal = useMemo(() => {
+    const alcoholCard = sales
+      .filter((s) => s.payment_method === "card")
+      .reduce((acc, s) => acc + Math.abs(Number(s.total_amount)), 0);
+    const ticketCard = ticketSales
+      .filter((t) => t.payment_method === "card")
+      .reduce((acc, t) => acc + t.total, 0);
+    return alcoholCard + ticketCard;
+  }, [sales, ticketSales]);
 
   const avgPerJornada = jornadaCount > 0 ? totalRevenue / jornadaCount : 0;
 
-  // POS breakdown
+  // POS breakdown — incluye tickets como filas adicionales
   const posStats: POSStats[] = useMemo(() => {
     const posMap = new Map<string, { sales: number; count: number; cash: number; card: number }>();
-    for (const s of sales) {
-      const pid = s.pos_id || "sin-pos";
+    const upsert = (pid: string, amt: number, method: string) => {
       if (!posMap.has(pid)) posMap.set(pid, { sales: 0, count: 0, cash: 0, card: 0 });
       const b = posMap.get(pid)!;
-      const amt = Math.abs(Number(s.total_amount));
       b.sales += amt;
       b.count++;
-      if (s.payment_method === "cash") b.cash += amt;
-      else b.card += amt;
+      if (method === "cash") b.cash += amt;
+      else if (method === "card") b.card += amt;
+    };
+    for (const s of sales) {
+      upsert(s.pos_id || "sin-pos", Math.abs(Number(s.total_amount)), s.payment_method);
+    }
+    for (const t of ticketSales) {
+      upsert(t.pos_id || "caja-tickets", t.total, t.payment_method);
     }
     return Array.from(posMap.entries())
       .map(([pid, d]) => ({
         posId: pid,
-        posName: posTerminals.find((p) => p.id === pid)?.name || (pid === "sin-pos" ? "Sin POS" : pid.slice(0, 8)),
+        posName:
+          posTerminals.find((p) => p.id === pid)?.name ||
+          (pid === "sin-pos" ? "Sin POS" : pid === "caja-tickets" ? "Caja Tickets" : pid.slice(0, 8)),
         totalSales: d.sales,
         transactionCount: d.count,
         avgTicket: d.count > 0 ? d.sales / d.count : 0,
@@ -348,7 +369,7 @@ export function AnalyticsPanel() {
         cardTotal: d.card,
       }))
       .sort((a, b) => b.totalSales - a.totalSales);
-  }, [sales, posTerminals]);
+  }, [sales, ticketSales, posTerminals]);
 
   // Top products
   const topProducts: TopProduct[] = useMemo(() => {
