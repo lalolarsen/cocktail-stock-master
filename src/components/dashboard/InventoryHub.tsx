@@ -291,155 +291,87 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     loadDashboard();
   };
 
-  // ── Apply functions ────────────────────────────────────────────────────────
+  // ── Apply functions (server-side batch RPCs) ──────────────────────────────
+
+  const CHUNK_SIZE = 500;
+
+  const chunk = <T,>(arr: T[], size: number): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
 
   const applyCompras = async (rows: BatchRow[], userId: string, venueId: string) => {
-    const bodegaLoc = rows[0]?.location_destino_id;
+    const valid = rows.filter((r) => r.product_id && r.location_destino_id);
+    if (valid.length === 0) return;
 
-    const { data: batch } = await supabase
-      .from("stock_intake_batches")
-      .insert({
-        venue_id: venueId, created_by: userId,
-        notes: "Excel import (aprobado)",
-        total_net: rows.reduce((s, r) => s + (r.unit_cost || 0) * (r.quantity || 0), 0),
-        total_vat: 0, total_specific_tax: 0, total_other_tax: 0,
-        total_amount: rows.reduce((s, r) => s + (r.unit_cost || 0) * (r.quantity || 0), 0),
-        items_count: rows.length,
-        default_location_id: bodegaLoc,
-      })
-      .select("id").single();
-
-    if (!batch) throw new Error("Failed to create intake batch");
-
-    for (const row of rows) {
-      if (!row.product_id || !row.location_destino_id) continue;
-      const costoEnv = row.unit_cost || 0;
-      const cantEnv = row.quantity || 0;
-      const baseQty = row.computed_base_qty || 0;
-
-      await supabase.from("stock_intake_items").insert({
-        batch_id: batch.id, product_id: row.product_id, location_id: row.location_destino_id,
-        quantity: cantEnv, net_unit_cost: costoEnv, vat_unit: 0, specific_tax_unit: 0,
-        other_tax_unit: 0, total_unit: costoEnv, total_line: costoEnv * cantEnv, venue_id: venueId,
+    let totalApplied = 0;
+    for (const part of chunk(valid, CHUNK_SIZE)) {
+      const payload = part.map((r) => ({
+        product_id: r.product_id,
+        location_destino_id: r.location_destino_id,
+        unit_cost: r.unit_cost ?? 0,
+        quantity: r.quantity ?? 0,
+        computed_base_qty: r.computed_base_qty ?? 0,
+      }));
+      const { data, error } = await supabase.rpc("apply_compra_batch" as any, {
+        p_venue_id: venueId,
+        p_user_id: userId,
+        p_rows: payload as any,
       });
-
-      // Upsert balance
-      const { data: bal } = await supabase
-        .from("stock_balances")
-        .select("id, quantity")
-        .eq("product_id", row.product_id)
-        .eq("location_id", row.location_destino_id)
-        .eq("venue_id", venueId)
-        .maybeSingle();
-
-      const currentBal = Number(bal?.quantity) || 0;
-      const newBal = currentBal + baseQty;
-
-      if (bal) {
-        await supabase.from("stock_balances").update({ quantity: newBal, updated_at: new Date().toISOString() }).eq("id", bal.id);
-      } else {
-        await supabase.from("stock_balances").insert({ product_id: row.product_id, location_id: row.location_destino_id, quantity: newBal, venue_id: venueId });
-      }
-
-      await supabase.from("stock_movements").insert({
-        product_id: row.product_id, movement_type: "compra", quantity: baseQty,
-        notes: "Excel compra (aprobado)", to_location_id: row.location_destino_id,
-        unit_cost_snapshot: costoEnv, total_cost_snapshot: costoEnv * cantEnv, venue_id: venueId,
-      });
-
-      // CPP
-      const { data: allBal } = await supabase.from("stock_balances").select("quantity").eq("product_id", row.product_id).eq("venue_id", venueId);
-      const totalStock = (allBal || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
-      const stockBefore = totalStock - baseQty;
-
-      const { data: prod } = await supabase.from("products").select("cost_per_unit, capacity_ml").eq("id", row.product_id).single();
-      const oldCost = prod?.cost_per_unit || 0;
-
-      const newCPP = calculateCPP({
-        product: { capacity_ml: prod?.capacity_ml },
-        currentStock: stockBefore, oldCostPerUnit: oldCost,
-        addedQty: baseQty, newCostPerUnit: costoEnv,
-      });
-
-      await supabase.from("products").update({ cost_per_unit: Math.round(newCPP), current_stock: totalStock }).eq("id", row.product_id);
+      if (error) throw error;
+      totalApplied += (data as any)?.applied || 0;
     }
+    return totalApplied;
   };
 
   const applyTransferencias = async (rows: BatchRow[], userId: string, venueId: string) => {
-    const first = rows[0];
-    if (!first?.location_origen_id || !first?.location_destino_id) return;
+    const valid = rows.filter(
+      (r) => r.product_id && r.location_origen_id && r.location_destino_id
+    );
+    if (valid.length === 0) return;
 
-    const { data: transfer } = await supabase
-      .from("stock_transfers")
-      .insert({
-        from_location_id: first.location_origen_id, to_location_id: first.location_destino_id,
-        transferred_by: userId, notes: "Excel transferencia (aprobado)", venue_id: venueId,
-      })
-      .select("id").single();
-
-    if (!transfer) throw new Error("Failed to create transfer");
-
-    for (const row of rows) {
-      if (!row.product_id) continue;
-      const qty = row.computed_base_qty || 0;
-
-      await supabase.from("stock_transfer_items").insert({ transfer_id: transfer.id, product_id: row.product_id, quantity: qty, venue_id: venueId });
-
-      // Decrement origin
-      const { data: origBal } = await supabase.from("stock_balances").select("id, quantity")
-        .eq("product_id", row.product_id).eq("location_id", first.location_origen_id!).eq("venue_id", venueId).maybeSingle();
-      if (origBal) {
-        await supabase.from("stock_balances").update({ quantity: Math.max(0, Number(origBal.quantity) - qty), updated_at: new Date().toISOString() }).eq("id", origBal.id);
-      }
-
-      // Increment dest
-      const { data: destBal } = await supabase.from("stock_balances").select("id, quantity")
-        .eq("product_id", row.product_id).eq("location_id", first.location_destino_id!).eq("venue_id", venueId).maybeSingle();
-      if (destBal) {
-        await supabase.from("stock_balances").update({ quantity: Number(destBal.quantity) + qty, updated_at: new Date().toISOString() }).eq("id", destBal.id);
-      } else {
-        await supabase.from("stock_balances").insert({ product_id: row.product_id, location_id: first.location_destino_id!, quantity: qty, venue_id: venueId });
-      }
-
-      await supabase.from("stock_movements").insert([
-        { product_id: row.product_id, movement_type: "transfer_out", quantity: qty, from_location_id: first.location_origen_id, transfer_id: transfer.id, venue_id: venueId, notes: "Excel transfer salida" },
-        { product_id: row.product_id, movement_type: "transfer_in", quantity: qty, to_location_id: first.location_destino_id, transfer_id: transfer.id, venue_id: venueId, notes: "Excel transfer entrada" },
-      ]);
-
-      const { data: allBal } = await supabase.from("stock_balances").select("quantity").eq("product_id", row.product_id).eq("venue_id", venueId);
-      const totalStock = (allBal || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
-      await supabase.from("products").update({ current_stock: totalStock }).eq("id", row.product_id);
+    let totalApplied = 0;
+    for (const part of chunk(valid, CHUNK_SIZE)) {
+      const payload = part.map((r) => ({
+        product_id: r.product_id,
+        location_origen_id: r.location_origen_id,
+        location_destino_id: r.location_destino_id,
+        computed_base_qty: r.computed_base_qty ?? 0,
+      }));
+      const { data, error } = await supabase.rpc("apply_transferencia_batch" as any, {
+        p_venue_id: venueId,
+        p_user_id: userId,
+        p_rows: payload as any,
+      });
+      if (error) throw error;
+      totalApplied += (data as any)?.applied || 0;
     }
+    return totalApplied;
   };
 
   const applyConteos = async (rows: BatchRow[], userId: string, venueId: string) => {
-    for (const row of rows) {
-      if (!row.product_id || !row.location_destino_id || row.stock_real === null) continue;
-      const stockReal = row.stock_real;
+    const valid = rows.filter(
+      (r) => r.product_id && r.location_destino_id && r.stock_real !== null && r.stock_real !== undefined
+    );
+    if (valid.length === 0) return;
 
-      const { data: bal } = await supabase.from("stock_balances").select("id, quantity")
-        .eq("product_id", row.product_id).eq("location_id", row.location_destino_id).eq("venue_id", venueId).maybeSingle();
-
-      const currentBal = Number(bal?.quantity) || 0;
-      const diff = stockReal - currentBal;
-      if (diff === 0) continue;
-
-      if (bal) {
-        await supabase.from("stock_balances").update({ quantity: stockReal, updated_at: new Date().toISOString() }).eq("id", bal.id);
-      } else {
-        await supabase.from("stock_balances").insert({ product_id: row.product_id, location_id: row.location_destino_id, quantity: stockReal, venue_id: venueId });
-      }
-
-      await supabase.from("stock_movements").insert({
-        product_id: row.product_id, movement_type: diff < 0 ? "waste" : "reconciliation",
-        quantity: Math.abs(diff), notes: `Conteo: ${diff < 0 ? "merma" : "ajuste +"} (${diff})`,
-        to_location_id: row.location_destino_id, venue_id: venueId,
+    let totalApplied = 0;
+    for (const part of chunk(valid, CHUNK_SIZE)) {
+      const payload = part.map((r) => ({
+        product_id: r.product_id,
+        location_id: r.location_destino_id,
+        stock_real: r.stock_real,
+      }));
+      const { data, error } = await supabase.rpc("apply_conteo_batch" as any, {
+        p_venue_id: venueId,
+        p_user_id: userId,
+        p_rows: payload as any,
       });
-
-      const { data: allBal } = await supabase.from("stock_balances").select("quantity").eq("product_id", row.product_id).eq("venue_id", venueId);
-      const totalStock = (allBal || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
-      await supabase.from("products").update({ current_stock: totalStock }).eq("id", row.product_id);
+      if (error) throw error;
+      totalApplied += (data as any)?.applied || 0;
     }
+    return totalApplied;
   };
 
   // ── Download stock ─────────────────────────────────────────────────────────
