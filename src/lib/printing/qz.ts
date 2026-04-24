@@ -112,18 +112,13 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
     const qrContent = `PICKUP:${data.pickupToken}`;
     const qrSize = paperWidth === "58mm" ? 220 : 280;
     const qrSvg = generateQRSvgString(qrContent, qrSize);
-    const shortCodeHtml = data.shortCode
-      ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
-         <div class="short-code-label">CÓDIGO DE RETIRO</div>`
-      : "";
     qrHtml = `
       <div class="qr-section">
         <div class="sep">${dash}</div>
         <div class="qr-label">QR DE RETIRO</div>
         ${qrSvg}
-        ${shortCodeHtml}
         <div class="qr-instruction">
-          Presenta este QR o dicta el código en la barra
+          Presenta este QR en la barra
         </div>
       </div>`;
   }
@@ -160,10 +155,6 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
   const qrContent = `PICKUP:${data.pickupToken}`;
   const qrSize = paperWidth === "58mm" ? 220 : 280;
   const qrSvg = generateQRSvgString(qrContent, qrSize);
-  const shortCodeHtml = data.shortCode
-    ? `<div class="short-code">${data.shortCode.split("").join(" ")}</div>
-       <div class="short-code-label">CÓDIGO DE RETIRO</div>`
-    : "";
 
   const itemsHtml = data.items
     .map((item) => `<div style="font-size:14pt;font-weight:bold;color:#000;padding:2px 0;">${item.quantity}x ${item.name}</div>`)
@@ -178,9 +169,8 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
       <div class="qr-section">
         <div class="qr-label">QR DE RETIRO</div>
         ${qrSvg}
-        ${shortCodeHtml}
         <div class="qr-instruction">
-          Presenta este QR o dicta el código en la barra
+          Presenta este QR en la barra
         </div>
       </div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
