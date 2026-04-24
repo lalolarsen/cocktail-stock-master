@@ -122,10 +122,6 @@ function buildEntryHtml(
   const sep = SEP[pw];
   const qrSize = pw === "58mm" ? 220 : 280;
   const qrSvg = generateQRSvgString(`PICKUP:${piece.token}`, qrSize);
-  const shortCodeHtml = piece.short_code
-    ? `<div class="short-code">${piece.short_code.split("").join(" ")}</div>
-       <div class="short-code-label">CÓDIGO DE ACCESO</div>`
-    : "";
 
   return `
     <div class="receipt">
@@ -136,7 +132,6 @@ function buildEntryHtml(
       <div class="ticket-correlative">${index} / ${total}</div>
       <div class="qr-section">
         ${qrSvg}
-        ${shortCodeHtml}
         <div class="qr-instruction">
           Presenta este QR en el acceso
         </div>
