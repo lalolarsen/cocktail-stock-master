@@ -184,7 +184,11 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
         },
       });
 
-      if (response.error) throw new Error(response.error.message);
+      // Edge function returned non-2xx: data still contains our custom error message
+      if (response.error) {
+        const customMsg = (response.data as { error?: string } | null)?.error;
+        throw new Error(customMsg || response.error.message);
+      }
       if (!response.data?.success) throw new Error(response.data?.error || "Error desconocido");
 
       const userId = response.data.user_id;

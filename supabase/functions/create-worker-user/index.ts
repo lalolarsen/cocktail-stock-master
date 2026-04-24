@@ -125,9 +125,15 @@ Deno.serve(async (req) => {
 
       if (updateError) {
         console.error("Failed to update existing user:", updateError);
+        const isWeakPwd = (updateError as { code?: string }).code === "weak_password";
         return new Response(
-          JSON.stringify({ error: `Failed to update user: ${updateError.message}` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            error: isWeakPwd
+              ? "El PIN ingresado es demasiado común o ha sido filtrado. Usa una combinación menos predecible (evita 123456, 111111, 000000, etc.)."
+              : `Failed to update user: ${updateError.message}`,
+            code: (updateError as { code?: string }).code,
+          }),
+          { status: isWeakPwd ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     } else {
@@ -140,9 +146,15 @@ Deno.serve(async (req) => {
 
       if (createError || !newUser.user) {
         console.error("Failed to create auth user:", createError);
+        const isWeakPwd = (createError as { code?: string } | null)?.code === "weak_password";
         return new Response(
-          JSON.stringify({ error: `Failed to create auth user: ${createError?.message}` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            error: isWeakPwd
+              ? "El PIN ingresado es demasiado común o ha sido filtrado. Usa una combinación menos predecible (evita 123456, 111111, 000000, etc.)."
+              : `Failed to create auth user: ${createError?.message}`,
+            code: (createError as { code?: string } | null)?.code,
+          }),
+          { status: isWeakPwd ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
