@@ -249,7 +249,7 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     }
   };
 
-  // ── Save learnings ────────────────────────────────────────────────────────
+  // ── Save learnings (server-side batch) ────────────────────────────────────
 
   const saveLearnings = async (rows: BatchRow[], venueId: string) => {
     const mappings = rows
@@ -257,46 +257,21 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
       .map((r) => ({
         raw_text: r.product_name_excel!.toLowerCase().trim(),
         product_id: r.product_id!,
-        venue_id: venueId,
-        wasManualCorrection: r.match_confidence === "alta" && r.product_name_matched !== r.product_name_excel,
+        confidence:
+          r.match_confidence === "alta" && r.product_name_matched !== r.product_name_excel ? 0.95 : 0.7,
       }));
 
-    // Deduplicate by raw_text
     const unique = new Map<string, typeof mappings[0]>();
     for (const m of mappings) unique.set(m.raw_text, m);
 
-    for (const m of unique.values()) {
-      // Try to upsert: if exists, increment times_used
-      const { data: existing } = await supabase
-        .from("learning_product_mappings")
-        .select("id, times_used")
-        .eq("raw_text", m.raw_text)
-        .eq("venue_id", venueId)
-        .maybeSingle();
+    if (unique.size === 0) return;
 
-      if (existing) {
-        const baseConf = m.wasManualCorrection ? 0.95 : 0.7;
-        await supabase
-          .from("learning_product_mappings")
-          .update({
-            product_id: m.product_id,
-            times_used: (existing.times_used || 0) + 1,
-            confidence: Math.min(1, baseConf + (existing.times_used || 0) * 0.05),
-            last_used_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-      } else {
-        await supabase
-          .from("learning_product_mappings")
-          .insert({
-            raw_text: m.raw_text,
-            product_id: m.product_id,
-            venue_id: venueId,
-            confidence: m.wasManualCorrection ? 0.95 : 0.7,
-            times_used: 1,
-          });
-      }
-    }
+    const payload = Array.from(unique.values());
+    const { error } = await supabase.rpc("save_learning_mappings_batch" as any, {
+      p_venue_id: venueId,
+      p_rows: payload as any,
+    });
+    if (error) console.warn("saveLearnings RPC error:", error);
   };
 
   // ── Reject batch ───────────────────────────────────────────────────────────
