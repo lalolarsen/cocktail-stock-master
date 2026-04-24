@@ -219,18 +219,20 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
     if (!userId) { toast.error("Usuario no autenticado"); return; }
 
     setApproving(true);
+    const loadingToast = toast.loading(`Aplicando lote (${batchRows.filter((r) => r.is_valid).length} filas)…`);
     try {
       const validRows = batchRows.filter((r) => r.is_valid);
+      let applied = 0;
 
       if (selectedBatch.batch_type === "COMPRA") {
-        await applyCompras(validRows, userId, venue.id);
+        applied = (await applyCompras(validRows, userId, venue.id)) || 0;
       } else if (selectedBatch.batch_type === "TRANSFERENCIA") {
-        await applyTransferencias(validRows, userId, venue.id);
+        applied = (await applyTransferencias(validRows, userId, venue.id)) || 0;
       } else if (selectedBatch.batch_type === "CONTEO") {
-        await applyConteos(validRows, userId, venue.id);
+        applied = (await applyConteos(validRows, userId, venue.id)) || 0;
       }
 
-      // Save learned product mappings
+      // Save learned product mappings (best-effort, non-blocking)
       await saveLearnings(validRows, venue.id);
 
       await supabase
@@ -238,12 +240,14 @@ export function InventoryHub({ isReadOnly = false }: InventoryHubProps) {
         .update({ status: "aprobado", approved_by: userId, approved_at: new Date().toISOString() })
         .eq("id", selectedBatch.id);
 
-      toast.success("Lote aprobado y aplicado");
+      toast.dismiss(loadingToast);
+      toast.success(`Lote aprobado · ${applied} filas aplicadas`);
       setSelectedBatch(null);
       loadDashboard();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error applying batch:", error);
-      toast.error("Error al aplicar el lote");
+      toast.dismiss(loadingToast);
+      toast.error(`Error al aplicar el lote: ${error?.message || "desconocido"}`);
     } finally {
       setApproving(false);
     }
