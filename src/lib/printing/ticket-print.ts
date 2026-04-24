@@ -146,10 +146,6 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
   const sep = SEP[pw];
   const qrSize = pw === "58mm" ? 220 : 280;
   const qrSvg = generateQRSvgString(`PICKUP:${piece.token}`, qrSize);
-  const shortCodeHtml = piece.short_code
-    ? `<div class="short-code">${piece.short_code.split("").join(" ")}</div>
-       <div class="short-code-label">CÓDIGO DE RETIRO</div>`
-    : "";
 
   return `
     <div class="receipt">
@@ -160,9 +156,8 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
       <div class="ticket-correlative">${piece.ticket_type}</div>
       <div class="qr-section">
         ${qrSvg}
-        ${shortCodeHtml}
         <div class="qr-instruction">
-          Presenta este QR o dicta el código en la barra
+          Presenta este QR en la barra
         </div>
       </div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
