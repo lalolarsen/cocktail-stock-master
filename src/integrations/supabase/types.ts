@@ -5663,11 +5663,23 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_compra_batch: {
+        Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
+        Returns: Json
+      }
+      apply_conteo_batch: {
+        Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
+        Returns: Json
+      }
       apply_external_consumption_batch: {
         Args: { p_batch_id: string }
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
+      apply_transferencia_batch: {
+        Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
+        Returns: Json
+      }
       auto_redeem_sale_token:
         | {
             Args: {
@@ -6029,6 +6041,10 @@ export type Database = {
           p_sale_id: string
         }
         Returns: undefined
+      }
+      save_learning_mappings_batch: {
+        Args: { p_rows: Json; p_venue_id: string }
+        Returns: Json
       }
       seed_demo_data: { Args: never; Returns: Json }
       set_inventory_freeze_mode: {
