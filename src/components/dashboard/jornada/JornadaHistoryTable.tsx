@@ -169,7 +169,7 @@ export function JornadaHistoryTable({
                     <CheckCircle className="w-4 h-4" />
                   </Button>
                 )}
-                {isActive && isStale && onForceClose && (
+                {isActive && onForceClose && (
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
                     onClick={() => onForceClose(jornada)} disabled={actionLoading === jornada.id} title="Forzar cierre">
                     <AlertTriangle className="w-4 h-4" />
