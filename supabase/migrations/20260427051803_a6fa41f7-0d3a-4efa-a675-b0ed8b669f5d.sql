@@ -1,0 +1,1 @@
+DELETE FROM public.jornada_cash_closings WHERE jornada_id='d3b9f045-3462-473d-a58a-c793309717c3';
