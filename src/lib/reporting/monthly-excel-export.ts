@@ -19,8 +19,6 @@ export interface MonthlyJornadaRow {
   cash_sales: number;
   card_sales: number;
   other_payments: number;
-  cogs_total: number | null;
-  margin_pct: number | null;
 }
 
 export interface MonthlyExportSale {
