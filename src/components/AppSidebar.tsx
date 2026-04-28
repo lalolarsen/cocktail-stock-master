@@ -32,6 +32,7 @@ type MenuItem = {
   title: string;
   value: ViewType;
   icon: typeof Wine;
+  badge?: string;
 };
 
 type MenuSection = {
@@ -58,8 +59,8 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Inventario",
     items: [
-      { title: "En vivo", value: "live-inventory", icon: Activity },
-      { title: "Inventario", value: "inventory", icon: Warehouse },
+      { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
       { title: "Comparación", value: "comparison", icon: Scale },
     ],
@@ -106,8 +107,8 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Inventario",
     items: [
-      { title: "En vivo", value: "live-inventory", icon: Activity },
-      { title: "Inventario", value: "inventory", icon: Warehouse },
+      { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
       { title: "Comparación", value: "comparison", icon: Scale },
     ],
   },
@@ -185,7 +186,12 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                         }`}
                       >
                         <item.icon className="w-4 h-4 shrink-0" />
-                        <span className="text-sm">{item.title}</span>
+                        <span className="text-sm flex-1">{item.title}</span>
+                        {item.badge && !isCollapsed && (
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/20 text-primary uppercase tracking-wider">
+                            {item.badge}
+                          </span>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

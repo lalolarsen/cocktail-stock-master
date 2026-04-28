@@ -41,6 +41,7 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (!open || !venueId) return;
@@ -92,9 +93,10 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) => r.product_name.toLowerCase().includes(s));
-  }, [rows, search]);
+    let base = showAll ? rows : rows.filter((r) => r.theoretical > 0);
+    if (s) base = base.filter((r) => r.product_name.toLowerCase().includes(s));
+    return base;
+  }, [rows, search, showAll]);
 
   const filledCount = rows.filter((r) => r.real.trim() !== "").length;
 
@@ -167,6 +169,15 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
           </DialogDescription>
         </DialogHeader>
 
+        {/* Pasos */}
+        <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
+          <span className="px-2 py-1 rounded bg-primary/15 text-primary font-medium">1. Elegí ubicación</span>
+          <span className="text-muted-foreground">→</span>
+          <span className="px-2 py-1 rounded bg-muted text-muted-foreground">2. Contá y escribí</span>
+          <span className="text-muted-foreground">→</span>
+          <span className="px-2 py-1 rounded bg-muted text-muted-foreground">3. Aplicar</span>
+        </div>
+
         <div className="flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row gap-2">
             <Select value={locationId} onValueChange={setLocationId}>
@@ -189,13 +200,20 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
             />
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Badge variant="secondary">{filledCount} / {rows.length} contados</Badge>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            <Badge variant="secondary">{filledCount} / {filtered.length} contados</Badge>
             {alertCount > 0 && (
               <Badge className="bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/20 gap-1">
                 <AlertTriangle className="w-3 h-3" /> {alertCount} sobre umbral
               </Badge>
             )}
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="ml-auto text-[11px] underline-offset-2 hover:underline"
+            >
+              {showAll ? "Ocultar productos sin stock" : "Mostrar todos los productos"}
+            </button>
           </div>
 
           <ScrollArea className="h-[50vh] border rounded-md">
@@ -219,12 +237,16 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
                   const bottle = isBottle({ capacity_ml: r.capacity_ml } as any);
                   const unitLabel = bottle ? "ml" : r.unit;
 
+                  const extreme = hasReal && pct >= 30 && Math.abs(delta) > 0;
+                  const rowBg = extreme ? "bg-destructive/10" : overThreshold ? "bg-yellow-500/10" : "";
+
                   return (
-                    <div key={r.product_id} className="flex items-center gap-3 px-3 py-2">
+                    <div key={r.product_id} className={`flex items-center gap-3 px-3 py-2 ${rowBg}`}>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{r.product_name}</div>
                         <div className="text-xs text-muted-foreground">
                           Teórico: {r.theoretical.toLocaleString("es-CL")} {unitLabel}
+                          {extreme && <span className="ml-2 text-destructive font-medium">⚠ varianza muy alta</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -251,6 +273,15 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
             )}
           </ScrollArea>
         </div>
+
+        {filledCount > 0 && (
+          <div className="text-[11px] text-muted-foreground bg-muted/40 rounded px-3 py-2">
+            Vas a registrar <strong className="text-foreground">{filledCount}</strong> productos contados.
+            {alertCount > 0 && (
+              <> <strong className="text-yellow-500">{alertCount}</strong> generarán alerta para admin.</>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
