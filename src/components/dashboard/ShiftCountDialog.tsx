@@ -237,12 +237,16 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
                   const bottle = isBottle({ capacity_ml: r.capacity_ml } as any);
                   const unitLabel = bottle ? "ml" : r.unit;
 
+                  const extreme = hasReal && pct >= 30 && Math.abs(delta) > 0;
+                  const rowBg = extreme ? "bg-destructive/10" : overThreshold ? "bg-yellow-500/10" : "";
+
                   return (
-                    <div key={r.product_id} className="flex items-center gap-3 px-3 py-2">
+                    <div key={r.product_id} className={`flex items-center gap-3 px-3 py-2 ${rowBg}`}>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{r.product_name}</div>
                         <div className="text-xs text-muted-foreground">
                           Teórico: {r.theoretical.toLocaleString("es-CL")} {unitLabel}
+                          {extreme && <span className="ml-2 text-destructive font-medium">⚠ varianza muy alta</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -269,6 +273,15 @@ export function ShiftCountDialog({ open, onOpenChange, initialLocationId, jornad
             )}
           </ScrollArea>
         </div>
+
+        {filledCount > 0 && (
+          <div className="text-[11px] text-muted-foreground bg-muted/40 rounded px-3 py-2">
+            Vas a registrar <strong className="text-foreground">{filledCount}</strong> productos contados.
+            {alertCount > 0 && (
+              <> <strong className="text-yellow-500">{alertCount}</strong> generarán alerta para admin.</>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
