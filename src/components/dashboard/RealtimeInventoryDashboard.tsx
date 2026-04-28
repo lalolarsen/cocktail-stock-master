@@ -238,6 +238,13 @@ export function RealtimeInventoryDashboard() {
           </Tabs>
         </CardContent>
       </Card>
+
+      <ShiftCountDialog
+        open={countOpen}
+        onOpenChange={setCountOpen}
+        initialLocationId={activeLocation !== "__all__" ? activeLocation : undefined}
+        onApplied={() => void refresh()}
+      />
     </div>
   );
 }
