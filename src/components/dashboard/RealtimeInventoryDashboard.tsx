@@ -25,6 +25,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ShiftCountDialog } from "./ShiftCountDialog";
 import { UploadInvoiceDialog } from "@/components/proveedores/UploadInvoiceDialog";
+import { useStockAlertsLive } from "@/hooks/useStockAlertsLive";
 
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
