@@ -26,6 +26,7 @@ import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryComparisonModule } from "@/components/dashboard/InventoryComparisonModule";
+import { RealtimeInventoryDashboard } from "@/components/dashboard/RealtimeInventoryDashboard";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -34,7 +35,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -69,7 +70,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids", "comparison"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids", "comparison", "live-inventory"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -134,6 +135,7 @@ export default function Admin() {
       case "external-consumption": return "Consumo Externo";
       case "reconciliation": return "Cuadre de Inventario";
       case "comparison": return "Comparación de Inventario";
+      case "live-inventory": return "Inventario en vivo";
       default: return "Admin";
     }
   };
@@ -193,6 +195,7 @@ export default function Admin() {
             {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
             {activeView === "comparison" && <InventoryComparisonModule />}
+            {activeView === "live-inventory" && <RealtimeInventoryDashboard />}
           </div>
         </main>
       </div>
