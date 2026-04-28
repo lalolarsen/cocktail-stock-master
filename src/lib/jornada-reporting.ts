@@ -67,10 +67,18 @@ export interface JornadaCombinedSaleDetail {
   isCancelled: boolean;
 }
 
+export interface JornadaPosClosing {
+  posId: string;
+  bartenderName: string | null;
+  confirmed: boolean;
+  notes: string | null;
+}
+
 export interface JornadaLiveReport {
   overall: JornadaLiveTotals;
   perPos: JornadaLivePOSummary[];
   combinedSales: JornadaCombinedSaleDetail[];
+  closingsByPosId: Record<string, JornadaPosClosing>;
 }
 
 const createEmptyTotals = (): JornadaLiveTotals => ({
