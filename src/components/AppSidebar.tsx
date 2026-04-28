@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3, Undo2, ClipboardList, Scale } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Warehouse, ArrowRightLeft, Ticket, Landmark, Truck, Gift, Trash2, Settings, Monitor, TrendingUp, BarChart3, Undo2, ClipboardList, Scale, Activity } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -20,7 +20,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -58,6 +58,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Inventario",
     items: [
+      { title: "En vivo", value: "live-inventory", icon: Activity },
       { title: "Inventario", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
       { title: "Comparación", value: "comparison", icon: Scale },
@@ -105,6 +106,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Inventario",
     items: [
+      { title: "En vivo", value: "live-inventory", icon: Activity },
       { title: "Inventario", value: "inventory", icon: Warehouse },
       { title: "Comparación", value: "comparison", icon: Scale },
     ],

@@ -1,85 +1,138 @@
+# Inventario en tiempo real para Gerencia
 
-## Rediseño del cierre de jornada
+## Diagnóstico
 
-El arqueo financiero se hace **fuera del sistema** (sobre el reporte físico descargable de cada POS). El cierre dentro de la app pasa a ser un **checklist de confirmación firmado por POS**, con observaciones que viajan al reporte POS de Reportes.
+El sistema YA tiene la infraestructura base correcta:
 
----
+- `stock_balances` (verdad por producto + ubicación, con venue_id e índices)
+- `stock_movements` (todos los flujos: COMPRA, TRANSFERENCIA, CONTEO, salidas por venta/cortesía)
+- `stock_transfers` (reposiciones bodega → barra)
+- `purchases` + edge function `parse-invoice` (lector de facturas con OCR)
+- `BarReplenishment`, `InventoryHub`, `InventoryComparisonModule` (UIs)
+- DiStock + CPP ya operando
 
-### 1. Nuevo flujo de "Cerrar Jornada" (`CashReconciliationDialog.tsx`)
+**Lo que falta** no es replantear el modelo, sino:
+1. Cerrar los 3 flujos humanos para que cada acción golpee `stock_balances` automáticamente.
+2. Construir un **panel de Gerencia en tiempo real** que lea de esa única fuente de verdad y use Realtime de Lovable Cloud para actualizarse solo.
 
-Se reemplaza el wizard actual (Resumen → Arqueo numérico → Confirmación) por un único paso:
+## Flujo operativo objetivo
 
-**Para cada POS activo (cash register):**
-- Tarjeta con nombre del POS + ubicación.
-- Campo "Bartender / Cajero de turno" (texto, obligatorio) — actúa como firma.
-- Checkbox obligatorio: *"Confirmo que el cuadre físico fue realizado y firmado por el bartender de turno"*.
-- Textarea "Observaciones del POS" (opcional, multilínea).
+```text
+[Compra]      Foto factura → parse-invoice → revisión humana → COMPRA en Bodega → CPP actualizado
+                                                                       │
+[Reposición]  Bartender abre jornada → Reposición Bodega→Barra (UI rápida) → TRANSFERENCIA
+                                                                       │
+[Venta]       POS / Bar redime QR → SALIDA automática (DiStock ya existente)
+                                                                       │
+[Conteo turno] Bartender cierra turno → conteo rápido de su barra → CONTEO + diferencias
+                                                                       │
+[Cuadre semanal] Encargado sube Excel general → InventoryComparisonModule → ajustes
+                                                                       │
+                                                                       ▼
+                                                  stock_balances (única verdad)
+                                                                       │
+                                                          Realtime ────┤
+                                                                       ▼
+                                              Dashboard Gerencia (tiempo real)
+```
 
-**Validación:** No se puede cerrar hasta que TODOS los POS tengan checkbox marcado y nombre de bartender escrito.
+## Cambios a implementar
 
-Botón final: **"Cerrar jornada"** (sin pasos intermedios). Se elimina el cálculo de efectivo esperado/contado/diferencia desde la UI.
+### 1. Lector de facturas — cerrar el ciclo
 
----
+Estado: `parse-invoice` existe pero no aterriza siempre como movimiento.
 
-### 2. Cambios de base de datos
+- Pantalla **"Nueva compra desde factura"** en InventoryHub:
+  - Subir foto/PDF → llama `parse-invoice` (Lovable AI, modelo `google/gemini-2.5-pro` para visión).
+  - Devuelve líneas: nombre proveedor, items con `nombre, cantidad, formato/ml, costo neto, IVA, ILA`.
+  - Matching difuso contra catálogo (ya existe `match-products`); si no hay match el usuario lo enlaza o crea SKU.
+  - Botón "Confirmar compra" → inserta `purchases` + `purchase_lines` + `stock_movements` tipo COMPRA en **Bodega Principal**, recalcula CPP por producto (lógica CPP existente, excluye IVA/ILA).
+- Auditoría: guardar URL de la imagen de factura en `purchase_documents`.
 
-**Migración (schema):**
-- Agregar columnas a `jornada_cash_closings`:
-  - `bartender_name TEXT` — firma del cajero/bartender de turno
-  - `physical_reconciliation_confirmed BOOLEAN DEFAULT false` — checkbox de confirmación
-- Hacer **opcionales** las columnas numéricas (`opening_cash_amount`, `cash_sales_total`, `expected_cash`, `closing_cash_counted`, `difference`) ya que el cuadre es externo. Se siguen calculando y guardando como referencia, pero ya no bloquean el cierre.
+### 2. Reposición bartender (pre-jornada)
 
-**RPC `close_jornada_manual` (rediseñado):**
-- Sigue recibiendo `p_cash_closings jsonb` pero con nueva forma:
-  ```json
-  [{ "pos_id": "...", "bartender_name": "Juan Pérez", "confirmed": true, "notes": "..." }]
+Estado: `BarReplenishment.tsx` ya existe. Mejoras:
+
+- Atajo destacado al iniciar jornada ("Reponer mi barra antes de abrir").
+- Vista por bartender filtrada a su(s) ubicación(es).
+- Sugerencia automática: por cada producto, mostrar `stock_actual` en barra vs `mínimo` (ya existe `stock_location_minimums`) y precargar la cantidad sugerida.
+- Confirmar = `stock_transfers` Bodega → Barra (movimientos ya descuentan/aumentan `stock_balances`).
+
+### 3. Conteo de cierre de turno
+
+- Nueva pantalla **"Conteo de cierre"** disparada al cerrar jornada por bartender, **solo de su barra**.
+- Lista los productos con stock > 0 en su ubicación.
+- Input rápido por producto (mobile-first, teclado numérico).
+- Genera `stock_movements` tipo CONTEO con `quantity = real - teorico` (ajuste).
+- Diferencias > umbral (ej. 10%) quedan marcadas y aparecen en alertas para el administrador (no se autoaprueban; se respeta política de waste/aprobación existente para mermas grandes).
+
+### 4. Cuadre semanal
+
+Ya existe `InventoryComparisonModule` con upload de Excel. Solo:
+- Marcar visualmente que es el flujo "semanal/general" y agendar recordatorio (alerta cada 7 días desde último cuadre).
+
+### 5. **Panel de Inventario en Tiempo Real (Gerencia)** — pieza nueva clave
+
+Nuevo módulo `RealtimeInventoryDashboard.tsx` accesible desde el sidebar de **gerencia** y **admin**.
+
+Contenido:
+
+- **KPIs arriba** (todos venue-scoped, leídos por RPC agregado):
+  - Capital total inmovilizado (∑ `stock_balances.quantity * CPP`)
+  - # SKUs con stock
+  - # productos bajo mínimo
+  - Última actualización (timestamp del último movimiento)
+  - Mermas y diferencias de la semana
+
+- **Vista por ubicación** (Bodega + cada Barra):
+  - Tabla con Producto, Stock actual, CPP, Valor, Mínimo, Estado (OK / Bajo / Crítico).
+  - Filtro por categoría y búsqueda.
+
+- **Stream de movimientos en vivo** (panel lateral):
+  - Últimos 20 movimientos del venue: tipo, producto, cantidad, ubicación, usuario, hora.
+
+- **Actualización en tiempo real** sin refrescar:
+  ```sql
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_balances;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_movements;
   ```
-- Validaciones nuevas:
-  - Todos los POS activos cash-register deben venir en el array.
-  - Cada entrada debe tener `confirmed = true` y `bartender_name` no vacío.
-- Se elimina la validación de "diferencia justificada" (ya no aplica).
-- Sigue calculando `expected_cash`, `cash_sales_total`, etc. internamente y guardándolos en `jornada_cash_closings` como información de respaldo histórico, pero `closing_cash_counted` y `difference` se guardan como `NULL`.
+  El cliente se suscribe filtrando por `venue_id` y revalida la fila afectada (no recarga todo).
 
----
+- **RPC nuevo `get_realtime_inventory_snapshot(p_venue_id)`** que devuelve en una sola llamada: balances por ubicación + valor (CPP) + estado vs mínimo. Esto evita N+1 y respeta la regla de paginación de 1000 filas.
 
-### 3. Reporte POS descargable (Reportes)
+### 6. Alertas y trazabilidad
 
-Se actualiza `pos-sales-report.ts` y `JornadaDownloadMenu.tsx` para que el reporte térmico incluya, debajo de cada bloque por POS:
+- Reutilizar `stock_alerts` para: stock bajo, diferencia de conteo > umbral, factura pendiente de validar, reposición no realizada antes de abrir jornada.
+- Bell de notificaciones de gerencia (módulo `NotificationsManagement` ya existe).
 
-```
-----------------------------------------
-Bartender: Juan Pérez
-[X] Cuadre físico confirmado
-Observaciones:
-  Sobró $2.000 en caja chica.
-  Se reportó al supervisor.
-----------------------------------------
-```
+## Detalles técnicos
 
-`fetchJornadaLiveReport` se extiende para hacer un `JOIN` con `jornada_cash_closings` y devolver `bartenderName`, `confirmed` y `notes` por cada `posId`.
+- **Migraciones**: agregar `stock_balances` y `stock_movements` a `supabase_realtime`; crear RPC `get_realtime_inventory_snapshot`; opcionalmente `last_count_at` por (product, location) para detectar productos sin contar hace mucho.
+- **RLS**: ya está. Solo verificar que gerencia pueda `SELECT` sobre `stock_balances`, `stock_movements`, `stock_locations` de su venue (usar `get_user_venue_id()`).
+- **Edge functions**: `parse-invoice` pasa a usar Lovable AI (`google/gemini-2.5-pro` para visión, sin pedir API key). Validación con Zod del JSON devuelto.
+- **Frontend**:
+  - `src/components/dashboard/RealtimeInventoryDashboard.tsx` (nuevo).
+  - `src/hooks/useRealtimeInventory.ts` (nuevo, suscripción Realtime + cache local).
+  - `src/components/dashboard/InvoiceCaptureDialog.tsx` (nuevo, captura cámara/upload).
+  - `src/components/dashboard/EndOfShiftCountDialog.tsx` (nuevo).
+  - Sidebar (`AppSidebar.tsx`): nueva entrada "Inventario en vivo" para `admin` y `gerencia`.
+- **Branding**: respetar dark theme #000 / #00E676 / SF Pro / radius 0.25rem.
+- **CLP**: `Math.round()` en todos los valores monetarios.
+- **Timezone**: `America/Santiago` para "última actualización".
 
----
+## Entregables
 
-### 4. Limpieza UI
+1. Migración SQL: realtime publish + RPC snapshot + (opcional) `last_count_at`.
+2. Edge function `parse-invoice` consolidada con Lovable AI + Zod.
+3. Componentes nuevos: panel realtime, captura de factura, conteo de cierre.
+4. Mejoras en `BarReplenishment` (sugerencias por mínimos).
+5. Entrada en sidebar para Gerencia/Admin.
 
-- Se elimina el paso de "Resumen de Jornada" del diálogo (ya está en Reportes).
-- Se elimina el paso de arqueo numérico.
-- El diálogo queda compacto: una lista vertical de POS con checklist, y un botón "Cerrar jornada".
+## Lo que NO cambia
 
----
+- DiStock sigue siendo la regla (descuento solo en redemption del bar).
+- CPP excluye IVA/ILA.
+- Bodega Principal sigue siendo el único punto de intake.
+- RLS multi-tenant intacta.
 
-### Archivos a modificar
-
-- `supabase/migrations/<new>.sql` — schema changes en `jornada_cash_closings` + nuevo `close_jornada_manual`.
-- `src/components/dashboard/CashReconciliationDialog.tsx` — rediseño completo (renombrar conceptualmente, mantener nombre por compatibilidad).
-- `src/lib/jornada-reporting.ts` — incluir datos de cierre por POS.
-- `src/lib/printing/pos-sales-report.ts` — renderizar bartender + confirmación + observaciones.
-- `src/components/dashboard/reports/JornadaDownloadMenu.tsx` — pasar nuevos campos al reporte.
-
----
-
-### Resultado esperado
-
-- **Cerrar jornada en segundos**: solo confirmar cuadre físico por POS y firmar.
-- **Trazabilidad**: queda registrado quién firmó cada caja y sus observaciones.
-- **Reporte POS** descargable desde Reportes muestra todo el contexto firmado, listo para auditoría.
+¿Apruebas el plan para que lo implemente?
