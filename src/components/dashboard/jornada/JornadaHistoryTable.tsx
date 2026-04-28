@@ -53,7 +53,7 @@ interface JornadaHistoryTableProps {
   onForceClose?: (jornada: Jornada) => void;
   onApproveReview?: (jornadaId: string) => void;
   onShowDetail: (jornadaId: string) => void;
-  onExportCSV: (jornada: Jornada) => void;
+  onExportCSV?: (jornada: Jornada) => void;
   staleThresholdHours?: number;
 }
 
