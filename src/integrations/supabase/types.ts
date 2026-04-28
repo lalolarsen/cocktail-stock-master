@@ -5902,6 +5902,19 @@ export type Database = {
           quantity: number
         }[]
       }
+      get_jornadas_stats_bulk: {
+        Args: { p_jornada_ids: string[] }
+        Returns: {
+          cantidad_ventas: number
+          card_sales: number
+          cash_sales: number
+          jornada_id: string
+          logins: number
+          other_sales: number
+          productos_vendidos: number
+          total_ventas: number
+        }[]
+      }
       get_monthly_jornadas_summary: {
         Args: { p_month: number; p_year: number }
         Returns: {
