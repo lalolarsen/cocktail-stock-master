@@ -73,7 +73,8 @@ function KPI({
 export function RealtimeInventoryDashboard() {
   const { venue } = useAppSession();
   const navigate = useNavigate();
-  const { rows, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
+  const { rows, totals, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
+  useStockAlertsLive(venue?.id);
   const [countOpen, setCountOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
 
