@@ -352,7 +352,7 @@ export function ReportsPanel() {
               <KPI
                 label={STOCKIA_COMMISSION_LABEL}
                 value={formatCLP(commission)}
-                sub={`${(STOCKIA_COMMISSION_RATE * 100).toFixed(1)}% sobre ventas brutas`}
+                sub={`${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}% sobre ventas brutas`}
                 icon={DollarSign}
                 accent
               />
