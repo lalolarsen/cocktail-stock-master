@@ -271,7 +271,7 @@ export function RealtimeInventoryDashboard() {
           onOpenChange={setInvoiceOpen}
           warehouseLocationId={warehouseId}
           onCreated={(importId) => {
-            navigate(`/proveedores/import/${importId}`);
+            navigate(`/admin/proveedores/import/${importId}`);
           }}
         />
       )}
