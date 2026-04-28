@@ -4002,6 +4002,121 @@ export type Database = {
           },
         ]
       }
+      shift_count_lines: {
+        Row: {
+          alerted: boolean
+          count_id: string
+          created_at: string
+          delta: number
+          id: string
+          pct_diff: number
+          product_id: string
+          real_qty: number
+          theoretical: number
+        }
+        Insert: {
+          alerted?: boolean
+          count_id: string
+          created_at?: string
+          delta: number
+          id?: string
+          pct_diff: number
+          product_id: string
+          real_qty: number
+          theoretical: number
+        }
+        Update: {
+          alerted?: boolean
+          count_id?: string
+          created_at?: string
+          delta?: number
+          id?: string
+          pct_diff?: number
+          product_id?: string
+          real_qty?: number
+          theoretical?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_count_lines_count_id_fkey"
+            columns: ["count_id"]
+            isOneToOne: false
+            referencedRelation: "shift_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_count_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_counts: {
+        Row: {
+          alerted_lines: number
+          created_at: string
+          id: string
+          jornada_id: string | null
+          location_id: string
+          max_variance_pct: number
+          notes: string | null
+          threshold_pct: number
+          total_lines: number
+          user_id: string | null
+          venue_id: string
+        }
+        Insert: {
+          alerted_lines?: number
+          created_at?: string
+          id?: string
+          jornada_id?: string | null
+          location_id: string
+          max_variance_pct?: number
+          notes?: string | null
+          threshold_pct?: number
+          total_lines?: number
+          user_id?: string | null
+          venue_id: string
+        }
+        Update: {
+          alerted_lines?: number
+          created_at?: string
+          id?: string
+          jornada_id?: string | null
+          location_id?: string
+          max_variance_pct?: number
+          notes?: string | null
+          threshold_pct?: number
+          total_lines?: number
+          user_id?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_counts_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sidebar_config: {
         Row: {
           created_at: string
@@ -5968,6 +6083,7 @@ export type Database = {
           category: string
           cpp: number
           is_bottle: boolean
+          is_totals: boolean
           last_movement_at: string
           location_id: string
           location_name: string
