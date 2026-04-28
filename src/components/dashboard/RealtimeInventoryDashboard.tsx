@@ -72,11 +72,18 @@ function KPI({
 
 export function RealtimeInventoryDashboard() {
   const { venue } = useAppSession();
+  const navigate = useNavigate();
   const { rows, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
   const [countOpen, setCountOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [activeLocation, setActiveLocation] = useState<string>("__all__");
+
+  const warehouseId = useMemo(
+    () => rows.find((r) => r.location_type === "warehouse")?.location_id ?? null,
+    [rows],
+  );
 
   const locations = useMemo(() => {
     const map = new Map<string, { id: string; name: string; type: string | null }>();
