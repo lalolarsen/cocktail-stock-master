@@ -5896,6 +5896,32 @@ export type Database = {
           quantity: number
         }[]
       }
+      get_monthly_jornadas_summary: {
+        Args: { p_month: number; p_year: number }
+        Returns: {
+          alcohol_sales: number
+          cancelled_count: number
+          cancelled_total: number
+          card_sales: number
+          cash_sales: number
+          estado: string
+          fecha: string
+          financial: Json
+          forced_close: boolean
+          hora_apertura: string
+          hora_cierre: string
+          jornada_id: string
+          nombre: string
+          numero_jornada: number
+          other_payments: number
+          requires_review: boolean
+          sales_count: number
+          semana_inicio: string
+          ticket_sales: number
+          top_sellers: Json
+          total_sales: number
+        }[]
+      }
       get_open_jornada: { Args: never; Returns: Json }
       get_qz_secret: { Args: { secret_name: string }; Returns: string }
       get_sidebar_config: {

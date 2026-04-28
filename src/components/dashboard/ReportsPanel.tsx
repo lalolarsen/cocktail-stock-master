@@ -1,53 +1,29 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllByIds } from "@/lib/supabase-batch";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Download, Calendar, ChevronDown,
-  TrendingUp, ShoppingCart, Ticket, Clock, DollarSign,
-  XCircle, CreditCard, Banknote, RefreshCw, FileText,
-  Loader2, PieChart, Printer
+  Calendar, ChevronDown, TrendingUp, TrendingDown,
+  Clock, DollarSign, XCircle, CreditCard, Banknote, RefreshCw,
+  Loader2, FileSpreadsheet, ShoppingCart, Ticket, PieChart, AlertTriangle,
 } from "lucide-react";
-import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
-import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
 import { calculateCommission, STOCKIA_COMMISSION_RATE, STOCKIA_COMMISSION_LABEL } from "@/lib/commission";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { RedeemReportButton } from "./RedeemReportButton";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
+import { JornadaDownloadMenu } from "./reports/JornadaDownloadMenu";
+import { generateMonthlyExcelReport, type MonthlyJornadaRow } from "@/lib/reporting/monthly-excel-export";
+import { toast } from "sonner";
 
 /* ── types ─────────────────────────────────────────── */
-
-interface JornadaSummary {
-  id: string;
-  fecha: string;
-  numero_jornada: number;
-  nombre?: string;
-  semana_inicio: string;
-  hora_apertura: string | null;
-  hora_cierre: string | null;
-  estado: string;
-}
 
 interface FinancialSnap {
   gross_sales_total: number;
@@ -61,7 +37,13 @@ interface FinancialSnap {
 }
 
 interface JornadaReport {
-  jornada: JornadaSummary;
+  id: string;
+  numero_jornada: number;
+  nombre: string | null;
+  fecha: string;
+  hora_apertura: string | null;
+  hora_cierre: string | null;
+  estado: string;
   totalSales: number;
   totalCancelled: number;
   salesCount: number;
@@ -72,7 +54,7 @@ interface JornadaReport {
   cardSales: number;
   otherPayments: number;
   topSellers: { name: string; total: number; count: number }[];
-  financial?: FinancialSnap | null;
+  financial: FinancialSnap | null;
   sales?: SaleDetail[];
 }
 
@@ -94,138 +76,74 @@ const PAGE_SIZE = 50;
 
 export function ReportsPanel() {
   const [jornadas, setJornadas] = useState<JornadaReport[]>([]);
+  const [prevMonthTotal, setPrevMonthTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [loadingSales, setLoadingSales] = useState<string | null>(null);
+  const [exportingMonth, setExportingMonth] = useState(false);
   const [eerrOpen, setEerrOpen] = useState<{ id: string; num: number; date: string } | null>(null);
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+  const monthOptions = useMemo(() => Array.from({ length: 12 }, (_, i) => {
     const date = new Date();
     date.setMonth(date.getMonth() - i);
     return {
       value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
       label: format(date, "MMMM yyyy", { locale: es }),
     };
-  });
+  }), []);
 
-  /* ── data fetch ── */
+  const monthLabel = monthOptions.find((o) => o.value === monthFilter)?.label || "";
 
-  const fetchJornadasWithSales = useCallback(async () => {
+  /* ── data fetch via RPC ── */
+
+  const fetchMonth = useCallback(async () => {
     setLoading(true);
     try {
       const [year, month] = monthFilter.split("-").map(Number);
-      const startDate = startOfMonth(new Date(year, month - 1));
-      const endDate = endOfMonth(new Date(year, month - 1));
 
-      const { data: jornadasData, error: jornadasError } = await supabase
-        .from("jornadas")
-        .select("id, fecha, numero_jornada, nombre, semana_inicio, hora_apertura, hora_cierre, estado")
-        .gte("fecha", format(startDate, "yyyy-MM-dd"))
-        .lte("fecha", format(endDate, "yyyy-MM-dd"))
-        .order("fecha", { ascending: false });
-
-      if (jornadasError) throw jornadasError;
-      if (!jornadasData || jornadasData.length === 0) {
-        setJornadas([]);
-        return;
-      }
-
-      const jornadaIds = jornadasData.map((j) => j.id);
-
-      const [allSalesData, allTicketSalesData, financialRes, profilesRes] = await Promise.all([
-        fetchAllByIds(
-          "sales",
-          "jornada_id",
-          jornadaIds,
-          "id, jornada_id, total_amount, is_cancelled, sale_category, payment_method, seller_id"
-        ),
-        fetchAllByIds(
-          "ticket_sales",
-          "jornada_id",
-          jornadaIds,
-          "id, jornada_id, total, payment_method, payment_status, sold_by_worker_id"
-        ),
-        supabase
-          .from("jornada_financial_summary")
-          .select("jornada_id, gross_sales_total, net_sales_total, expenses_total, net_operational_result, cogs_total, gross_margin_pct, cash_difference, tokens_pending_count")
-          .in("jornada_id", jornadaIds)
-          .is("pos_id", null),
-        supabase
-          .from("profiles")
-          .select("id, full_name, email"),
-      ]);
-
-      const salesData = allSalesData as any[];
-      const ticketSalesData = (allTicketSalesData || []) as any[];
-      const financialMap = new Map<string, FinancialSnap>();
-      (financialRes.data || []).forEach((f: Record<string, unknown>) => {
-        financialMap.set(f.jornada_id as string, f as unknown as FinancialSnap);
+      const { data, error } = await supabase.rpc("get_monthly_jornadas_summary", {
+        p_year: year,
+        p_month: month,
       });
+      if (error) throw error;
 
-      const profilesMap = new Map(
-        (profilesRes.data || []).map((p) => [p.id, p])
-      );
-
-      const reports: JornadaReport[] = jornadasData.map((jornada) => {
-        const jornadaSales = salesData.filter((s) => s.jornada_id === jornada.id);
-        const jornadaTickets = ticketSalesData.filter((t) => t.jornada_id === jornada.id && t.payment_status === "paid");
-        const activeSales = jornadaSales.filter((s) => !s.is_cancelled);
-        const cancelledSales = jornadaSales.filter((s) => s.is_cancelled);
-
-        const alcoholSales = activeSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const ticketSales = jornadaTickets.reduce((sum, t) => sum + Number(t.total), 0);
-        const totalSales = alcoholSales + ticketSales;
-        const totalCancelled = cancelledSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const cashSales =
-          activeSales.filter((s) => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total_amount), 0) +
-          jornadaTickets.filter((t) => t.payment_method === "cash").reduce((sum, t) => sum + Number(t.total), 0);
-        const cardSales =
-          activeSales.filter((s) => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total_amount), 0) +
-          jornadaTickets.filter((t) => t.payment_method === "card").reduce((sum, t) => sum + Number(t.total), 0);
-        const otherPayments = totalSales - cashSales - cardSales;
-
-        const sellerTotals = new Map<string, { total: number; count: number }>();
-        activeSales.forEach((sale) => {
-          const ex = sellerTotals.get(sale.seller_id) || { total: 0, count: 0 };
-          sellerTotals.set(sale.seller_id, { total: ex.total + Number(sale.total_amount), count: ex.count + 1 });
-        });
-        jornadaTickets.forEach((t) => {
-          if (!t.sold_by_worker_id) return;
-          const ex = sellerTotals.get(t.sold_by_worker_id) || { total: 0, count: 0 };
-          sellerTotals.set(t.sold_by_worker_id, { total: ex.total + Number(t.total), count: ex.count + 1 });
-        });
-        const topSellers = Array.from(sellerTotals.entries())
-          .map(([sid, d]) => ({
-            name: profilesMap.get(sid)?.full_name || profilesMap.get(sid)?.email || "Desconocido",
-            total: d.total,
-            count: d.count,
-          }))
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 3);
-
-        return {
-          jornada,
-          totalSales,
-          totalCancelled,
-          salesCount: activeSales.length + jornadaTickets.length,
-          cancelledCount: cancelledSales.length,
-          alcoholSales,
-          ticketSales,
-          cashSales,
-          cardSales,
-          otherPayments,
-          topSellers,
-          financial: financialMap.get(jornada.id) || null,
-        };
-      });
-
+      const reports: JornadaReport[] = (data || []).map((row: any) => ({
+        id: row.jornada_id,
+        numero_jornada: row.numero_jornada,
+        nombre: row.nombre,
+        fecha: row.fecha,
+        hora_apertura: row.hora_apertura,
+        hora_cierre: row.hora_cierre,
+        estado: row.estado,
+        totalSales: Number(row.total_sales) || 0,
+        totalCancelled: Number(row.cancelled_total) || 0,
+        salesCount: Number(row.sales_count) || 0,
+        cancelledCount: Number(row.cancelled_count) || 0,
+        alcoholSales: Number(row.alcohol_sales) || 0,
+        ticketSales: Number(row.ticket_sales) || 0,
+        cashSales: Number(row.cash_sales) || 0,
+        cardSales: Number(row.card_sales) || 0,
+        otherPayments: Number(row.other_payments) || 0,
+        topSellers: Array.isArray(row.top_sellers) ? row.top_sellers : [],
+        financial: row.financial || null,
+      }));
       setJornadas(reports);
+
+      // Previous month total (single lightweight call)
+      const prevDate = new Date(year, month - 2, 1);
+      const { data: prev } = await supabase.rpc("get_monthly_jornadas_summary", {
+        p_year: prevDate.getFullYear(),
+        p_month: prevDate.getMonth() + 1,
+      });
+      const prevTotal = (prev || []).reduce((s: number, r: any) => s + Number(r.total_sales || 0), 0);
+      setPrevMonthTotal(prevTotal);
     } catch (error) {
       console.error("Error fetching jornadas:", error);
+      toast.error("Error al cargar reportes del mes");
     } finally {
       setLoading(false);
     }
@@ -254,7 +172,7 @@ export function ReportsPanel() {
         seller_name: profilesMap.get(sale.sellerId || "")?.full_name || profilesMap.get(sale.sellerId || "")?.email || "Desconocido",
       }));
 
-      setJornadas((prev) => prev.map((j) => (j.jornada.id === jornadaId ? { ...j, sales: salesWithNames } : j)));
+      setJornadas((prev) => prev.map((j) => (j.id === jornadaId ? { ...j, sales: salesWithNames } : j)));
     } catch (error) {
       console.error("Error fetching sales:", error);
     } finally {
@@ -267,13 +185,16 @@ export function ReportsPanel() {
       setExpandedJornada(null);
     } else {
       setExpandedJornada(jornadaId);
-      const j = jornadas.find((r) => r.jornada.id === jornadaId);
+      const j = jornadas.find((r) => r.id === jornadaId);
       if (!j?.sales) fetchJornadaSales(jornadaId);
     }
   };
 
-  const handleExportJornada = (report: JornadaReport) => {
-    if (!report.sales || report.sales.length === 0) return;
+  const handleExportJornadaCSV = (report: JornadaReport) => {
+    if (!report.sales || report.sales.length === 0) {
+      toast.info("Expande la jornada y espera la carga de ventas antes de exportar.");
+      return;
+    }
     const headers = ["Número", "Fecha", "Vendedor", "POS", "Categoría", "Método Pago", "Total", "Estado"];
     const rows = report.sales.map((sale) => [
       sale.sale_number,
@@ -285,106 +206,185 @@ export function ReportsPanel() {
       sale.total_amount.toString(),
       sale.is_cancelled ? "Cancelada" : "Activa",
     ]);
-    const csvContent = [headers.join(","), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `jornada_${report.jornada.numero_jornada}_${report.jornada.fecha}.csv`;
+    link.download = `jornada_${report.numero_jornada}_${report.fecha}.csv`;
     link.click();
   };
 
-  useEffect(() => {
-    fetchJornadasWithSales();
-  }, [fetchJornadasWithSales]);
+  const handleExportMonthExcel = async () => {
+    if (jornadas.length === 0) return;
+    setExportingMonth(true);
+    try {
+      const rows: MonthlyJornadaRow[] = jornadas.map((j) => ({
+        jornada_id: j.id,
+        numero_jornada: j.numero_jornada,
+        nombre: j.nombre,
+        fecha: j.fecha,
+        hora_apertura: j.hora_apertura,
+        hora_cierre: j.hora_cierre,
+        estado: j.estado,
+        total_sales: j.totalSales,
+        sales_count: j.salesCount,
+        cancelled_total: j.totalCancelled,
+        cancelled_count: j.cancelledCount,
+        alcohol_sales: j.alcoholSales,
+        ticket_sales: j.ticketSales,
+        cash_sales: j.cashSales,
+        card_sales: j.cardSales,
+        other_payments: j.otherPayments,
+        cogs_total: j.financial?.cogs_total ?? null,
+        margin_pct: j.financial?.gross_margin_pct ?? null,
+      }));
+      generateMonthlyExcelReport({ monthLabel, jornadas: rows });
+      toast.success("Excel generado");
+    } catch (e) {
+      console.error(e);
+      toast.error("Error al generar Excel mensual");
+    } finally {
+      setExportingMonth(false);
+    }
+  };
 
-  /* ── month totals ── */
+  useEffect(() => { fetchMonth(); }, [fetchMonth]);
 
-  const monthTotals = jornadas.reduce(
-    (acc, j) => ({
+  /* ── month totals (memoized) ── */
+
+  const totals = useMemo(() => {
+    return jornadas.reduce((acc, j) => ({
       totalSales: acc.totalSales + j.totalSales,
       totalCancelled: acc.totalCancelled + j.totalCancelled,
       salesCount: acc.salesCount + j.salesCount,
       cancelledCount: acc.cancelledCount + j.cancelledCount,
-      alcoholSales: acc.alcoholSales + j.alcoholSales,
-      ticketSales: acc.ticketSales + j.ticketSales,
+      cashSales: acc.cashSales + j.cashSales,
+      cardSales: acc.cardSales + j.cardSales,
       cogsTotal: acc.cogsTotal + (j.financial?.cogs_total || 0),
-      netResult: acc.netResult + (j.financial?.net_operational_result || 0),
-    }),
-    { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, alcoholSales: 0, ticketSales: 0, cogsTotal: 0, netResult: 0 }
-  );
+    }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0, cogsTotal: 0 });
+  }, [jornadas]);
 
-  const avgMargin = monthTotals.totalSales > 0
-    ? (((monthTotals.totalSales - monthTotals.cogsTotal) / monthTotals.totalSales) * 100).toFixed(1)
-    : "0";
+  const avgMarginPct = totals.totalSales > 0
+    ? ((totals.totalSales - totals.cogsTotal) / totals.totalSales) * 100
+    : 0;
+  const commission = calculateCommission(totals.totalSales);
+
+  const trendPct = useMemo(() => {
+    if (prevMonthTotal == null || prevMonthTotal === 0) return null;
+    return ((totals.totalSales - prevMonthTotal) / prevMonthTotal) * 100;
+  }, [totals.totalSales, prevMonthTotal]);
 
   /* ── render ── */
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight">Reportes</h2>
-          <p className="text-muted-foreground text-xs">Descarga reportes de auditoría por jornada</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={monthFilter} onValueChange={setMonthFilter}>
-            <SelectTrigger className="w-[170px] h-9 text-sm">
-              <Calendar className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchJornadasWithSales} disabled={loading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+    <div className="space-y-6">
+      {/* Header sticky */}
+      <div className="sticky top-0 z-10 -mx-3 sm:-mx-0 px-3 sm:px-0 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/40">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight">Reportes</h1>
+            <p className="text-xs text-muted-foreground">Auditoría operativa y descargas por jornada</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={monthFilter} onValueChange={setMonthFilter}>
+              <SelectTrigger className="w-[170px] h-9 text-sm">
+                <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="capitalize">{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleExportMonthExcel} disabled={exportingMonth || loading || jornadas.length === 0}>
+              {exportingMonth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Excel del mes</span>
+            </Button>
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchMonth} disabled={loading}>
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Month Summary */}
-      {!loading && jornadas.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <SummaryCard label="Ventas Brutas" value={formatCLP(monthTotals.totalSales)} sub={`${monthTotals.salesCount} transacciones`} icon={DollarSign} />
-          <SummaryCard label="Efectivo / Tarjeta" value={`${formatCLP(jornadas.reduce((s, j) => s + j.cashSales, 0))} / ${formatCLP(jornadas.reduce((s, j) => s + j.cardSales, 0))}`} sub={`${jornadas.length} jornadas`} icon={CreditCard} />
-          <SummaryCard label="Margen Bruto" value={`${avgMargin}%`} sub={`COGS ${formatCLP(monthTotals.cogsTotal)}`} icon={TrendingUp} accent={Number(avgMargin) >= 30} />
-          <SummaryCard label="Cancelaciones" value={formatCLP(monthTotals.totalCancelled)} sub={`${monthTotals.cancelledCount} ventas`} icon={XCircle} destructive />
-        </div>
-      )}
-
-      {/* Comisión STOCKIA del mes */}
-      {!loading && jornadas.length > 0 && (
-        <StockiaCommissionCard monthLabel={monthOptions.find((o) => o.value === monthFilter)?.label || ""} grossSales={monthTotals.totalSales} />
-      )}
-
-      {/* Jornadas List */}
+      {/* KPI Summary */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
         </div>
       ) : jornadas.length === 0 ? (
-        <Card className="p-10 text-center">
-          <Calendar className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
-          <h3 className="font-medium mb-1">Sin jornadas registradas</h3>
-          <p className="text-sm text-muted-foreground">No hay jornadas en el período seleccionado</p>
+        <Card className="border-dashed">
+          <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
+            <Calendar className="w-8 h-8 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground">No hay jornadas registradas en {monthLabel}.</p>
+          </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {jornadas.map((report) => (
-            <JornadaReportRow
-              key={report.jornada.id}
-              report={report}
-              expanded={expandedJornada === report.jornada.id}
-              onToggle={() => handleExpand(report.jornada.id)}
-              loadingSales={loadingSales === report.jornada.id}
-              onExport={() => handleExportJornada(report)}
-              onOpenEERR={() => setEerrOpen({ id: report.jornada.id, num: report.jornada.numero_jornada, date: report.jornada.fecha })}
-            />
-          ))}
-        </div>
+        <>
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumen del mes</h2>
+              <Badge variant="secondary" className="text-[10px] tabular-nums">{jornadas.length} jornadas</Badge>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KPI
+                label="Ventas totales"
+                value={formatCLP(totals.totalSales)}
+                sub={`${totals.salesCount} transacciones`}
+                icon={DollarSign}
+                trend={trendPct}
+              />
+              <KPI
+                label="Efec. / Tarjeta"
+                value={`${formatCLP(totals.cashSales)}`}
+                sub={`Tarjeta ${formatCLP(totals.cardSales)}`}
+                icon={CreditCard}
+              />
+              <KPI
+                label="Margen bruto"
+                value={`${avgMarginPct.toFixed(1)}%`}
+                sub={`COGS ${formatCLP(totals.cogsTotal)}`}
+                icon={TrendingUp}
+                accent={avgMarginPct >= 30}
+                negative={avgMarginPct < 0}
+              />
+              <KPI
+                label={STOCKIA_COMMISSION_LABEL}
+                value={formatCLP(commission)}
+                sub={`${(STOCKIA_COMMISSION_RATE * 100).toFixed(1)}% sobre ventas brutas`}
+                icon={DollarSign}
+                accent
+              />
+            </div>
+            {totals.totalCancelled > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/20 bg-destructive/5 text-xs">
+                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-muted-foreground">Cancelaciones del mes:</span>
+                <span className="font-semibold text-destructive tabular-nums">{formatCLP(totals.totalCancelled)}</span>
+                <span className="text-muted-foreground">· {totals.cancelledCount} ventas</span>
+              </div>
+            )}
+          </section>
+
+          {/* Jornadas list */}
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Jornadas</h2>
+            <div className="space-y-2">
+              {jornadas.map((report) => (
+                <JornadaRow
+                  key={report.id}
+                  report={report}
+                  expanded={expandedJornada === report.id}
+                  onToggle={() => handleExpand(report.id)}
+                  loadingSales={loadingSales === report.id}
+                  onCSV={() => handleExportJornadaCSV(report)}
+                  onOpenEERR={() => setEerrOpen({ id: report.id, num: report.numero_jornada, date: report.fecha })}
+                />
+              ))}
+            </div>
+          </section>
+        </>
       )}
 
       {eerrOpen && (
@@ -400,86 +400,72 @@ export function ReportsPanel() {
   );
 }
 
-/* ── Summary Card ── */
+/* ── KPI Card ── */
 
-function SummaryCard({ label, value, sub, icon: Icon, accent, destructive }: {
-  label: string; value: string; sub: string; icon: React.ElementType; accent?: boolean; destructive?: boolean;
+function KPI({ label, value, sub, icon: Icon, accent, negative, trend }: {
+  label: string; value: string; sub?: string; icon: React.ElementType;
+  accent?: boolean; negative?: boolean; trend?: number | null;
 }) {
   return (
-    <Card className="p-3">
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-        <Icon className="h-3.5 w-3.5" />
-        <span className="text-[11px] font-medium uppercase tracking-wider">{label}</span>
-      </div>
-      <p className={`text-lg font-bold tabular-nums ${destructive ? "text-destructive" : accent ? "text-primary" : ""}`}>{value}</p>
-      <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>
+    <Card className="overflow-hidden">
+      <CardContent className="p-4 space-y-1.5">
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+          <Icon className="h-3.5 w-3.5 opacity-40" />
+        </div>
+        <p className={`text-xl font-bold tabular-nums leading-tight ${negative ? "text-destructive" : accent ? "text-primary" : "text-foreground"}`}>
+          {value}
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          {sub && <p className="text-[11px] text-muted-foreground truncate">{sub}</p>}
+          {trend != null && (
+            <span className={`flex items-center gap-0.5 text-[10px] font-medium tabular-nums shrink-0 ${trend >= 0 ? "text-primary" : "text-destructive"}`}>
+              {trend >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+              {Math.abs(trend).toFixed(0)}%
+            </span>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }
 
-/* ── Comisión STOCKIA del mes ── */
+/* ── Jornada Row ── */
 
-function StockiaCommissionCard({ monthLabel, grossSales }: { monthLabel: string; grossSales: number }) {
-  const commission = calculateCommission(grossSales);
-  const ratePct = (STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "");
-  return (
-    <Card className="p-4 border-primary/30 bg-primary/5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <DollarSign className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold">{STOCKIA_COMMISSION_LABEL}</span>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{ratePct}%</Badge>
-          </div>
-          <p className="text-[11px] text-muted-foreground capitalize">
-            {monthLabel} · sobre ventas brutas {formatCLP(grossSales)}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            Informativo · base para la facturación semanal de STOCKIA. No afecta caja ni cierre operacional.
-          </p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-2xl font-bold tabular-nums text-primary">{formatCLP(commission)}</p>
-          <p className="text-[10px] text-muted-foreground">a facturar este mes</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/* ── Jornada Report Row ── */
-
-function JornadaReportRow({
-  report, expanded, onToggle, loadingSales, onExport, onOpenEERR,
+function JornadaRow({
+  report, expanded, onToggle, loadingSales, onCSV, onOpenEERR,
 }: {
   report: JornadaReport; expanded: boolean; onToggle: () => void;
-  loadingSales: boolean; onExport: () => void; onOpenEERR: () => void;
+  loadingSales: boolean; onCSV: () => void; onOpenEERR: () => void;
 }) {
   const fin = report.financial;
-  const isClosed = report.jornada.estado === "cerrada";
-  const horario = `${report.jornada.hora_apertura?.slice(0, 5) || "--:--"} – ${report.jornada.hora_cierre?.slice(0, 5) || "--:--"}`;
-  const displayName = report.jornada.nombre || `Jornada ${report.jornada.numero_jornada}`;
+  const isClosed = report.estado === "cerrada";
+  const horario = `${report.hora_apertura?.slice(0, 5) || "--:--"} – ${report.hora_cierre?.slice(0, 5) || "--:--"}`;
+  const displayName = report.nombre || `Jornada ${report.numero_jornada}`;
 
   return (
     <Card className="overflow-hidden">
-      {/* Main row: info + downloads */}
       <div className="p-3 sm:p-4">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-          {/* Left: Session info */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="text-xs font-mono text-muted-foreground">#{report.jornada.numero_jornada}</span>
+              <span className="text-[11px] font-mono text-muted-foreground">#{report.numero_jornada}</span>
               <span className="font-semibold text-sm truncate">{displayName}</span>
-              <Badge variant={isClosed ? "secondary" : "default"} className="text-[10px] px-1.5 py-0">
+              <Badge variant={isClosed ? "secondary" : "default"} className="text-[10px] px-1.5 py-0 h-4">
                 {isClosed ? "Cerrada" : "Abierta"}
               </Badge>
+              {fin && (fin as any).requires_review && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-amber-500/40 text-amber-500">
+                  <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Revisar
+                </Badge>
+              )}
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="capitalize">{format(parseISO(report.jornada.fecha), "EEE d MMM yyyy", { locale: es })}</span>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="capitalize">{format(parseISO(report.fecha), "EEE d MMM", { locale: es })}</span>
               <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{horario}</span>
             </div>
-            {/* Inline KPIs */}
-            <div className="flex items-center gap-4 mt-2 text-xs">
+            <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
               <span className="font-bold text-base tabular-nums">{formatCLP(report.totalSales)}</span>
               <span className="text-muted-foreground">{report.salesCount} ventas</span>
               {fin?.gross_margin_pct != null && (
@@ -487,31 +473,29 @@ function JornadaReportRow({
                   {fin.gross_margin_pct.toFixed(1)}% margen
                 </span>
               )}
+              {report.cancelledCount > 0 && (
+                <span className="text-destructive text-[11px]">{report.cancelledCount} canc.</span>
+              )}
             </div>
           </div>
 
-          {/* Right: Download buttons – hero placement */}
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-            <POSReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
-            <ProductSalesReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} horario={horario} />
-            <RedeemReportButton jornadaId={report.jornada.id} jornadaNumber={report.jornada.numero_jornada} fecha={report.jornada.fecha} />
-            {isClosed && (
-              <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={(e) => { e.stopPropagation(); onExport(); }}>
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">CSV</span>
-              </Button>
-            )}
-            {isClosed && fin && (
-              <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={(e) => { e.stopPropagation(); onOpenEERR(); }}>
-                <FileText className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">EERR</span>
-              </Button>
-            )}
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <RedeemReportButton jornadaId={report.id} jornadaNumber={report.numero_jornada} fecha={report.fecha} />
+            <JornadaDownloadMenu
+              jornadaId={report.id}
+              jornadaNumber={report.numero_jornada}
+              fecha={report.fecha}
+              horario={horario}
+              isClosed={isClosed}
+              hasFinancial={!!fin}
+              onCSV={onCSV}
+              onEERR={onOpenEERR}
+            />
           </div>
         </div>
       </div>
 
-      {/* Expandable: detail breakdown */}
       <Collapsible open={expanded} onOpenChange={onToggle}>
         <CollapsibleTrigger asChild>
           <button className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/50 transition-colors border-t border-border/50">
@@ -522,7 +506,6 @@ function JornadaReportRow({
 
         <CollapsibleContent>
           <div className="border-t p-3 space-y-3 bg-muted/20">
-            {/* KPI grid */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
               <KPICell icon={Banknote} label="Efectivo" value={formatCLP(report.cashSales)} />
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
@@ -532,7 +515,17 @@ function JornadaReportRow({
               <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 
-            {/* Sales table */}
+            {report.topSellers.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                <span className="text-muted-foreground">Top vendedores:</span>
+                {report.topSellers.map((s, i) => (
+                  <Badge key={i} variant="outline" className="text-[10px] gap-1">
+                    {s.name} · <span className="tabular-nums">{formatCLP(s.total)}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
+
             {loadingSales ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -589,8 +582,6 @@ function JornadaReportRow({
   );
 }
 
-/* ── KPI cell ── */
-
 function KPICell({ icon: Icon, label, value, destructive }: {
   icon: React.ElementType; label: string; value: string; destructive?: boolean;
 }) {
@@ -602,158 +593,5 @@ function KPICell({ icon: Icon, label, value, destructive }: {
       </div>
       <p className={`font-semibold text-xs tabular-nums ${destructive ? "text-destructive" : ""}`}>{value}</p>
     </div>
-  );
-}
-
-/* ── POS Report Button ── */
-
-function POSReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
-  const [loading, setLoading] = useState(false);
-
-  const handlePrint = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLoading(true);
-    try {
-      const [salesRes, ticketSalesRes, posRes] = await Promise.all([
-        supabase
-          .from("sales")
-          .select("total_amount, payment_method, point_of_sale, is_cancelled")
-          .eq("jornada_id", jornadaId)
-          .eq("is_cancelled", false),
-        supabase
-          .from("ticket_sales")
-          .select("total, payment_method, pos_id")
-          .eq("jornada_id", jornadaId)
-          .eq("payment_status", "paid"),
-        supabase.from("pos_terminals").select("id, name"),
-      ]);
-
-      if (salesRes.error) throw salesRes.error;
-      if (ticketSalesRes.error) throw ticketSalesRes.error;
-
-      const sales = salesRes.data || [];
-      const ticketSales = ticketSalesRes.data || [];
-      const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
-
-      if (sales.length === 0 && ticketSales.length === 0) {
-        const { toast } = await import("sonner");
-        toast.info("No hay ventas en esta jornada");
-        return;
-      }
-
-      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-      const accumulate = (posName: string, paymentMethod: string, amt: number) => {
-        const entry = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
-        if (paymentMethod === "cash") { entry.cash += amt; entry.cashN++; }
-        else if (paymentMethod === "card") { entry.card += amt; entry.cardN++; }
-        else { entry.other += amt; entry.otherN++; }
-        posMap.set(posName, entry);
-      };
-
-      for (const s of sales) {
-        accumulate(s.point_of_sale || "Sin POS", s.payment_method, Number(s.total_amount));
-      }
-      for (const t of ticketSales) {
-        const posName = (t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets";
-        accumulate(posName, t.payment_method, Number(t.total));
-      }
-
-      const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries())
-        .map(([posName, d]) => ({
-          posName, cashTotal: d.cash, cashCount: d.cashN, cardTotal: d.card, cardCount: d.cardN,
-          otherTotal: d.other, otherCount: d.otherN, total: d.cash + d.card + d.other, totalCount: d.cashN + d.cardN + d.otherN,
-        }))
-        .sort((a, b) => b.total - a.total);
-
-      printPOSSalesReport({
-        jornadaNumber, fecha, horario, posSummary,
-        grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
-        grandCash: posSummary.reduce((s, p) => s + p.cashTotal, 0),
-        grandCard: posSummary.reduce((s, p) => s + p.cardTotal, 0),
-        grandOther: posSummary.reduce((s, p) => s + p.otherTotal, 0),
-        grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
-      });
-    } catch (err) {
-      console.error("Error generating POS report:", err);
-      const { toast } = await import("sonner");
-      toast.error("Error al generar reporte");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={handlePrint} disabled={loading}>
-      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-      POS
-    </Button>
-  );
-}
-
-/* ── Product Count Report Button ── */
-
-function ProductSalesReportButton({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
-  const [loading, setLoading] = useState(false);
-
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLoading(true);
-    try {
-      const { data: saleItems, error: itemsErr } = await supabase
-        .from("sale_items")
-        .select(`cocktail_id, quantity, subtotal, sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled, point_of_sale)`)
-        .eq("sales.jornada_id", jornadaId)
-        .eq("sales.is_cancelled", false);
-
-      if (itemsErr) throw itemsErr;
-      if (!saleItems || saleItems.length === 0) {
-        const { toast } = await import("sonner");
-        toast.info("No hay productos vendidos en esta jornada");
-        return;
-      }
-
-      const cocktailIds = [...new Set(saleItems.map((i) => i.cocktail_id))];
-      const { data: cocktails } = await supabase.from("cocktails").select("id, name, category").in("id", cocktailIds);
-      const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
-
-      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number }>>();
-      for (const item of saleItems) {
-        const sale = item.sales as unknown as { point_of_sale: string };
-        const posName = sale.point_of_sale || "Sin POS";
-        const cocktail = cocktailMap.get(item.cocktail_id);
-        if (!posMap.has(posName)) posMap.set(posName, new Map());
-        const prodMap = posMap.get(posName)!;
-        const existing = prodMap.get(item.cocktail_id) || { name: cocktail?.name || "Desconocido", category: cocktail?.category || "otros", qty: 0 };
-        existing.qty += Number(item.quantity) || 0;
-        prodMap.set(item.cocktail_id, existing);
-      }
-
-      const posSections: POSProductBreakdown[] = Array.from(posMap.entries())
-        .map(([posName, prodMap]) => {
-          const products = Array.from(prodMap.values())
-            .map((p) => ({ cocktailName: p.name, category: p.category, quantity: p.qty }))
-            .sort((a, b) => b.quantity - a.quantity);
-          return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0) };
-        })
-        .sort((a, b) => b.totalUnits - a.totalUnits);
-
-      generateProductSalesPDF({ jornadaNumber, fecha, horario, posSections, grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0) });
-
-      const { toast } = await import("sonner");
-      toast.success("Reporte de conteo enviado a impresión");
-    } catch (err) {
-      console.error("Error generating product sales PDF:", err);
-      const { toast } = await import("sonner");
-      toast.error("Error al generar reporte");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={handleDownload} disabled={loading}>
-      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-      Conteo
-    </Button>
   );
 }
