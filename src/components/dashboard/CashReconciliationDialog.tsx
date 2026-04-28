@@ -17,18 +17,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2,
-  Calculator,
-  AlertTriangle,
-  CheckCircle,
-  Banknote,
   Store,
-  ChevronRight,
-  ChevronLeft,
   ClipboardCheck,
-  BarChart3,
   ShieldCheck,
+  Info,
 } from "lucide-react";
-import { formatCLP } from "@/lib/currency";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -39,30 +32,14 @@ interface CashReconciliationDialogProps {
   jornadaId: string;
 }
 
-interface POSReconciliationData {
+interface POSChecklistItem {
   posId: string;
   posName: string;
   locationName: string;
-  openingCash: number;
-  cashSalesTotal: number;
-  cashExpenses: number;
-  expectedCash: number;
-  closingCashCounted: string;
+  bartenderName: string;
+  confirmed: boolean;
   notes: string;
 }
-
-interface JornadaSummary {
-  grossSales: number;
-  netSales: number;
-  transactionCount: number;
-  cancelledCount: number;
-  cancelledTotal: number;
-  cashSales: number;
-  cardSales: number;
-  transferSales: number;
-}
-
-type WizardStep = "summary" | "arqueo" | "confirm";
 
 export function CashReconciliationDialog({
   open,
@@ -72,18 +49,10 @@ export function CashReconciliationDialog({
 }: CashReconciliationDialogProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [posReconciliations, setPosReconciliations] = useState<POSReconciliationData[]>([]);
-  const [jornadaSummary, setJornadaSummary] = useState<JornadaSummary>({
-    grossSales: 0, netSales: 0, transactionCount: 0, cancelledCount: 0,
-    cancelledTotal: 0, cashSales: 0, cardSales: 0, transferSales: 0,
-  });
-  const [step, setStep] = useState<WizardStep>("summary");
-  const [confirmChecks, setConfirmChecks] = useState({ allArqueados: false, entiendoCierre: false });
+  const [items, setItems] = useState<POSChecklistItem[]>([]);
 
   useEffect(() => {
     if (open && jornadaId) {
-      setStep("summary");
-      setConfirmChecks({ allArqueados: false, entiendoCierre: false });
       fetchData();
     }
   }, [open, jornadaId]);
@@ -91,152 +60,76 @@ export function CashReconciliationDialog({
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Parallel fetches — pos query WITHOUT join (no FK exists for location_id)
-      const [posResult, locationsResult, openingsResult, salesResult, ticketSalesResult, expensesResult] = await Promise.all([
-        supabase.from("pos_terminals").select("id, name, location_id")
-          .eq("is_active", true).eq("is_cash_register", true),
+      const [posResult, locationsResult] = await Promise.all([
+        supabase
+          .from("pos_terminals")
+          .select("id, name, location_id")
+          .eq("is_active", true)
+          .eq("is_cash_register", true),
         supabase.from("stock_locations").select("id, name"),
-        supabase.from("jornada_cash_openings").select("pos_id, opening_cash_amount")
-          .eq("jornada_id", jornadaId),
-        supabase.from("sales").select("pos_id, total_amount, payment_method, is_cancelled")
-          .eq("jornada_id", jornadaId),
-        supabase.from("ticket_sales").select("pos_id, total, payment_method, payment_status")
-          .eq("jornada_id", jornadaId).eq("payment_status", "paid"),
-        supabase.from("expenses").select("pos_id, amount, payment_method")
-          .eq("jornada_id", jornadaId).eq("payment_method", "cash"),
       ]);
 
       if (posResult.error) throw posResult.error;
-      if (salesResult.error) throw salesResult.error;
 
-      // Build location name lookup
       const locationMap: Record<string, string> = {};
-      (locationsResult.data || []).forEach((loc: any) => { locationMap[loc.id] = loc.name; });
-
-      const allSales = salesResult.data || [];
-      const activeSales = allSales.filter((s: any) => !s.is_cancelled);
-      const cancelledSales = allSales.filter((s: any) => s.is_cancelled);
-      const paidTickets = (ticketSalesResult.data || []) as any[];
-
-      // Build summary — incluye tickets en totales y por medio de pago
-      let cashSales = 0, cardSales = 0, transferSales = 0;
-      activeSales.forEach((s: any) => {
-        const amt = Number(s.total_amount);
-        if (s.payment_method === "cash") cashSales += amt;
-        else if (s.payment_method === "card") cardSales += amt;
-        else if (s.payment_method === "transfer") transferSales += amt;
-      });
-      paidTickets.forEach((t: any) => {
-        const amt = Number(t.total);
-        if (t.payment_method === "cash") cashSales += amt;
-        else if (t.payment_method === "card") cardSales += amt;
-        else if (t.payment_method === "transfer") transferSales += amt;
+      (locationsResult.data || []).forEach((loc: any) => {
+        locationMap[loc.id] = loc.name;
       });
 
-      const alcoholGross = activeSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0);
-      const ticketGross = paidTickets.reduce((sum: number, t: any) => sum + Number(t.total), 0);
+      const list: POSChecklistItem[] = (posResult.data || []).map((pos: any) => ({
+        posId: pos.id,
+        posName: pos.name,
+        locationName: locationMap[pos.location_id] || "Sin ubicación",
+        bartenderName: "",
+        confirmed: false,
+        notes: "",
+      }));
 
-      setJornadaSummary({
-        grossSales: alcoholGross + ticketGross,
-        netSales: alcoholGross + ticketGross,
-        transactionCount: activeSales.length + paidTickets.length,
-        cancelledCount: cancelledSales.length,
-        cancelledTotal: cancelledSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0),
-        cashSales, cardSales, transferSales,
-      });
-
-      // Build per-POS data — ventas en efectivo (alcohol + tickets)
-      const openingsMap: Record<string, number> = {};
-      (openingsResult.data || []).forEach((o: any) => { openingsMap[o.pos_id] = Number(o.opening_cash_amount); });
-
-      const cashSalesByPos: Record<string, number> = {};
-      activeSales.filter((s: any) => s.payment_method === "cash").forEach((s: any) => {
-        const pid = s.pos_id || "unknown";
-        cashSalesByPos[pid] = (cashSalesByPos[pid] || 0) + Number(s.total_amount);
-      });
-      paidTickets.filter((t: any) => t.payment_method === "cash").forEach((t: any) => {
-        const pid = t.pos_id || "unknown";
-        cashSalesByPos[pid] = (cashSalesByPos[pid] || 0) + Number(t.total);
-      });
-
-      const cashExpensesByPos: Record<string, number> = {};
-      (expensesResult.data || []).forEach((e: any) => {
-        const pid = e.pos_id || "unknown";
-        cashExpensesByPos[pid] = (cashExpensesByPos[pid] || 0) + Number(e.amount);
-      });
-
-      const reconciliationData: POSReconciliationData[] = (posResult.data || []).map((pos: any) => {
-        const openingCash = openingsMap[pos.id] || 0;
-        const posCashSales = cashSalesByPos[pos.id] || 0;
-        const posCashExpenses = cashExpensesByPos[pos.id] || 0;
-        return {
-          posId: pos.id,
-          posName: pos.name,
-          locationName: locationMap[pos.location_id] || "Sin ubicación",
-          openingCash,
-          cashSalesTotal: posCashSales,
-          cashExpenses: posCashExpenses,
-          expectedCash: openingCash + posCashSales - posCashExpenses,
-          closingCashCounted: "",
-          notes: "",
-        };
-      });
-
-      setPosReconciliations(reconciliationData);
+      setItems(list);
     } catch (error) {
-      console.error("Error fetching reconciliation data:", error);
-      toast.error("Error al cargar datos de caja");
+      console.error("Error loading POS list:", error);
+      toast.error("Error al cargar lista de POS");
     } finally {
       setLoading(false);
     }
   };
 
-  const updatePosField = (posId: string, field: "closingCashCounted" | "notes", value: string) => {
-    setPosReconciliations((prev) =>
-      prev.map((pos) => pos.posId === posId ? { ...pos, [field]: value } : pos)
+  const updateItem = (
+    posId: string,
+    field: keyof Omit<POSChecklistItem, "posId" | "posName" | "locationName">,
+    value: string | boolean,
+  ) => {
+    setItems((prev) =>
+      prev.map((it) => (it.posId === posId ? { ...it, [field]: value } : it)),
     );
   };
 
-  const calculateDifference = (pos: POSReconciliationData): number => {
-    const closing = parseFloat(pos.closingCashCounted) || 0;
-    return closing - pos.expectedCash;
-  };
-
-  const allPosHaveClosingCash = (): boolean =>
-    posReconciliations.every((pos) => pos.closingCashCounted !== "" && parseFloat(pos.closingCashCounted) >= 0);
-
-  const allDifferencesJustified = (): boolean =>
-    posReconciliations.every((pos) => {
-      if (pos.closingCashCounted === "") return false;
-      const diff = calculateDifference(pos);
-      if (Math.abs(diff) > 0.01) return pos.notes.trim().length > 0;
-      return true;
-    });
-
-  const canProceedFromArqueo = allPosHaveClosingCash() && allDifferencesJustified();
+  const allComplete =
+    items.length > 0 &&
+    items.every((it) => it.confirmed && it.bartenderName.trim().length > 0);
 
   const handleSubmit = async () => {
-    if (!canProceedFromArqueo) {
-      toast.error("Completa el arqueo de todas las cajas");
+    if (!allComplete) {
+      toast.error("Completa la confirmación y el nombre del bartender en todos los POS");
       return;
     }
 
     setSubmitting(true);
     try {
-      const cashClosings = posReconciliations.map((pos) => ({
-        pos_id: pos.posId,
-        closing_cash_counted: parseFloat(pos.closingCashCounted) || 0,
-        notes: pos.notes || null,
+      const payload = items.map((it) => ({
+        pos_id: it.posId,
+        bartender_name: it.bartenderName.trim(),
+        confirmed: true,
+        notes: it.notes.trim() || null,
       }));
 
       const { data, error } = await supabase.rpc("close_jornada_manual", {
         p_jornada_id: jornadaId,
-        p_cash_closings: cashClosings,
+        p_cash_closings: payload,
       });
 
       if (error) throw new Error(error.message || "Error al cerrar jornada");
-
-      const result = data as { success: boolean; error?: string; failing_step?: string };
+      const result = data as { success: boolean; error?: string };
       if (!result?.success) {
         throw new Error(result?.error || "Error desconocido al cerrar jornada");
       }
@@ -251,288 +144,131 @@ export function CashReconciliationDialog({
     }
   };
 
-  const getTotalSummary = () => {
-    const totalExpected = posReconciliations.reduce((sum, pos) => sum + pos.expectedCash, 0);
-    const totalCounted = posReconciliations.reduce((sum, pos) => sum + (parseFloat(pos.closingCashCounted) || 0), 0);
-    return { totalExpected, totalCounted, totalDifference: totalCounted - totalExpected };
-  };
-
-  const { totalExpected, totalCounted, totalDifference } = getTotalSummary();
-  const hasTotalDifference = Math.abs(totalDifference) > 0.01;
-  const posWithDifferences = posReconciliations.filter(
-    (pos) => pos.closingCashCounted !== "" && Math.abs(calculateDifference(pos)) > 0.01
-  );
-
-  // ── Step renderers ──
-
-  const renderSummary = () => (
-    <div className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryCard label="Ventas brutas" value={formatCLP(jornadaSummary.grossSales)} />
-        <SummaryCard label="Transacciones" value={String(jornadaSummary.transactionCount)} />
-        <SummaryCard label="Cancelaciones" value={`${jornadaSummary.cancelledCount} (${formatCLP(jornadaSummary.cancelledTotal)})`} negative={jornadaSummary.cancelledCount > 0} />
-        <SummaryCard label="Ventas netas" value={formatCLP(jornadaSummary.netSales)} />
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Efectivo" value={formatCLP(jornadaSummary.cashSales)} small />
-        <SummaryCard label="Tarjeta" value={formatCLP(jornadaSummary.cardSales)} small />
-        <SummaryCard label="Transferencia" value={formatCLP(jornadaSummary.transferSales)} small />
-      </div>
-    </div>
-  );
-
-  const renderArqueo = () => (
-    <ScrollArea className="h-[50vh] pr-4">
-      <div className="space-y-4">
-        {posReconciliations.map((pos) => {
-          const difference = calculateDifference(pos);
-          const hasDifference = pos.closingCashCounted !== "" && Math.abs(difference) > 0.01;
-          const missingNotes = hasDifference && pos.notes.trim().length === 0;
-
-          return (
-            <Card key={pos.posId} className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Store className="w-4 h-4 text-primary" />
-                <span className="font-semibold">{pos.posName}</span>
-                <Badge variant="outline" className="ml-auto">{pos.locationName}</Badge>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2 mb-3">
-                <MiniStat label="Apertura" value={formatCLP(pos.openingCash)} />
-                <MiniStat label="Ventas $" value={`+${formatCLP(pos.cashSalesTotal)}`} className="text-green-600" />
-                <MiniStat label="Retiros $" value={`-${formatCLP(pos.cashExpenses)}`} className="text-red-600" />
-                <MiniStat label="Esperado" value={formatCLP(pos.expectedCash)} className="font-bold text-primary" />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <Label htmlFor={`closing-${pos.posId}`} className="text-sm flex items-center gap-1">
-                      <Banknote className="w-3 h-3" />
-                      Efectivo contado
-                    </Label>
-                    <Input
-                      id={`closing-${pos.posId}`}
-                      type="number"
-                      placeholder="0"
-                      value={pos.closingCashCounted}
-                      onChange={(e) => updatePosField(pos.posId, "closingCashCounted", e.target.value)}
-                      min="0"
-                      step="1"
-                      className="mt-1"
-                    />
-                  </div>
-                  {pos.closingCashCounted !== "" && (
-                    <div className="flex-shrink-0 pt-5">
-                      <Badge
-                        variant={hasDifference ? "destructive" : "secondary"}
-                        className={!hasDifference ? "bg-green-500 text-white" : ""}
-                      >
-                        {hasDifference ? <AlertTriangle className="w-3 h-3 mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                        {difference >= 0 ? "+" : ""}{formatCLP(difference)}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-
-                {hasDifference && (
-                  <div>
-                    <Textarea
-                      placeholder="Justificación de la diferencia (obligatorio)..."
-                      value={pos.notes}
-                      onChange={(e) => updatePosField(pos.posId, "notes", e.target.value)}
-                      className={`text-sm ${missingNotes ? "border-destructive" : ""}`}
-                      rows={2}
-                    />
-                    {missingNotes && (
-                      <p className="text-xs text-destructive mt-1">
-                        Debes justificar la diferencia para continuar.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </ScrollArea>
-  );
-
-  const renderConfirm = () => (
-    <div className="space-y-4 py-2">
-      {/* Totals recap */}
-      <Card className={`p-4 ${hasTotalDifference ? "bg-destructive/10 border-destructive/30" : "bg-green-500/10 border-green-500/30"}`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Total General</p>
-            <p className="text-xs text-muted-foreground">
-              Esperado: {formatCLP(totalExpected)} | Contado: {formatCLP(totalCounted)}
-            </p>
-          </div>
-          <Badge variant={hasTotalDifference ? "destructive" : "secondary"} className={!hasTotalDifference ? "bg-green-500 text-white" : ""}>
-            {hasTotalDifference ? <AlertTriangle className="w-3 h-3 mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-            {totalDifference >= 0 ? "+" : ""}{formatCLP(totalDifference)}
-          </Badge>
-        </div>
-      </Card>
-
-      {/* Differences detail */}
-      {posWithDifferences.length > 0 && (
-        <Card className="p-4 bg-amber-500/5 border-amber-500/20">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
-            <AlertTriangle className="w-4 h-4 inline mr-1" />
-            {posWithDifferences.length} POS con diferencia
-          </p>
-          <div className="space-y-1 text-sm">
-            {posWithDifferences.map((pos) => (
-              <div key={pos.posId} className="flex justify-between text-muted-foreground">
-                <span>{pos.posName}</span>
-                <span>{formatCLP(calculateDifference(pos))}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Checklist */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="check-arqueados"
-            checked={confirmChecks.allArqueados}
-            onCheckedChange={(v) => setConfirmChecks((p) => ({ ...p, allArqueados: !!v }))}
-          />
-          <Label htmlFor="check-arqueados" className="text-sm leading-tight cursor-pointer">
-            Todos los POS han sido arqueados y las diferencias están justificadas.
-          </Label>
-        </div>
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="check-entiendo"
-            checked={confirmChecks.entiendoCierre}
-            onCheckedChange={(v) => setConfirmChecks((p) => ({ ...p, entiendoCierre: !!v }))}
-          />
-          <Label htmlFor="check-entiendo" className="text-sm leading-tight cursor-pointer">
-            Entiendo que esto cerrará la jornada y bloqueará ventas hasta la próxima apertura.
-          </Label>
-        </div>
-      </div>
-    </div>
-  );
-
-  const stepConfig: Record<WizardStep, { title: string; desc: string; icon: React.ReactNode }> = {
-    summary: { title: "Resumen de Jornada", desc: "Revisa los resultados antes de cerrar", icon: <BarChart3 className="w-5 h-5" /> },
-    arqueo: { title: "Arqueo por POS", desc: "Ingresa el efectivo contado en cada caja", icon: <Calculator className="w-5 h-5" /> },
-    confirm: { title: "Confirmación", desc: "Verifica y confirma el cierre de jornada", icon: <ShieldCheck className="w-5 h-5" /> },
-  };
-
-  const steps: WizardStep[] = ["summary", "arqueo", "confirm"];
-  const currentStepIndex = steps.indexOf(step);
-  const currentConfig = stepConfig[step];
-
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {currentConfig.icon}
-            {currentConfig.title}
+            <ShieldCheck className="w-5 h-5" />
+            Cierre de Jornada — Confirmación física
           </DialogTitle>
-          <DialogDescription>{currentConfig.desc}</DialogDescription>
-          {/* Step indicator */}
-          <div className="flex items-center gap-2 pt-2">
-            {steps.map((s, i) => (
-              <div key={s} className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                  i < currentStepIndex ? "bg-primary text-primary-foreground"
-                    : i === currentStepIndex ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {i < currentStepIndex ? <CheckCircle className="w-4 h-4" /> : i + 1}
-                </div>
-                {i < steps.length - 1 && <div className={`w-8 h-0.5 ${i < currentStepIndex ? "bg-primary" : "bg-muted"}`} />}
-              </div>
-            ))}
-          </div>
+          <DialogDescription>
+            Confirma el cuadre físico firmado por el bartender de turno en cada POS.
+          </DialogDescription>
         </DialogHeader>
+
+        <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <p>
+            El arqueo financiero se realiza fuera del sistema usando el{" "}
+            <strong>reporte físico descargable</strong> de cada POS (disponible en{" "}
+            <strong>Reportes</strong>). Aquí solo registras quién firmó y observaciones.
+          </p>
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin" />
           </div>
+        ) : items.length === 0 ? (
+          <Card className="p-6 text-center text-muted-foreground">
+            No hay POS activos configurados.
+          </Card>
         ) : (
-          <div className="flex-1 min-h-0">
-            {step === "summary" && renderSummary()}
-            {step === "arqueo" && renderArqueo()}
-            {step === "confirm" && renderConfirm()}
-          </div>
+          <ScrollArea className="flex-1 min-h-0 max-h-[55vh] pr-3">
+            <div className="space-y-3">
+              {items.map((it) => (
+                <Card key={it.posId} className="p-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Store className="w-4 h-4 text-primary" />
+                    <span className="font-semibold text-sm">{it.posName}</span>
+                    <Badge variant="outline" className="ml-auto text-[10px]">
+                      {it.locationName}
+                    </Badge>
+                  </div>
+
+                  <div>
+                    <Label
+                      htmlFor={`bartender-${it.posId}`}
+                      className="text-xs font-medium"
+                    >
+                      Bartender / Cajero de turno (firma) *
+                    </Label>
+                    <Input
+                      id={`bartender-${it.posId}`}
+                      type="text"
+                      placeholder="Nombre completo"
+                      value={it.bartenderName}
+                      onChange={(e) =>
+                        updateItem(it.posId, "bartenderName", e.target.value)
+                      }
+                      className="mt-1 h-8 text-sm"
+                    />
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id={`confirm-${it.posId}`}
+                      checked={it.confirmed}
+                      onCheckedChange={(v) =>
+                        updateItem(it.posId, "confirmed", !!v)
+                      }
+                      className="mt-0.5"
+                    />
+                    <Label
+                      htmlFor={`confirm-${it.posId}`}
+                      className="text-xs leading-tight cursor-pointer"
+                    >
+                      Confirmo que el cuadre físico fue realizado y firmado por el
+                      bartender de turno.
+                    </Label>
+                  </div>
+
+                  <div>
+                    <Label
+                      htmlFor={`notes-${it.posId}`}
+                      className="text-xs font-medium"
+                    >
+                      Observaciones (opcional)
+                    </Label>
+                    <Textarea
+                      id={`notes-${it.posId}`}
+                      placeholder="Notas, diferencias, incidencias..."
+                      value={it.notes}
+                      onChange={(e) => updateItem(it.posId, "notes", e.target.value)}
+                      className="mt-1 text-sm"
+                      rows={2}
+                    />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </ScrollArea>
         )}
 
         <DialogFooter className="gap-2 pt-2">
-          {currentStepIndex > 0 && (
-            <Button variant="outline" onClick={() => setStep(steps[currentStepIndex - 1])} disabled={submitting}>
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Atrás
-            </Button>
-          )}
-          <div className="flex-1" />
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>
-          {step === "summary" && (
-            <Button onClick={() => setStep("arqueo")}>
-              Siguiente
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          )}
-          {step === "arqueo" && (
-            <Button onClick={() => setStep("confirm")} disabled={!canProceedFromArqueo}>
-              Siguiente
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          )}
-          {step === "confirm" && (
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting || !confirmChecks.allArqueados || !confirmChecks.entiendoCierre}
-              variant="destructive"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Cerrando...
-                </>
-              ) : (
-                <>
-                  <ClipboardCheck className="w-4 h-4 mr-1" />
-                  Cerrar Jornada
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            onClick={handleSubmit}
+            disabled={submitting || !allComplete}
+            variant="destructive"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Cerrando...
+              </>
+            ) : (
+              <>
+                <ClipboardCheck className="w-4 h-4 mr-1" />
+                Cerrar Jornada
+              </>
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── Reusable sub-components ──
-
-function SummaryCard({ label, value, negative, small }: { label: string; value: string; negative?: boolean; small?: boolean }) {
-  return (
-    <div className={`p-3 rounded-lg bg-muted text-center ${small ? "p-2" : ""}`}>
-      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{label}</p>
-      <p className={`font-bold ${small ? "text-sm" : "text-lg"} ${negative ? "text-destructive" : ""}`}>{value}</p>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, className }: { label: string; value: string; className?: string }) {
-  return (
-    <div className="text-center p-2 bg-muted rounded">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`text-sm font-medium ${className || ""}`}>{value}</div>
-    </div>
   );
 }

@@ -1208,44 +1208,50 @@ export type Database = {
       }
       jornada_cash_closings: {
         Row: {
+          bartender_name: string | null
           cash_sales_total: number
-          closing_cash_counted: number
+          closing_cash_counted: number | null
           created_at: string
           created_by: string | null
-          difference: number
+          difference: number | null
           expected_cash: number
           id: string
           jornada_id: string
           notes: string | null
           opening_cash_amount: number
+          physical_reconciliation_confirmed: boolean
           pos_id: string
           venue_id: string | null
         }
         Insert: {
+          bartender_name?: string | null
           cash_sales_total?: number
-          closing_cash_counted?: number
+          closing_cash_counted?: number | null
           created_at?: string
           created_by?: string | null
-          difference?: number
+          difference?: number | null
           expected_cash?: number
           id?: string
           jornada_id: string
           notes?: string | null
           opening_cash_amount?: number
+          physical_reconciliation_confirmed?: boolean
           pos_id: string
           venue_id?: string | null
         }
         Update: {
+          bartender_name?: string | null
           cash_sales_total?: number
-          closing_cash_counted?: number
+          closing_cash_counted?: number | null
           created_at?: string
           created_by?: string | null
-          difference?: number
+          difference?: number | null
           expected_cash?: number
           id?: string
           jornada_id?: string
           notes?: string | null
           opening_cash_amount?: number
+          physical_reconciliation_confirmed?: boolean
           pos_id?: string
           venue_id?: string | null
         }

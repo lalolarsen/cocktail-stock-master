@@ -1,88 +1,85 @@
-## Mejora del Panel de Reportes
 
-Rediseño integral del panel `/reportes` enfocado en 3 ejes: **performance**, **UX/visual** y **calidad de exportaciones**, manteniendo intactos los reportes existentes (POS térmico, Conteo, EERR, CSV).
+## Rediseño del cierre de jornada
 
----
-
-### 1. Performance (carga ~3-5x más rápida)
-
-**Problemas actuales:**
-- Trae **todas las profiles del venue** sin filtro (puede ser cientos de filas).
-- Hace 4 fetches grandes en paralelo y **calcula los KPIs en el cliente** sobre cada venta del mes.
-- Re-fetch completo al cambiar de mes, sin caché.
-
-**Solución:**
-- **Crear RPC `get_monthly_jornadas_summary(venue_id, year, month)`** que devuelva en una sola consulta agregada por jornada: total ventas, conteos, alcohol/tickets, efectivo/tarjeta, cancelaciones, top 3 vendedores (con nombre vía JOIN). El cliente recibe los reportes ya calculados.
-- Reemplazar el fetch de todas las `profiles` por solo los IDs necesarios (vendedores que aparecen).
-- Cargar `jornada_financial_summary` en el mismo RPC (LEFT JOIN).
-- Usar `useMemo` para totales mensuales (hoy se recalculan en cada render).
-- Mantener el fetch de detalle de ventas individual (lazy on expand) — ya está bien.
-
-**Resultado esperado:** 1 query RPC en vez de 4 queries + procesamiento JS pesado. Para meses con 30 jornadas y miles de ventas, debería pasar de ~3-5s a <1s.
+El arqueo financiero se hace **fuera del sistema** (sobre el reporte físico descargable de cada POS). El cierre dentro de la app pasa a ser un **checklist de confirmación firmado por POS**, con observaciones que viajan al reporte POS de Reportes.
 
 ---
 
-### 2. Rediseño visual / UX
+### 1. Nuevo flujo de "Cerrar Jornada" (`CashReconciliationDialog.tsx`)
 
-**Layout nuevo:**
+Se reemplaza el wizard actual (Resumen → Arqueo numérico → Confirmación) por un único paso:
 
-```text
-┌────────────────────────────────────────────────────┐
-│ Reportes                              [Mes ▼] [↻] │
-│ Auditoría y descargas por jornada                  │
-├────────────────────────────────────────────────────┤
-│ ▸ Resumen del mes (4 KPI cards compactos)          │
-│   Ventas | Margen | Cancelaciones | Comisión       │
-├────────────────────────────────────────────────────┤
-│ ▸ Comparativa (mini sparkline ventas vs mes ant.)  │
-├────────────────────────────────────────────────────┤
-│ ▸ Jornadas (lista colapsable, una por fila)        │
-│   #N · Nombre · fecha   $XXX | margen | [acciones] │
-└────────────────────────────────────────────────────┘
+**Para cada POS activo (cash register):**
+- Tarjeta con nombre del POS + ubicación.
+- Campo "Bartender / Cajero de turno" (texto, obligatorio) — actúa como firma.
+- Checkbox obligatorio: *"Confirmo que el cuadre físico fue realizado y firmado por el bartender de turno"*.
+- Textarea "Observaciones del POS" (opcional, multilínea).
+
+**Validación:** No se puede cerrar hasta que TODOS los POS tengan checkbox marcado y nombre de bartender escrito.
+
+Botón final: **"Cerrar jornada"** (sin pasos intermedios). Se elimina el cálculo de efectivo esperado/contado/diferencia desde la UI.
+
+---
+
+### 2. Cambios de base de datos
+
+**Migración (schema):**
+- Agregar columnas a `jornada_cash_closings`:
+  - `bartender_name TEXT` — firma del cajero/bartender de turno
+  - `physical_reconciliation_confirmed BOOLEAN DEFAULT false` — checkbox de confirmación
+- Hacer **opcionales** las columnas numéricas (`opening_cash_amount`, `cash_sales_total`, `expected_cash`, `closing_cash_counted`, `difference`) ya que el cuadre es externo. Se siguen calculando y guardando como referencia, pero ya no bloquean el cierre.
+
+**RPC `close_jornada_manual` (rediseñado):**
+- Sigue recibiendo `p_cash_closings jsonb` pero con nueva forma:
+  ```json
+  [{ "pos_id": "...", "bartender_name": "Juan Pérez", "confirmed": true, "notes": "..." }]
+  ```
+- Validaciones nuevas:
+  - Todos los POS activos cash-register deben venir en el array.
+  - Cada entrada debe tener `confirmed = true` y `bartender_name` no vacío.
+- Se elimina la validación de "diferencia justificada" (ya no aplica).
+- Sigue calculando `expected_cash`, `cash_sales_total`, etc. internamente y guardándolos en `jornada_cash_closings` como información de respaldo histórico, pero `closing_cash_counted` y `difference` se guardan como `NULL`.
+
+---
+
+### 3. Reporte POS descargable (Reportes)
+
+Se actualiza `pos-sales-report.ts` y `JornadaDownloadMenu.tsx` para que el reporte térmico incluya, debajo de cada bloque por POS:
+
+```
+----------------------------------------
+Bartender: Juan Pérez
+[X] Cuadre físico confirmado
+Observaciones:
+  Sobró $2.000 en caja chica.
+  Se reportó al supervisor.
+----------------------------------------
 ```
 
-- **Header sticky** con selector de mes y botón refresh.
-- **Tarjetas de KPI** unificadas con el estilo de `FinancePanel` (más limpio, sin íconos saturados).
-- **Comisión STOCKIA** integrada como un 4º KPI en la grilla principal (no como card separada que ocupa demasiado).
-- **Mini comparativa mensual**: badge con flecha ↑/↓ vs mes anterior en cada KPI clave.
-- **Fila de jornada compactada**: estado, número/nombre, fecha y total en una línea; botones de descarga agrupados en un dropdown "Descargar ▼" (POS · Conteo · QRs · CSV · EERR) para no saturar la fila.
-- **Detalle expandido** mejorado: KPI grid + tabla densa + filtros rápidos (Todas / Solo POS X / Solo canceladas).
-- Optimización mobile (iPhone): tarjetas stacked, dropdown de descargas en lugar de botones lado-a-lado.
+`fetchJornadaLiveReport` se extiende para hacer un `JOIN` con `jornada_cash_closings` y devolver `bartenderName`, `confirmed` y `notes` por cada `posId`.
 
 ---
 
-### 3. Mejorar exportaciones
+### 4. Limpieza UI
 
-**CSV de ventas detallado:**
-- Agregar columnas: `Hora apertura jornada`, `Hora cierre`, `Subtotal`, `Descuento`, `Productos vendidos` (concatenado).
-- Incluir BOM UTF-8 (ya está) y separador correcto para Excel ES.
-- Botón "CSV completo del mes" además del CSV por jornada.
-
-**Nuevo: Excel consolidado del mes** (descarga única con tabs):
-- Tab 1: Resumen mensual (KPIs).
-- Tab 2: Jornadas (una fila por jornada con todos los totales).
-- Tab 3: Ventas detalladas (todas las del mes).
-- Tab 4: Comisión STOCKIA.
-- Generado con `xlsx` (SheetJS, ya disponible en proyecto si no, agregarla).
-
-**Reportes existentes (POS, Conteo, EERR):** se mantienen sin cambios funcionales — solo se reubican en el dropdown de cada jornada.
+- Se elimina el paso de "Resumen de Jornada" del diálogo (ya está en Reportes).
+- Se elimina el paso de arqueo numérico.
+- El diálogo queda compacto: una lista vertical de POS con checklist, y un botón "Cerrar jornada".
 
 ---
 
-### Detalle técnico
+### Archivos a modificar
 
-**Archivos a modificar:**
-- `src/components/dashboard/ReportsPanel.tsx` — refactor completo (split en sub-componentes).
-- Nuevo: `src/components/dashboard/reports/MonthSummaryCards.tsx`
-- Nuevo: `src/components/dashboard/reports/JornadaReportRow.tsx` (extraído del actual)
-- Nuevo: `src/components/dashboard/reports/DownloadMenu.tsx` (dropdown unificado)
-- Nuevo: `src/lib/reporting/monthly-excel-export.ts` (export consolidado)
-- Nueva migración SQL: RPC `get_monthly_jornadas_summary` (SECURITY DEFINER, filtrada por `venue_id` del usuario).
+- `supabase/migrations/<new>.sql` — schema changes en `jornada_cash_closings` + nuevo `close_jornada_manual`.
+- `src/components/dashboard/CashReconciliationDialog.tsx` — rediseño completo (renombrar conceptualmente, mantener nombre por compatibilidad).
+- `src/lib/jornada-reporting.ts` — incluir datos de cierre por POS.
+- `src/lib/printing/pos-sales-report.ts` — renderizar bartender + confirmación + observaciones.
+- `src/components/dashboard/reports/JornadaDownloadMenu.tsx` — pasar nuevos campos al reporte.
 
-**Dependencias:**
-- Verificar si `xlsx` (SheetJS) está instalada; si no, agregarla.
+---
 
-**No se toca:**
-- `pos-sales-report.ts`, `product-sales-pdf.ts`, `RedeemReportButton.tsx`, `JornadaCloseSummaryDialog.tsx`, `jornada-reporting.ts` — quedan idénticos.
-- Lógica de comisión STOCKIA (`commission.ts`) — se mantiene la fórmula informativa 2.5%.
-- Multi-tenant: el RPC respetará aislamiento por `venue_id` automático.
+### Resultado esperado
+
+- **Cerrar jornada en segundos**: solo confirmar cuadre físico por POS y firmar.
+- **Trazabilidad**: queda registrado quién firmó cada caja y sus observaciones.
+- **Reporte POS** descargable desde Reportes muestra todo el contexto firmado, listo para auditoría.
