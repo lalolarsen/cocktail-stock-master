@@ -80,7 +80,7 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [loadingSales, setLoadingSales] = useState<string | null>(null);
-  const [exportingMonth, setExportingMonth] = useState(false);
+  
   const [eerrOpen, setEerrOpen] = useState<{ id: string; num: number; date: string } | null>(null);
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const now = new Date();
