@@ -34,33 +34,71 @@ export function JornadaDownloadMenu({
   const handlePOS = async () => {
     setBusy("pos");
     try {
-      const [salesRes, ticketSalesRes, posRes] = await Promise.all([
-        supabase.from("sales").select("total_amount, payment_method, point_of_sale, is_cancelled").eq("jornada_id", jornadaId).eq("is_cancelled", false),
+      const [salesRes, ticketSalesRes, posRes, closingsRes] = await Promise.all([
+        supabase.from("sales").select("total_amount, payment_method, point_of_sale, pos_id, is_cancelled").eq("jornada_id", jornadaId).eq("is_cancelled", false),
         supabase.from("ticket_sales").select("total, payment_method, pos_id").eq("jornada_id", jornadaId).eq("payment_status", "paid"),
         supabase.from("pos_terminals").select("id, name"),
+        supabase.from("jornada_cash_closings").select("pos_id, bartender_name, physical_reconciliation_confirmed, notes").eq("jornada_id", jornadaId),
       ]);
       if (salesRes.error) throw salesRes.error;
       const sales = salesRes.data || [];
       const ticketSales = ticketSalesRes.data || [];
       const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
+
+      // closings keyed by pos_id AND by pos_name (so non-pos_id sales can still match)
+      const closingsByPosId = new Map<string, { bartender: string | null; confirmed: boolean; notes: string | null }>();
+      const closingsByPosName = new Map<string, { bartender: string | null; confirmed: boolean; notes: string | null }>();
+      ((closingsRes.data as any[]) || []).forEach((c) => {
+        const entry = {
+          bartender: c.bartender_name ?? null,
+          confirmed: !!c.physical_reconciliation_confirmed,
+          notes: c.notes ?? null,
+        };
+        if (c.pos_id) {
+          closingsByPosId.set(c.pos_id, entry);
+          const name = posMapNames.get(c.pos_id);
+          if (name) closingsByPosName.set(name, entry);
+        }
+      });
+
       if (sales.length === 0 && ticketSales.length === 0) {
         toast.info("No hay ventas en esta jornada");
         return;
       }
-      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number }>();
-      const acc = (posName: string, pm: string, amt: number) => {
-        const e = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0 };
+      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number; posId: string | null }>();
+      const acc = (posName: string, posId: string | null, pm: string, amt: number) => {
+        const e = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0, posId };
+        if (!e.posId && posId) e.posId = posId;
         if (pm === "cash") { e.cash += amt; e.cashN++; }
         else if (pm === "card") { e.card += amt; e.cardN++; }
         else { e.other += amt; e.otherN++; }
         posMap.set(posName, e);
       };
-      for (const s of sales) acc(s.point_of_sale || "Sin POS", s.payment_method, Number(s.total_amount));
-      for (const t of ticketSales) acc((t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets", t.payment_method, Number(t.total));
-      const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries()).map(([posName, d]) => ({
-        posName, cashTotal: d.cash, cashCount: d.cashN, cardTotal: d.card, cardCount: d.cardN,
-        otherTotal: d.other, otherCount: d.otherN, total: d.cash + d.card + d.other, totalCount: d.cashN + d.cardN + d.otherN,
-      })).sort((a, b) => b.total - a.total);
+      for (const s of sales) {
+        const name = s.point_of_sale || (s.pos_id ? posMapNames.get(s.pos_id) : null) || "Sin POS";
+        acc(name, s.pos_id ?? null, s.payment_method, Number(s.total_amount));
+      }
+      for (const t of ticketSales) {
+        const name = (t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets";
+        acc(name, t.pos_id ?? null, t.payment_method, Number(t.total));
+      }
+      const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries()).map(([posName, d]) => {
+        const closing =
+          (d.posId && closingsByPosId.get(d.posId)) ||
+          closingsByPosName.get(posName) ||
+          null;
+        return {
+          posName,
+          cashTotal: d.cash, cashCount: d.cashN,
+          cardTotal: d.card, cardCount: d.cardN,
+          otherTotal: d.other, otherCount: d.otherN,
+          total: d.cash + d.card + d.other,
+          totalCount: d.cashN + d.cardN + d.otherN,
+          bartenderName: closing?.bartender ?? null,
+          confirmed: closing?.confirmed ?? false,
+          notes: closing?.notes ?? null,
+        };
+      }).sort((a, b) => b.total - a.total);
       printPOSSalesReport({
         jornadaNumber, fecha, horario, posSummary,
         grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
