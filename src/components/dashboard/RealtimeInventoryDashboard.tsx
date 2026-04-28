@@ -116,13 +116,7 @@ export function RealtimeInventoryDashboard() {
     });
   }, [rows, search, activeLocation]);
 
-  const totals = useMemo(() => {
-    const totalValue = Math.round(rows.reduce((acc, r) => acc + (r.stock_value || 0), 0));
-    const productSet = new Set(rows.filter((r) => r.quantity > 0).map((r) => r.product_id));
-    const lowCount = rows.filter((r) => r.status === "low").length;
-    const criticalCount = rows.filter((r) => r.status === "critical").length;
-    return { totalValue, productCount: productSet.size, lowCount, criticalCount };
-  }, [rows]);
+  // totals viene del RPC (fila TOTALS server-side)
 
   const lastUpdateLabel = lastUpdate
     ? formatDistanceToNow(lastUpdate, { addSuffix: true, locale: es })
