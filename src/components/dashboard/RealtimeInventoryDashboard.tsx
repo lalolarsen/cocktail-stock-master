@@ -264,6 +264,17 @@ export function RealtimeInventoryDashboard() {
         initialLocationId={activeLocation !== "__all__" ? activeLocation : undefined}
         onApplied={() => void refresh()}
       />
+
+      {warehouseId && (
+        <UploadInvoiceDialog
+          open={invoiceOpen}
+          onOpenChange={setInvoiceOpen}
+          warehouseLocationId={warehouseId}
+          onCreated={(importId) => {
+            navigate(`/proveedores/import/${importId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
