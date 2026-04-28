@@ -15,12 +15,20 @@ import {
   AlertTriangle,
   Hash,
   Clock,
+  Activity,
+  Package,
+  XCircle,
+  ClipboardCheck,
+  Camera,
+  ArrowRight,
 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
+import { useAppSession } from "@/contexts/AppSessionContext";
+import { useRealtimeInventory } from "@/hooks/useRealtimeInventory";
 
 interface Jornada {
   id: string;
