@@ -499,7 +499,7 @@ function JornadaRow({
 
         <CollapsibleContent>
           <div className="border-t p-3 space-y-3 bg-muted/20">
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs">
               <KPICell icon={Banknote} label="Efectivo" value={formatCLP(report.cashSales)} />
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
               <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
