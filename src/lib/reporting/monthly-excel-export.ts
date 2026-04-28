@@ -47,8 +47,7 @@ export function generateMonthlyExcelReport(opts: {
   const totalCancelled = jornadas.reduce((s, j) => s + j.cancelled_total, 0);
   const totalCash = jornadas.reduce((s, j) => s + j.cash_sales, 0);
   const totalCard = jornadas.reduce((s, j) => s + j.card_sales, 0);
-  const totalCogs = jornadas.reduce((s, j) => s + (j.cogs_total || 0), 0);
-  const margenPct = totalSales > 0 ? ((totalSales - totalCogs) / totalSales) * 100 : 0;
+  const totalOther = jornadas.reduce((s, j) => s + j.other_payments, 0);
 
   const resumen = [
     ["Reporte mensual STOCKIA", monthLabel],
@@ -58,9 +57,8 @@ export function generateMonthlyExcelReport(opts: {
     ["Ventas brutas (CLP)", Math.round(totalSales)],
     ["Ventas en efectivo", Math.round(totalCash)],
     ["Ventas con tarjeta", Math.round(totalCard)],
+    ["Otros medios de pago", Math.round(totalOther)],
     ["Cancelaciones", Math.round(totalCancelled)],
-    ["COGS", Math.round(totalCogs)],
-    ["Margen bruto %", margenPct.toFixed(2)],
     [],
     ["Comisión STOCKIA", ""],
     [`Tasa (${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}%)`, Math.round(calculateCommission(totalSales))],
@@ -74,7 +72,7 @@ export function generateMonthlyExcelReport(opts: {
     "N°", "Nombre", "Fecha", "Apertura", "Cierre", "Estado",
     "Total ventas", "Transacciones", "Alcohol", "Tickets",
     "Efectivo", "Tarjeta", "Otros", "Cancelaciones", "N° canceladas",
-    "COGS", "Margen %",
+    `Comisión STOCKIA (${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}%)`,
   ];
   const jornadaRows = jornadas.map((j) => [
     j.numero_jornada,
@@ -92,8 +90,7 @@ export function generateMonthlyExcelReport(opts: {
     Math.round(j.other_payments),
     Math.round(j.cancelled_total),
     j.cancelled_count,
-    Math.round(j.cogs_total || 0),
-    j.margin_pct != null ? Number(j.margin_pct.toFixed(2)) : "",
+    Math.round(calculateCommission(j.total_sales)),
   ]);
   const wsJornadas = XLSX.utils.aoa_to_sheet([jornadaHeaders, ...jornadaRows]);
   wsJornadas["!cols"] = jornadaHeaders.map(() => ({ wch: 14 }));
