@@ -25,6 +25,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ShiftCountDialog } from "./ShiftCountDialog";
 import { UploadInvoiceDialog } from "@/components/proveedores/UploadInvoiceDialog";
+import { useStockAlertsLive } from "@/hooks/useStockAlertsLive";
 
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
@@ -73,7 +74,8 @@ function KPI({
 export function RealtimeInventoryDashboard() {
   const { venue } = useAppSession();
   const navigate = useNavigate();
-  const { rows, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
+  const { rows, totals, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
+  useStockAlertsLive(venue?.id);
   const [countOpen, setCountOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
 
@@ -114,13 +116,7 @@ export function RealtimeInventoryDashboard() {
     });
   }, [rows, search, activeLocation]);
 
-  const totals = useMemo(() => {
-    const totalValue = Math.round(rows.reduce((acc, r) => acc + (r.stock_value || 0), 0));
-    const productSet = new Set(rows.filter((r) => r.quantity > 0).map((r) => r.product_id));
-    const lowCount = rows.filter((r) => r.status === "low").length;
-    const criticalCount = rows.filter((r) => r.status === "critical").length;
-    return { totalValue, productCount: productSet.size, lowCount, criticalCount };
-  }, [rows]);
+  // totals viene del RPC (fila TOTALS server-side)
 
   const lastUpdateLabel = lastUpdate
     ? formatDistanceToNow(lastUpdate, { addSuffix: true, locale: es })

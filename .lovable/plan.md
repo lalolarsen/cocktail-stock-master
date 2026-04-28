@@ -1,138 +1,89 @@
-# Inventario en tiempo real para Gerencia
+# Análisis: ¿Qué le falta al sistema en vivo para soportar >1000 ventas/día?
 
-## Diagnóstico
+## Lo que ya está bien
+- **Fase 1 (panel en vivo)**: snapshot RPC consolidado + Realtime sobre `stock_balances` y `stock_movements` con debounce 600ms.
+- **Fase 2 (lector facturas)**: pipeline `extract-invoice` con IA, revisión humana en `/admin/proveedores/import/:id`, cierra ciclo a CPP/Bodega.
+- **Fase 3 (conteo cierre)**: RPC `apply_shift_count` con umbral 10%, alertas automáticas.
+- **DiStock**: stock se descuenta solo en redención QR (no en venta), lo que ya alivia presión de escritura en POS.
 
-El sistema YA tiene la infraestructura base correcta:
+## Riesgos detectados para alta concurrencia (>1000 ventas/día ≈ 1 evento/30s sostenido, picos 5-10/s)
 
-- `stock_balances` (verdad por producto + ubicación, con venue_id e índices)
-- `stock_movements` (todos los flujos: COMPRA, TRANSFERENCIA, CONTEO, salidas por venta/cortesía)
-- `stock_transfers` (reposiciones bodega → barra)
-- `purchases` + edge function `parse-invoice` (lector de facturas con OCR)
-- `BarReplenishment`, `InventoryHub`, `InventoryComparisonModule` (UIs)
-- DiStock + CPP ya operando
+### 1. Realtime + REPLICA IDENTITY FULL en `stock_movements` (CRÍTICO)
+`REPLICA IDENTITY FULL` envía la fila completa por cada INSERT/UPDATE. En `stock_movements` (tabla append-only de altísimo volumen) esto satura el bus de Realtime y multiplica el ancho de banda. Cada redención dispara un broadcast a todos los gerentes conectados. Con 1000+ ventas el bus se degrada.
 
-**Lo que falta** no es replantear el modelo, sino:
-1. Cerrar los 3 flujos humanos para que cada acción golpee `stock_balances` automáticamente.
-2. Construir un **panel de Gerencia en tiempo real** que lea de esa única fuente de verdad y use Realtime de Lovable Cloud para actualizarse solo.
+**Fix**: revertir `stock_movements` a `REPLICA IDENTITY DEFAULT` (PK basta). Mantener FULL solo en `stock_balances` (que es la tabla pequeña que importa para diff).
 
-## Flujo operativo objetivo
+### 2. RPC `get_realtime_inventory_snapshot` ineficiente bajo carga
+- El CTE `last_mov` agrupa **toda la historia** de `stock_movements` por venue cada vez que se llama. En 6 meses puede ser >100k filas.
+- Sin índice cubriente para `(venue_id, product_id, to/from_location_id, created_at)`.
+- Se ejecuta cada 600ms si llegan eventos seguidos → cada gerente abierto = N queries pesadas/min.
 
-```text
-[Compra]      Foto factura → parse-invoice → revisión humana → COMPRA en Bodega → CPP actualizado
-                                                                       │
-[Reposición]  Bartender abre jornada → Reposición Bodega→Barra (UI rápida) → TRANSFERENCIA
-                                                                       │
-[Venta]       POS / Bar redime QR → SALIDA automática (DiStock ya existente)
-                                                                       │
-[Conteo turno] Bartender cierra turno → conteo rápido de su barra → CONTEO + diferencias
-                                                                       │
-[Cuadre semanal] Encargado sube Excel general → InventoryComparisonModule → ajustes
-                                                                       │
-                                                                       ▼
-                                                  stock_balances (única verdad)
-                                                                       │
-                                                          Realtime ────┤
-                                                                       ▼
-                                              Dashboard Gerencia (tiempo real)
-```
+**Fix**:
+- Reescribir `last_mov` con `DISTINCT ON` y filtro temporal (últimos 30 días).
+- Agregar índice `(venue_id, product_id, COALESCE(to_location_id, from_location_id), created_at DESC)`.
+- Subir debounce del hook a **1500ms** y agregar throttle máximo (1 fetch/2s).
 
-## Cambios a implementar
+### 3. Suscripción Realtime por venue sin filtro de columnas
+El canal recibe el payload completo de cada movimiento. Como solo necesitamos saber "algo cambió", basta con el evento.
 
-### 1. Lector de facturas — cerrar el ciclo
+**Fix**: cambiar la suscripción de `stock_movements` a solo `INSERT` con payload mínimo (ya está limitado a INSERT, pero combinado con fix #1 reduce 90% del tráfico).
 
-Estado: `parse-invoice` existe pero no aterriza siempre como movimiento.
+### 4. `apply_shift_count` no es transaccional ante concurrencia
+Si dos bartenders cierran al mismo tiempo en la misma ubicación (raro pero posible) o si la misma ubicación recibe ventas mientras se aplica el conteo, el `delta` calculado puede quedar desfasado. No hay `FOR UPDATE` lock.
 
-- Pantalla **"Nueva compra desde factura"** en InventoryHub:
-  - Subir foto/PDF → llama `parse-invoice` (Lovable AI, modelo `google/gemini-2.5-pro` para visión).
-  - Devuelve líneas: nombre proveedor, items con `nombre, cantidad, formato/ml, costo neto, IVA, ILA`.
-  - Matching difuso contra catálogo (ya existe `match-products`); si no hay match el usuario lo enlaza o crea SKU.
-  - Botón "Confirmar compra" → inserta `purchases` + `purchase_lines` + `stock_movements` tipo COMPRA en **Bodega Principal**, recalcula CPP por producto (lógica CPP existente, excluye IVA/ILA).
-- Auditoría: guardar URL de la imagen de factura en `purchase_documents`.
+**Fix**: tomar `SELECT ... FOR UPDATE` sobre el row de `stock_balances` antes de calcular delta.
 
-### 2. Reposición bartender (pre-jornada)
+### 5. Falta histórico/log de conteos por turno
+Hoy el conteo solo deja `stock_movements` tipo `ajuste`, pero no hay tabla `shift_counts` ni `shift_count_lines` para auditoría posterior por jornada/bartender.
 
-Estado: `BarReplenishment.tsx` ya existe. Mejoras:
+**Fix**: crear `shift_counts` (id, jornada_id, location_id, user_id, total_variance_pct, status) y `shift_count_lines` (count_id, product_id, theoretical, real, delta, alerted) escritas por la RPC. Sin esto, gerencia no puede revisar qué bartender tuvo qué diferencias históricas.
 
-- Atajo destacado al iniciar jornada ("Reponer mi barra antes de abrir").
-- Vista por bartender filtrada a su(s) ubicación(es).
-- Sugerencia automática: por cada producto, mostrar `stock_actual` en barra vs `mínimo` (ya existe `stock_location_minimums`) y precargar la cantidad sugerida.
-- Confirmar = `stock_transfers` Bodega → Barra (movimientos ya descuentan/aumentan `stock_balances`).
+### 6. Panel en vivo sin paginación ni virtualización
+El snapshot retorna **todos** los productos × ubicaciones del venue. En venues grandes (300 productos × 4 barras = 1200 filas) la tabla DOM es pesada. El cliente puede congelarse al re-render por cada evento Realtime.
 
-### 3. Conteo de cierre de turno
+**Fix**: virtualización con `@tanstack/react-virtual` en la tabla, o agrupar por producto y expandir ubicaciones on-demand.
 
-- Nueva pantalla **"Conteo de cierre"** disparada al cerrar jornada por bartender, **solo de su barra**.
-- Lista los productos con stock > 0 en su ubicación.
-- Input rápido por producto (mobile-first, teclado numérico).
-- Genera `stock_movements` tipo CONTEO con `quantity = real - teorico` (ajuste).
-- Diferencias > umbral (ej. 10%) quedan marcadas y aparecen en alertas para el administrador (no se autoaprueban; se respeta política de waste/aprobación existente para mermas grandes).
+### 7. Capital inmovilizado calculado en cliente
+Los KPIs (totalValue, lowCount, criticalCount) se recalculan en JS. Con miles de filas el `useMemo` igual corre por re-render. Mejor incluir **agregados precomputados** en la RPC (1 fila aparte con totales).
 
-### 4. Cuadre semanal
+### 8. Sin alertas push proactivas
+Hoy las alertas se ven al refrescar `AlertsPanel`. Con >1000 ventas, gerencia necesita un **toast en vivo** cuando algo entra a estado `critical` o `low` (suscripción a `stock_alerts`).
 
-Ya existe `InventoryComparisonModule` con upload de Excel. Solo:
-- Marcar visualmente que es el flujo "semanal/general" y agendar recordatorio (alerta cada 7 días desde último cuadre).
+**Fix**: hook `useStockAlertsLive` que hace toast al insertar nueva alerta del venue.
 
-### 5. **Panel de Inventario en Tiempo Real (Gerencia)** — pieza nueva clave
+### 9. Lector de facturas sin cola de retry
+`extract-invoice` es síncrono. Si la IA falla (429/402) la factura queda en `UPLOADED` sin reintento automático. En operación real con muchas facturas semanales, debe haber reintento con backoff o un panel de "fallidas".
 
-Nuevo módulo `RealtimeInventoryDashboard.tsx` accesible desde el sidebar de **gerencia** y **admin**.
+**Fix**: `DocumentsRetryPanel` ya existe — verificar que cubra `purchase_imports` con status fallido y agregar botón "Reintentar todas".
 
-Contenido:
+### 10. Conteo de cierre sin filtro pre-cargado por bartender
+El `ShiftCountDialog` lista todos los productos. Un bartender cierra solo su barra, pero ve el catálogo completo. Riesgo de error humano.
 
-- **KPIs arriba** (todos venue-scoped, leídos por RPC agregado):
-  - Capital total inmovilizado (∑ `stock_balances.quantity * CPP`)
-  - # SKUs con stock
-  - # productos bajo mínimo
-  - Última actualización (timestamp del último movimiento)
-  - Mermas y diferencias de la semana
+**Fix**: precargar solo productos con `stock_balances.quantity > 0` en esa ubicación + buscador por categoría/marca.
 
-- **Vista por ubicación** (Bodega + cada Barra):
-  - Tabla con Producto, Stock actual, CPP, Valor, Mínimo, Estado (OK / Bajo / Crítico).
-  - Filtro por categoría y búsqueda.
+---
 
-- **Stream de movimientos en vivo** (panel lateral):
-  - Últimos 20 movimientos del venue: tipo, producto, cantidad, ubicación, usuario, hora.
+## Plan de implementación (orden por impacto)
 
-- **Actualización en tiempo real** sin refrescar:
-  ```sql
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_balances;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_movements;
-  ```
-  El cliente se suscribe filtrando por `venue_id` y revalida la fila afectada (no recarga todo).
+### Migración SQL única
+1. `ALTER TABLE stock_movements REPLICA IDENTITY DEFAULT` (revertir).
+2. Crear índice `idx_stock_movements_venue_product_loc_created` para acelerar `last_mov`.
+3. Reescribir `get_realtime_inventory_snapshot` con `DISTINCT ON` + ventana 30 días + fila TOTALS al final.
+4. `apply_shift_count`: añadir `SELECT ... FOR UPDATE` y registrar en nuevas tablas.
+5. Crear `shift_counts` y `shift_count_lines` con RLS por venue.
 
-- **RPC nuevo `get_realtime_inventory_snapshot(p_venue_id)`** que devuelve en una sola llamada: balances por ubicación + valor (CPP) + estado vs mínimo. Esto evita N+1 y respeta la regla de paginación de 1000 filas.
+### Frontend
+6. `useRealtimeInventory`: subir debounce a 1500ms + throttle 2s + extraer KPIs desde fila TOTALS.
+7. Virtualizar tabla del `RealtimeInventoryDashboard` (instalar `@tanstack/react-virtual`).
+8. Nuevo hook `useStockAlertsLive` con toast en gerencia/admin.
+9. `ShiftCountDialog`: filtrar productos con stock>0 en la ubicación + buscador por categoría.
+10. `DocumentsRetryPanel`: incluir `purchase_imports` con status fallido.
 
-### 6. Alertas y trazabilidad
-
-- Reutilizar `stock_alerts` para: stock bajo, diferencia de conteo > umbral, factura pendiente de validar, reposición no realizada antes de abrir jornada.
-- Bell de notificaciones de gerencia (módulo `NotificationsManagement` ya existe).
+---
 
 ## Detalles técnicos
-
-- **Migraciones**: agregar `stock_balances` y `stock_movements` a `supabase_realtime`; crear RPC `get_realtime_inventory_snapshot`; opcionalmente `last_count_at` por (product, location) para detectar productos sin contar hace mucho.
-- **RLS**: ya está. Solo verificar que gerencia pueda `SELECT` sobre `stock_balances`, `stock_movements`, `stock_locations` de su venue (usar `get_user_venue_id()`).
-- **Edge functions**: `parse-invoice` pasa a usar Lovable AI (`google/gemini-2.5-pro` para visión, sin pedir API key). Validación con Zod del JSON devuelto.
-- **Frontend**:
-  - `src/components/dashboard/RealtimeInventoryDashboard.tsx` (nuevo).
-  - `src/hooks/useRealtimeInventory.ts` (nuevo, suscripción Realtime + cache local).
-  - `src/components/dashboard/InvoiceCaptureDialog.tsx` (nuevo, captura cámara/upload).
-  - `src/components/dashboard/EndOfShiftCountDialog.tsx` (nuevo).
-  - Sidebar (`AppSidebar.tsx`): nueva entrada "Inventario en vivo" para `admin` y `gerencia`.
-- **Branding**: respetar dark theme #000 / #00E676 / SF Pro / radius 0.25rem.
-- **CLP**: `Math.round()` en todos los valores monetarios.
-- **Timezone**: `America/Santiago` para "última actualización".
-
-## Entregables
-
-1. Migración SQL: realtime publish + RPC snapshot + (opcional) `last_count_at`.
-2. Edge function `parse-invoice` consolidada con Lovable AI + Zod.
-3. Componentes nuevos: panel realtime, captura de factura, conteo de cierre.
-4. Mejoras en `BarReplenishment` (sugerencias por mínimos).
-5. Entrada en sidebar para Gerencia/Admin.
-
-## Lo que NO cambia
-
-- DiStock sigue siendo la regla (descuento solo en redemption del bar).
-- CPP excluye IVA/ILA.
-- Bodega Principal sigue siendo el único punto de intake.
-- RLS multi-tenant intacta.
-
-¿Apruebas el plan para que lo implemente?
+- Las nuevas tablas `shift_counts/shift_count_lines` quedan inmutables (insert-only desde RPC) y con RLS `venue_id = get_user_venue_id()`.
+- El throttle del hook usa un `lastFetchAt` ref para garantizar máximo 1 fetch cada 2 segundos aunque lleguen 50 eventos.
+- Virtualización solo en la `<TableBody>` con altura fija 48px por fila.
+- La suscripción a `stock_alerts` filtra por `venue_id` y muestra `toast.warning` con el mensaje.
+- El payload del snapshot agrega una fila final con `product_id = NULL` que contiene los totales agregados (totalValue, productCount, lowCount, criticalCount).
