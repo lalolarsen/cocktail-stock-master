@@ -19,6 +19,9 @@ interface POSSalesData {
     otherCount: number;
     total: number;
     totalCount: number;
+    bartenderName?: string | null;
+    confirmed?: boolean;
+    notes?: string | null;
   }[];
   grandTotal: number;
   grandCash: number;
@@ -33,11 +36,28 @@ function buildReportHtml(data: POSSalesData): string {
   const sep = "========================================";
   const dash = "----------------------------------------";
 
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
   const posBlocks = data.posSummary
-    .map(
-      (pos) => `
+    .map((pos) => {
+      const hasClosingInfo =
+        (pos.bartenderName && pos.bartenderName.trim()) ||
+        pos.confirmed ||
+        (pos.notes && pos.notes.trim());
+
+      const closingBlock = hasClosingInfo
+        ? `
+        <div class="closing-block">
+          ${pos.bartenderName ? `<div class="closing-line"><strong>Bartender:</strong> ${escape(pos.bartenderName)}</div>` : ""}
+          <div class="closing-line">${pos.confirmed ? "[X]" : "[ ]"} Cuadre físico confirmado</div>
+          ${pos.notes ? `<div class="closing-line"><strong>Observaciones:</strong></div><div class="closing-notes">${escape(pos.notes)}</div>` : ""}
+        </div>`
+        : "";
+
+      return `
       <div class="pos-block">
-        <div class="pos-name">${pos.posName}</div>
+        <div class="pos-name">${escape(pos.posName)}</div>
         <table class="items"><tbody>
           <tr>
             <td class="item-name">Efectivo (${pos.cashCount})</td>
@@ -56,9 +76,10 @@ function buildReportHtml(data: POSSalesData): string {
           <span>${pos.totalCount} ventas</span>
           <span class="pos-total-amount">${fmt(pos.total)}</span>
         </div>
+        ${closingBlock}
         <div class="sep">${dash}</div>
-      </div>`,
-    )
+      </div>`;
+    })
     .join("");
 
   return `
