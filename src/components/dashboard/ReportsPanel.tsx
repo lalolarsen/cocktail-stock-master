@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Calendar, ChevronDown, TrendingUp, TrendingDown,
   Clock, DollarSign, XCircle, CreditCard, Banknote, RefreshCw,
-  Loader2, FileSpreadsheet, ShoppingCart, Ticket, PieChart, AlertTriangle,
+  Loader2, ShoppingCart, Ticket, PieChart, AlertTriangle,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
