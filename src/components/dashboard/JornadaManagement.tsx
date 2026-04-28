@@ -153,7 +153,7 @@ export function JornadaManagement() {
         .from("jornadas")
         .select("*")
         .order("fecha", { ascending: false })
-        .limit(50);
+        .limit(30);
 
       if (error) throw error;
       setJornadas(data || []);
