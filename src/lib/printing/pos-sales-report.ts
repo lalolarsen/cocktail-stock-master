@@ -145,6 +145,9 @@ function buildReportCss(): string {
     .pos-name { font-size: 10pt; font-weight: bold; margin: 4px 0 2px; color: #000; word-wrap: break-word; }
     .pos-total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: bold; margin: 2px 0; color: #000; }
     .pos-total-amount { font-weight: bold; }
+    .closing-block { margin: 3px 0 4px; padding: 3px 4px; border: 1px dashed #000; font-size: 8.5pt; color: #000; }
+    .closing-line { margin: 1px 0; color: #000; word-wrap: break-word; }
+    .closing-notes { margin: 1px 0 1px 4px; color: #000; word-wrap: break-word; white-space: pre-wrap; font-style: italic; }
     .footer { text-align: center; margin-top: 10px; font-size: 8pt; color: #000; }
     @media print {
       @page { margin: 0; size: 80mm auto; }
