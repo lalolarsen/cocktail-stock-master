@@ -235,8 +235,6 @@ export function ReportsPanel() {
         cash_sales: j.cashSales,
         card_sales: j.cardSales,
         other_payments: j.otherPayments,
-        cogs_total: j.financial?.cogs_total ?? null,
-        margin_pct: j.financial?.gross_margin_pct ?? null,
       }));
       generateMonthlyExcelReport({ monthLabel, jornadas: rows });
       toast.success("Excel generado");
