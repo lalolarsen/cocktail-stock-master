@@ -336,18 +336,16 @@ export function ReportsPanel() {
                 trend={trendPct}
               />
               <KPI
-                label="Efec. / Tarjeta"
-                value={`${formatCLP(totals.cashSales)}`}
-                sub={`Tarjeta ${formatCLP(totals.cardSales)}`}
-                icon={CreditCard}
+                label="Efectivo"
+                value={formatCLP(totals.cashSales)}
+                sub={`${totals.totalSales > 0 ? ((totals.cashSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
+                icon={Banknote}
               />
               <KPI
-                label="Margen bruto"
-                value={`${avgMarginPct.toFixed(1)}%`}
-                sub={`COGS ${formatCLP(totals.cogsTotal)}`}
-                icon={TrendingUp}
-                accent={avgMarginPct >= 30}
-                negative={avgMarginPct < 0}
+                label="Tarjeta"
+                value={formatCLP(totals.cardSales)}
+                sub={`${totals.totalSales > 0 ? ((totals.cardSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
+                icon={CreditCard}
               />
               <KPI
                 label={STOCKIA_COMMISSION_LABEL}
