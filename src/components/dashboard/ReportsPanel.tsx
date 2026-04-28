@@ -20,7 +20,7 @@ import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { RedeemReportButton } from "./RedeemReportButton";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { JornadaDownloadMenu } from "./reports/JornadaDownloadMenu";
-import { generateMonthlyExcelReport, type MonthlyJornadaRow } from "@/lib/reporting/monthly-excel-export";
+
 import { toast } from "sonner";
 
 /* ── types ─────────────────────────────────────────── */
