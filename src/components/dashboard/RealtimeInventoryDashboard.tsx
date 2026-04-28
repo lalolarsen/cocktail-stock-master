@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import {
   Activity,
   AlertTriangle,
   ClipboardCheck,
+  Camera,
   DollarSign,
   Package,
   RefreshCw,
@@ -22,6 +24,7 @@ import { formatCLP } from "@/lib/currency";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ShiftCountDialog } from "./ShiftCountDialog";
+import { UploadInvoiceDialog } from "@/components/proveedores/UploadInvoiceDialog";
 
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
