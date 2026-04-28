@@ -235,8 +235,6 @@ export function ReportsPanel() {
         cash_sales: j.cashSales,
         card_sales: j.cardSales,
         other_payments: j.otherPayments,
-        cogs_total: j.financial?.cogs_total ?? null,
-        margin_pct: j.financial?.gross_margin_pct ?? null,
       }));
       generateMonthlyExcelReport({ monthLabel, jornadas: rows });
       toast.success("Excel generado");
@@ -260,13 +258,9 @@ export function ReportsPanel() {
       cancelledCount: acc.cancelledCount + j.cancelledCount,
       cashSales: acc.cashSales + j.cashSales,
       cardSales: acc.cardSales + j.cardSales,
-      cogsTotal: acc.cogsTotal + (j.financial?.cogs_total || 0),
-    }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0, cogsTotal: 0 });
+    }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0 });
   }, [jornadas]);
 
-  const avgMarginPct = totals.totalSales > 0
-    ? ((totals.totalSales - totals.cogsTotal) / totals.totalSales) * 100
-    : 0;
   const commission = calculateCommission(totals.totalSales);
 
   const trendPct = useMemo(() => {
@@ -336,18 +330,16 @@ export function ReportsPanel() {
                 trend={trendPct}
               />
               <KPI
-                label="Efec. / Tarjeta"
-                value={`${formatCLP(totals.cashSales)}`}
-                sub={`Tarjeta ${formatCLP(totals.cardSales)}`}
-                icon={CreditCard}
+                label="Efectivo"
+                value={formatCLP(totals.cashSales)}
+                sub={`${totals.totalSales > 0 ? ((totals.cashSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
+                icon={Banknote}
               />
               <KPI
-                label="Margen bruto"
-                value={`${avgMarginPct.toFixed(1)}%`}
-                sub={`COGS ${formatCLP(totals.cogsTotal)}`}
-                icon={TrendingUp}
-                accent={avgMarginPct >= 30}
-                negative={avgMarginPct < 0}
+                label="Tarjeta"
+                value={formatCLP(totals.cardSales)}
+                sub={`${totals.totalSales > 0 ? ((totals.cardSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
+                icon={CreditCard}
               />
               <KPI
                 label={STOCKIA_COMMISSION_LABEL}
@@ -468,11 +460,6 @@ function JornadaRow({
             <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
               <span className="font-bold text-base tabular-nums">{formatCLP(report.totalSales)}</span>
               <span className="text-muted-foreground">{report.salesCount} ventas</span>
-              {fin?.gross_margin_pct != null && (
-                <span className={`font-medium ${fin.gross_margin_pct >= 30 ? "text-primary" : "text-destructive"}`}>
-                  {fin.gross_margin_pct.toFixed(1)}% margen
-                </span>
-              )}
               {report.cancelledCount > 0 && (
                 <span className="text-destructive text-[11px]">{report.cancelledCount} canc.</span>
               )}
@@ -506,12 +493,12 @@ function JornadaRow({
 
         <CollapsibleContent>
           <div className="border-t p-3 space-y-3 bg-muted/20">
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs">
               <KPICell icon={Banknote} label="Efectivo" value={formatCLP(report.cashSales)} />
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
               <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
               <KPICell icon={Ticket} label="Entradas" value={formatCLP(report.ticketSales)} />
-              {fin && <KPICell icon={PieChart} label="COGS" value={formatCLP(fin.cogs_total || 0)} />}
+              <KPICell icon={DollarSign} label={STOCKIA_COMMISSION_LABEL} value={formatCLP(calculateCommission(report.totalSales))} />
               <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 
