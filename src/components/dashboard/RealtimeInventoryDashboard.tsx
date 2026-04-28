@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import {
   Activity,
   AlertTriangle,
   ClipboardCheck,
+  Camera,
   DollarSign,
   Package,
   RefreshCw,
@@ -22,6 +24,7 @@ import { formatCLP } from "@/lib/currency";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ShiftCountDialog } from "./ShiftCountDialog";
+import { UploadInvoiceDialog } from "@/components/proveedores/UploadInvoiceDialog";
 
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
@@ -69,11 +72,18 @@ function KPI({
 
 export function RealtimeInventoryDashboard() {
   const { venue } = useAppSession();
+  const navigate = useNavigate();
   const { rows, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
   const [countOpen, setCountOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [activeLocation, setActiveLocation] = useState<string>("__all__");
+
+  const warehouseId = useMemo(
+    () => rows.find((r) => r.location_type === "warehouse")?.location_id ?? null,
+    [rows],
+  );
 
   const locations = useMemo(() => {
     const map = new Map<string, { id: string; name: string; type: string | null }>();
@@ -129,6 +139,15 @@ export function RealtimeInventoryDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setInvoiceOpen(true)}
+            disabled={!warehouseId}
+            title={!warehouseId ? "Sin bodega configurada" : "Subir factura con foto"}
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            Subir factura
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setCountOpen(true)}>
             <ClipboardCheck className="w-4 h-4 mr-2" />
             Conteo de cierre
@@ -245,6 +264,17 @@ export function RealtimeInventoryDashboard() {
         initialLocationId={activeLocation !== "__all__" ? activeLocation : undefined}
         onApplied={() => void refresh()}
       />
+
+      {warehouseId && (
+        <UploadInvoiceDialog
+          open={invoiceOpen}
+          onOpenChange={setInvoiceOpen}
+          warehouseLocationId={warehouseId}
+          onCreated={(importId) => {
+            navigate(`/admin/proveedores/import/${importId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
