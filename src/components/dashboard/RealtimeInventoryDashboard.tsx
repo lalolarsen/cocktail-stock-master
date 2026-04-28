@@ -139,6 +139,15 @@ export function RealtimeInventoryDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setInvoiceOpen(true)}
+            disabled={!warehouseId}
+            title={!warehouseId ? "Sin bodega configurada" : "Subir factura con foto"}
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            Subir factura
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setCountOpen(true)}>
             <ClipboardCheck className="w-4 h-4 mr-2" />
             Conteo de cierre
