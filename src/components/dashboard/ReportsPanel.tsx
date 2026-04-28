@@ -504,7 +504,7 @@ function JornadaRow({
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
               <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
               <KPICell icon={Ticket} label="Entradas" value={formatCLP(report.ticketSales)} />
-              {fin && <KPICell icon={PieChart} label="COGS" value={formatCLP(fin.cogs_total || 0)} />}
+              <KPICell icon={DollarSign} label={STOCKIA_COMMISSION_LABEL} value={formatCLP(calculateCommission(report.totalSales))} />
               <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 
