@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   Activity,
   AlertTriangle,
+  ClipboardCheck,
   DollarSign,
   Package,
   RefreshCw,
@@ -20,6 +21,7 @@ import { useRealtimeInventory, type InventorySnapshotRow } from "@/hooks/useReal
 import { formatCLP } from "@/lib/currency";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { ShiftCountDialog } from "./ShiftCountDialog";
 
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
@@ -68,6 +70,7 @@ function KPI({
 export function RealtimeInventoryDashboard() {
   const { venue } = useAppSession();
   const { rows, loading, lastUpdate, refresh, error } = useRealtimeInventory(venue?.id);
+  const [countOpen, setCountOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [activeLocation, setActiveLocation] = useState<string>("__all__");
@@ -125,10 +128,16 @@ export function RealtimeInventoryDashboard() {
             Última actualización {lastUpdateLabel}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCountOpen(true)}>
+            <ClipboardCheck className="w-4 h-4 mr-2" />
+            Conteo de cierre
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+        </div>
       </div>
 
       {error && (
