@@ -109,7 +109,7 @@ const addPaymentAmount = (target: JornadaLiveTotals, paymentMethod: string | nul
 };
 
 export async function fetchJornadaLiveReport(jornadaId: string): Promise<JornadaLiveReport> {
-  const [salesRows, ticketSalesRows, posRes] = await Promise.all([
+  const [salesRows, ticketSalesRows, posRes, closingsRes] = await Promise.all([
     fetchAllRows<SalesRow>(() =>
       supabase
         .from("sales")
@@ -123,6 +123,10 @@ export async function fetchJornadaLiveReport(jornadaId: string): Promise<Jornada
         .eq("jornada_id", jornadaId)
     ),
     supabase.from("pos_terminals").select("id, name, pos_type"),
+    supabase
+      .from("jornada_cash_closings")
+      .select("pos_id, bartender_name, physical_reconciliation_confirmed, notes")
+      .eq("jornada_id", jornadaId),
   ]);
 
   if (posRes.error) throw posRes.error;
@@ -246,10 +250,22 @@ export async function fetchJornadaLiveReport(jornadaId: string): Promise<Jornada
     }
   });
 
+  const closingsByPosId: Record<string, JornadaPosClosing> = {};
+  ((closingsRes.data as any[]) || []).forEach((c) => {
+    if (!c.pos_id) return;
+    closingsByPosId[c.pos_id as string] = {
+      posId: c.pos_id,
+      bartenderName: c.bartender_name ?? null,
+      confirmed: !!c.physical_reconciliation_confirmed,
+      notes: c.notes ?? null,
+    };
+  });
+
   return {
     overall,
     perPos: Array.from(perPosMap.values()).sort((a, b) => b.grossSalesTotal - a.grossSalesTotal),
     combinedSales: combinedSales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    closingsByPosId,
   };
 }
 
