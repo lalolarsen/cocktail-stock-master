@@ -1,15 +1,10 @@
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
-  Printer,
-  Download,
   AlertTriangle,
   Eye,
   CheckCircle,
-  Loader2,
   FileText,
   Trash2,
   Square,
@@ -17,9 +12,6 @@ import {
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
-import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
-import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
-import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 
 interface Jornada {
   id: string;
@@ -61,7 +53,7 @@ interface JornadaHistoryTableProps {
   onForceClose?: (jornada: Jornada) => void;
   onApproveReview?: (jornadaId: string) => void;
   onShowDetail: (jornadaId: string) => void;
-  onExportCSV: (jornada: Jornada) => void;
+  onExportCSV?: (jornada: Jornada) => void;
   staleThresholdHours?: number;
 }
 
@@ -144,21 +136,8 @@ export function JornadaHistoryTable({
                 </div>
               </div>
 
-              {/* Right: Download/action buttons */}
+              {/* Right: operational actions only — descargas viven en Reportes */}
               <div className="flex items-center gap-1 shrink-0">
-                {/* Primary: Audit downloads */}
-                <POSReportBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
-                <ProductPDFBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
-                {isClosed && summary && (
-                  <Button size="sm" variant="outline" onClick={() => onExportCSV(jornada)} title="Exportar CSV financiero" className="gap-1 text-xs h-8">
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">CSV</span>
-                  </Button>
-                )}
-
-                <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
-
-                {/* Secondary: operational actions */}
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onShowDetail(jornada.id)} title="Ver detalle">
                   <Eye className="w-4 h-4" />
                 </Button>
@@ -196,125 +175,3 @@ export function JornadaHistoryTable({
   );
 }
 
-/* ── Inline report buttons ── */
-
-function POSReportBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
-  const [loading, setLoading] = useState(false);
-
-  const handle = async () => {
-    setLoading(true);
-    try {
-      const liveReport = await fetchJornadaLiveReport(jornadaId);
-      if (liveReport.perPos.length === 0) {
-        const { toast } = await import("sonner");
-        toast.info("No hay ventas en esta jornada");
-        return;
-      }
-
-      const posSummary: POSSalesData["posSummary"] = liveReport.perPos.map((pos) => ({
-        posName: pos.posName,
-        cashTotal: pos.cashSales,
-        cashCount: 0,
-        cardTotal: pos.cardSales,
-        cardCount: 0,
-        otherTotal: pos.otherSales,
-        otherCount: 0,
-        total: pos.grossSalesTotal,
-        totalCount: pos.transactionsCount,
-      }));
-
-      printPOSSalesReport({
-        jornadaNumber, fecha, horario, posSummary,
-        grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
-        grandCash: posSummary.reduce((s, p) => s + p.cashTotal, 0),
-        grandCard: posSummary.reduce((s, p) => s + p.cardTotal, 0),
-        grandOther: posSummary.reduce((s, p) => s + p.otherTotal, 0),
-        grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
-      });
-    } catch (err) {
-      console.error("POS report error:", err);
-      const { toast } = await import("sonner");
-      toast.error("Error al generar reporte POS");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button size="sm" variant="outline" onClick={handle} disabled={loading} title="Reporte POS (imprimir)" className="gap-1 text-xs h-8">
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-      <span className="hidden sm:inline">POS</span>
-    </Button>
-  );
-}
-
-function ProductPDFBtn({ jornadaId, jornadaNumber, fecha, horario }: { jornadaId: string; jornadaNumber: number; fecha: string; horario: string }) {
-  const [loading, setLoading] = useState(false);
-
-  const handle = async () => {
-    setLoading(true);
-    try {
-      const { data: saleItems, error } = await supabase
-        .from("sale_items")
-        .select(`
-          cocktail_id, quantity, subtotal,
-          sales!sale_items_sale_id_fkey!inner(jornada_id, is_cancelled, point_of_sale)
-        `)
-        .eq("sales.jornada_id", jornadaId)
-        .eq("sales.is_cancelled", false);
-
-      if (error) throw error;
-      if (!saleItems || saleItems.length === 0) {
-        const { toast } = await import("sonner");
-        toast.info("No hay productos vendidos en esta jornada");
-        return;
-      }
-
-      const cocktailIds = [...new Set(saleItems.map((i) => i.cocktail_id))];
-      const { data: cocktails } = await supabase.from("cocktails").select("id, name, category").in("id", cocktailIds);
-      const cocktailMap = new Map((cocktails || []).map((c) => [c.id, c]));
-
-      const posMap = new Map<string, Map<string, { name: string; category: string; qty: number }>>();
-      for (const item of saleItems) {
-        const sale = item.sales as unknown as { point_of_sale: string };
-        const posName = sale.point_of_sale || "Sin POS";
-        const cocktail = cocktailMap.get(item.cocktail_id);
-        if (!posMap.has(posName)) posMap.set(posName, new Map());
-        const prodMap = posMap.get(posName)!;
-        const existing = prodMap.get(item.cocktail_id) || { name: cocktail?.name || "Desconocido", category: cocktail?.category || "otros", qty: 0 };
-        existing.qty += Number(item.quantity) || 0;
-        prodMap.set(item.cocktail_id, existing);
-      }
-
-      const posSections: POSProductBreakdown[] = Array.from(posMap.entries())
-        .map(([posName, prodMap]) => {
-          const products = Array.from(prodMap.values())
-            .map((p) => ({ cocktailName: p.name, category: p.category, quantity: p.qty }))
-            .sort((a, b) => b.quantity - a.quantity);
-          return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0) };
-        })
-        .sort((a, b) => b.totalUnits - a.totalUnits);
-
-      generateProductSalesPDF({
-        jornadaNumber, fecha, horario, posSections,
-        grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0),
-      });
-
-      const { toast } = await import("sonner");
-      toast.success("Reporte de conteo enviado a impresión");
-    } catch (err) {
-      console.error("Product PDF error:", err);
-      const { toast } = await import("sonner");
-      toast.error("Error al generar reporte de productos");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button size="sm" variant="outline" onClick={handle} disabled={loading} title="Conteo de productos vendidos" className="gap-1 text-xs h-8">
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-      <span className="hidden sm:inline">Conteo</span>
-    </Button>
-  );
-}
