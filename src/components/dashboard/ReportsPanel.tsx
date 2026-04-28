@@ -214,37 +214,6 @@ export function ReportsPanel() {
     link.click();
   };
 
-  const handleExportMonthExcel = async () => {
-    if (jornadas.length === 0) return;
-    setExportingMonth(true);
-    try {
-      const rows: MonthlyJornadaRow[] = jornadas.map((j) => ({
-        jornada_id: j.id,
-        numero_jornada: j.numero_jornada,
-        nombre: j.nombre,
-        fecha: j.fecha,
-        hora_apertura: j.hora_apertura,
-        hora_cierre: j.hora_cierre,
-        estado: j.estado,
-        total_sales: j.totalSales,
-        sales_count: j.salesCount,
-        cancelled_total: j.totalCancelled,
-        cancelled_count: j.cancelledCount,
-        alcohol_sales: j.alcoholSales,
-        ticket_sales: j.ticketSales,
-        cash_sales: j.cashSales,
-        card_sales: j.cardSales,
-        other_payments: j.otherPayments,
-      }));
-      generateMonthlyExcelReport({ monthLabel, jornadas: rows });
-      toast.success("Excel generado");
-    } catch (e) {
-      console.error(e);
-      toast.error("Error al generar Excel mensual");
-    } finally {
-      setExportingMonth(false);
-    }
-  };
 
   useEffect(() => { fetchMonth(); }, [fetchMonth]);
 
