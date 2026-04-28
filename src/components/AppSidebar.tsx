@@ -103,7 +103,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
       { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
-      { title: "Comparación", value: "comparison", icon: Scale },
     ],
   },
   {
