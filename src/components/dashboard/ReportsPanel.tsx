@@ -260,10 +260,6 @@ export function ReportsPanel() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleExportMonthExcel} disabled={exportingMonth || loading || jornadas.length === 0}>
-              {exportingMonth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">Excel del mes</span>
-            </Button>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchMonth} disabled={loading}>
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>
