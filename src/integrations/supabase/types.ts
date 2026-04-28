@@ -5943,6 +5943,26 @@ export type Database = {
       }
       get_open_jornada: { Args: never; Returns: Json }
       get_qz_secret: { Args: { secret_name: string }; Returns: string }
+      get_realtime_inventory_snapshot: {
+        Args: { p_venue_id: string }
+        Returns: {
+          capacity_ml: number
+          category: string
+          cpp: number
+          is_bottle: boolean
+          last_movement_at: string
+          location_id: string
+          location_name: string
+          location_type: string
+          min_quantity: number
+          product_id: string
+          product_name: string
+          quantity: number
+          sku_base: string
+          status: string
+          stock_value: number
+        }[]
+      }
       get_sidebar_config: {
         Args: { p_role: string; p_venue_id: string }
         Returns: Json
