@@ -258,13 +258,9 @@ export function ReportsPanel() {
       cancelledCount: acc.cancelledCount + j.cancelledCount,
       cashSales: acc.cashSales + j.cashSales,
       cardSales: acc.cardSales + j.cardSales,
-      cogsTotal: acc.cogsTotal + (j.financial?.cogs_total || 0),
-    }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0, cogsTotal: 0 });
+    }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0 });
   }, [jornadas]);
 
-  const avgMarginPct = totals.totalSales > 0
-    ? ((totals.totalSales - totals.cogsTotal) / totals.totalSales) * 100
-    : 0;
   const commission = calculateCommission(totals.totalSales);
 
   const trendPct = useMemo(() => {
