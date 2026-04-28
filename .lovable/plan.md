@@ -1,89 +1,187 @@
-# Análisis: ¿Qué le falta al sistema en vivo para soportar >1000 ventas/día?
 
-## Lo que ya está bien
-- **Fase 1 (panel en vivo)**: snapshot RPC consolidado + Realtime sobre `stock_balances` y `stock_movements` con debounce 600ms.
-- **Fase 2 (lector facturas)**: pipeline `extract-invoice` con IA, revisión humana en `/admin/proveedores/import/:id`, cierra ciclo a CPP/Bodega.
-- **Fase 3 (conteo cierre)**: RPC `apply_shift_count` con umbral 10%, alertas automáticas.
-- **DiStock**: stock se descuenta solo en redención QR (no en venta), lo que ya alivia presión de escritura en POS.
+# Plan: Adopción del nuevo flujo de Inventario en vivo + Informe PDF
 
-## Riesgos detectados para alta concurrencia (>1000 ventas/día ≈ 1 evento/30s sostenido, picos 5-10/s)
-
-### 1. Realtime + REPLICA IDENTITY FULL en `stock_movements` (CRÍTICO)
-`REPLICA IDENTITY FULL` envía la fila completa por cada INSERT/UPDATE. En `stock_movements` (tabla append-only de altísimo volumen) esto satura el bus de Realtime y multiplica el ancho de banda. Cada redención dispara un broadcast a todos los gerentes conectados. Con 1000+ ventas el bus se degrada.
-
-**Fix**: revertir `stock_movements` a `REPLICA IDENTITY DEFAULT` (PK basta). Mantener FULL solo en `stock_balances` (que es la tabla pequeña que importa para diff).
-
-### 2. RPC `get_realtime_inventory_snapshot` ineficiente bajo carga
-- El CTE `last_mov` agrupa **toda la historia** de `stock_movements` por venue cada vez que se llama. En 6 meses puede ser >100k filas.
-- Sin índice cubriente para `(venue_id, product_id, to/from_location_id, created_at)`.
-- Se ejecuta cada 600ms si llegan eventos seguidos → cada gerente abierto = N queries pesadas/min.
-
-**Fix**:
-- Reescribir `last_mov` con `DISTINCT ON` y filtro temporal (últimos 30 días).
-- Agregar índice `(venue_id, product_id, COALESCE(to_location_id, from_location_id), created_at DESC)`.
-- Subir debounce del hook a **1500ms** y agregar throttle máximo (1 fetch/2s).
-
-### 3. Suscripción Realtime por venue sin filtro de columnas
-El canal recibe el payload completo de cada movimiento. Como solo necesitamos saber "algo cambió", basta con el evento.
-
-**Fix**: cambiar la suscripción de `stock_movements` a solo `INSERT` con payload mínimo (ya está limitado a INSERT, pero combinado con fix #1 reduce 90% del tráfico).
-
-### 4. `apply_shift_count` no es transaccional ante concurrencia
-Si dos bartenders cierran al mismo tiempo en la misma ubicación (raro pero posible) o si la misma ubicación recibe ventas mientras se aplica el conteo, el `delta` calculado puede quedar desfasado. No hay `FOR UPDATE` lock.
-
-**Fix**: tomar `SELECT ... FOR UPDATE` sobre el row de `stock_balances` antes de calcular delta.
-
-### 5. Falta histórico/log de conteos por turno
-Hoy el conteo solo deja `stock_movements` tipo `ajuste`, pero no hay tabla `shift_counts` ni `shift_count_lines` para auditoría posterior por jornada/bartender.
-
-**Fix**: crear `shift_counts` (id, jornada_id, location_id, user_id, total_variance_pct, status) y `shift_count_lines` (count_id, product_id, theoretical, real, delta, alerted) escritas por la RPC. Sin esto, gerencia no puede revisar qué bartender tuvo qué diferencias históricas.
-
-### 6. Panel en vivo sin paginación ni virtualización
-El snapshot retorna **todos** los productos × ubicaciones del venue. En venues grandes (300 productos × 4 barras = 1200 filas) la tabla DOM es pesada. El cliente puede congelarse al re-render por cada evento Realtime.
-
-**Fix**: virtualización con `@tanstack/react-virtual` en la tabla, o agrupar por producto y expandir ubicaciones on-demand.
-
-### 7. Capital inmovilizado calculado en cliente
-Los KPIs (totalValue, lowCount, criticalCount) se recalculan en JS. Con miles de filas el `useMemo` igual corre por re-render. Mejor incluir **agregados precomputados** en la RPC (1 fila aparte con totales).
-
-### 8. Sin alertas push proactivas
-Hoy las alertas se ven al refrescar `AlertsPanel`. Con >1000 ventas, gerencia necesita un **toast en vivo** cuando algo entra a estado `critical` o `low` (suscripción a `stock_alerts`).
-
-**Fix**: hook `useStockAlertsLive` que hace toast al insertar nueva alerta del venue.
-
-### 9. Lector de facturas sin cola de retry
-`extract-invoice` es síncrono. Si la IA falla (429/402) la factura queda en `UPLOADED` sin reintento automático. En operación real con muchas facturas semanales, debe haber reintento con backoff o un panel de "fallidas".
-
-**Fix**: `DocumentsRetryPanel` ya existe — verificar que cubra `purchase_imports` con status fallido y agregar botón "Reintentar todas".
-
-### 10. Conteo de cierre sin filtro pre-cargado por bartender
-El `ShiftCountDialog` lista todos los productos. Un bartender cierra solo su barra, pero ve el catálogo completo. Riesgo de error humano.
-
-**Fix**: precargar solo productos con `stock_balances.quantity > 0` en esa ubicación + buscador por categoría/marca.
+## Objetivo
+El módulo `live-inventory` ya existe como una pestaña aislada en el sidebar. Este plan lo **integra al flujo principal del administrador**, lo hace más fácil de adoptar visualmente, y agrega la **descarga de un PDF de inventario actual** al estilo del informe de canjes.
 
 ---
 
-## Plan de implementación (orden por impacto)
+## 1. Integración en el flujo del administrador
 
-### Migración SQL única
-1. `ALTER TABLE stock_movements REPLICA IDENTITY DEFAULT` (revertir).
-2. Crear índice `idx_stock_movements_venue_product_loc_created` para acelerar `last_mov`.
-3. Reescribir `get_realtime_inventory_snapshot` con `DISTINCT ON` + ventana 30 días + fila TOTALS al final.
-4. `apply_shift_count`: añadir `SELECT ... FOR UPDATE` y registrar en nuevas tablas.
-5. Crear `shift_counts` y `shift_count_lines` con RLS por venue.
+### 1.1 Promover "Inventario en vivo" como módulo principal de inventario
+- En `AppSidebar.tsx`, sección **Inventario**, reordenar y renombrar:
+  - "En vivo" → **"Inventario en vivo"** (primero, ícono `Activity` + badge "NUEVO" sutil)
+  - "Inventario" (Hub Excel) → **"Operaciones Excel"** (segundo)
+  - "Productos" y "Comparación" se mantienen abajo
+- Esto comunica que el panel en vivo es ahora el **dashboard principal de stock**, mientras que `InventoryHub` queda como herramienta operativa Excel.
 
-### Frontend
-6. `useRealtimeInventory`: subir debounce a 1500ms + throttle 2s + extraer KPIs desde fila TOTALS.
-7. Virtualizar tabla del `RealtimeInventoryDashboard` (instalar `@tanstack/react-virtual`).
-8. Nuevo hook `useStockAlertsLive` con toast en gerencia/admin.
-9. `ShiftCountDialog`: filtrar productos con stock>0 en la ubicación + buscador por categoría.
-10. `DocumentsRetryPanel`: incluir `purchase_imports` con status fallido.
+### 1.2 Acceso directo desde el Dashboard (Overview)
+- En `AdminOverview.tsx`, agregar un **bloque destacado** arriba de los KPIs existentes:
+  - Tarjeta "Inventario en vivo" con:
+    - KPIs resumidos (capital, productos bajo mínimo, sin stock) leídos del mismo `useRealtimeInventory`
+    - 3 botones de acción rápida: **Ver inventario en vivo**, **Conteo de cierre**, **Subir factura (foto)**
+    - Indicador de última actualización en tiempo real (punto verde animado cuando hay eventos)
+- Esto reemplaza/complementa la entrada actual al inventario y vuelve obvio el nuevo flujo.
+
+### 1.3 Onboarding contextual (mensajes informativos)
+Dentro de `RealtimeInventoryDashboard.tsx`, agregar un **banner explicativo descartable** (persistido en `localStorage` por venue):
+> **Cómo funciona ahora tu inventario**
+> 1. **Compras / Ingresos** → Subí la factura con foto desde aquí. La IA la procesa y carga el stock en bodega.
+> 2. **Stock en vivo** → Esta tabla se actualiza sola cada vez que se redime un QR en barra. No hace falta refrescar.
+> 3. **Conteo de cierre** → Al final de la jornada, los bartenders cuentan físicamente. Diferencias >10% generan alerta automática.
+> 4. **Informe PDF** → Descargá el inventario actual cuando lo necesites (auditoría, seguros, gerencia).
+
+Cada paso con su ícono y un botón "Entendido" para ocultarlo.
+
+### 1.4 Tooltips guiados en los botones principales
+Usar `GuidedTooltip` (ya existe en el proyecto) en los 3 botones del header del panel:
+- "Subir factura": *"Reemplaza la carga manual de stock. Toma foto y la IA hace el resto."*
+- "Conteo de cierre": *"Bartenders cuentan al cierre. Diferencias >10% se reportan a admin."*
+- "Actualizar": *"Forzar refresh manual. Normalmente no es necesario, se actualiza solo."*
+
+### 1.5 Mensajes informativos en estados vacíos
+- Si `rows.length === 0`: card grande con CTA "Aún no tenés inventario cargado. Subí tu primera factura" + botón.
+- Si `lastUpdate > 5 min` sin eventos: chip sutil "Sin movimientos recientes" en lugar del distance label.
+
+### 1.6 Mejora visual del panel
+- Añadir indicador **pulse verde** junto al título cuando llega un evento Realtime (anima 2s).
+- KPIs con micro-tendencia: comparar contra snapshot de hace 1h (delta % en chip).
+- Tabla: agregar **agrupación opcional por categoría** (toggle al lado del buscador) para que el admin escanee por familia (whisky, ron, etc.).
+- Filas críticas (sin stock) con tinte rojo sutil en el fondo.
+- Sticky header dentro de la tabla para tablets.
 
 ---
 
-## Detalles técnicos
-- Las nuevas tablas `shift_counts/shift_count_lines` quedan inmutables (insert-only desde RPC) y con RLS `venue_id = get_user_venue_id()`.
-- El throttle del hook usa un `lastFetchAt` ref para garantizar máximo 1 fetch cada 2 segundos aunque lleguen 50 eventos.
-- Virtualización solo en la `<TableBody>` con altura fija 48px por fila.
-- La suscripción a `stock_alerts` filtra por `venue_id` y muestra `toast.warning` con el mensaje.
-- El payload del snapshot agrega una fila final con `product_id = NULL` que contiene los totales agregados (totalValue, productCount, lowCount, criticalCount).
+## 2. Mejora del Conteo de Cierre
+
+### 2.1 Onboarding del diálogo
+Encabezado del `ShiftCountDialog.tsx` con paso a paso visual de 3 pasos en chips:
+`1. Elegí ubicación → 2. Contá físicamente y escribí cantidades → 3. Aplicar`
+
+### 2.2 Filtro pre-cargado por stock real
+- Por defecto **mostrar solo productos con `theoretical > 0`** en esa ubicación (toggle "Ver todos" para incluir productos sin stock teórico, útil cuando llegó algo no registrado).
+- Buscador ya existe; sumar **filtro por categoría** (chips horizontales).
+
+### 2.3 Indicadores visuales claros
+- Mientras escribe el conteo:
+  - Diferencia ≥10% → fila con borde amarillo + ícono ⚠
+  - Diferencia ≥30% → fila con borde rojo + ícono 🚨 + tooltip "Esta diferencia es muy alta, revisá antes de aplicar"
+- Al final, **resumen previo** antes de "Aplicar":
+  - "Vas a registrar X productos contados. Y diferencias generarán alerta."
+
+### 2.4 Confirmación post-aplicación
+Toast con acción "Ver alertas" que navega al panel de alertas. Si hay alertas críticas, mostrar dialog resumen con lista de productos desviados.
+
+---
+
+## 3. Informe PDF de Inventario Actual (NUEVO)
+
+### 3.1 Ubicación del botón
+- Agregar botón **"Descargar PDF"** en el header de `RealtimeInventoryDashboard.tsx` (junto a "Actualizar").
+- También agregar acción equivalente en el dashboard `AdminOverview` (acción rápida del bloque inventario).
+
+### 3.2 Generador
+Crear nuevo archivo `src/lib/reporting/inventory-snapshot-pdf.ts` que use **`jspdf` + `jspdf-autotable`** (ya disponibles en proyecto via otros reportes; si no, usar `print-js` con HTML al estilo de `product-sales-pdf.ts` pero formato A4 en vez de 80mm).
+
+**Formato del PDF (estilo similar al informe de canjes):**
+
+```text
+┌──────────────────────────────────────────────┐
+│   [LOGO STOCKIA]   INFORME DE INVENTARIO     │
+│   Venue: <nombre>   Fecha: 28-04-2026 14:30  │
+├──────────────────────────────────────────────┤
+│  RESUMEN GENERAL                             │
+│  Capital inmovilizado:   $ 4.250.000        │
+│  Productos con stock:    142                │
+│  Bajo mínimo:            8                  │
+│  Sin stock:              3                  │
+├──────────────────────────────────────────────┤
+│  POR UBICACIÓN                              │
+│  ─ Bodega Principal      $ 2.800.000        │
+│  ─ Barra Principal       $ 980.000          │
+│  ─ Barra VIP             $ 470.000          │
+├──────────────────────────────────────────────┤
+│  DETALLE POR PRODUCTO (agrupado por ubic.)  │
+│  Bodega Principal                            │
+│   SKU      Producto        Cant   CPP   Valor│
+│   ────────────────────────────────────────── │
+│   ABS750   Absolut 750ml   12 u   8.500 102k │
+│   ...                                        │
+│   Subtotal Bodega: $ 2.800.000              │
+│                                              │
+│  Barra Principal                             │
+│   ...                                        │
+├──────────────────────────────────────────────┤
+│  ALERTAS ACTIVAS                             │
+│  🚨 Sin stock (3): Jagermeister, Tequila... │
+│  ⚠ Bajo mínimo (8): Ron Bacardi, Vodka...   │
+├──────────────────────────────────────────────┤
+│  Generado por: <usuario> · 28/04/2026 14:30  │
+└──────────────────────────────────────────────┘
+```
+
+### 3.3 Configuración del PDF
+- A4 portrait, fuente sans, encabezado fijo en cada página con número de página.
+- Tablas con `autoTable`: rayas alternadas, totales destacados.
+- Filas críticas resaltadas en rojo claro, bajas en amarillo.
+- Marca de agua sutil "STOCKIA" si modo demo.
+- Nombre archivo: `inventario_<venue>_<YYYYMMDD_HHmm>.pdf`.
+
+### 3.4 Datos de origen
+Usa el mismo `useRealtimeInventory` (rows + totals) — sin nueva query, garantiza consistencia con lo que el admin ve en pantalla.
+
+---
+
+## 4. Digitalización del inventario (recordatorio del flujo completo)
+
+Como apoyo visual, agregar dentro del bloque overview una **"línea de tiempo del inventario"** mini-componente:
+
+```text
+[📷 Factura] → [🤖 IA extrae] → [✅ Admin valida] → [📦 Stock en Bodega]
+                                                          ↓
+                                                  [🔄 Reposición a barra]
+                                                          ↓
+                                                  [🍸 Venta + QR]
+                                                          ↓
+                                                  [🍷 Bar canjea (descuenta)]
+                                                          ↓
+                                                  [📊 Inventario en vivo]
+                                                          ↓
+                                                  [📋 Conteo de cierre]
+                                                          ↓
+                                                  [📄 Informe PDF]
+```
+
+Implementado como componente horizontal de pasos (8 chips conectados por flechas), descartable. Es educativo: comunica visualmente al admin que NO necesita hacer carga manual.
+
+---
+
+## 5. Detalles técnicos
+
+**Archivos nuevos:**
+- `src/lib/reporting/inventory-snapshot-pdf.ts` — generador PDF con jsPDF + autoTable.
+- `src/components/dashboard/InventoryFlowTimeline.tsx` — timeline visual descartable.
+- `src/components/dashboard/InventoryOnboardingBanner.tsx` — banner 4 pasos con persistencia localStorage.
+
+**Archivos editados:**
+- `src/components/AppSidebar.tsx` — reorden + badge "NUEVO" en "En vivo".
+- `src/components/dashboard/AdminOverview.tsx` — bloque destacado de inventario en vivo + acciones rápidas.
+- `src/components/dashboard/RealtimeInventoryDashboard.tsx` — banner onboarding, botón PDF, tooltips, agrupación por categoría, resaltado filas críticas, indicador pulse Realtime.
+- `src/components/dashboard/ShiftCountDialog.tsx` — chips de pasos, filtro stock>0 por defecto, advertencias visuales de varianza, resumen pre-aplicación.
+
+**Sin cambios de DB ni de RPC** — toda la mejora es de UX y reporting; el backend (snapshot RPC v3, audit tables, throttling) ya está en su lugar tras los cambios anteriores.
+
+**Dependencia PDF:** verificar si `jspdf` + `jspdf-autotable` están instalados; si no, instalar (`bun add jspdf jspdf-autotable`). Alternativa: reusar patrón `print-js` HTML A4.
+
+---
+
+## 6. Resultado para el admin
+
+- Al entrar al dashboard ve **inmediatamente** el estado de su inventario sin hacer clics.
+- El sidebar resalta "Inventario en vivo" como entrada principal.
+- Un banner inicial le explica los 4 pasos del nuevo método.
+- Una línea de tiempo le muestra que el sistema digitaliza todo el flujo (foto → IA → stock → venta → canje → conteo → PDF).
+- El conteo de cierre lo guía paso a paso y previene errores.
+- Puede descargar el inventario como PDF profesional cuando quiera (auditoría, seguros, gerencia).
+
+¿Avanzo con la implementación?
