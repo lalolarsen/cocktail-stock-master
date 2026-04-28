@@ -1,80 +1,88 @@
+## Mejora del Panel de Reportes
 
+Rediseño integral del panel `/reportes` enfocado en 3 ejes: **performance**, **UX/visual** y **calidad de exportaciones**, manteniendo intactos los reportes existentes (POS térmico, Conteo, EERR, CSV).
 
-# Acelerar aprobación de Conteos (350+ filas)
+---
 
-## Diagnóstico
+### 1. Performance (carga ~3-5x más rápida)
 
-`applyConteos` en `InventoryHub.tsx` (líneas 440-468) procesa cada fila secuencialmente con **5 round-trips por fila**:
+**Problemas actuales:**
+- Trae **todas las profiles del venue** sin filtro (puede ser cientos de filas).
+- Hace 4 fetches grandes en paralelo y **calcula los KPIs en el cliente** sobre cada venta del mes.
+- Re-fetch completo al cambiar de mes, sin caché.
 
-1. SELECT `stock_balances` (saldo actual)
-2. UPDATE / INSERT `stock_balances`
-3. INSERT `stock_movements`
-4. SELECT todos los `stock_balances` del producto (para sumar)
-5. UPDATE `products.current_stock`
+**Solución:**
+- **Crear RPC `get_monthly_jornadas_summary(venue_id, year, month)`** que devuelva en una sola consulta agregada por jornada: total ventas, conteos, alcohol/tickets, efectivo/tarjeta, cancelaciones, top 3 vendedores (con nombre vía JOIN). El cliente recibe los reportes ya calculados.
+- Reemplazar el fetch de todas las `profiles` por solo los IDs necesarios (vendedores que aparecen).
+- Cargar `jornada_financial_summary` en el mismo RPC (LEFT JOIN).
+- Usar `useMemo` para totales mensuales (hoy se recalculan en cada render).
+- Mantener el fetch de detalle de ventas individual (lazy on expand) — ya está bien.
 
-Para 350 filas → **~1.750 viajes secuenciales al servidor**. A 80-150ms cada uno = 2-5 minutos colgado, sin feedback de progreso. El mismo patrón existe en `applyCompras` y `applyTransferencias`, pero conteo es el más usado.
+**Resultado esperado:** 1 query RPC en vez de 4 queries + procesamiento JS pesado. Para meses con 30 jornadas y miles de ventas, debería pasar de ~3-5s a <1s.
 
-A esto se suma `saveLearnings` que hace 1 SELECT + 1 UPDATE/INSERT por producto único, también secuencial.
+---
 
-## Solución
+### 2. Rediseño visual / UX
 
-Mover el procesamiento al servidor con un **RPC SECURITY DEFINER** que recibe el lote completo como JSONB y aplica todo en una sola transacción. El cliente pasa de hacer 1.750 llamadas a hacer **1 sola llamada**.
+**Layout nuevo:**
 
-### 1. Migración: nuevo RPC `apply_conteo_batch`
-
-Función PL/pgSQL que recibe:
-- `p_venue_id uuid`
-- `p_user_id uuid`
-- `p_batch_id uuid`
-- `p_rows jsonb` — array `[{ product_id, location_id, stock_real }, ...]`
-
-Y dentro hace, en una sola transacción:
-- `UPDATE stock_balances` masivo con CTE para filas existentes
-- `INSERT ... ON CONFLICT (product_id, location_id, venue_id) DO UPDATE` para crear las que falten (requiere índice único; si no existe, lo creamos)
-- `INSERT INTO stock_movements` masivo (un solo INSERT con SELECT desde la diferencia calculada)
-- `UPDATE products SET current_stock = (SELECT SUM…)` agregado por producto en un solo statement
-- Devuelve `{ applied: int, skipped: int }`
-
-Validación dentro del RPC: el `venue_id` del usuario debe coincidir (vía `get_user_venue_id()`) y solo aplica filas donde `stock_real != balance_actual`.
-
-### 2. RPCs análogos para Compras y Transferencias
-
-Mismo patrón aplicado a `applyCompras` (incluyendo recálculo CPP en SQL) y `applyTransferencias`. Esto deja los tres flujos masivos con tiempo de respuesta de segundos en vez de minutos.
-
-### 3. RPC `save_learning_mappings_batch`
-
-Recibe el array de mappings y hace un único `INSERT ... ON CONFLICT (raw_text, venue_id) DO UPDATE SET times_used = times_used + 1, ...`. Reemplaza el bucle SELECT+UPDATE/INSERT por fila.
-
-### 4. Cliente: refactor `InventoryHub.tsx`
-
-- `applyConteos`, `applyCompras`, `applyTransferencias` y `saveLearnings` se reducen a una sola llamada `supabase.rpc(...)`.
-- Toast de "Aplicando lote…" con spinner (ya existe `setApproving`), y al finalizar muestra `{ applied } filas aplicadas`.
-- Si el lote es muy grande (>1000 filas), particionar en chunks de 500 antes de mandar al RPC para evitar timeout de edge.
-
-### 5. Índice único requerido
-
-```sql
-CREATE UNIQUE INDEX IF NOT EXISTS stock_balances_product_location_venue_uniq
-ON public.stock_balances(product_id, location_id, venue_id);
+```text
+┌────────────────────────────────────────────────────┐
+│ Reportes                              [Mes ▼] [↻] │
+│ Auditoría y descargas por jornada                  │
+├────────────────────────────────────────────────────┤
+│ ▸ Resumen del mes (4 KPI cards compactos)          │
+│   Ventas | Margen | Cancelaciones | Comisión       │
+├────────────────────────────────────────────────────┤
+│ ▸ Comparativa (mini sparkline ventas vs mes ant.)  │
+├────────────────────────────────────────────────────┤
+│ ▸ Jornadas (lista colapsable, una por fila)        │
+│   #N · Nombre · fecha   $XXX | margen | [acciones] │
+└────────────────────────────────────────────────────┘
 ```
 
-Necesario para `ON CONFLICT` y además previene duplicados de saldo (bug latente).
+- **Header sticky** con selector de mes y botón refresh.
+- **Tarjetas de KPI** unificadas con el estilo de `FinancePanel` (más limpio, sin íconos saturados).
+- **Comisión STOCKIA** integrada como un 4º KPI en la grilla principal (no como card separada que ocupa demasiado).
+- **Mini comparativa mensual**: badge con flecha ↑/↓ vs mes anterior en cada KPI clave.
+- **Fila de jornada compactada**: estado, número/nombre, fecha y total en una línea; botones de descarga agrupados en un dropdown "Descargar ▼" (POS · Conteo · QRs · CSV · EERR) para no saturar la fila.
+- **Detalle expandido** mejorado: KPI grid + tabla densa + filtros rápidos (Todas / Solo POS X / Solo canceladas).
+- Optimización mobile (iPhone): tarjetas stacked, dropdown de descargas en lugar de botones lado-a-lado.
 
-## Resultado esperado
+---
 
-- 350 filas de conteo: de **2-5 minutos → ~3-8 segundos**.
-- Una sola transacción atómica: si algo falla, no queda el lote a medio aplicar.
-- Aplica también a Compras y Transferencias masivas.
-- El `current_stock` y los movimientos quedan consistentes en un solo paso.
+### 3. Mejorar exportaciones
 
-## Archivos a tocar
+**CSV de ventas detallado:**
+- Agregar columnas: `Hora apertura jornada`, `Hora cierre`, `Subtotal`, `Descuento`, `Productos vendidos` (concatenado).
+- Incluir BOM UTF-8 (ya está) y separador correcto para Excel ES.
+- Botón "CSV completo del mes" además del CSV por jornada.
 
-- `supabase/migrations/<nuevo>.sql` — RPCs `apply_conteo_batch`, `apply_compra_batch`, `apply_transferencia_batch`, `save_learning_mappings_batch` + índice único en `stock_balances`.
-- `src/components/dashboard/InventoryHub.tsx` — reemplazar `applyConteos`, `applyCompras`, `applyTransferencias` y `saveLearnings` por llamadas RPC con chunking opcional.
+**Nuevo: Excel consolidado del mes** (descarga única con tabs):
+- Tab 1: Resumen mensual (KPIs).
+- Tab 2: Jornadas (una fila por jornada con todos los totales).
+- Tab 3: Ventas detalladas (todas las del mes).
+- Tab 4: Comisión STOCKIA.
+- Generado con `xlsx` (SheetJS, ya disponible en proyecto si no, agregarla).
 
-## Validación
+**Reportes existentes (POS, Conteo, EERR):** se mantienen sin cambios funcionales — solo se reubican en el dropdown de cada jornada.
 
-- Subir un Excel de conteo de 350 filas y confirmar que la aprobación termina en < 10s.
-- Verificar que `stock_balances`, `stock_movements` y `products.current_stock` quedan consistentes.
-- Probar con un lote que tenga filas nuevas (sin balance previo) y filas existentes mezcladas.
+---
 
+### Detalle técnico
+
+**Archivos a modificar:**
+- `src/components/dashboard/ReportsPanel.tsx` — refactor completo (split en sub-componentes).
+- Nuevo: `src/components/dashboard/reports/MonthSummaryCards.tsx`
+- Nuevo: `src/components/dashboard/reports/JornadaReportRow.tsx` (extraído del actual)
+- Nuevo: `src/components/dashboard/reports/DownloadMenu.tsx` (dropdown unificado)
+- Nuevo: `src/lib/reporting/monthly-excel-export.ts` (export consolidado)
+- Nueva migración SQL: RPC `get_monthly_jornadas_summary` (SECURITY DEFINER, filtrada por `venue_id` del usuario).
+
+**Dependencias:**
+- Verificar si `xlsx` (SheetJS) está instalada; si no, agregarla.
+
+**No se toca:**
+- `pos-sales-report.ts`, `product-sales-pdf.ts`, `RedeemReportButton.tsx`, `JornadaCloseSummaryDialog.tsx`, `jornada-reporting.ts` — quedan idénticos.
+- Lógica de comisión STOCKIA (`commission.ts`) — se mantiene la fórmula informativa 2.5%.
+- Multi-tenant: el RPC respetará aislamiento por `venue_id` automático.
