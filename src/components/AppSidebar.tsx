@@ -99,12 +99,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    label: "Operación",
-    items: [
-      { title: "Anulaciones", value: "voids", icon: Undo2 },
-    ],
-  },
-  {
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
@@ -118,12 +112,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
-    ],
-  },
-  {
-    label: "Finanzas",
-    items: [
-      { title: "Finanzas", value: "finance", icon: Landmark },
     ],
   },
   {
