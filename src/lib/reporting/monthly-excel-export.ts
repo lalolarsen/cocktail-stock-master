@@ -65,7 +65,7 @@ export function generateMonthlyExcelReport(opts: {
     ["Margen bruto %", margenPct.toFixed(2)],
     [],
     ["Comisión STOCKIA", ""],
-    [`Tasa (${(STOCKIA_COMMISSION_RATE * 100).toFixed(1)}%)`, Math.round(calculateCommission(totalSales))],
+    [`Tasa (${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}%)`, Math.round(calculateCommission(totalSales))],
   ];
   const wsResumen = XLSX.utils.aoa_to_sheet(resumen);
   wsResumen["!cols"] = [{ wch: 32 }, { wch: 22 }];
