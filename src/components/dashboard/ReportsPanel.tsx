@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Calendar, ChevronDown, TrendingUp, TrendingDown,
   Clock, DollarSign, XCircle, CreditCard, Banknote, RefreshCw,
-  Loader2, FileSpreadsheet, ShoppingCart, Ticket, PieChart, AlertTriangle,
+  Loader2, ShoppingCart, Ticket, PieChart, AlertTriangle,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
@@ -20,7 +20,7 @@ import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
 import { RedeemReportButton } from "./RedeemReportButton";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { JornadaDownloadMenu } from "./reports/JornadaDownloadMenu";
-import { generateMonthlyExcelReport, type MonthlyJornadaRow } from "@/lib/reporting/monthly-excel-export";
+
 import { toast } from "sonner";
 
 /* ── types ─────────────────────────────────────────── */
@@ -80,7 +80,7 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [loadingSales, setLoadingSales] = useState<string | null>(null);
-  const [exportingMonth, setExportingMonth] = useState(false);
+  
   const [eerrOpen, setEerrOpen] = useState<{ id: string; num: number; date: string } | null>(null);
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const now = new Date();
@@ -214,37 +214,6 @@ export function ReportsPanel() {
     link.click();
   };
 
-  const handleExportMonthExcel = async () => {
-    if (jornadas.length === 0) return;
-    setExportingMonth(true);
-    try {
-      const rows: MonthlyJornadaRow[] = jornadas.map((j) => ({
-        jornada_id: j.id,
-        numero_jornada: j.numero_jornada,
-        nombre: j.nombre,
-        fecha: j.fecha,
-        hora_apertura: j.hora_apertura,
-        hora_cierre: j.hora_cierre,
-        estado: j.estado,
-        total_sales: j.totalSales,
-        sales_count: j.salesCount,
-        cancelled_total: j.totalCancelled,
-        cancelled_count: j.cancelledCount,
-        alcohol_sales: j.alcoholSales,
-        ticket_sales: j.ticketSales,
-        cash_sales: j.cashSales,
-        card_sales: j.cardSales,
-        other_payments: j.otherPayments,
-      }));
-      generateMonthlyExcelReport({ monthLabel, jornadas: rows });
-      toast.success("Excel generado");
-    } catch (e) {
-      console.error(e);
-      toast.error("Error al generar Excel mensual");
-    } finally {
-      setExportingMonth(false);
-    }
-  };
 
   useEffect(() => { fetchMonth(); }, [fetchMonth]);
 
@@ -291,10 +260,6 @@ export function ReportsPanel() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleExportMonthExcel} disabled={exportingMonth || loading || jornadas.length === 0}>
-              {exportingMonth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">Excel del mes</span>
-            </Button>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchMonth} disabled={loading}>
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllByIds } from "@/lib/supabase-batch";
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -153,7 +153,7 @@ export function JornadaManagement() {
         .from("jornadas")
         .select("*")
         .order("fecha", { ascending: false })
-        .limit(50);
+        .limit(30);
 
       if (error) throw error;
       setJornadas(data || []);
@@ -194,68 +194,20 @@ export function JornadaManagement() {
 
   const fetchJornadaStats = async (jornadaIds: string[]) => {
     try {
-      const [salesData, ticketSalesData, loginData] = await Promise.all([
-        fetchAllByIds(
-          "sales",
-          "jornada_id",
-          jornadaIds,
-          "id, jornada_id, total_amount, is_cancelled, sale_items(quantity)"
-        ).then((rows: any[]) => rows.filter((s: any) => !s.is_cancelled)),
-        fetchAllByIds(
-          "ticket_sales",
-          "jornada_id",
-          jornadaIds,
-          "id, jornada_id, total, payment_method, payment_status"
-        ).then((rows: any[]) => rows.filter((s: any) => s.payment_status === "paid")),
-        fetchAllByIds(
-          "login_history",
-          "jornada_id",
-          jornadaIds,
-          "jornada_id"
-        ),
-      ]);
-      const ticketSaleIds = (ticketSalesData as any[]).map((sale: any) => sale.id);
-      const ticketItems = ticketSaleIds.length > 0
-        ? await fetchAllByIds(
-            "ticket_sale_items",
-            "ticket_sale_id",
-            ticketSaleIds,
-            "ticket_sale_id, quantity"
-          )
-        : [];
-
+      const { data, error } = await supabase.rpc("get_jornadas_stats_bulk", {
+        p_jornada_ids: jornadaIds,
+      });
+      if (error) throw error;
       const stats: Record<string, JornadaStats> = {};
-      jornadaIds.forEach(id => {
-        const jornadaSales = salesData.filter((s: any) => s.jornada_id === id);
-        const jornadaTickets = (ticketSalesData as any[]).filter((s: any) => s.jornada_id === id);
-        const jornadaLogins = loginData.filter((l: any) => l.jornada_id === id);
-        const alcoholTotal = jornadaSales.reduce((sum: number, s: any) => sum + Number(s.total_amount), 0);
-        const ticketTotal = jornadaTickets.reduce((sum: number, s: any) => sum + Number(s.total), 0);
-        const alcoholProducts = jornadaSales.reduce((sum: number, s: any) => 
-          sum + (s.sale_items?.reduce((itemSum: number, item: { quantity: number }) => itemSum + item.quantity, 0) || 0), 0);
-        const ticketProducts = (ticketItems as any[])
-          .filter((item: any) => jornadaTickets.some((sale: any) => sale.id === item.ticket_sale_id))
-          .reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
-        const cashSales = jornadaSales
-          .filter((s: any) => s.payment_method === "cash")
-          .reduce((sum: number, s: any) => sum + Number(s.total_amount), 0) +
-          jornadaTickets
-            .filter((s: any) => s.payment_method === "cash")
-            .reduce((sum: number, s: any) => sum + Number(s.total), 0);
-        const cardSales = jornadaSales
-          .filter((s: any) => s.payment_method === "card")
-          .reduce((sum: number, s: any) => sum + Number(s.total_amount), 0) +
-          jornadaTickets
-            .filter((s: any) => s.payment_method === "card")
-            .reduce((sum: number, s: any) => sum + Number(s.total), 0);
-        stats[id] = {
-          total_ventas: alcoholTotal + ticketTotal,
-          cantidad_ventas: jornadaSales.length + jornadaTickets.length,
-          productos_vendidos: alcoholProducts + ticketProducts,
-          logins: jornadaLogins.length,
-          cash_sales: cashSales,
-          card_sales: cardSales,
-          other_sales: alcoholTotal + ticketTotal - cashSales - cardSales,
+      (data || []).forEach((row: any) => {
+        stats[row.jornada_id] = {
+          total_ventas: Number(row.total_ventas) || 0,
+          cantidad_ventas: Number(row.cantidad_ventas) || 0,
+          productos_vendidos: Number(row.productos_vendidos) || 0,
+          logins: Number(row.logins) || 0,
+          cash_sales: Number(row.cash_sales) || 0,
+          card_sales: Number(row.card_sales) || 0,
+          other_sales: Number(row.other_sales) || 0,
         };
       });
       setJornadaStats(stats);
