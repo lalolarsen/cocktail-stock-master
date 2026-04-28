@@ -5682,6 +5682,24 @@ export type Database = {
         Returns: Json
       }
       apply_replenishment_plan: { Args: { p_plan_id: string }; Returns: Json }
+      apply_shift_count: {
+        Args: {
+          p_counts: Json
+          p_jornada_id: string
+          p_location_id: string
+          p_notes?: string
+          p_threshold_pct?: number
+          p_venue_id: string
+        }
+        Returns: {
+          alerted: boolean
+          delta: number
+          pct_diff: number
+          product_id: string
+          real_qty: number
+          theoretical: number
+        }[]
+      }
       apply_transferencia_batch: {
         Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
         Returns: Json
