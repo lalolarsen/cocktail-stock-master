@@ -91,6 +91,53 @@ function MetricCell({
   );
 }
 
+function LiveInventoryQuickCard({ onNavigate }: { onNavigate?: (v: string) => void }) {
+  const { venue } = useAppSession();
+  const { totals, lastUpdate, rows } = useRealtimeInventory(venue?.id);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Card className="overflow-hidden border-primary/20">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-border bg-primary/5">
+        <div className="flex items-center gap-2 text-sm">
+          <Activity className="w-3.5 h-3.5 text-primary" />
+          <span className="font-semibold">Inventario en vivo</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+          {lastUpdate && (
+            <span className="text-[10px] text-muted-foreground">actualizado</span>
+          )}
+        </div>
+        <button
+          onClick={() => onNavigate?.("live-inventory")}
+          className="text-xs text-primary hover:underline flex items-center gap-1"
+        >
+          Ver completo <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-border">
+          <MetricCell label="Capital" value={formatCLP(totals.totalValue)} icon={DollarSign} />
+          <MetricCell label="Productos" value={totals.productCount} icon={Package} />
+          <MetricCell label="Bajo mín." value={totals.lowCount} icon={AlertTriangle} />
+          <MetricCell label="Sin stock" value={totals.criticalCount} icon={XCircle} />
+        </div>
+        <div className="border-t border-border p-2 flex flex-wrap gap-2 bg-muted/20">
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onNavigate?.("live-inventory")}>
+            <Activity className="w-3 h-3 mr-1" /> Ver inventario
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onNavigate?.("live-inventory")}>
+            <ClipboardCheck className="w-3 h-3 mr-1" /> Conteo de cierre
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onNavigate?.("live-inventory")}>
+            <Camera className="w-3 h-3 mr-1" /> Subir factura
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [jornada, setJornada] = useState<Jornada | null>(null);
