@@ -6,7 +6,7 @@
  * NO descuenta del efectivo a entregar ni afecta el cierre operacional de la jornada.
  */
 
-export const STOCKIA_COMMISSION_RATE = 0.025; // 2.5%
+export const STOCKIA_COMMISSION_RATE = 0.01; // 1%
 
 export const STOCKIA_COMMISSION_LABEL = "Comisión STOCKIA";
 
