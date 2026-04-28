@@ -1,15 +1,10 @@
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
-  Printer,
-  Download,
   AlertTriangle,
   Eye,
   CheckCircle,
-  Loader2,
   FileText,
   Trash2,
   Square,
@@ -17,9 +12,6 @@ import {
 import { format, parseISO, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
-import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
-import { generateProductSalesPDF, type POSProductBreakdown, type ProductSalesReportData } from "@/lib/reporting/product-sales-pdf";
-import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 
 interface Jornada {
   id: string;
@@ -144,21 +136,8 @@ export function JornadaHistoryTable({
                 </div>
               </div>
 
-              {/* Right: Download/action buttons */}
+              {/* Right: operational actions only — descargas viven en Reportes */}
               <div className="flex items-center gap-1 shrink-0">
-                {/* Primary: Audit downloads */}
-                <POSReportBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
-                <ProductPDFBtn jornadaId={jornada.id} jornadaNumber={jornada.numero_jornada} fecha={jornada.fecha} horario={horario} />
-                {isClosed && summary && (
-                  <Button size="sm" variant="outline" onClick={() => onExportCSV(jornada)} title="Exportar CSV financiero" className="gap-1 text-xs h-8">
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">CSV</span>
-                  </Button>
-                )}
-
-                <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
-
-                {/* Secondary: operational actions */}
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onShowDetail(jornada.id)} title="Ver detalle">
                   <Eye className="w-4 h-4" />
                 </Button>
