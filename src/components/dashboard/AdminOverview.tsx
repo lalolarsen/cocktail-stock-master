@@ -422,6 +422,14 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
             <JornadaKPIPanel jornadaId={jornada?.id} />
           </section>
 
+          {/* BLOQUE 2.5 — Inventario en vivo (acceso rápido) */}
+          <section>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Inventario en vivo
+            </h2>
+            <LiveInventoryQuickCard onNavigate={onNavigate} />
+          </section>
+
           {/* BLOQUE 3 — Alertas y estado */}
           <section>
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
