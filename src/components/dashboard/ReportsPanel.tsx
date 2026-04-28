@@ -468,11 +468,6 @@ function JornadaRow({
             <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
               <span className="font-bold text-base tabular-nums">{formatCLP(report.totalSales)}</span>
               <span className="text-muted-foreground">{report.salesCount} ventas</span>
-              {fin?.gross_margin_pct != null && (
-                <span className={`font-medium ${fin.gross_margin_pct >= 30 ? "text-primary" : "text-destructive"}`}>
-                  {fin.gross_margin_pct.toFixed(1)}% margen
-                </span>
-              )}
               {report.cancelledCount > 0 && (
                 <span className="text-destructive text-[11px]">{report.cancelledCount} canc.</span>
               )}
