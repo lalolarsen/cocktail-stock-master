@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Package, Search, Plus, Minus, Send } from "lucide-react";
+import { Loader2, Package, Search, Plus, Minus, Send, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Product {
@@ -36,6 +36,8 @@ export interface ReplenishmentRequestDialogProps {
   locationId: string;
   locationName: string;
   onRequestSent?: () => void;
+  /** When true, the request is flagged as urgent (mid-shift emergency). Notifies admin in realtime. */
+  isEmergency?: boolean;
 }
 
 export function ReplenishmentRequestDialog({
@@ -44,6 +46,7 @@ export function ReplenishmentRequestDialog({
   locationId,
   locationName,
   onRequestSent,
+  isEmergency = false,
 }: ReplenishmentRequestDialogProps) {
   const { venue } = useActiveVenue();
   const [products, setProducts] = useState<Product[]>([]);
@@ -107,6 +110,7 @@ export function ReplenishmentRequestDialog({
         requested_by_user_id: user.id,
         notes: notes || null,
         status: "pending",
+        is_emergency: isEmergency,
       }));
 
       const { error } = await supabase
@@ -114,7 +118,11 @@ export function ReplenishmentRequestDialog({
         .insert(inserts as never);
       if (error) throw error;
 
-      toast.success(`Solicitud de reposición enviada (${lines.length} productos)`);
+      toast.success(
+        isEmergency
+          ? `🚨 Emergencia enviada al admin (${lines.length} productos)`
+          : `Solicitud de reposición enviada (${lines.length} productos)`
+      );
       setLines([]);
       setNotes("");
       setSearch("");
@@ -139,11 +147,19 @@ export function ReplenishmentRequestDialog({
       <DialogContent className="max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Solicitar Reposición
+            {isEmergency ? (
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+            ) : (
+              <Package className="w-4 h-4" />
+            )}
+            {isEmergency ? "🚨 Emergencia en jornada" : "Solicitar Reposición"}
           </DialogTitle>
           <DialogDescription>
-            Solicitud para <span className="font-semibold">{locationName}</span> — requiere aprobación de administración
+            {isEmergency ? (
+              <>Notificación inmediata al admin para <span className="font-semibold">{locationName}</span>. Aprobación con un clic.</>
+            ) : (
+              <>Solicitud para <span className="font-semibold">{locationName}</span> — requiere aprobación de administración</>
+            )}
           </DialogDescription>
         </DialogHeader>
 
