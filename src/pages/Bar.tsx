@@ -21,6 +21,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import { WasteRegistrationDialog } from "@/components/dashboard/WasteRegistrationDialog";
 import { ReplenishmentRequestDialog } from "@/components/dashboard/ReplenishmentRequestDialog";
+import { BlindShiftCountDialog } from "@/components/bar/BlindShiftCountDialog";
 import { useOpenBottles, type BottleCheckResult } from "@/hooks/useOpenBottles";
 import { useAppSession } from "@/contexts/AppSessionContext";
 
@@ -168,6 +169,8 @@ export default function Bar() {
   // UI
   const [showWasteDialog, setShowWasteDialog] = useState(false);
   const [showReplenishmentDialog, setShowReplenishmentDialog] = useState(false);
+  const [showEmergencyDialog, setShowEmergencyDialog] = useState(false);
+  const [showBlindCountDialog, setShowBlindCountDialog] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualToken, setManualToken] = useState("");
 
@@ -889,6 +892,14 @@ export default function Bar() {
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 h-9" onClick={() => setShowReplenishmentDialog(true)}>
             <Package className="w-3.5 h-3.5" />Pedir reposición
           </Button>
+          <Button variant="ghost" size="sm" className="text-xs text-destructive hover:text-destructive gap-1.5 h-9" onClick={() => setShowEmergencyDialog(true)}>
+            <AlertCircle className="w-3.5 h-3.5" />🚨 Emergencia
+          </Button>
+          {activeJornadaId && (
+            <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary gap-1.5 h-9" onClick={() => setShowBlindCountDialog(true)}>
+              <CheckCircle2 className="w-3.5 h-3.5" />Cerrar conteo
+            </Button>
+          )}
 
           {/* Second bartender control */}
           {secondBartender ? (
@@ -952,13 +963,31 @@ export default function Bar() {
 
         {/* ── Replenishment request dialog ── */}
         {selectedBarId && barName && (
-          <ReplenishmentRequestDialog
-            open={showReplenishmentDialog}
-            onOpenChange={setShowReplenishmentDialog}
-            locationId={selectedBarId}
-            locationName={barName}
-            onRequestSent={() => setShowReplenishmentDialog(false)}
-          />
+          <>
+            <ReplenishmentRequestDialog
+              open={showReplenishmentDialog}
+              onOpenChange={setShowReplenishmentDialog}
+              locationId={selectedBarId}
+              locationName={barName}
+              onRequestSent={() => setShowReplenishmentDialog(false)}
+            />
+            <ReplenishmentRequestDialog
+              open={showEmergencyDialog}
+              onOpenChange={setShowEmergencyDialog}
+              locationId={selectedBarId}
+              locationName={barName}
+              isEmergency
+              onRequestSent={() => setShowEmergencyDialog(false)}
+            />
+            <BlindShiftCountDialog
+              open={showBlindCountDialog}
+              onOpenChange={setShowBlindCountDialog}
+              jornadaId={activeJornadaId ?? null}
+              locationId={selectedBarId}
+              locationName={barName}
+              onSubmitted={() => setShowBlindCountDialog(false)}
+            />
+          </>
         )}
 
         {/* ── Add second bartender dialog ── */}

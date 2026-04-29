@@ -1,187 +1,159 @@
+# Plan: Inventario transparente — v2 (conteo ciego + reporte sin $)
 
-# Plan: Adopción del nuevo flujo de Inventario en vivo + Informe PDF
+Mismo ciclo end-to-end aprobado, con **dos ajustes críticos** solicitados:
 
-## Objetivo
-El módulo `live-inventory` ya existe como una pestaña aislada en el sidebar. Este plan lo **integra al flujo principal del administrador**, lo hace más fácil de adoptar visualmente, y agrega la **descarga de un PDF de inventario actual** al estilo del informe de canjes.
-
----
-
-## 1. Integración en el flujo del administrador
-
-### 1.1 Promover "Inventario en vivo" como módulo principal de inventario
-- En `AppSidebar.tsx`, sección **Inventario**, reordenar y renombrar:
-  - "En vivo" → **"Inventario en vivo"** (primero, ícono `Activity` + badge "NUEVO" sutil)
-  - "Inventario" (Hub Excel) → **"Operaciones Excel"** (segundo)
-  - "Productos" y "Comparación" se mantienen abajo
-- Esto comunica que el panel en vivo es ahora el **dashboard principal de stock**, mientras que `InventoryHub` queda como herramienta operativa Excel.
-
-### 1.2 Acceso directo desde el Dashboard (Overview)
-- En `AdminOverview.tsx`, agregar un **bloque destacado** arriba de los KPIs existentes:
-  - Tarjeta "Inventario en vivo" con:
-    - KPIs resumidos (capital, productos bajo mínimo, sin stock) leídos del mismo `useRealtimeInventory`
-    - 3 botones de acción rápida: **Ver inventario en vivo**, **Conteo de cierre**, **Subir factura (foto)**
-    - Indicador de última actualización en tiempo real (punto verde animado cuando hay eventos)
-- Esto reemplaza/complementa la entrada actual al inventario y vuelve obvio el nuevo flujo.
-
-### 1.3 Onboarding contextual (mensajes informativos)
-Dentro de `RealtimeInventoryDashboard.tsx`, agregar un **banner explicativo descartable** (persistido en `localStorage` por venue):
-> **Cómo funciona ahora tu inventario**
-> 1. **Compras / Ingresos** → Subí la factura con foto desde aquí. La IA la procesa y carga el stock en bodega.
-> 2. **Stock en vivo** → Esta tabla se actualiza sola cada vez que se redime un QR en barra. No hace falta refrescar.
-> 3. **Conteo de cierre** → Al final de la jornada, los bartenders cuentan físicamente. Diferencias >10% generan alerta automática.
-> 4. **Informe PDF** → Descargá el inventario actual cuando lo necesites (auditoría, seguros, gerencia).
-
-Cada paso con su ícono y un botón "Entendido" para ocultarlo.
-
-### 1.4 Tooltips guiados en los botones principales
-Usar `GuidedTooltip` (ya existe en el proyecto) en los 3 botones del header del panel:
-- "Subir factura": *"Reemplaza la carga manual de stock. Toma foto y la IA hace el resto."*
-- "Conteo de cierre": *"Bartenders cuentan al cierre. Diferencias >10% se reportan a admin."*
-- "Actualizar": *"Forzar refresh manual. Normalmente no es necesario, se actualiza solo."*
-
-### 1.5 Mensajes informativos en estados vacíos
-- Si `rows.length === 0`: card grande con CTA "Aún no tenés inventario cargado. Subí tu primera factura" + botón.
-- Si `lastUpdate > 5 min` sin eventos: chip sutil "Sin movimientos recientes" en lugar del distance label.
-
-### 1.6 Mejora visual del panel
-- Añadir indicador **pulse verde** junto al título cuando llega un evento Realtime (anima 2s).
-- KPIs con micro-tendencia: comparar contra snapshot de hace 1h (delta % en chip).
-- Tabla: agregar **agrupación opcional por categoría** (toggle al lado del buscador) para que el admin escanee por familia (whisky, ron, etc.).
-- Filas críticas (sin stock) con tinte rojo sutil en el fondo.
-- Sticky header dentro de la tabla para tablets.
+1. **Conteo de cierre CIEGO**: el bartender NO ve el stock teórico; solo se le muestran los insumos que su barra utilizó durante la jornada y debe declarar cuánto queda.
+2. **Reporte de canjes SIN valores monetarios**: solo cantidades, productos y motivos. Los $ quedan reservados al EERR del admin.
 
 ---
 
-## 2. Mejora del Conteo de Cierre
+## 1. Roles y "quién hace qué"
 
-### 2.1 Onboarding del diálogo
-Encabezado del `ShiftCountDialog.tsx` con paso a paso visual de 3 pasos en chips:
-`1. Elegí ubicación → 2. Contá físicamente y escribí cantidades → 3. Aplicar`
-
-### 2.2 Filtro pre-cargado por stock real
-- Por defecto **mostrar solo productos con `theoretical > 0`** en esa ubicación (toggle "Ver todos" para incluir productos sin stock teórico, útil cuando llegó algo no registrado).
-- Buscador ya existe; sumar **filtro por categoría** (chips horizontales).
-
-### 2.3 Indicadores visuales claros
-- Mientras escribe el conteo:
-  - Diferencia ≥10% → fila con borde amarillo + ícono ⚠
-  - Diferencia ≥30% → fila con borde rojo + ícono 🚨 + tooltip "Esta diferencia es muy alta, revisá antes de aplicar"
-- Al final, **resumen previo** antes de "Aplicar":
-  - "Vas a registrar X productos contados. Y diferencias generarán alerta."
-
-### 2.4 Confirmación post-aplicación
-Toast con acción "Ver alertas" que navega al panel de alertas. Si hay alertas críticas, mostrar dialog resumen con lista de productos desviados.
+| Acción | Quién | Dónde | Resultado |
+|---|---|---|---|
+| Recepción de factura | Admin | Subir factura (IA) → Bodega | Compra + CPP actualizado |
+| Reposición pre-jornada | Bartender | App tablet (autoservicio) | Transferencia Bodega→Barra firmada |
+| Emergencia en jornada | Bartender pide / Admin aprueba | Misma app, notif realtime | Transferencia marcada "emergencia" |
+| Venta | Cajero | POS | QR emitido (no toca stock) |
+| Redención | Bartender | Bar | Descuento real en su barra |
+| **Conteo de cierre (CIEGO)** | Bartender | App, solo insumos usados | Declara cantidad real, sin ver teórico |
+| Conteo semanal | Admin + bartenders | Excel unificado | Ajuste masivo con justificación |
+| Aprobación de ajustes | Admin | Panel de ajustes | Movimiento contable trazable |
 
 ---
 
-## 3. Informe PDF de Inventario Actual (NUEVO)
-
-### 3.1 Ubicación del botón
-- Agregar botón **"Descargar PDF"** en el header de `RealtimeInventoryDashboard.tsx` (junto a "Actualizar").
-- También agregar acción equivalente en el dashboard `AdminOverview` (acción rápida del bloque inventario).
-
-### 3.2 Generador
-Crear nuevo archivo `src/lib/reporting/inventory-snapshot-pdf.ts` que use **`jspdf` + `jspdf-autotable`** (ya disponibles en proyecto via otros reportes; si no, usar `print-js` con HTML al estilo de `product-sales-pdf.ts` pero formato A4 en vez de 80mm).
-
-**Formato del PDF (estilo similar al informe de canjes):**
+## 2. Flujo operativo
 
 ```text
-┌──────────────────────────────────────────────┐
-│   [LOGO STOCKIA]   INFORME DE INVENTARIO     │
-│   Venue: <nombre>   Fecha: 28-04-2026 14:30  │
-├──────────────────────────────────────────────┤
-│  RESUMEN GENERAL                             │
-│  Capital inmovilizado:   $ 4.250.000        │
-│  Productos con stock:    142                │
-│  Bajo mínimo:            8                  │
-│  Sin stock:              3                  │
-├──────────────────────────────────────────────┤
-│  POR UBICACIÓN                              │
-│  ─ Bodega Principal      $ 2.800.000        │
-│  ─ Barra Principal       $ 980.000          │
-│  ─ Barra VIP             $ 470.000          │
-├──────────────────────────────────────────────┤
-│  DETALLE POR PRODUCTO (agrupado por ubic.)  │
-│  Bodega Principal                            │
-│   SKU      Producto        Cant   CPP   Valor│
-│   ────────────────────────────────────────── │
-│   ABS750   Absolut 750ml   12 u   8.500 102k │
-│   ...                                        │
-│   Subtotal Bodega: $ 2.800.000              │
-│                                              │
-│  Barra Principal                             │
-│   ...                                        │
-├──────────────────────────────────────────────┤
-│  ALERTAS ACTIVAS                             │
-│  🚨 Sin stock (3): Jagermeister, Tequila... │
-│  ⚠ Bajo mínimo (8): Ron Bacardi, Vodka...   │
-├──────────────────────────────────────────────┤
-│  Generado por: <usuario> · 28/04/2026 14:30  │
-└──────────────────────────────────────────────┘
+     ┌─────────────┐
+     │  FACTURA    │  Admin sube foto → IA parsea
+     └──────┬──────┘
+            ▼
+     ┌─────────────┐
+     │  BODEGA     │  CPP recalculado
+     └──────┬──────┘
+            │ Pre-jornada (autoservicio bartender)
+            ▼
+     ┌─────────────┐    Emergencia (bartender pide → admin OK)
+     │   BARRA     │◄───────────────────────────────────┐
+     └──────┬──────┘                                    │
+            │ QR redimido = descuento real              │
+            ▼                                           │
+     ┌─────────────────┐                                │
+     │ CIERRE (CIEGO)  │  Solo insumos consumidos hoy.  │
+     │                 │  Bartender escribe cantidad    │
+     │                 │  real. NO ve teórico.          │
+     └──────┬──────────┘                                │
+            │ Sistema compara en silencio                │
+            ▼                                           │
+     ┌─────────────────┐                                │
+     │ ADMIN VE GAP    │  Diferencia teórico vs real,   │
+     │ (con $ y %)     │  aprueba/rechaza ajuste        │
+     └─────────────────┘                                │
+                                                        │
+     ┌─────────────────────────────────────────────────┘
+     │  Semanal: Excel multi-hoja → ajuste masivo
+     └──────────────────────────────────────────────────
 ```
-
-### 3.3 Configuración del PDF
-- A4 portrait, fuente sans, encabezado fijo en cada página con número de página.
-- Tablas con `autoTable`: rayas alternadas, totales destacados.
-- Filas críticas resaltadas en rojo claro, bajas en amarillo.
-- Marca de agua sutil "STOCKIA" si modo demo.
-- Nombre archivo: `inventario_<venue>_<YYYYMMDD_HHmm>.pdf`.
-
-### 3.4 Datos de origen
-Usa el mismo `useRealtimeInventory` (rows + totals) — sin nueva query, garantiza consistencia con lo que el admin ve en pantalla.
 
 ---
 
-## 4. Digitalización del inventario (recordatorio del flujo completo)
+## 3. Cambios concretos
 
-Como apoyo visual, agregar dentro del bloque overview una **"línea de tiempo del inventario"** mini-componente:
+### A. Reposición pre-jornada (autoservicio bartender)
+Sin cambios respecto a v1: bartender entra a `/bar`, ve productos asignados con sugerido (consumo promedio últimos 7 días), pide cantidad, firma con PIN, ejecuta transferencia Bodega→Barra al CPP del momento. Imprime ticket 80mm.
 
-```text
-[📷 Factura] → [🤖 IA extrae] → [✅ Admin valida] → [📦 Stock en Bodega]
-                                                          ↓
-                                                  [🔄 Reposición a barra]
-                                                          ↓
-                                                  [🍸 Venta + QR]
-                                                          ↓
-                                                  [🍷 Bar canjea (descuenta)]
-                                                          ↓
-                                                  [📊 Inventario en vivo]
-                                                          ↓
-                                                  [📋 Conteo de cierre]
-                                                          ↓
-                                                  [📄 Informe PDF]
-```
+### B. Emergencia durante jornada
+Misma app: bartender genera `replenishment_request` con `is_emergency = true`. Admin recibe **notificación realtime** (toast + badge en sidebar). Aprueba con un clic → ejecuta transferencia. Reemplaza WhatsApp.
 
-Implementado como componente horizontal de pasos (8 chips conectados por flechas), descartable. Es educativo: comunica visualmente al admin que NO necesita hacer carga manual.
+### C. Conteo de cierre CIEGO ⭐ (cambio clave)
+
+**Pantalla del bartender al cerrar jornada:**
+
+- Lista **solo de productos que tuvieron movimientos de salida durante esta jornada** (redenciones de QR + mermas + emergencias recibidas). Lo que no se tocó, no aparece.
+- Cada fila muestra:
+  ```
+  Ron Havana 7 años (botella 750ml)
+  ¿Cuánto te queda en la barra ahora? [____] ml
+  ```
+- **NO se muestra**: stock teórico, stock inicial, consumo del día, sugerido, ni ningún número que permita "calzar" el conteo.
+- Bartender escribe cantidad real, firma con PIN, envía.
+- Si deja un campo vacío, se asume "cero" y debe confirmar explícitamente con un toggle "No queda nada" para evitar errores.
+
+**Detrás de escena (invisible para bartender):**
+- Sistema calcula: `diferencia = teórico - declarado`.
+- Si `|diferencia| / teórico ≥ 10%` o `≥ 200ml` (lo que sea menor) → se marca como **alerta para admin**.
+- Se crea registro en `shift_counts` (jornada_id, location_id, product_id, theoretical_qty, declared_qty, variance_pct, signed_by, signed_at, alerted).
+
+**Vista del admin (separada):**
+- Pestaña "Conteos de cierre" en panel admin.
+- Ve por jornada/barra: producto, teórico, declarado, diferencia (unidades + CLP), motivo (si lo hay).
+- Botones: **Aprobar como merma** | **Rechazar (recontar)** | **Ajuste manual con motivo**.
+- Las alertas reincidentes por bartender quedan visibles ("Juan: 3 alertas en últimas 5 jornadas").
+
+### D. Reporte de canjes SIN valores monetarios ⭐ (cambio clave)
+
+**El "Reporte de canjes diario"** que recibe el equipo operativo contiene:
+
+- Total de canjes exitosos del día
+- Canjes por barra y por bartender
+- Productos canjeados con cantidades (unidades / ml)
+- Top productos del día (por cantidad)
+- Sección "**Diferencias declaradas en cierre**":
+  - Por barra: producto, declarado por bartender, diferencia en unidades (+/−), motivo si lo hay.
+  - **Sin CLP, sin CPP, sin valor en pesos.**
+- Mermas aprobadas: producto + cantidad + motivo (sin $).
+- Emergencias atendidas: producto + cantidad + quién aprobó (sin $).
+
+**El EERR / panel financiero del admin** sigue mostrando todos los valores en CLP — eso no cambia. Solo el reporte de canjes operativo se "desmonetiza".
+
+### E. Conteo semanal — Excel unificado multi-hoja
+Sin cambios respecto a v1: plantilla con una hoja por ubicación (Bodega + cada Barra), pre-llenada con `sku_base | producto | unidad | stock contado (vacío)`. Sin teórico en la plantilla del bartender (mismo principio del conteo ciego). El admin sube el Excel relleno → pantalla de validación humana muestra diferencias con CLP solo para el admin → aprueba → ajustes masivos.
+
+### F. Panel del Admin — "Movimientos del día"
+Timeline en vivo: reposiciones, emergencias pendientes, redenciones, mermas, conteos cerrados. Filtro por barra/bartender. KPIs: emergencias pendientes, % diferencia último cierre, conteos pendientes de aprobación.
+
+---
+
+## 4. Reglas de negocio
+
+- **Fuente de verdad**: sistema (DiStock) sigue mandando operativamente. Toda diferencia genera ajuste explícito firmado.
+- **Conteo ciego**: nunca mostrar al bartender el teórico antes de declarar. Esto evita el sesgo de "calzar" y hace los conteos genuinos.
+- **Solo insumos usados**: si un producto no tuvo salida en la jornada, no se cuenta al cierre (ya quedó cuantificado en el conteo semanal o el último ajuste).
+- **Reporte de canjes desmonetizado**: protege información sensible de costos frente a personal operativo.
+- **EERR del admin**: única vista con CLP, CPP, márgenes y valoración.
 
 ---
 
 ## 5. Detalles técnicos
 
-**Archivos nuevos:**
-- `src/lib/reporting/inventory-snapshot-pdf.ts` — generador PDF con jsPDF + autoTable.
-- `src/components/dashboard/InventoryFlowTimeline.tsx` — timeline visual descartable.
-- `src/components/dashboard/InventoryOnboardingBanner.tsx` — banner 4 pasos con persistencia localStorage.
-
-**Archivos editados:**
-- `src/components/AppSidebar.tsx` — reorden + badge "NUEVO" en "En vivo".
-- `src/components/dashboard/AdminOverview.tsx` — bloque destacado de inventario en vivo + acciones rápidas.
-- `src/components/dashboard/RealtimeInventoryDashboard.tsx` — banner onboarding, botón PDF, tooltips, agrupación por categoría, resaltado filas críticas, indicador pulse Realtime.
-- `src/components/dashboard/ShiftCountDialog.tsx` — chips de pasos, filtro stock>0 por defecto, advertencias visuales de varianza, resumen pre-aplicación.
-
-**Sin cambios de DB ni de RPC** — toda la mejora es de UX y reporting; el backend (snapshot RPC v3, audit tables, throttling) ya está en su lugar tras los cambios anteriores.
-
-**Dependencia PDF:** verificar si `jspdf` + `jspdf-autotable` están instalados; si no, instalar (`bun add jspdf jspdf-autotable`). Alternativa: reusar patrón `print-js` HTML A4.
+- **Tabla nueva** `shift_counts`: `id, venue_id, jornada_id, location_id, product_id, theoretical_qty, declared_qty, variance_qty, variance_pct, alerted boolean, signed_by_user_id, signed_at, admin_decision text ('pending'|'approved_waste'|'rejected'|'manual_adjust'), admin_decision_by, admin_decision_at, admin_notes`. RLS: bartender solo ve sus propios conteos del día; admin ve todo del venue.
+- **RPC `get_shift_consumed_products(p_jornada_id, p_location_id)`** → devuelve solo `product_id, name, unit, capacity_ml` de productos con `stock_movements` tipo `salida` en esa jornada/ubicación. **NO devuelve cantidades teóricas.** SECURITY DEFINER con guard de pertenencia bartender↔barra.
+- **RPC `submit_blind_shift_count(p_jornada_id, p_location_id, p_lines jsonb)`** → `p_lines = [{product_id, declared_qty}]`. Internamente lee teórico desde `stock_balances`, calcula varianza, inserta en `shift_counts`, marca `alerted` si supera umbral. Devuelve solo `{accepted_count}` (sin revelar varianzas al bartender).
+- **RPC `admin_resolve_shift_count(p_count_id, p_decision, p_notes)`** → solo admin. Si `approved_waste` o `manual_adjust`, genera `stock_movement` de ajuste con motivo y firma.
+- **RPC `execute_bartender_replenishment(p_lines)`** y **`approve_emergency_request(p_request_id)`** → idénticas a v1.
+- **Migración**: agregar columna `is_emergency boolean default false` a `replenishment_requests`.
+- **Realtime**: admin suscrito a `replenishment_requests WHERE is_emergency=true AND status='pending'` y a `shift_counts WHERE alerted=true AND admin_decision='pending'`.
+- **PDF `daily-redemptions-pdf.ts`** (nuevo): genera reporte de canjes operativo SIN valores en CLP. Reemplaza/complementa el actual.
+- **PDF `admin-shift-counts-pdf.ts`** (nuevo, opcional): vista admin con $.
+- **Excel multi-hoja**: extender `excel-inventory-parser.ts` para soportar parseo por hoja (cada hoja = location_id resuelto por nombre).
+- **UI nuevas**: 
+  - `/bar` → tabs "Mi reposición" / "Pedir emergencia" / "Cerrar jornada (conteo)".
+  - `/admin` → tabs nuevas "Movimientos del día" y "Conteos por aprobar".
 
 ---
 
-## 6. Resultado para el admin
+## 6. Orden de implementación
 
-- Al entrar al dashboard ve **inmediatamente** el estado de su inventario sin hacer clics.
-- El sidebar resalta "Inventario en vivo" como entrada principal.
-- Un banner inicial le explica los 4 pasos del nuevo método.
-- Una línea de tiempo le muestra que el sistema digitaliza todo el flujo (foto → IA → stock → venta → canje → conteo → PDF).
-- El conteo de cierre lo guía paso a paso y previene errores.
-- Puede descargar el inventario como PDF profesional cuando quiera (auditoría, seguros, gerencia).
+1. **Fase 1** — Reposición autoservicio bartender (reemplaza WhatsApp).
+2. **Fase 2** — Emergencias con notificación realtime al admin.
+3. **Fase 3** — Conteo de cierre CIEGO + tabla `shift_counts` + panel admin para aprobar.
+4. **Fase 4** — Reporte de canjes desmonetizado (PDF nuevo).
+5. **Fase 5** — Excel unificado semanal multi-hoja.
+6. **Fase 6** — Panel "Movimientos del día" del admin.
 
-¿Avanzo con la implementación?
+Cada fase es funcional por sí sola.
+
+---
+
+¿Aprobás esta versión v2 con conteo ciego y reporte sin $? ¿O querés ajustar algún umbral (10% / 200ml) o algún otro detalle antes de implementar?
