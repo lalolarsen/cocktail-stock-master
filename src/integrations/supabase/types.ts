@@ -205,6 +205,95 @@ export type Database = {
         }
         Relationships: []
       }
+      blind_shift_counts: {
+        Row: {
+          admin_decision: string
+          admin_decision_at: string | null
+          admin_decision_by: string | null
+          admin_notes: string | null
+          alerted: boolean
+          created_at: string
+          declared_qty: number
+          id: string
+          jornada_id: string
+          location_id: string
+          product_id: string
+          signed_at: string
+          signed_by_user_id: string
+          theoretical_qty: number
+          variance_pct: number
+          variance_qty: number
+          venue_id: string
+        }
+        Insert: {
+          admin_decision?: string
+          admin_decision_at?: string | null
+          admin_decision_by?: string | null
+          admin_notes?: string | null
+          alerted?: boolean
+          created_at?: string
+          declared_qty?: number
+          id?: string
+          jornada_id: string
+          location_id: string
+          product_id: string
+          signed_at?: string
+          signed_by_user_id: string
+          theoretical_qty?: number
+          variance_pct?: number
+          variance_qty?: number
+          venue_id: string
+        }
+        Update: {
+          admin_decision?: string
+          admin_decision_at?: string | null
+          admin_decision_by?: string | null
+          admin_notes?: string | null
+          alerted?: boolean
+          created_at?: string
+          declared_qty?: number
+          id?: string
+          jornada_id?: string
+          location_id?: string
+          product_id?: string
+          signed_at?: string
+          signed_by_user_id?: string
+          theoretical_qty?: number
+          variance_pct?: number
+          variance_qty?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blind_shift_counts_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blind_shift_counts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blind_shift_counts_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blind_shift_counts_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_registers: {
         Row: {
           closing_cash: number | null
@@ -3642,6 +3731,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_emergency: boolean
           location_id: string
           notes: string | null
           product_id: string
@@ -3657,6 +3747,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_emergency?: boolean
           location_id: string
           notes?: string | null
           product_id: string
@@ -3672,6 +3763,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_emergency?: boolean
           location_id?: string
           notes?: string | null
           product_id?: string
@@ -5784,6 +5876,15 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_resolve_blind_shift_count: {
+        Args: {
+          p_count_id: string
+          p_decision: string
+          p_manual_qty?: number
+          p_notes?: string
+        }
+        Returns: Json
+      }
       apply_compra_batch: {
         Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
         Returns: Json
@@ -5817,6 +5918,10 @@ export type Database = {
       }
       apply_transferencia_batch: {
         Args: { p_rows: Json; p_user_id: string; p_venue_id: string }
+        Returns: Json
+      }
+      approve_emergency_request: {
+        Args: { p_request_id: string; p_review_notes?: string }
         Returns: Json
       }
       auto_redeem_sale_token:
@@ -6097,6 +6202,16 @@ export type Database = {
           stock_value: number
         }[]
       }
+      get_shift_consumed_products: {
+        Args: { p_jornada_id: string; p_location_id: string }
+        Returns: {
+          capacity_ml: number
+          category: string
+          product_id: string
+          product_name: string
+          unit: string
+        }[]
+      }
       get_sidebar_config: {
         Args: { p_role: string; p_venue_id: string }
         Returns: Json
@@ -6211,6 +6326,10 @@ export type Database = {
         }
         Returns: Json
       }
+      reject_emergency_request: {
+        Args: { p_request_id: string; p_review_notes?: string }
+        Returns: Json
+      }
       request_sale_void: {
         Args: { p_notes?: string; p_reason: string; p_sale_id: string }
         Returns: string
@@ -6287,6 +6406,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      submit_blind_shift_count: {
+        Args: {
+          p_jornada_id: string
+          p_lines: Json
+          p_location_id: string
+          p_threshold_pct?: number
+        }
+        Returns: Json
       }
       transfer_stock: {
         Args: {
