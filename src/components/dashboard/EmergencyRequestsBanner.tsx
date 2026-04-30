@@ -136,7 +136,7 @@ export function EmergencyRequestsBanner({ onNavigate }: Props) {
   });
 
   return (
-    <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 animate-pulse-slow">
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 shadow-[0_0_20px_hsl(var(--destructive)/0.2)]">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-full bg-destructive/20 shrink-0">
