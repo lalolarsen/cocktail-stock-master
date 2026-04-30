@@ -77,7 +77,81 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
         (locs || []).forEach(l => locationMap.set(l.id, l.name));
       }
 
-      // ── Counters ──
+      // ── Datos extra para Fase 6: diferencias, reajustes, mermas, emergencias ──
+      const [
+        { data: blindCounts },
+        { data: wasteList },
+        { data: emergencies },
+      ] = await Promise.all([
+        supabase
+          .from("blind_shift_counts")
+          .select("product_id, location_id, theoretical_qty, declared_qty, variance_qty, admin_decision, admin_notes, admin_decision_by")
+          .eq("jornada_id", jornadaId),
+        supabase
+          .from("waste_requests")
+          .select("product_id, location_id, quantity, reason, notes, status")
+          .eq("jornada_id", jornadaId)
+          .eq("status", "APPROVED"),
+        supabase
+          .from("replenishment_requests" as never)
+          .select("product_id, location_id, requested_quantity, reviewed_by_user_id, status, is_emergency, review_notes")
+          .eq("jornada_id" as never, jornadaId as never)
+          .eq("is_emergency" as never, true as never)
+          .eq("status" as never, "approved" as never),
+      ]);
+
+      // Resolve product names for new sections
+      const extraProductIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.product_id),
+          ...((wasteList || []) as any[]).map((w) => w.product_id),
+          ...((emergencies || []) as any[]).map((e) => e.product_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const productNameMap = new Map<string, string>();
+      const productCapMap = new Map<string, number | null>();
+      if (extraProductIds.length > 0) {
+        const { data: prods } = await supabase
+          .from("products")
+          .select("id, name, capacity_ml")
+          .in("id", extraProductIds);
+        (prods || []).forEach((p: any) => {
+          productNameMap.set(p.id, p.name);
+          productCapMap.set(p.id, p.capacity_ml);
+        });
+      }
+      const extraLocIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.location_id),
+          ...((wasteList || []) as any[]).map((w) => w.location_id),
+          ...((emergencies || []) as any[]).map((e) => e.location_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const missingLocs = extraLocIds.filter((id) => !locationMap.has(id));
+      if (missingLocs.length > 0) {
+        const { data: extraLocs } = await supabase
+          .from("stock_locations")
+          .select("id, name")
+          .in("id", missingLocs);
+        (extraLocs || []).forEach((l: any) => locationMap.set(l.id, l.name));
+      }
+      const extraUserIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.admin_decision_by),
+          ...((emergencies || []) as any[]).map((e) => e.reviewed_by_user_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const missingUsers = extraUserIds.filter((id) => !profilesMap.has(id));
+      if (missingUsers.length > 0) {
+        const { data: extraProfs } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", missingUsers);
+        (extraProfs || []).forEach((p: any) =>
+          profilesMap.set(p.id, p.full_name || p.email || "?")
+        );
+      }
+
       const issued = allTokens.length;
       const successLogs = allLogs.filter(l => l.result === "success");
       const redeemed = successLogs.length;
