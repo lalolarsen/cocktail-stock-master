@@ -111,10 +111,11 @@ export function JornadaCashOpeningDialog({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [posResult, settingsResult, defaultsResult] = await Promise.all([
+      const [posResult, settingsResult, defaultsResult, pendingResult] = await Promise.all([
         supabase.from("pos_terminals").select("id, name").eq("is_active", true).eq("is_cash_register", true).order("name"),
         supabase.from("jornada_cash_settings").select("*").maybeSingle(),
         supabase.from("jornada_cash_pos_defaults").select("pos_id, default_amount"),
+        supabase.rpc("check_pending_shift_counts", { p_venue_id: null }),
       ]);
 
       const terminals = posResult.data || [];
@@ -134,6 +135,9 @@ export function JornadaCashOpeningDialog({
         return { pos_id: pos.id, pos_name: pos.name, amount: Number(amount) || 0 };
       });
       setCashAmounts(amounts);
+
+      const pending = (pendingResult.data as any)?.pending ?? 0;
+      setPendingShiftCounts(Number(pending) || 0);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Error al cargar configuración");
