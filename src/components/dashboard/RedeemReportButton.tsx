@@ -77,7 +77,81 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
         (locs || []).forEach(l => locationMap.set(l.id, l.name));
       }
 
-      // ── Counters ──
+      // ── Datos extra para Fase 6: diferencias, reajustes, mermas, emergencias ──
+      const [
+        { data: blindCounts },
+        { data: wasteList },
+        { data: emergencies },
+      ] = await Promise.all([
+        supabase
+          .from("blind_shift_counts")
+          .select("product_id, location_id, theoretical_qty, declared_qty, variance_qty, admin_decision, admin_notes, admin_decision_by")
+          .eq("jornada_id", jornadaId),
+        supabase
+          .from("waste_requests")
+          .select("product_id, location_id, quantity, reason, notes, status")
+          .eq("jornada_id", jornadaId)
+          .eq("status", "APPROVED"),
+        supabase
+          .from("replenishment_requests" as never)
+          .select("product_id, location_id, requested_quantity, reviewed_by_user_id, status, is_emergency, review_notes")
+          .eq("jornada_id" as never, jornadaId as never)
+          .eq("is_emergency" as never, true as never)
+          .eq("status" as never, "approved" as never),
+      ]);
+
+      // Resolve product names for new sections
+      const extraProductIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.product_id),
+          ...((wasteList || []) as any[]).map((w) => w.product_id),
+          ...((emergencies || []) as any[]).map((e) => e.product_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const productNameMap = new Map<string, string>();
+      const productCapMap = new Map<string, number | null>();
+      if (extraProductIds.length > 0) {
+        const { data: prods } = await supabase
+          .from("products")
+          .select("id, name, capacity_ml")
+          .in("id", extraProductIds);
+        (prods || []).forEach((p: any) => {
+          productNameMap.set(p.id, p.name);
+          productCapMap.set(p.id, p.capacity_ml);
+        });
+      }
+      const extraLocIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.location_id),
+          ...((wasteList || []) as any[]).map((w) => w.location_id),
+          ...((emergencies || []) as any[]).map((e) => e.location_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const missingLocs = extraLocIds.filter((id) => !locationMap.has(id));
+      if (missingLocs.length > 0) {
+        const { data: extraLocs } = await supabase
+          .from("stock_locations")
+          .select("id, name")
+          .in("id", missingLocs);
+        (extraLocs || []).forEach((l: any) => locationMap.set(l.id, l.name));
+      }
+      const extraUserIds = [
+        ...new Set([
+          ...((blindCounts || []) as any[]).map((b) => b.admin_decision_by),
+          ...((emergencies || []) as any[]).map((e) => e.reviewed_by_user_id),
+        ].filter(Boolean)),
+      ] as string[];
+      const missingUsers = extraUserIds.filter((id) => !profilesMap.has(id));
+      if (missingUsers.length > 0) {
+        const { data: extraProfs } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", missingUsers);
+        (extraProfs || []).forEach((p: any) =>
+          profilesMap.set(p.id, p.full_name || p.email || "?")
+        );
+      }
+
       const issued = allTokens.length;
       const successLogs = allLogs.filter(l => l.result === "success");
       const redeemed = successLogs.length;
@@ -280,6 +354,109 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
       }
 
       // ── Detalle ──
+      // ── DIFERENCIAS DECLARADAS EN CIERRE (sin $) ──
+      const blindRows = ((blindCounts || []) as any[]).filter((b) => Number(b.variance_qty) !== 0);
+      if (blindRows.length > 0) {
+        section("DIFERENCIAS DECLARADAS EN CIERRE");
+        const fmtUnit = (pid: string, n: number) => {
+          const cap = productCapMap.get(pid) || 0;
+          const v = Number(n) || 0;
+          return cap > 0 ? `${Math.round(v)} ml` : `${v} u`;
+        };
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Teórico", "Declarado", "Diferencia", "Estado"]],
+          body: blindRows.map((b) => [
+            productNameMap.get(b.product_id) || "?",
+            locationMap.get(b.location_id) || "?",
+            fmtUnit(b.product_id, b.theoretical_qty),
+            fmtUnit(b.product_id, b.declared_qty),
+            (b.variance_qty > 0 ? "+" : "") + fmtUnit(b.product_id, b.variance_qty),
+            b.admin_decision === "pending" ? "Por revisar" :
+              b.admin_decision === "approved_waste" ? "Aprobado merma" :
+              b.admin_decision === "manual_adjust" ? "Ajustado" :
+              b.admin_decision === "rejected" ? "Rechazado" : (b.admin_decision || "—"),
+          ]),
+          headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── REAJUSTES APLICADOS POR ADMIN (sin $) ──
+      const adjustRows = ((blindCounts || []) as any[]).filter(
+        (b) => b.admin_decision === "manual_adjust" || b.admin_decision === "approved_waste"
+      );
+      if (adjustRows.length > 0) {
+        section("REAJUSTES APLICADOS POR ADMIN");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Decisión", "Resuelto por", "Notas"]],
+          body: adjustRows.map((b) => [
+            productNameMap.get(b.product_id) || "?",
+            locationMap.get(b.location_id) || "?",
+            b.admin_decision === "approved_waste" ? "Aprobado merma" : "Ajuste manual",
+            b.admin_decision_by ? (profilesMap.get(b.admin_decision_by) || "?") : "—",
+            b.admin_notes || "—",
+          ]),
+          headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── MERMAS APROBADAS (sin $) ──
+      const wasteRows = (wasteList || []) as any[];
+      if (wasteRows.length > 0) {
+        section("MERMAS APROBADAS");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Cantidad", "Motivo", "Notas"]],
+          body: wasteRows.map((w) => {
+            const cap = productCapMap.get(w.product_id) || 0;
+            const qty = Number(w.quantity) || 0;
+            return [
+              productNameMap.get(w.product_id) || "?",
+              locationMap.get(w.location_id) || "?",
+              cap > 0 ? `${Math.round(qty)} ml` : `${qty} u`,
+              w.reason || "—",
+              w.notes || "—",
+            ];
+          }),
+          headStyles: { fillColor: [220, 38, 38], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── EMERGENCIAS ATENDIDAS (sin $) ──
+      const emergRows = (emergencies || []) as any[];
+      if (emergRows.length > 0) {
+        section("EMERGENCIAS DE REPOSICIÓN ATENDIDAS");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Cantidad", "Aprobado por", "Notas"]],
+          body: emergRows.map((e) => {
+            const cap = productCapMap.get(e.product_id) || 0;
+            const qty = Number(e.requested_quantity) || 0;
+            return [
+              productNameMap.get(e.product_id) || "?",
+              locationMap.get(e.location_id) || "?",
+              cap > 0 ? `${Math.round(qty)} ml` : `${qty} u`,
+              e.reviewed_by_user_id ? (profilesMap.get(e.reviewed_by_user_id) || "?") : "—",
+              e.review_notes || "—",
+            ];
+          }),
+          headStyles: { fillColor: [217, 70, 239], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
       section("DETALLE DE INTENTOS");
       const detailRows = allLogs
         .sort((a, b) => new Date(a.redeemed_at).getTime() - new Date(b.redeemed_at).getTime())
