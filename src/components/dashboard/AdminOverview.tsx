@@ -26,6 +26,8 @@ import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
+import { EmergencyRequestsBanner } from "./EmergencyRequestsBanner";
+import { PendingShiftCountsBanner } from "./PendingShiftCountsBanner";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useRealtimeInventory } from "@/hooks/useRealtimeInventory";
