@@ -6209,6 +6209,7 @@ export type Database = {
           category: string
           product_id: string
           product_name: string
+          source: string
           unit: string
         }[]
       }
