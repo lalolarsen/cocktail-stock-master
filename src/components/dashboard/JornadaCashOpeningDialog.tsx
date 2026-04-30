@@ -79,6 +79,7 @@ export function JornadaCashOpeningDialog({
   const [cashAmounts, setCashAmounts] = useState<CashAmount[]>([]);
   const [step, setStep] = useState<WizardStep>("identification");
   const [jornadaNombre, setJornadaNombre] = useState("");
+  const [pendingShiftCounts, setPendingShiftCounts] = useState<number>(0);
 
   // Auto-generate default name
   const generateDefaultName = () => {
