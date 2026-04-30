@@ -139,6 +139,7 @@ export default function Admin() {
       case "comparison": return "Comparación de Inventario";
       case "live-inventory": return "Inventario en vivo";
       case "shift-counts": return "Conteos por aprobar";
+      case "weekly-count": return "Conteo semanal";
       default: return "Admin";
     }
   };
