@@ -27,6 +27,7 @@ import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclaration
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryComparisonModule } from "@/components/dashboard/InventoryComparisonModule";
 import { RealtimeInventoryDashboard } from "@/components/dashboard/RealtimeInventoryDashboard";
+import { BlindShiftCountsPanel } from "@/components/dashboard/BlindShiftCountsPanel";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
