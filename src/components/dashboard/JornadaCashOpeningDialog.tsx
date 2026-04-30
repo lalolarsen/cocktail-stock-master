@@ -26,6 +26,7 @@ import {
   ChevronLeft,
   CheckCircle,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
