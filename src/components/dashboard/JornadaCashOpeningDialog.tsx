@@ -222,6 +222,20 @@ export function JornadaCashOpeningDialog({
 
   const renderIdentification = () => (
     <div className="space-y-5 py-2">
+      {pendingShiftCounts > 0 && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 flex gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 text-sm">
+            <p className="font-semibold text-destructive">
+              No se puede abrir una nueva jornada
+            </p>
+            <p className="text-muted-foreground">
+              Hay <strong>{pendingShiftCounts}</strong> conteo(s) de cierre pendientes de aprobación.
+              Resuélvelos en <strong>"Conteos por aprobar"</strong> antes de abrir una nueva jornada.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="jornada-nombre" className="font-medium">
           Nombre de la jornada *
