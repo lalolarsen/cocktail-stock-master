@@ -1,159 +1,165 @@
-# Plan: Inventario transparente — v2 (conteo ciego + reporte sin $)
+# Plan: Inventario transparente — v3 (definitivo)
 
-Mismo ciclo end-to-end aprobado, con **dos ajustes críticos** solicitados:
+## Decisiones consolidadas
 
-1. **Conteo de cierre CIEGO**: el bartender NO ve el stock teórico; solo se le muestran los insumos que su barra utilizó durante la jornada y debe declarar cuánto queda.
-2. **Reporte de canjes SIN valores monetarios**: solo cantidades, productos y motivos. Los $ quedan reservados al EERR del admin.
-
----
-
-## 1. Roles y "quién hace qué"
-
-| Acción | Quién | Dónde | Resultado |
-|---|---|---|---|
-| Recepción de factura | Admin | Subir factura (IA) → Bodega | Compra + CPP actualizado |
-| Reposición pre-jornada | Bartender | App tablet (autoservicio) | Transferencia Bodega→Barra firmada |
-| Emergencia en jornada | Bartender pide / Admin aprueba | Misma app, notif realtime | Transferencia marcada "emergencia" |
-| Venta | Cajero | POS | QR emitido (no toca stock) |
-| Redención | Bartender | Bar | Descuento real en su barra |
-| **Conteo de cierre (CIEGO)** | Bartender | App, solo insumos usados | Declara cantidad real, sin ver teórico |
-| Conteo semanal | Admin + bartenders | Excel unificado | Ajuste masivo con justificación |
-| Aprobación de ajustes | Admin | Panel de ajustes | Movimiento contable trazable |
+| Tema | Decisión |
+|---|---|
+| Fuente de verdad | Sistema (DiStock); diferencias quedan explícitas en reporte de canjes |
+| Umbral de alerta | **Sin umbral**: admin ve TODA diferencia, decide caso a caso |
+| Conteo no resuelto | **Bloquea apertura** de la siguiente jornada hasta que admin resuelva |
+| Reposición pre-jornada | Bartender pide → admin aprueba (mismo flujo que emergencia) |
+| Emergencias sin respuesta | Espera indefinida + recordatorio persistente en dashboard admin |
+| Ámbito conteo ciego | Insumos con salida en jornada **+ botellas cerradas en barra** |
+| Botellas abiertas | Slider visual 0–100% (declara ml restantes) |
+| Botellas cerradas | Cuenta TODAS las cerradas en barra (no solo recibidas hoy) |
+| Reposición ejecutada | Admin aprueba en app + verbal (maneja llaves de bodega) |
+| Conteo semanal | Encargado externo cuenta físicamente; sube planilla → app concilia automático |
+| Diferencias semanales | Sistema **genera informe**, no fuerza resolución (responsabilidad del cliente) |
+| Cierre sin movimiento | Pantalla con botón "Sin consumos hoy" para confirmación explícita |
+| Reporte de canjes | **Sin valores monetarios** — solo cantidades, productos, motivos |
 
 ---
 
-## 2. Flujo operativo
+## Flujo end-to-end
 
-```text
-     ┌─────────────┐
-     │  FACTURA    │  Admin sube foto → IA parsea
-     └──────┬──────┘
-            ▼
-     ┌─────────────┐
-     │  BODEGA     │  CPP recalculado
-     └──────┬──────┘
-            │ Pre-jornada (autoservicio bartender)
-            ▼
-     ┌─────────────┐    Emergencia (bartender pide → admin OK)
-     │   BARRA     │◄───────────────────────────────────┐
-     └──────┬──────┘                                    │
-            │ QR redimido = descuento real              │
-            ▼                                           │
-     ┌─────────────────┐                                │
-     │ CIERRE (CIEGO)  │  Solo insumos consumidos hoy.  │
-     │                 │  Bartender escribe cantidad    │
-     │                 │  real. NO ve teórico.          │
-     └──────┬──────────┘                                │
-            │ Sistema compara en silencio                │
-            ▼                                           │
-     ┌─────────────────┐                                │
-     │ ADMIN VE GAP    │  Diferencia teórico vs real,   │
-     │ (con $ y %)     │  aprueba/rechaza ajuste        │
-     └─────────────────┘                                │
-                                                        │
-     ┌─────────────────────────────────────────────────┘
-     │  Semanal: Excel multi-hoja → ajuste masivo
-     └──────────────────────────────────────────────────
+```
+FACTURA (IA) → BODEGA (CPP)
+     ↓
+[Bartender pide reposición pre-jornada] → Admin aprueba en app + entrega física
+     ↓
+JORNADA ACTIVA
+  ├─ Venta POS → QR (no toca stock)
+  ├─ Redención QR en barra → descuenta stock real
+  └─ [Emergencia] Bartender pide → Admin aprueba (espera indefinida + recordatorio)
+     ↓
+CIERRE CIEGO por bartender
+  ├─ Lista: insumos con salida + todas las botellas cerradas en barra
+  ├─ Botellas abiertas: slider 0–100% (ml)
+  ├─ Botellas cerradas: contador unidades
+  ├─ Si no hubo movimiento → botón "Sin consumos hoy"
+  └─ NO ve teórico, NO ve sugerido
+     ↓
+ADMIN ve diferencias (con $ y %) → aprueba/rechaza/ajusta
+  └─ Si quedan pendientes → BLOQUEA próxima apertura de jornada
+     ↓
+SEMANAL: encargado cuenta físicamente → sube planilla
+  └─ App concilia automático → genera INFORME (no fuerza resolución)
 ```
 
 ---
 
-## 3. Cambios concretos
+## Cambios concretos
 
-### A. Reposición pre-jornada (autoservicio bartender)
-Sin cambios respecto a v1: bartender entra a `/bar`, ve productos asignados con sugerido (consumo promedio últimos 7 días), pide cantidad, firma con PIN, ejecuta transferencia Bodega→Barra al CPP del momento. Imprime ticket 80mm.
+### A. Reposición pre-jornada (bartender pide, admin aprueba)
+- Bartender en `/bar` ve productos asignados con sugerido (consumo 7 días).
+- Genera `replenishment_request` con `is_emergency=false`.
+- Admin recibe en panel; aprueba con un clic.
+- Entrega física la coordina admin (tiene llaves de bodega).
+- Al aprobar: ejecuta transferencia Bodega→Barra al CPP del momento.
 
 ### B. Emergencia durante jornada
-Misma app: bartender genera `replenishment_request` con `is_emergency = true`. Admin recibe **notificación realtime** (toast + badge en sidebar). Aprueba con un clic → ejecuta transferencia. Reemplaza WhatsApp.
+- Mismo flujo, pero `is_emergency=true`.
+- **Toast realtime + badge persistente** en sidebar admin (no desaparece hasta resolverse).
+- Recordatorio cada 5 min mientras siga pendiente.
+- Sin auto-aprobación: espera indefinida.
 
-### C. Conteo de cierre CIEGO ⭐ (cambio clave)
+### C. Conteo de cierre CIEGO ⭐
 
-**Pantalla del bartender al cerrar jornada:**
+**Pantalla bartender:**
+1. Header: "Cierre de [Barra X] — Jornada N°{n}".
+2. Si NO hay productos consumidos ni cerradas → solo botón "Sin consumos hoy" + firma PIN.
+3. Si hay productos:
+   - **Sección "Botellas abiertas"** (las que tuvieron salida o están abiertas):
+     ```
+     Ron Havana 7 años (750ml)
+     [slider visual 0% ━━●━━━━━━ 100%] → 425 ml
+     ☐ No queda nada (toggle alternativo)
+     ```
+   - **Sección "Botellas cerradas en barra"** (todas las cerradas asignadas):
+     ```
+     Ron Havana 7 años (750ml cerrada)
+     Cantidad: [  3  ] unidades
+     ```
+   - **Sección "Unitarios consumidos"** (cervezas, bebidas, etc.):
+     ```
+     Cerveza Heineken 330ml
+     Cantidad restante: [  12  ]
+     ```
+4. Botón "Firmar y enviar" → PIN.
 
-- Lista **solo de productos que tuvieron movimientos de salida durante esta jornada** (redenciones de QR + mermas + emergencias recibidas). Lo que no se tocó, no aparece.
-- Cada fila muestra:
-  ```
-  Ron Havana 7 años (botella 750ml)
-  ¿Cuánto te queda en la barra ahora? [____] ml
-  ```
-- **NO se muestra**: stock teórico, stock inicial, consumo del día, sugerido, ni ningún número que permita "calzar" el conteo.
-- Bartender escribe cantidad real, firma con PIN, envía.
-- Si deja un campo vacío, se asume "cero" y debe confirmar explícitamente con un toggle "No queda nada" para evitar errores.
+**Backend (invisible para bartender):**
+- `submit_blind_shift_count` calcula varianza por línea, inserta en `shift_counts` con `admin_decision='pending'`.
+- TODA diferencia ≠ 0 queda lista para admin (sin filtro por umbral).
+- Devuelve `{accepted_count}` sin revelar varianzas.
 
-**Detrás de escena (invisible para bartender):**
-- Sistema calcula: `diferencia = teórico - declarado`.
-- Si `|diferencia| / teórico ≥ 10%` o `≥ 200ml` (lo que sea menor) → se marca como **alerta para admin**.
-- Se crea registro en `shift_counts` (jornada_id, location_id, product_id, theoretical_qty, declared_qty, variance_pct, signed_by, signed_at, alerted).
+### D. Panel admin "Conteos por aprobar"
+Tabla por jornada/barra: producto | teórico | declarado | dif (uds + CLP) | acciones.
+Acciones: **Aprobar como merma** | **Ajuste manual (motivo)** | **Rechazar (recontar)**.
+Tracking reincidencia por bartender ("Juan: 3 alertas / 5 jornadas").
 
-**Vista del admin (separada):**
-- Pestaña "Conteos de cierre" en panel admin.
-- Ve por jornada/barra: producto, teórico, declarado, diferencia (unidades + CLP), motivo (si lo hay).
-- Botones: **Aprobar como merma** | **Rechazar (recontar)** | **Ajuste manual con motivo**.
-- Las alertas reincidentes por bartender quedan visibles ("Juan: 3 alertas en últimas 5 jornadas").
+### E. Bloqueo apertura próxima jornada
+- `manage-jornadas` (open) verifica si hay `shift_counts` con `admin_decision='pending'` del venue.
+- Si los hay → 403 con mensaje "Hay N conteos pendientes de resolver. Resuélvelos antes de abrir nueva jornada".
 
-### D. Reporte de canjes SIN valores monetarios ⭐ (cambio clave)
+### F. Reporte de canjes SIN $
+PDF/UI operativo:
+- Total canjes, por barra, por bartender.
+- Productos canjeados (uds/ml).
+- Top productos por cantidad.
+- **Sección "Diferencias declaradas en cierre"**: producto, declarado, diferencia uds (+/−), motivo. Sin CLP.
+- **Sección "Reajustes aplicados"**: ajustes admin con motivo.
+- Mermas aprobadas (uds, motivo).
+- Emergencias atendidas (producto, uds, quién aprobó).
+- **Cero CLP/CPP en todo el documento.**
 
-**El "Reporte de canjes diario"** que recibe el equipo operativo contiene:
-
-- Total de canjes exitosos del día
-- Canjes por barra y por bartender
-- Productos canjeados con cantidades (unidades / ml)
-- Top productos del día (por cantidad)
-- Sección "**Diferencias declaradas en cierre**":
-  - Por barra: producto, declarado por bartender, diferencia en unidades (+/−), motivo si lo hay.
-  - **Sin CLP, sin CPP, sin valor en pesos.**
-- Mermas aprobadas: producto + cantidad + motivo (sin $).
-- Emergencias atendidas: producto + cantidad + quién aprobó (sin $).
-
-**El EERR / panel financiero del admin** sigue mostrando todos los valores en CLP — eso no cambia. Solo el reporte de canjes operativo se "desmonetiza".
-
-### E. Conteo semanal — Excel unificado multi-hoja
-Sin cambios respecto a v1: plantilla con una hoja por ubicación (Bodega + cada Barra), pre-llenada con `sku_base | producto | unidad | stock contado (vacío)`. Sin teórico en la plantilla del bartender (mismo principio del conteo ciego). El admin sube el Excel relleno → pantalla de validación humana muestra diferencias con CLP solo para el admin → aprueba → ajustes masivos.
-
-### F. Panel del Admin — "Movimientos del día"
-Timeline en vivo: reposiciones, emergencias pendientes, redenciones, mermas, conteos cerrados. Filtro por barra/bartender. KPIs: emergencias pendientes, % diferencia último cierre, conteos pendientes de aprobación.
-
----
-
-## 4. Reglas de negocio
-
-- **Fuente de verdad**: sistema (DiStock) sigue mandando operativamente. Toda diferencia genera ajuste explícito firmado.
-- **Conteo ciego**: nunca mostrar al bartender el teórico antes de declarar. Esto evita el sesgo de "calzar" y hace los conteos genuinos.
-- **Solo insumos usados**: si un producto no tuvo salida en la jornada, no se cuenta al cierre (ya quedó cuantificado en el conteo semanal o el último ajuste).
-- **Reporte de canjes desmonetizado**: protege información sensible de costos frente a personal operativo.
-- **EERR del admin**: única vista con CLP, CPP, márgenes y valoración.
-
----
-
-## 5. Detalles técnicos
-
-- **Tabla nueva** `shift_counts`: `id, venue_id, jornada_id, location_id, product_id, theoretical_qty, declared_qty, variance_qty, variance_pct, alerted boolean, signed_by_user_id, signed_at, admin_decision text ('pending'|'approved_waste'|'rejected'|'manual_adjust'), admin_decision_by, admin_decision_at, admin_notes`. RLS: bartender solo ve sus propios conteos del día; admin ve todo del venue.
-- **RPC `get_shift_consumed_products(p_jornada_id, p_location_id)`** → devuelve solo `product_id, name, unit, capacity_ml` de productos con `stock_movements` tipo `salida` en esa jornada/ubicación. **NO devuelve cantidades teóricas.** SECURITY DEFINER con guard de pertenencia bartender↔barra.
-- **RPC `submit_blind_shift_count(p_jornada_id, p_location_id, p_lines jsonb)`** → `p_lines = [{product_id, declared_qty}]`. Internamente lee teórico desde `stock_balances`, calcula varianza, inserta en `shift_counts`, marca `alerted` si supera umbral. Devuelve solo `{accepted_count}` (sin revelar varianzas al bartender).
-- **RPC `admin_resolve_shift_count(p_count_id, p_decision, p_notes)`** → solo admin. Si `approved_waste` o `manual_adjust`, genera `stock_movement` de ajuste con motivo y firma.
-- **RPC `execute_bartender_replenishment(p_lines)`** y **`approve_emergency_request(p_request_id)`** → idénticas a v1.
-- **Migración**: agregar columna `is_emergency boolean default false` a `replenishment_requests`.
-- **Realtime**: admin suscrito a `replenishment_requests WHERE is_emergency=true AND status='pending'` y a `shift_counts WHERE alerted=true AND admin_decision='pending'`.
-- **PDF `daily-redemptions-pdf.ts`** (nuevo): genera reporte de canjes operativo SIN valores en CLP. Reemplaza/complementa el actual.
-- **PDF `admin-shift-counts-pdf.ts`** (nuevo, opcional): vista admin con $.
-- **Excel multi-hoja**: extender `excel-inventory-parser.ts` para soportar parseo por hoja (cada hoja = location_id resuelto por nombre).
-- **UI nuevas**: 
-  - `/bar` → tabs "Mi reposición" / "Pedir emergencia" / "Cerrar jornada (conteo)".
-  - `/admin` → tabs nuevas "Movimientos del día" y "Conteos por aprobar".
+### G. Conteo semanal — importación + informe
+1. Encargado externo cuenta cada barra + bodega (a su manera).
+2. Sube planilla Excel/CSV a la app (formato libre con `sku_base | cantidad | location_name`).
+3. App parsea con fuzzy matching, muestra preview con diferencias vs sistema.
+4. Admin aprueba carga → genera `stock_movements` tipo `conteo_ajuste` por cada diferencia.
+5. App genera **INFORME PDF** descargable: producto, ubicación, sistema, contado, diferencia (uds + CLP), histórico de movimientos del producto en últimos 7 días.
+6. **No hay flujo de "resolución obligatoria"**: el cliente decide qué hacer con el informe.
 
 ---
 
-## 6. Orden de implementación
+## Datos / RPCs
 
-1. **Fase 1** — Reposición autoservicio bartender (reemplaza WhatsApp).
-2. **Fase 2** — Emergencias con notificación realtime al admin.
-3. **Fase 3** — Conteo de cierre CIEGO + tabla `shift_counts` + panel admin para aprobar.
-4. **Fase 4** — Reporte de canjes desmonetizado (PDF nuevo).
-5. **Fase 5** — Excel unificado semanal multi-hoja.
-6. **Fase 6** — Panel "Movimientos del día" del admin.
+### Tabla `shift_counts` (ya creada en migración previa)
+```
+id, venue_id, jornada_id, location_id, product_id,
+theoretical_qty, declared_qty, variance_qty, variance_pct,
+alerted boolean, signed_by_user_id, signed_at,
+admin_decision text ('pending'|'approved_waste'|'rejected'|'manual_adjust'),
+admin_decision_by, admin_decision_at, admin_notes
+```
+**Cambio v3**: `alerted` siempre `true` cuando `variance_qty != 0` (sin umbral).
 
-Cada fase es funcional por sí sola.
+### RPCs
+- `get_shift_consumed_products(p_jornada_id, p_location_id)` → productos con salida + botellas cerradas asignadas. Sin teórico.
+- `submit_blind_shift_count(p_jornada_id, p_location_id, p_lines jsonb)` → declara, calcula varianza, inserta.
+- `admin_resolve_shift_count(p_count_id, p_decision, p_notes)` → resuelve.
+- `check_pending_shift_counts(p_venue_id)` → boolean para bloqueo de apertura.
+- `approve_emergency_request(p_request_id)` → ya existe.
+- `import_weekly_count(p_lines jsonb)` → procesa planilla, genera ajustes + informe.
+
+### Realtime
+- Admin suscrito a `replenishment_requests is_emergency=true status='pending'` (toast + badge persistente).
+- Admin suscrito a `shift_counts admin_decision='pending'` (badge en sidebar).
+
+### PDFs nuevos
+- `daily-redemptions-pdf.ts` (sin $).
+- `weekly-count-report-pdf.ts` (informe semanal con $ para admin).
 
 ---
 
-¿Aprobás esta versión v2 con conteo ciego y reporte sin $? ¿O querés ajustar algún umbral (10% / 200ml) o algún otro detalle antes de implementar?
+## Orden de implementación
+
+1. ✅ **Fase 1** (hecho): Tabla `shift_counts`, RPC base, dialog ciego, replenishment con `is_emergency`.
+2. **Fase 2**: Ajustar dialog ciego → incluir botellas cerradas + slider 0-100% para abiertas + botón "Sin consumos hoy".
+3. **Fase 3**: Quitar umbral (toda diferencia ≠ 0 alerta). Panel admin "Conteos por aprobar" con resolución.
+4. **Fase 4**: Bloqueo apertura próxima jornada cuando hay pendientes.
+5. **Fase 5**: Recordatorio persistente de emergencias en dashboard admin.
+6. **Fase 6**: PDF reporte de canjes sin $ (con secciones de diferencias y reajustes).
+7. **Fase 7**: Importador semanal (planilla libre → preview → ajustes → informe PDF).
+
+Cada fase es funcional por sí sola. Empiezo por Fase 2 en el siguiente turno.
