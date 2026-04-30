@@ -198,6 +198,7 @@ export default function Admin() {
             {activeView === "voids" && <VoidRequestsPanel />}
             {activeView === "comparison" && <InventoryComparisonModule />}
             {activeView === "live-inventory" && <RealtimeInventoryDashboard />}
+            {activeView === "shift-counts" && !isReadOnly && <BlindShiftCountsPanel />}
           </div>
         </main>
       </div>
