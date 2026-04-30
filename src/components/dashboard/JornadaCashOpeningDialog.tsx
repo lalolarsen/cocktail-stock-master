@@ -184,9 +184,16 @@ export function JornadaCashOpeningDialog({
 
       if (error) throw error;
 
-      const result = data as { success: boolean; error?: string };
+      const result = data as { success: boolean; error?: string; message?: string; pending_count?: number };
       if (!result.success) {
-        throw new Error(result.error || "Error al abrir jornada");
+        if (result.error === "pending_shift_counts") {
+          toast.error(result.message || "Hay conteos de cierre pendientes de resolver", { duration: 6000 });
+          setPendingShiftCounts(result.pending_count || 1);
+          setStep("identification");
+          setSaving(false);
+          return;
+        }
+        throw new Error(result.message || result.error || "Error al abrir jornada");
       }
 
       onSuccess();
@@ -200,7 +207,7 @@ export function JornadaCashOpeningDialog({
   };
 
   const totalCash = cashAmounts.reduce((sum, item) => sum + item.amount, 0);
-  const canProceedFromIdentification = jornadaNombre.trim().length > 0;
+  const canProceedFromIdentification = jornadaNombre.trim().length > 0 && pendingShiftCounts === 0;
 
   const steps: WizardStep[] = ["identification", "cash", "confirm"];
   const currentStepIndex = steps.indexOf(step);
