@@ -7,7 +7,7 @@
  *   3. Show preview with diff vs system (stock_balances.quantity).
  *   4. Admin chooses:
  *      - "Solo informe" → genera PDF, NO toca stock.
- *      - "Aplicar ajustes" → crea stock_movements tipo CONTEO_AJUSTE + PDF.
+ *      - "Aplicar ajustes" → crea stock_movements tipo 'reconciliation' + actualiza stock_balances + PDF.
  *
  * Per plan v3: el cliente decide qué hacer con las diferencias; el sistema solo informa.
  */
