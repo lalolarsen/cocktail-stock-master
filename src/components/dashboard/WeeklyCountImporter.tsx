@@ -147,6 +147,8 @@ export function WeeklyCountImporter() {
         name: p.name,
         code: p.sku_base || p.code,
         capacity_ml: p.capacity_ml,
+        cost_per_unit: Number(p.weighted_avg_cost) || 0,
+        current_stock: 0,
       }));
       const cppMap = new Map<string, number>(
         (products || []).map((p: any) => [p.id, Number(p.weighted_avg_cost) || 0])
