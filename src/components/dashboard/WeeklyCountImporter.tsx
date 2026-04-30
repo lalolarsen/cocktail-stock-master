@@ -423,19 +423,46 @@ export function WeeklyCountImporter() {
 
     setApplying(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      // Conteo semanal externo: ajuste al stock_balance del bar.
+      // Usamos movement_type 'reconciliation' (enum válido) con quantity firmada (diff puede ser negativo).
+      // from_location_id se usa como locación afectada (convención del proyecto para ajustes en una sola ubicación).
       const movs = diffRows.map((r) => ({
         venue_id: venue.id,
         product_id: r.product_id!,
-        location_id: r.location_id!,
-        movement_type: "CONTEO_AJUSTE",
+        from_location_id: r.location_id!,
+        movement_type: "reconciliation" as const,
         quantity: r.diff,
         notes: `Conteo semanal externo: sistema=${r.system_qty}, contado=${r.counted_qty}, diff=${r.diff}`,
-        movement_date: today,
+        source_type: "weekly_count",
       }));
 
-      const { error } = await supabase.from("stock_movements").insert(movs as any);
-      if (error) throw error;
+      const { error: movErr } = await supabase.from("stock_movements").insert(movs as any);
+      if (movErr) throw movErr;
+
+      // Ajustar stock_balances (fuente de verdad) en una sola pasada por fila.
+      for (const r of diffRows) {
+        const { data: bal } = await supabase
+          .from("stock_balances")
+          .select("id, quantity")
+          .eq("product_id", r.product_id!)
+          .eq("location_id", r.location_id!)
+          .maybeSingle();
+        if (bal) {
+          await supabase
+            .from("stock_balances")
+            .update({ quantity: Number(bal.quantity) + r.diff, updated_at: new Date().toISOString() })
+            .eq("id", bal.id);
+        } else if (r.diff > 0) {
+          await supabase
+            .from("stock_balances")
+            .insert({
+              venue_id: venue.id,
+              product_id: r.product_id!,
+              location_id: r.location_id!,
+              quantity: r.diff,
+            } as any);
+        }
+      }
       toast.success(`${movs.length} ajuste(s) aplicados`);
       setResolved([]);
     } catch (err: any) {
