@@ -201,6 +201,7 @@ export default function Admin() {
             {activeView === "comparison" && <InventoryComparisonModule />}
             {activeView === "live-inventory" && <RealtimeInventoryDashboard />}
             {activeView === "shift-counts" && !isReadOnly && <BlindShiftCountsPanel />}
+            {activeView === "weekly-count" && !isReadOnly && <WeeklyCountImporter />}
           </div>
         </main>
       </div>
