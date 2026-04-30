@@ -354,6 +354,109 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
       }
 
       // ── Detalle ──
+      // ── DIFERENCIAS DECLARADAS EN CIERRE (sin $) ──
+      const blindRows = ((blindCounts || []) as any[]).filter((b) => Number(b.variance_qty) !== 0);
+      if (blindRows.length > 0) {
+        section("DIFERENCIAS DECLARADAS EN CIERRE");
+        const fmtUnit = (pid: string, n: number) => {
+          const cap = productCapMap.get(pid) || 0;
+          const v = Number(n) || 0;
+          return cap > 0 ? `${Math.round(v)} ml` : `${v} u`;
+        };
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Teórico", "Declarado", "Diferencia", "Estado"]],
+          body: blindRows.map((b) => [
+            productNameMap.get(b.product_id) || "?",
+            locationMap.get(b.location_id) || "?",
+            fmtUnit(b.product_id, b.theoretical_qty),
+            fmtUnit(b.product_id, b.declared_qty),
+            (b.variance_qty > 0 ? "+" : "") + fmtUnit(b.product_id, b.variance_qty),
+            b.admin_decision === "pending" ? "Por revisar" :
+              b.admin_decision === "approved_waste" ? "Aprobado merma" :
+              b.admin_decision === "manual_adjust" ? "Ajustado" :
+              b.admin_decision === "rejected" ? "Rechazado" : (b.admin_decision || "—"),
+          ]),
+          headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── REAJUSTES APLICADOS POR ADMIN (sin $) ──
+      const adjustRows = ((blindCounts || []) as any[]).filter(
+        (b) => b.admin_decision === "manual_adjust" || b.admin_decision === "approved_waste"
+      );
+      if (adjustRows.length > 0) {
+        section("REAJUSTES APLICADOS POR ADMIN");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Decisión", "Resuelto por", "Notas"]],
+          body: adjustRows.map((b) => [
+            productNameMap.get(b.product_id) || "?",
+            locationMap.get(b.location_id) || "?",
+            b.admin_decision === "approved_waste" ? "Aprobado merma" : "Ajuste manual",
+            b.admin_decision_by ? (profilesMap.get(b.admin_decision_by) || "?") : "—",
+            b.admin_notes || "—",
+          ]),
+          headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── MERMAS APROBADAS (sin $) ──
+      const wasteRows = (wasteList || []) as any[];
+      if (wasteRows.length > 0) {
+        section("MERMAS APROBADAS");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Cantidad", "Motivo", "Notas"]],
+          body: wasteRows.map((w) => {
+            const cap = productCapMap.get(w.product_id) || 0;
+            const qty = Number(w.quantity) || 0;
+            return [
+              productNameMap.get(w.product_id) || "?",
+              locationMap.get(w.location_id) || "?",
+              cap > 0 ? `${Math.round(qty)} ml` : `${qty} u`,
+              w.reason || "—",
+              w.notes || "—",
+            ];
+          }),
+          headStyles: { fillColor: [220, 38, 38], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // ── EMERGENCIAS ATENDIDAS (sin $) ──
+      const emergRows = (emergencies || []) as any[];
+      if (emergRows.length > 0) {
+        section("EMERGENCIAS DE REPOSICIÓN ATENDIDAS");
+        autoTable(doc, {
+          startY: y,
+          head: [["Producto", "Barra", "Cantidad", "Aprobado por", "Notas"]],
+          body: emergRows.map((e) => {
+            const cap = productCapMap.get(e.product_id) || 0;
+            const qty = Number(e.requested_quantity) || 0;
+            return [
+              productNameMap.get(e.product_id) || "?",
+              locationMap.get(e.location_id) || "?",
+              cap > 0 ? `${Math.round(qty)} ml` : `${qty} u`,
+              e.reviewed_by_user_id ? (profilesMap.get(e.reviewed_by_user_id) || "?") : "—",
+              e.review_notes || "—",
+            ];
+          }),
+          headStyles: { fillColor: [217, 70, 239], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 9, cellPadding: 5 },
+          margin: { left: margin, right: margin },
+        });
+        y = (doc as any).lastAutoTable.finalY + 20;
+      }
+
       section("DETALLE DE INTENTOS");
       const detailRows = allLogs
         .sort((a, b) => new Date(a.redeemed_at).getTime() - new Date(b.redeemed_at).getTime())
