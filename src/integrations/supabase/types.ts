@@ -6452,6 +6452,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_stock_balance: {
+        Args: {
+          p_delta: number
+          p_location_id: string
+          p_product_id: string
+          p_set_absolute?: boolean
+          p_venue_id: string
+        }
+        Returns: undefined
+      }
       validate_bar_pin: {
         Args: { p_jornada_id: string; p_location_id: string; p_pin: string }
         Returns: {
