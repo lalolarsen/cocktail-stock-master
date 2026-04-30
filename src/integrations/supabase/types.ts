@@ -5950,6 +5950,10 @@ export type Database = {
           total_cogs: number
         }[]
       }
+      check_pending_shift_counts: {
+        Args: { p_venue_id?: string }
+        Returns: Json
+      }
       check_sale_mixer_requirements: {
         Args: { p_sale_id: string }
         Returns: Json
