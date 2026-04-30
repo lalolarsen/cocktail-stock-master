@@ -27,6 +27,7 @@ import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclaration
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 import { InventoryComparisonModule } from "@/components/dashboard/InventoryComparisonModule";
 import { RealtimeInventoryDashboard } from "@/components/dashboard/RealtimeInventoryDashboard";
+import { BlindShiftCountsPanel } from "@/components/dashboard/BlindShiftCountsPanel";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -35,7 +36,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory" | "shift-counts";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -136,6 +137,7 @@ export default function Admin() {
       case "reconciliation": return "Cuadre de Inventario";
       case "comparison": return "Comparación de Inventario";
       case "live-inventory": return "Inventario en vivo";
+      case "shift-counts": return "Conteos por aprobar";
       default: return "Admin";
     }
   };
@@ -196,6 +198,7 @@ export default function Admin() {
             {activeView === "voids" && <VoidRequestsPanel />}
             {activeView === "comparison" && <InventoryComparisonModule />}
             {activeView === "live-inventory" && <RealtimeInventoryDashboard />}
+            {activeView === "shift-counts" && !isReadOnly && <BlindShiftCountsPanel />}
           </div>
         </main>
       </div>

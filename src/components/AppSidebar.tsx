@@ -20,7 +20,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory" | "shift-counts";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -52,6 +52,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Operación",
     items: [
       { title: "Jornadas", value: "jornadas", icon: Calendar },
+      { title: "Conteos por aprobar", value: "shift-counts", icon: ClipboardList },
       { title: "Puntos de Venta", value: "pos", icon: Receipt },
       { title: "Anulaciones", value: "voids", icon: Undo2 },
     ],
