@@ -154,12 +154,12 @@ admin_decision_by, admin_decision_at, admin_notes
 
 ## Orden de implementación
 
-1. ✅ **Fase 1** (hecho): Tabla `shift_counts`, RPC base, dialog ciego, replenishment con `is_emergency`.
-2. **Fase 2**: Ajustar dialog ciego → incluir botellas cerradas + slider 0-100% para abiertas + botón "Sin consumos hoy".
-3. **Fase 3**: Quitar umbral (toda diferencia ≠ 0 alerta). Panel admin "Conteos por aprobar" con resolución.
-4. **Fase 4**: Bloqueo apertura próxima jornada cuando hay pendientes.
-5. **Fase 5**: Recordatorio persistente de emergencias en dashboard admin.
-6. **Fase 6**: PDF reporte de canjes sin $ (con secciones de diferencias y reajustes).
-7. **Fase 7**: Importador semanal (planilla libre → preview → ajustes → informe PDF).
+1. ✅ **Fase 1**: Tabla `shift_counts`, RPC base, dialog ciego, replenishment con `is_emergency`.
+2. ✅ **Fase 2**: Dialog ciego con cerradas + slider 0-100% + "Sin consumos hoy".
+3. ✅ **Fase 3**: Sin umbral. Panel admin "Conteos por aprobar" con resolución.
+4. ✅ **Fase 4**: Bloqueo apertura próxima jornada cuando hay pendientes.
+5. ✅ **Fase 5**: Recordatorio persistente de emergencias en dashboard admin.
+6. ✅ **Fase 6**: PDF reporte de canjes sin $ con secciones de diferencias y reajustes.
+7. ✅ **Fase 7**: Importador semanal (planilla → preview → ajustes opcionales → informe PDF).
 
 Cada fase es funcional por sí sola. Empiezo por Fase 2 en el siguiente turno.

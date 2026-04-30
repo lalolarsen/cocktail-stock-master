@@ -20,7 +20,7 @@ import { VenueIndicator } from "@/components/VenueIndicator";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory" | "shift-counts";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory" | "shift-counts" | "weekly-count";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -61,6 +61,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList, badge: "NUEVO" },
       { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
       { title: "Productos", value: "products", icon: Package },
       { title: "Comparación", value: "comparison", icon: Scale },
