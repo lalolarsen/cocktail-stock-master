@@ -26,6 +26,8 @@ import { formatCLP } from "@/lib/currency";
 import { OrphanSalesRecoveryDialog } from "./OrphanSalesRecoveryDialog";
 import { JornadaKPIPanel } from "./overview/JornadaKPIPanel";
 import { StockAlertsPanel } from "./overview/StockAlertsPanel";
+import { EmergencyRequestsBanner } from "./EmergencyRequestsBanner";
+import { PendingShiftCountsBanner } from "./PendingShiftCountsBanner";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useRealtimeInventory } from "@/hooks/useRealtimeInventory";
@@ -276,6 +278,14 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
   return (
     <div className="space-y-5 sm:space-y-8">
+      {/* ── Bandeja de admin: requiere atención inmediata ── */}
+      {!isReadOnly && (
+        <div className="space-y-3">
+          <EmergencyRequestsBanner onNavigate={onNavigate} />
+          <PendingShiftCountsBanner onNavigate={onNavigate} />
+        </div>
+      )}
+
       {/* ── Alerts (compact on mobile) ── */}
       {!jornadaActive && !isReadOnly && (
         <Alert className="border-amber-500/30 bg-amber-500/5">
