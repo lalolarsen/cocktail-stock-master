@@ -26,6 +26,7 @@ import {
   ChevronLeft,
   CheckCircle,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCLP } from "@/lib/currency";
@@ -78,6 +79,7 @@ export function JornadaCashOpeningDialog({
   const [cashAmounts, setCashAmounts] = useState<CashAmount[]>([]);
   const [step, setStep] = useState<WizardStep>("identification");
   const [jornadaNombre, setJornadaNombre] = useState("");
+  const [pendingShiftCounts, setPendingShiftCounts] = useState<number>(0);
 
   // Auto-generate default name
   const generateDefaultName = () => {
@@ -109,10 +111,11 @@ export function JornadaCashOpeningDialog({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [posResult, settingsResult, defaultsResult] = await Promise.all([
+      const [posResult, settingsResult, defaultsResult, pendingResult] = await Promise.all([
         supabase.from("pos_terminals").select("id, name").eq("is_active", true).eq("is_cash_register", true).order("name"),
         supabase.from("jornada_cash_settings").select("*").maybeSingle(),
         supabase.from("jornada_cash_pos_defaults").select("pos_id, default_amount"),
+        supabase.rpc("check_pending_shift_counts", { p_venue_id: null }),
       ]);
 
       const terminals = posResult.data || [];
@@ -132,6 +135,9 @@ export function JornadaCashOpeningDialog({
         return { pos_id: pos.id, pos_name: pos.name, amount: Number(amount) || 0 };
       });
       setCashAmounts(amounts);
+
+      const pending = (pendingResult.data as any)?.pending ?? 0;
+      setPendingShiftCounts(Number(pending) || 0);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Error al cargar configuración");
@@ -178,9 +184,16 @@ export function JornadaCashOpeningDialog({
 
       if (error) throw error;
 
-      const result = data as { success: boolean; error?: string };
+      const result = data as { success: boolean; error?: string; message?: string; pending_count?: number };
       if (!result.success) {
-        throw new Error(result.error || "Error al abrir jornada");
+        if (result.error === "pending_shift_counts") {
+          toast.error(result.message || "Hay conteos de cierre pendientes de resolver", { duration: 6000 });
+          setPendingShiftCounts(result.pending_count || 1);
+          setStep("identification");
+          setSaving(false);
+          return;
+        }
+        throw new Error(result.message || result.error || "Error al abrir jornada");
       }
 
       onSuccess();
@@ -194,7 +207,7 @@ export function JornadaCashOpeningDialog({
   };
 
   const totalCash = cashAmounts.reduce((sum, item) => sum + item.amount, 0);
-  const canProceedFromIdentification = jornadaNombre.trim().length > 0;
+  const canProceedFromIdentification = jornadaNombre.trim().length > 0 && pendingShiftCounts === 0;
 
   const steps: WizardStep[] = ["identification", "cash", "confirm"];
   const currentStepIndex = steps.indexOf(step);
@@ -209,6 +222,20 @@ export function JornadaCashOpeningDialog({
 
   const renderIdentification = () => (
     <div className="space-y-5 py-2">
+      {pendingShiftCounts > 0 && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 flex gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 text-sm">
+            <p className="font-semibold text-destructive">
+              No se puede abrir una nueva jornada
+            </p>
+            <p className="text-muted-foreground">
+              Hay <strong>{pendingShiftCounts}</strong> conteo(s) de cierre pendientes de aprobación.
+              Resuélvelos en <strong>"Conteos por aprobar"</strong> antes de abrir una nueva jornada.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="jornada-nombre" className="font-medium">
           Nombre de la jornada *
