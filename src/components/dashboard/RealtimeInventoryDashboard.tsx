@@ -119,6 +119,7 @@ export function RealtimeInventoryDashboard() {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeLocation, setActiveLocation] = useState<string>("__all__");
+  const [statusFilter, setStatusFilter] = useState<"all" | "low" | "critical">("all");
   const [pulse, setPulse] = useState(false);
   const lastUpdateRef = useRef<Date | null>(null);
 
@@ -138,16 +139,26 @@ export function RealtimeInventoryDashboard() {
     [rows],
   );
 
+  // Locations + per-location aggregates (count, value, low/critical)
   const locations = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; type: string | null }>();
+    const map = new Map<string, {
+      id: string; name: string; type: string | null;
+      count: number; value: number; low: number; critical: number;
+    }>();
     for (const r of rows) {
-      if (!map.has(r.location_id)) {
-        map.set(r.location_id, { id: r.location_id, name: r.location_name, type: r.location_type });
+      let entry = map.get(r.location_id);
+      if (!entry) {
+        entry = { id: r.location_id, name: r.location_name, type: r.location_type, count: 0, value: 0, low: 0, critical: 0 };
+        map.set(r.location_id, entry);
       }
+      entry.count += 1;
+      entry.value += Number(r.stock_value) || 0;
+      if (r.status === "low") entry.low += 1;
+      if (r.status === "critical") entry.critical += 1;
     }
     return Array.from(map.values()).sort((a, b) => {
-      const aw = (a.type ?? "").toLowerCase().includes("bodega") ? 0 : 1;
-      const bw = (b.type ?? "").toLowerCase().includes("bodega") ? 0 : 1;
+      const aw = (a.type ?? "").toLowerCase().includes("warehouse") || (a.type ?? "").toLowerCase().includes("bodega") ? 0 : 1;
+      const bw = (b.type ?? "").toLowerCase().includes("warehouse") || (b.type ?? "").toLowerCase().includes("bodega") ? 0 : 1;
       if (aw !== bw) return aw - bw;
       return a.name.localeCompare(b.name);
     });
@@ -157,6 +168,7 @@ export function RealtimeInventoryDashboard() {
     const s = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (activeLocation !== "__all__" && r.location_id !== activeLocation) return false;
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (!s) return true;
       return (
         r.product_name.toLowerCase().includes(s) ||
@@ -164,7 +176,13 @@ export function RealtimeInventoryDashboard() {
         (r.category ?? "").toLowerCase().includes(s)
       );
     });
-  }, [rows, search, activeLocation]);
+  }, [rows, search, activeLocation, statusFilter]);
+
+  // Totals for current filtered view
+  const filteredValue = useMemo(
+    () => filtered.reduce((acc, r) => acc + (Number(r.stock_value) || 0), 0),
+    [filtered]
+  );
 
   const lastUpdateLabel = lastUpdate
     ? formatDistanceToNow(lastUpdate, { addSuffix: true, locale: es })
