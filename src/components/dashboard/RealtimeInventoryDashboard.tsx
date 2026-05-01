@@ -6,13 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Activity,
   AlertTriangle,
   ClipboardCheck,
   Camera,
-  DollarSign,
   Download,
   Package,
   RefreshCw,
@@ -20,8 +19,6 @@ import {
   Warehouse,
   XCircle,
   PackageOpen,
-  Wine,
-  Box,
 } from "lucide-react";
 
 import { useAppSession } from "@/contexts/AppSessionContext";
