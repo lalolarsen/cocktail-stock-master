@@ -39,19 +39,39 @@ import { toast } from "sonner";
 function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
   if (status === "critical") {
     return (
-      <Badge variant="destructive" className="gap-1">
+      <Badge variant="destructive" className="gap-1 h-5 px-1.5 text-[10px]">
         <XCircle className="w-3 h-3" /> Sin stock
       </Badge>
     );
   }
   if (status === "low") {
     return (
-      <Badge className="bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/20 gap-1">
+      <Badge className="bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/20 gap-1 h-5 px-1.5 text-[10px]">
         <AlertTriangle className="w-3 h-3" /> Bajo
       </Badge>
     );
   }
-  return <Badge variant="secondary">OK</Badge>;
+  return <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">OK</Badge>;
+}
+
+const intCL = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-CL");
+
+/** Formato de stock: bottles muestran ml + equivalencia en botellas; unidades formato entero. */
+function formatStock(r: InventorySnapshotRow): { primary: string; secondary?: string } {
+  if (r.is_bottle) {
+    const ml = Math.round(Number(r.quantity) || 0);
+    const cap = r.capacity_ml || 0;
+    if (cap > 0) {
+      const bottles = ml / cap;
+      // Mostramos ml siempre como entero, equivalencia con 1 decimal sólo si no es entero
+      const bottlesLabel = Number.isInteger(bottles)
+        ? `${bottles} bot.`
+        : `${bottles.toFixed(1).replace(".", ",")} bot.`;
+      return { primary: `${intCL(ml)} ml`, secondary: `≈ ${bottlesLabel}` };
+    }
+    return { primary: `${intCL(ml)} ml` };
+  }
+  return { primary: `${intCL(r.quantity)} ${r.quantity === 1 ? "ud" : "uds"}` };
 }
 
 function KPI({
