@@ -249,7 +249,7 @@ export function CashReconciliationDialog({
                       inputMode="numeric"
                       placeholder="Ej: 154000"
                       value={it.countedCashStr}
-                      onChange={(e) => updateItem(it.posId, "countedCashStr" as any, e.target.value)}
+                      onChange={(e) => updateItem(it.posId, "countedCashStr", e.target.value)}
                       className="mt-1 h-8 text-sm font-mono"
                     />
                     <p className="text-[10px] text-muted-foreground mt-0.5">Opcional pero recomendado: permite calcular sobrante/faltante.</p>
