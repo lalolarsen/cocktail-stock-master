@@ -61,10 +61,8 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
-      { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList, badge: "NUEVO" },
-      { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
+      { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList },
       { title: "Productos", value: "products", icon: Package },
-      { title: "Comparación", value: "comparison", icon: Scale },
     ],
   },
   {
