@@ -102,7 +102,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
-      { title: "Operaciones Excel", value: "inventory", icon: Warehouse },
     ],
   },
   {
