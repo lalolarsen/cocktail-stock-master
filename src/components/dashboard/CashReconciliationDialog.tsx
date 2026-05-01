@@ -39,6 +39,11 @@ interface POSChecklistItem {
   bartenderName: string;
   confirmed: boolean;
   notes: string;
+  openingCash: number;
+  cashAlcohol: number;
+  cashTickets: number;
+  expectedCash: number;
+  countedCashStr: string; // user input
 }
 
 export function CashReconciliationDialog({
