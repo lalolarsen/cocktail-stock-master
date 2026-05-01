@@ -13,7 +13,7 @@ import {
   ClipboardCheck,
   Camera,
   Download,
-  Package,
+  
   RefreshCw,
   Search,
   Warehouse,
