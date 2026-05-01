@@ -56,22 +56,26 @@ function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
 
 const intCL = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-CL");
 
-/** Formato de stock: bottles muestran ml + equivalencia en botellas; unidades formato entero. */
-function formatStock(r: InventorySnapshotRow): { primary: string; secondary?: string } {
-  if (r.is_bottle) {
-    const ml = Math.round(Number(r.quantity) || 0);
-    const cap = r.capacity_ml || 0;
-    if (cap > 0) {
-      const bottles = ml / cap;
-      // Mostramos ml siempre como entero, equivalencia con 1 decimal sólo si no es entero
-      const bottlesLabel = Number.isInteger(bottles)
-        ? `${bottles} bot.`
-        : `${bottles.toFixed(1).replace(".", ",")} bot.`;
-      return { primary: `${intCL(ml)} ml`, secondary: `≈ ${bottlesLabel}` };
-    }
-    return { primary: `${intCL(ml)} ml` };
+/** CLP compacto sin decimales: $4.219M, $402K, $1.250 */
+function formatCLPCompact(n: number): string {
+  const v = Math.round(Number(n) || 0);
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `$${Math.round(v / 1_000_000)} M`;
+  if (abs >= 10_000_000) return `$${Math.round(v / 1_000_000)} M`;
+  if (abs >= 1_000_000) {
+    // 1.0M – 9.9M con 1 decimal solo si no es entero
+    const m = v / 1_000_000;
+    return `$${(Math.round(m * 10) / 10).toString().replace(".", ",")} M`;
   }
-  return { primary: `${intCL(r.quantity)} ${r.quantity === 1 ? "ud" : "uds"}` };
+  if (abs >= 10_000) return `$${Math.round(v / 1000)}K`;
+  return `$${v.toLocaleString("es-CL")}`;
+}
+
+/** Stock simple: ml para botellas, uds para resto. SIN decimales, SIN equivalencias. */
+function formatStock(r: InventorySnapshotRow): string {
+  const qty = Math.round(Number(r.quantity) || 0);
+  if (r.is_bottle) return `${intCL(qty)} ml`;
+  return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
 }
 
 function KPI({
