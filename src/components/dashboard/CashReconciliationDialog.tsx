@@ -221,6 +221,40 @@ export function CashReconciliationDialog({
                     </Badge>
                   </div>
 
+                  {/* Cuadre de efectivo */}
+                  <div className="rounded-md border border-border bg-muted/30 p-2 text-xs space-y-1">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Apertura</span><span className="font-mono">${it.openingCash.toLocaleString("es-CL")}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Ventas alcohol (efectivo)</span><span className="font-mono">${it.cashAlcohol.toLocaleString("es-CL")}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Ventas tickets (efectivo)</span><span className="font-mono">${it.cashTickets.toLocaleString("es-CL")}</span></div>
+                    <div className="flex justify-between border-t border-border pt-1 font-semibold"><span>Efectivo esperado</span><span className="font-mono text-primary">${it.expectedCash.toLocaleString("es-CL")}</span></div>
+                    {it.countedCashStr.trim() !== "" && !Number.isNaN(Number(it.countedCashStr.replace(/[^\d.-]/g, ""))) && (() => {
+                      const counted = Number(it.countedCashStr.replace(/[^\d.-]/g, ""));
+                      const diff = counted - it.expectedCash;
+                      const color = diff === 0 ? "text-primary" : diff > 0 ? "text-blue-400" : "text-red-400";
+                      return (
+                        <div className={`flex justify-between font-semibold ${color}`}>
+                          <span>{diff === 0 ? "Cuadrado" : diff > 0 ? "Sobrante" : "Faltante"}</span>
+                          <span className="font-mono">${Math.abs(diff).toLocaleString("es-CL")}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div>
+                    <Label htmlFor={`counted-${it.posId}`} className="text-xs font-medium">
+                      Efectivo contado físicamente (CLP)
+                    </Label>
+                    <Input
+                      id={`counted-${it.posId}`}
+                      inputMode="numeric"
+                      placeholder="Ej: 154000"
+                      value={it.countedCashStr}
+                      onChange={(e) => updateItem(it.posId, "countedCashStr" as any, e.target.value)}
+                      className="mt-1 h-8 text-sm font-mono"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Opcional pero recomendado: permite calcular sobrante/faltante.</p>
+                  </div>
+
                   <div>
                     <Label
                       htmlFor={`bartender-${it.posId}`}
