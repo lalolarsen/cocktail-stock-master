@@ -17,8 +17,20 @@ interface POSSalesData {
     cardCount: number;
     otherTotal: number;
     otherCount: number;
+    // Tickets (entrada) – separados de alcohol
+    ticketCashTotal?: number;
+    ticketCashCount?: number;
+    ticketCardTotal?: number;
+    ticketCardCount?: number;
+    ticketOtherTotal?: number;
+    ticketOtherCount?: number;
     total: number;
     totalCount: number;
+    // Cuadre de caja
+    openingCash?: number;
+    expectedCash?: number;
+    countedCash?: number | null;
+    difference?: number | null;
     bartenderName?: string | null;
     confirmed?: boolean;
     notes?: string | null;
