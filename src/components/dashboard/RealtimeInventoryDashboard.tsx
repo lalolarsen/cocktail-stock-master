@@ -248,7 +248,7 @@ export function RealtimeInventoryDashboard() {
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital</p>
               <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums truncate" title={formatCLP(totals.totalValue)}>
-                {formatCLPCompact(totals.totalValue)}
+                {formatCLP(totals.totalValue)}
               </p>
             </CardContent>
           </Card>
@@ -368,7 +368,7 @@ export function RealtimeInventoryDashboard() {
                     </button>
                   ))}
                   <span className="ml-auto text-muted-foreground tabular-nums">
-                    {filtered.length.toLocaleString("es-CL")} líneas · {formatCLPCompact(filteredValue)}
+                    {filtered.length.toLocaleString("es-CL")} líneas · {formatCLP(filteredValue)}
                   </span>
                 </div>
 
@@ -415,7 +415,7 @@ export function RealtimeInventoryDashboard() {
                               {formatStock(r)}
                             </TableCell>
                             <TableCell className="text-right text-sm tabular-nums py-2">
-                              {formatCLPCompact(r.stock_value)}
+                              {formatCLP(r.stock_value)}
                             </TableCell>
                             <TableCell className="py-2">
                               <StatusBadge status={r.status} />
