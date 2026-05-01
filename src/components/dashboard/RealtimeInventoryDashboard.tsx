@@ -242,12 +242,12 @@ export function RealtimeInventoryDashboard() {
           </button>
         </div>
 
-        {/* KPIs compactos en una sola fila */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card className="border-border">
+        {/* KPIs: Capital destacado + 3 contadores compactos */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr_1fr_1fr] gap-2">
+          <Card className="border-primary/30 bg-primary/[0.03]">
             <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital</p>
-              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums truncate" title={formatCLP(totals.totalValue)}>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital inmovilizado</p>
+              <p className="text-2xl font-bold mt-1 tabular-nums text-primary leading-none break-all">
                 {formatCLP(totals.totalValue)}
               </p>
             </CardContent>
@@ -255,13 +255,13 @@ export function RealtimeInventoryDashboard() {
           <Card className="border-border">
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Productos</p>
-              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums">{totals.productCount}</p>
+              <p className="text-2xl font-bold mt-1 tabular-nums leading-none">{totals.productCount}</p>
             </CardContent>
           </Card>
           <Card className={totals.lowCount > 0 ? "border-yellow-500/40" : "border-border"}>
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Bajo mínimo</p>
-              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.lowCount > 0 ? "text-yellow-500" : ""}`}>
+              <p className={`text-2xl font-bold mt-1 tabular-nums leading-none ${totals.lowCount > 0 ? "text-yellow-500" : ""}`}>
                 {totals.lowCount}
               </p>
             </CardContent>
@@ -269,7 +269,7 @@ export function RealtimeInventoryDashboard() {
           <Card className={totals.criticalCount > 0 ? "border-destructive/40" : "border-border"}>
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sin stock</p>
-              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.criticalCount > 0 ? "text-destructive" : ""}`}>
+              <p className={`text-2xl font-bold mt-1 tabular-nums leading-none ${totals.criticalCount > 0 ? "text-destructive" : ""}`}>
                 {totals.criticalCount}
               </p>
             </CardContent>
