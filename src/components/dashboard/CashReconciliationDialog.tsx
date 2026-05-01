@@ -146,12 +146,16 @@ export function CashReconciliationDialog({
 
     setSubmitting(true);
     try {
-      const payload = items.map((it) => ({
-        pos_id: it.posId,
-        bartender_name: it.bartenderName.trim(),
-        confirmed: true,
-        notes: it.notes.trim() || null,
-      }));
+      const payload = items.map((it) => {
+        const counted = it.countedCashStr.trim() === "" ? null : Number(it.countedCashStr.replace(/[^\d.-]/g, ""));
+        return {
+          pos_id: it.posId,
+          bartender_name: it.bartenderName.trim(),
+          confirmed: true,
+          notes: it.notes.trim() || null,
+          closing_cash_counted: counted !== null && !Number.isNaN(counted) ? counted : null,
+        };
+      });
 
       const { data, error } = await supabase.rpc("close_jornada_manual", {
         p_jornada_id: jornadaId,
