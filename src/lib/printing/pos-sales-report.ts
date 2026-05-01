@@ -58,6 +58,52 @@ function buildReportHtml(data: POSSalesData): string {
         pos.confirmed ||
         (pos.notes && pos.notes.trim());
 
+      const tCash = pos.ticketCashTotal ?? 0;
+      const tCard = pos.ticketCardTotal ?? 0;
+      const tOther = pos.ticketOtherTotal ?? 0;
+      const hasTickets = tCash + tCard + tOther > 0;
+
+      const ticketsBlock = hasTickets
+        ? `
+        <div class="subsection">TICKETS (entrada)</div>
+        <table class="items"><tbody>
+          ${tCash > 0 ? `<tr><td class="item-name">Efectivo (${pos.ticketCashCount ?? 0})</td><td class="item-price">${fmt(tCash)}</td></tr>` : ""}
+          ${tCard > 0 ? `<tr><td class="item-name">Tarjeta (${pos.ticketCardCount ?? 0})</td><td class="item-price">${fmt(tCard)}</td></tr>` : ""}
+          ${tOther > 0 ? `<tr><td class="item-name">Otro (${pos.ticketOtherCount ?? 0})</td><td class="item-price">${fmt(tOther)}</td></tr>` : ""}
+        </tbody></table>`
+        : "";
+
+      const hasAlcohol = pos.cashTotal + pos.cardTotal + pos.otherTotal > 0;
+      const alcoholBlock = hasAlcohol
+        ? `
+        ${hasTickets ? `<div class="subsection">ALCOHOL / CARTA</div>` : ""}
+        <table class="items"><tbody>
+          <tr><td class="item-name">Efectivo (${pos.cashCount})</td><td class="item-price">${fmt(pos.cashTotal)}</td></tr>
+          <tr><td class="item-name">Tarjeta (${pos.cardCount})</td><td class="item-price">${fmt(pos.cardTotal)}</td></tr>
+          ${pos.otherTotal > 0 ? `<tr><td class="item-name">Otro (${pos.otherCount})</td><td class="item-price">${fmt(pos.otherTotal)}</td></tr>` : ""}
+        </tbody></table>`
+        : "";
+
+      // Cuadre de caja (efectivo)
+      const opening = pos.openingCash ?? 0;
+      const expected = pos.expectedCash ?? 0;
+      const counted = pos.countedCash;
+      const diff = pos.difference;
+      const cashEffective = pos.cashTotal + tCash;
+      const showCuadre = opening > 0 || cashEffective > 0 || expected > 0 || counted != null;
+      const diffLabel = diff == null ? "Pendiente conteo" : diff === 0 ? "CUADRADO" : diff > 0 ? `SOBRANTE ${fmt(Math.abs(diff))}` : `FALTANTE ${fmt(Math.abs(diff))}`;
+      const cuadreBlock = showCuadre
+        ? `
+        <div class="subsection">CUADRE EFECTIVO</div>
+        <table class="items"><tbody>
+          <tr><td class="item-name">Apertura</td><td class="item-price">${fmt(opening)}</td></tr>
+          <tr><td class="item-name">+ Ventas efectivo</td><td class="item-price">${fmt(cashEffective)}</td></tr>
+          <tr><td class="item-name"><strong>= Esperado</strong></td><td class="item-price"><strong>${fmt(expected)}</strong></td></tr>
+          <tr><td class="item-name">Contado</td><td class="item-price">${counted != null ? fmt(counted) : "_______"}</td></tr>
+          <tr><td class="item-name"><strong>Diferencia</strong></td><td class="item-price"><strong>${diffLabel}</strong></td></tr>
+        </tbody></table>`
+        : "";
+
       const closingBlock = hasClosingInfo
         ? `
         <div class="closing-block">
@@ -70,24 +116,13 @@ function buildReportHtml(data: POSSalesData): string {
       return `
       <div class="pos-block">
         <div class="pos-name">${escape(pos.posName)}</div>
-        <table class="items"><tbody>
-          <tr>
-            <td class="item-name">Efectivo (${pos.cashCount})</td>
-            <td class="item-price">${fmt(pos.cashTotal)}</td>
-          </tr>
-          <tr>
-            <td class="item-name">Tarjeta (${pos.cardCount})</td>
-            <td class="item-price">${fmt(pos.cardTotal)}</td>
-          </tr>
-          ${pos.otherTotal > 0 ? `<tr>
-            <td class="item-name">Otro (${pos.otherCount})</td>
-            <td class="item-price">${fmt(pos.otherTotal)}</td>
-          </tr>` : ""}
-        </tbody></table>
+        ${alcoholBlock}
+        ${ticketsBlock}
         <div class="pos-total">
           <span>${pos.totalCount} ventas</span>
           <span class="pos-total-amount">${fmt(pos.total)}</span>
         </div>
+        ${cuadreBlock}
         ${closingBlock}
         <div class="sep">${dash}</div>
       </div>`;
