@@ -136,28 +136,29 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="p-4 space-y-3">
-        <div className="flex items-center gap-3">
+      <SidebarHeader className="px-3 py-3 space-y-2">
+        <div className="flex items-center gap-2 h-8">
           {!isCollapsed ? (
-            <img src={stockiaLogo} alt="StockIA" className="h-8" />
+            <img src={stockiaLogo} alt="StockIA" className="h-7" />
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-xs">S</span>
             </div>
           )}
         </div>
         {!isCollapsed && <VenueIndicator variant="sidebar" showRole />}
-        
       </SidebarHeader>
 
-      <SidebarContent>
-        {sections.map((section) => (
-          <SidebarGroup key={section.label}>
-            <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest px-3 pb-0.5">
-              {section.label}
-            </SidebarGroupLabel>
+      <SidebarContent className="gap-0 px-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-sidebar-border [&::-webkit-scrollbar-thumb]:rounded-full">
+        {sections.map((section, idx) => (
+          <SidebarGroup key={section.label} className={`py-1 ${idx === 0 ? "pt-2" : ""}`}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-sidebar-foreground/35 uppercase text-[9px] tracking-[0.12em] font-semibold px-2 h-5 mb-0.5">
+                {section.label}
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-0.5">
                 {section.items.map((item) => {
                   const isActive = activeView === item.value;
                   return (
@@ -165,14 +166,14 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                       <SidebarMenuButton
                         onClick={() => setActiveView(item.value)}
                         tooltip={item.title}
-                        className={`h-8 transition-fast ${
+                        className={`h-8 rounded-md transition-colors duration-150 ${
                           isActive
-                            ? "bg-primary text-primary-foreground font-medium"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                            ? "bg-primary/15 text-primary font-medium hover:bg-primary/20"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                         }`}
                       >
-                        <item.icon className="w-4 h-4 shrink-0" />
-                        <span className="text-sm flex-1">{item.title}</span>
+                        <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                        <span className="text-[13px] flex-1 truncate">{item.title}</span>
                         {item.badge && !isCollapsed && (
                           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/20 text-primary uppercase tracking-wider">
                             {item.badge}
@@ -188,14 +189,15 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
+      <SidebarFooter className="p-2 border-t border-sidebar-border">
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 h-8 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+          size="sm"
+          className="w-full justify-start gap-2 h-8 text-sidebar-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
           onClick={handleLogout}
         >
-          <LogOut className="w-4 h-4" />
-          {!isCollapsed && <span className="text-sm">Cerrar sesión</span>}
+          <LogOut className="w-4 h-4 shrink-0" />
+          {!isCollapsed && <span className="text-[13px]">Cerrar sesión</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>
