@@ -20,7 +20,10 @@ import {
   Warehouse,
   XCircle,
   PackageOpen,
+  Wine,
+  Box,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useRealtimeInventory, type InventorySnapshotRow } from "@/hooks/useRealtimeInventory";
 import { formatCLP } from "@/lib/currency";
