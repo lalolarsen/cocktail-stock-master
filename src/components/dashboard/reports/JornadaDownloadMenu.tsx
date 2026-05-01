@@ -34,11 +34,12 @@ export function JornadaDownloadMenu({
   const handlePOS = async () => {
     setBusy("pos");
     try {
-      const [salesRes, ticketSalesRes, posRes, closingsRes] = await Promise.all([
+      const [salesRes, ticketSalesRes, posRes, closingsRes, openingsRes] = await Promise.all([
         supabase.from("sales").select("total_amount, payment_method, point_of_sale, pos_id, is_cancelled").eq("jornada_id", jornadaId).eq("is_cancelled", false),
         supabase.from("ticket_sales").select("total, payment_method, pos_id").eq("jornada_id", jornadaId).eq("payment_status", "paid"),
         supabase.from("pos_terminals").select("id, name"),
-        supabase.from("jornada_cash_closings").select("pos_id, bartender_name, physical_reconciliation_confirmed, notes").eq("jornada_id", jornadaId),
+        supabase.from("jornada_cash_closings").select("pos_id, bartender_name, physical_reconciliation_confirmed, notes, opening_cash_amount, cash_sales_total, expected_cash, closing_cash_counted, difference").eq("jornada_id", jornadaId),
+        supabase.from("jornada_cash_openings").select("pos_id, opening_cash_amount").eq("jornada_id", jornadaId),
       ]);
       if (salesRes.error) throw salesRes.error;
       const sales = salesRes.data || [];
@@ -46,13 +47,28 @@ export function JornadaDownloadMenu({
       const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
 
       // closings keyed by pos_id AND by pos_name (so non-pos_id sales can still match)
-      const closingsByPosId = new Map<string, { bartender: string | null; confirmed: boolean; notes: string | null }>();
-      const closingsByPosName = new Map<string, { bartender: string | null; confirmed: boolean; notes: string | null }>();
+      type ClosingEntry = {
+        bartender: string | null;
+        confirmed: boolean;
+        notes: string | null;
+        opening: number;
+        cashSalesTotal: number;
+        expected: number;
+        counted: number | null;
+        difference: number | null;
+      };
+      const closingsByPosId = new Map<string, ClosingEntry>();
+      const closingsByPosName = new Map<string, ClosingEntry>();
       ((closingsRes.data as any[]) || []).forEach((c) => {
-        const entry = {
+        const entry: ClosingEntry = {
           bartender: c.bartender_name ?? null,
           confirmed: !!c.physical_reconciliation_confirmed,
           notes: c.notes ?? null,
+          opening: Number(c.opening_cash_amount) || 0,
+          cashSalesTotal: Number(c.cash_sales_total) || 0,
+          expected: Number(c.expected_cash) || 0,
+          counted: c.closing_cash_counted == null ? null : Number(c.closing_cash_counted),
+          difference: c.difference == null ? null : Number(c.difference),
         };
         if (c.pos_id) {
           closingsByPosId.set(c.pos_id, entry);
@@ -61,39 +77,67 @@ export function JornadaDownloadMenu({
         }
       });
 
+      // Fallback openings (en caso que no haya cierre todavía)
+      const openingsByPosId = new Map<string, number>();
+      ((openingsRes.data as any[]) || []).forEach((o) => openingsByPosId.set(o.pos_id, Number(o.opening_cash_amount) || 0));
+
       if (sales.length === 0 && ticketSales.length === 0) {
         toast.info("No hay ventas en esta jornada");
         return;
       }
-      const posMap = new Map<string, { cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number; posId: string | null }>();
-      const acc = (posName: string, posId: string | null, pm: string, amt: number) => {
-        const e = posMap.get(posName) || { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0, posId };
+      // Acumular alcohol y tickets POR SEPARADO por POS
+      const posMap = new Map<string, {
+        cash: number; cashN: number; card: number; cardN: number; other: number; otherN: number;
+        ticketCash: number; ticketCashN: number; ticketCard: number; ticketCardN: number; ticketOther: number; ticketOtherN: number;
+        posId: string | null;
+      }>();
+      const ensure = (posName: string, posId: string | null) => {
+        let e = posMap.get(posName);
+        if (!e) {
+          e = { cash: 0, cashN: 0, card: 0, cardN: 0, other: 0, otherN: 0, ticketCash: 0, ticketCashN: 0, ticketCard: 0, ticketCardN: 0, ticketOther: 0, ticketOtherN: 0, posId };
+          posMap.set(posName, e);
+        }
         if (!e.posId && posId) e.posId = posId;
-        if (pm === "cash") { e.cash += amt; e.cashN++; }
-        else if (pm === "card") { e.card += amt; e.cardN++; }
-        else { e.other += amt; e.otherN++; }
-        posMap.set(posName, e);
+        return e;
       };
       for (const s of sales) {
         const name = s.point_of_sale || (s.pos_id ? posMapNames.get(s.pos_id) : null) || "Sin POS";
-        acc(name, s.pos_id ?? null, s.payment_method, Number(s.total_amount));
+        const e = ensure(name, s.pos_id ?? null);
+        const amt = Number(s.total_amount);
+        if (s.payment_method === "cash") { e.cash += amt; e.cashN++; }
+        else if (s.payment_method === "card") { e.card += amt; e.cardN++; }
+        else { e.other += amt; e.otherN++; }
       }
       for (const t of ticketSales) {
         const name = (t.pos_id && posMapNames.get(t.pos_id)) || "Caja Tickets";
-        acc(name, t.pos_id ?? null, t.payment_method, Number(t.total));
+        const e = ensure(name, t.pos_id ?? null);
+        const amt = Number(t.total);
+        if (t.payment_method === "cash") { e.ticketCash += amt; e.ticketCashN++; }
+        else if (t.payment_method === "card") { e.ticketCard += amt; e.ticketCardN++; }
+        else { e.ticketOther += amt; e.ticketOtherN++; }
       }
       const posSummary: POSSalesData["posSummary"] = Array.from(posMap.entries()).map(([posName, d]) => {
         const closing =
           (d.posId && closingsByPosId.get(d.posId)) ||
           closingsByPosName.get(posName) ||
           null;
+        const opening = closing?.opening ?? (d.posId ? openingsByPosId.get(d.posId) ?? 0 : 0);
+        const cashTotalCombined = d.cash + d.ticketCash;
+        const expected = closing?.expected ?? Math.round(opening + cashTotalCombined);
         return {
           posName,
           cashTotal: d.cash, cashCount: d.cashN,
           cardTotal: d.card, cardCount: d.cardN,
           otherTotal: d.other, otherCount: d.otherN,
-          total: d.cash + d.card + d.other,
-          totalCount: d.cashN + d.cardN + d.otherN,
+          ticketCashTotal: d.ticketCash, ticketCashCount: d.ticketCashN,
+          ticketCardTotal: d.ticketCard, ticketCardCount: d.ticketCardN,
+          ticketOtherTotal: d.ticketOther, ticketOtherCount: d.ticketOtherN,
+          total: d.cash + d.card + d.other + d.ticketCash + d.ticketCard + d.ticketOther,
+          totalCount: d.cashN + d.cardN + d.otherN + d.ticketCashN + d.ticketCardN + d.ticketOtherN,
+          openingCash: opening,
+          expectedCash: expected,
+          countedCash: closing?.counted ?? null,
+          difference: closing?.difference ?? null,
           bartenderName: closing?.bartender ?? null,
           confirmed: closing?.confirmed ?? false,
           notes: closing?.notes ?? null,
@@ -102,9 +146,9 @@ export function JornadaDownloadMenu({
       printPOSSalesReport({
         jornadaNumber, fecha, horario, posSummary,
         grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
-        grandCash: posSummary.reduce((s, p) => s + p.cashTotal, 0),
-        grandCard: posSummary.reduce((s, p) => s + p.cardTotal, 0),
-        grandOther: posSummary.reduce((s, p) => s + p.otherTotal, 0),
+        grandCash: posSummary.reduce((s, p) => s + p.cashTotal + p.ticketCashTotal, 0),
+        grandCard: posSummary.reduce((s, p) => s + p.cardTotal + p.ticketCardTotal, 0),
+        grandOther: posSummary.reduce((s, p) => s + p.otherTotal + p.ticketOtherTotal, 0),
         grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
       });
     } catch (err) {
