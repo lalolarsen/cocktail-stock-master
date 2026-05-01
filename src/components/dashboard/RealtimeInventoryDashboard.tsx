@@ -53,19 +53,11 @@ function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
 
 const intCL = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-CL");
 
-/** CLP compacto sin decimales: $4.219M, $402K, $1.250 */
-function formatCLPCompact(n: number): string {
-  const v = Math.round(Number(n) || 0);
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000_000) return `$${Math.round(v / 1_000_000)} M`;
-  if (abs >= 10_000_000) return `$${Math.round(v / 1_000_000)} M`;
-  if (abs >= 1_000_000) {
-    // 1.0M – 9.9M con 1 decimal solo si no es entero
-    const m = v / 1_000_000;
-    return `$${(Math.round(m * 10) / 10).toString().replace(".", ",")} M`;
-  }
-  if (abs >= 10_000) return `$${Math.round(v / 1000)}K`;
-  return `$${v.toLocaleString("es-CL")}`;
+/** Stock simple: ml para botellas, uds para resto. SIN decimales, SIN equivalencias. */
+function formatStock(r: InventorySnapshotRow): string {
+  const qty = Math.round(Number(r.quantity) || 0);
+  if (r.is_bottle) return `${intCL(qty)} ml`;
+  return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
 }
 
 /** Stock simple: ml para botellas, uds para resto. SIN decimales, SIN equivalencias. */
