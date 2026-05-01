@@ -53,27 +53,13 @@ function StatusBadge({ status }: { status: InventorySnapshotRow["status"] }) {
 
 const intCL = (n: number) => Math.round(Number(n) || 0).toLocaleString("es-CL");
 
-/** CLP compacto sin decimales: $4.219M, $402K, $1.250 */
-function formatCLPCompact(n: number): string {
-  const v = Math.round(Number(n) || 0);
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000_000) return `$${Math.round(v / 1_000_000)} M`;
-  if (abs >= 10_000_000) return `$${Math.round(v / 1_000_000)} M`;
-  if (abs >= 1_000_000) {
-    // 1.0M – 9.9M con 1 decimal solo si no es entero
-    const m = v / 1_000_000;
-    return `$${(Math.round(m * 10) / 10).toString().replace(".", ",")} M`;
-  }
-  if (abs >= 10_000) return `$${Math.round(v / 1000)}K`;
-  return `$${v.toLocaleString("es-CL")}`;
-}
-
 /** Stock simple: ml para botellas, uds para resto. SIN decimales, SIN equivalencias. */
 function formatStock(r: InventorySnapshotRow): string {
   const qty = Math.round(Number(r.quantity) || 0);
   if (r.is_bottle) return `${intCL(qty)} ml`;
   return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
 }
+
 
 
 export function RealtimeInventoryDashboard() {
@@ -256,26 +242,26 @@ export function RealtimeInventoryDashboard() {
           </button>
         </div>
 
-        {/* KPIs compactos en una sola fila */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card className="border-border">
+        {/* KPIs: Capital destacado + 3 contadores compactos */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr_1fr_1fr] gap-2">
+          <Card className="border-primary/30 bg-primary/[0.03]">
             <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital</p>
-              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums truncate" title={formatCLP(totals.totalValue)}>
-                {formatCLPCompact(totals.totalValue)}
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital inmovilizado</p>
+              <p className="text-2xl font-bold mt-1 tabular-nums text-primary leading-none break-all">
+                {formatCLP(totals.totalValue)}
               </p>
             </CardContent>
           </Card>
           <Card className="border-border">
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Productos</p>
-              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums">{totals.productCount}</p>
+              <p className="text-2xl font-bold mt-1 tabular-nums leading-none">{totals.productCount}</p>
             </CardContent>
           </Card>
           <Card className={totals.lowCount > 0 ? "border-yellow-500/40" : "border-border"}>
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Bajo mínimo</p>
-              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.lowCount > 0 ? "text-yellow-500" : ""}`}>
+              <p className={`text-2xl font-bold mt-1 tabular-nums leading-none ${totals.lowCount > 0 ? "text-yellow-500" : ""}`}>
                 {totals.lowCount}
               </p>
             </CardContent>
@@ -283,7 +269,7 @@ export function RealtimeInventoryDashboard() {
           <Card className={totals.criticalCount > 0 ? "border-destructive/40" : "border-border"}>
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sin stock</p>
-              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.criticalCount > 0 ? "text-destructive" : ""}`}>
+              <p className={`text-2xl font-bold mt-1 tabular-nums leading-none ${totals.criticalCount > 0 ? "text-destructive" : ""}`}>
                 {totals.criticalCount}
               </p>
             </CardContent>
@@ -382,7 +368,7 @@ export function RealtimeInventoryDashboard() {
                     </button>
                   ))}
                   <span className="ml-auto text-muted-foreground tabular-nums">
-                    {filtered.length.toLocaleString("es-CL")} líneas · {formatCLPCompact(filteredValue)}
+                    {filtered.length.toLocaleString("es-CL")} líneas · {formatCLP(filteredValue)}
                   </span>
                 </div>
 
@@ -429,7 +415,7 @@ export function RealtimeInventoryDashboard() {
                               {formatStock(r)}
                             </TableCell>
                             <TableCell className="text-right text-sm tabular-nums py-2">
-                              {formatCLPCompact(r.stock_value)}
+                              {formatCLP(r.stock_value)}
                             </TableCell>
                             <TableCell className="py-2">
                               <StatusBadge status={r.status} />
