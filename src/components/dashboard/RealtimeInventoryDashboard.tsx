@@ -75,41 +75,6 @@ function formatStock(r: InventorySnapshotRow): string {
   return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
 }
 
-function KPI({
-  label,
-  value,
-  icon: Icon,
-  accent,
-  tone,
-}: {
-  label: string;
-  value: string;
-  icon: typeof Package;
-  accent?: boolean;
-  tone?: "warning" | "danger";
-}) {
-  const border =
-    tone === "danger" ? "border-destructive/40" :
-    tone === "warning" ? "border-yellow-500/40" :
-    accent ? "border-primary/40" : undefined;
-  const iconColor =
-    tone === "danger" ? "text-destructive" :
-    tone === "warning" ? "text-yellow-500" :
-    accent ? "text-primary" : "text-muted-foreground";
-  return (
-    <Card className={border}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
-            <p className="text-2xl font-semibold mt-1 tabular-nums">{value}</p>
-          </div>
-          <Icon className={`w-5 h-5 ${iconColor}`} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export function RealtimeInventoryDashboard() {
   const { venue, displayName } = useAppSession();
