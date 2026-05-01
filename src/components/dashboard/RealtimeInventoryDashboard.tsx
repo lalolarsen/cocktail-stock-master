@@ -60,12 +60,6 @@ function formatStock(r: InventorySnapshotRow): string {
   return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
 }
 
-/** Stock simple: ml para botellas, uds para resto. SIN decimales, SIN equivalencias. */
-function formatStock(r: InventorySnapshotRow): string {
-  const qty = Math.round(Number(r.quantity) || 0);
-  if (r.is_bottle) return `${intCL(qty)} ml`;
-  return `${intCL(qty)} ${qty === 1 ? "ud" : "uds"}`;
-}
 
 
 export function RealtimeInventoryDashboard() {
