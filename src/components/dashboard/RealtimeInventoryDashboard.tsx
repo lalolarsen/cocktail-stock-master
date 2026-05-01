@@ -221,7 +221,7 @@ export function RealtimeInventoryDashboard() {
       <div className="space-y-4">
         <InventoryOnboardingBanner venueId={venue?.id} />
 
-        {/* Header */}
+        {/* Header simple */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
@@ -235,57 +235,16 @@ export function RealtimeInventoryDashboard() {
               />
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Última actualización {lastUpdateLabel}
+              Actualizado {lastUpdateLabel}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  onClick={() => setInvoiceOpen(true)}
-                  disabled={!warehouseId}
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Subir factura
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Reemplaza la carga manual. Toma foto y la IA hace el resto.</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setCountOpen(true)}>
-                  <ClipboardCheck className="w-4 h-4 mr-2" />
-                  Conteo de cierre
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Bartenders cuentan al cierre. Diferencias &gt;10% generan alerta.</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDownloadPDF}
-                  disabled={rows.length === 0}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar PDF
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Genera un informe profesional del inventario actual.</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Refresh manual (normalmente no es necesario).</TooltipContent>
-            </Tooltip>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleDownloadPDF} disabled={rows.length === 0}>
+              <Download className="w-4 h-4 mr-1.5" /> PDF
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => void refresh()} disabled={loading} title="Refrescar">
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         </div>
 
@@ -295,12 +254,78 @@ export function RealtimeInventoryDashboard() {
           </Card>
         )}
 
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KPI label="Capital inmovilizado" value={formatCLP(totals.totalValue)} icon={DollarSign} accent />
-          <KPI label="Productos con stock" value={String(totals.productCount)} icon={Package} />
-          <KPI label="Bajo mínimo" value={String(totals.lowCount)} icon={AlertTriangle} tone={totals.lowCount > 0 ? "warning" : undefined} />
-          <KPI label="Sin stock" value={String(totals.criticalCount)} icon={XCircle} tone={totals.criticalCount > 0 ? "danger" : undefined} />
+        {/* HERO: Acciones prioritarias — Subir factura + Conteo de cierre */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setInvoiceOpen(true)}
+            disabled={!warehouseId}
+            className="group text-left rounded-lg border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary transition-all p-4 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-md bg-primary/15 group-hover:bg-primary/25 transition-colors">
+                <Camera className="w-5 h-5 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm">Subir factura</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Foto → IA carga stock en bodega
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCountOpen(true)}
+            className="group text-left rounded-lg border-2 border-border hover:border-foreground/30 bg-card hover:bg-muted/30 transition-all p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-md bg-muted">
+                <ClipboardCheck className="w-5 h-5 text-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm">Conteo de cierre</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Cuadratura física vs sistema
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* KPIs compactos en una sola fila */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Card className="border-border">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital</p>
+              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums truncate" title={formatCLP(totals.totalValue)}>
+                {formatCLPCompact(totals.totalValue)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-border">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Productos</p>
+              <p className="text-lg sm:text-xl font-semibold mt-0.5 tabular-nums">{totals.productCount}</p>
+            </CardContent>
+          </Card>
+          <Card className={totals.lowCount > 0 ? "border-yellow-500/40" : "border-border"}>
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Bajo mínimo</p>
+              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.lowCount > 0 ? "text-yellow-500" : ""}`}>
+                {totals.lowCount}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className={totals.criticalCount > 0 ? "border-destructive/40" : "border-border"}>
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sin stock</p>
+              <p className={`text-lg sm:text-xl font-semibold mt-0.5 tabular-nums ${totals.criticalCount > 0 ? "text-destructive" : ""}`}>
+                {totals.criticalCount}
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Empty state */}
@@ -313,7 +338,7 @@ export function RealtimeInventoryDashboard() {
               <div className="space-y-1 max-w-md">
                 <p className="text-sm font-medium">Aún no hay inventario cargado</p>
                 <p className="text-xs text-muted-foreground">
-                  Subí tu primera factura. La IA leerá los productos, cantidades y costos, y los cargará en bodega automáticamente.
+                  Subí tu primera factura. La IA leerá los productos, cantidades y costos, y los cargará en bodega.
                 </p>
               </div>
               <Button size="sm" onClick={() => setInvoiceOpen(true)} disabled={!warehouseId}>
@@ -324,171 +349,131 @@ export function RealtimeInventoryDashboard() {
           </Card>
         )}
 
-        {/* Tabla */}
+        {/* Stock por ubicación — minimalista */}
         {!isEmpty && (
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-start justify-between flex-wrap gap-3">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Warehouse className="w-4 h-4" />
-                    Stock por ubicación
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {filtered.length.toLocaleString("es-CL")} {filtered.length === 1 ? "línea" : "líneas"} ·
-                    {" "}<span className="font-medium text-foreground">{formatCLP(Math.round(filteredValue))}</span> en vista
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Filtros de estado */}
-                  <div className="inline-flex rounded-md border bg-card p-0.5">
-                    {([
-                      { k: "all", label: "Todos" },
-                      { k: "low", label: `Bajos (${totals.lowCount})` },
-                      { k: "critical", label: `Sin stock (${totals.criticalCount})` },
-                    ] as const).map((opt) => (
-                      <button
-                        key={opt.k}
-                        type="button"
-                        onClick={() => setStatusFilter(opt.k)}
-                        className={`px-2.5 py-1 text-xs rounded-sm transition-colors ${
-                          statusFilter === opt.k
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Buscar producto, SKU o categoría"
-                      className="pl-8 h-9"
-                    />
-                  </div>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Warehouse className="w-4 h-4" />
+                  Stock por ubicación
+                </CardTitle>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar producto…"
+                    className="pl-8 h-9"
+                  />
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
+              {/* Tabs por ubicación: solo nombre + count, sin valores que abruman */}
               <Tabs value={activeLocation} onValueChange={setActiveLocation}>
-                <TabsList className="flex flex-wrap h-auto justify-start gap-1 bg-transparent p-0">
+                <TabsList className="flex flex-wrap h-auto justify-start gap-1 bg-transparent p-0 mb-3">
                   <TabsTrigger
                     value="__all__"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md border h-auto py-1.5 px-3 flex flex-col items-start gap-0"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md border h-8 px-3 text-xs"
                   >
-                    <span className="text-xs font-medium">Todas</span>
-                    <span className="text-[10px] opacity-70 tabular-nums">
-                      {totals.productCount} prod · {formatCLP(Math.round(totals.totalValue))}
-                    </span>
+                    Todas <span className="ml-1.5 opacity-60 tabular-nums">{totals.productCount}</span>
                   </TabsTrigger>
-                  {locations.map((loc) => {
-                    const isWarehouse = (loc.type ?? "").toLowerCase().includes("warehouse")
-                      || (loc.type ?? "").toLowerCase().includes("bodega");
-                    return (
-                      <TabsTrigger
-                        key={loc.id}
-                        value={loc.id}
-                        className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md border h-auto py-1.5 px-3 flex flex-col items-start gap-0"
-                      >
-                        <span className="text-xs font-medium flex items-center gap-1">
-                          {isWarehouse ? <Warehouse className="w-3 h-3" /> : <Box className="w-3 h-3" />}
-                          {loc.name}
-                          {loc.critical > 0 && (
-                            <span className="ml-1 inline-flex items-center justify-center min-w-[1rem] h-3.5 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-semibold">
-                              {loc.critical}
-                            </span>
-                          )}
+                  {locations.map((loc) => (
+                    <TabsTrigger
+                      key={loc.id}
+                      value={loc.id}
+                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md border h-8 px-3 text-xs"
+                    >
+                      {loc.name}
+                      <span className="ml-1.5 opacity-60 tabular-nums">{loc.count}</span>
+                      {loc.critical > 0 && (
+                        <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-semibold">
+                          {loc.critical}
                         </span>
-                        <span className="text-[10px] opacity-70 tabular-nums">
-                          {loc.count} · {formatCLP(Math.round(loc.value))}
-                        </span>
-                      </TabsTrigger>
-                    );
-                  })}
+                      )}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
 
-                <TabsContent value={activeLocation} className="mt-4">
-                  <div className="rounded-md border overflow-x-auto max-h-[60vh] overflow-y-auto">
+                {/* Filtros rápidos secundarios */}
+                <div className="flex items-center gap-1 mb-3 text-xs">
+                  {([
+                    { k: "all", label: "Todos" },
+                    { k: "low", label: "Bajos", count: totals.lowCount },
+                    { k: "critical", label: "Sin stock", count: totals.criticalCount },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.k}
+                      type="button"
+                      onClick={() => setStatusFilter(opt.k)}
+                      className={`px-2 py-1 rounded transition-colors ${
+                        statusFilter === opt.k
+                          ? "bg-foreground/10 text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {opt.label}
+                      {"count" in opt && opt.count > 0 && (
+                        <span className="ml-1 opacity-60 tabular-nums">({opt.count})</span>
+                      )}
+                    </button>
+                  ))}
+                  <span className="ml-auto text-muted-foreground tabular-nums">
+                    {filtered.length.toLocaleString("es-CL")} líneas · {formatCLPCompact(filteredValue)}
+                  </span>
+                </div>
+
+                <TabsContent value={activeLocation} className="mt-0">
+                  <div className="rounded-md border overflow-x-auto max-h-[55vh] overflow-y-auto">
                     <Table>
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
-                          <TableHead className="min-w-[220px]">Producto</TableHead>
-                          <TableHead className="hidden lg:table-cell">Ubicación</TableHead>
-                          <TableHead className="text-right">Stock</TableHead>
-                          <TableHead className="text-right hidden md:table-cell">Mínimo</TableHead>
-                          <TableHead className="text-right hidden sm:table-cell">CPP</TableHead>
-                          <TableHead className="text-right">Valor</TableHead>
-                          <TableHead className="w-[90px]">Estado</TableHead>
+                          <TableHead className="min-w-[200px]">Producto</TableHead>
+                          <TableHead className="hidden lg:table-cell text-xs">Ubicación</TableHead>
+                          <TableHead className="text-right text-xs">Stock</TableHead>
+                          <TableHead className="text-right text-xs">Valor</TableHead>
+                          <TableHead className="w-[80px] text-xs">Estado</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filtered.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
-                              {loading ? "Cargando inventario…" : "Sin resultados con los filtros actuales."}
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                              {loading ? "Cargando…" : "Sin resultados."}
                             </TableCell>
                           </TableRow>
                         )}
-                        {filtered.map((r) => {
-                          const stock = formatStock(r);
-                          const min = Math.round(Number(r.min_quantity) || 0);
-                          const qty = Math.round(Number(r.quantity) || 0);
-                          // Para barra de progreso vs mínimo (cap a 200%)
-                          const pct = min > 0 ? Math.min(200, (qty / min) * 100) : qty > 0 ? 100 : 0;
-                          const barColor =
-                            r.status === "critical" ? "bg-destructive" :
-                            r.status === "low" ? "bg-yellow-500" : "bg-primary";
-                          return (
-                            <TableRow
-                              key={`${r.product_id}-${r.location_id}`}
-                              className={
-                                r.status === "critical" ? "bg-destructive/5" :
-                                r.status === "low" ? "bg-yellow-500/5" : undefined
-                              }
-                            >
-                              <TableCell>
-                                <div className="font-medium text-sm flex items-center gap-1.5">
-                                  {r.is_bottle ? <Wine className="w-3 h-3 text-muted-foreground" /> : <Box className="w-3 h-3 text-muted-foreground" />}
-                                  {r.product_name}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  {r.sku_base ?? "—"} · {r.category ?? "—"}
-                                  {r.is_bottle && r.capacity_ml ? ` · ${r.capacity_ml} ml` : ""}
-                                  <span className="lg:hidden"> · {r.location_name}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                                {r.location_name}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-sm">
-                                <div className="tabular-nums">{stock.primary}</div>
-                                {stock.secondary && (
-                                  <div className="text-[10px] text-muted-foreground tabular-nums">{stock.secondary}</div>
-                                )}
-                                {/* Mini barra de progreso vs mínimo */}
-                                <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden w-20 ml-auto">
-                                  <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-mono hidden md:table-cell text-muted-foreground text-sm tabular-nums">
-                                {intCL(min)}
-                              </TableCell>
-                              <TableCell className="text-right font-mono hidden sm:table-cell text-sm tabular-nums">
-                                {formatCLP(Math.round(r.cpp))}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-sm tabular-nums">
-                                {formatCLP(Math.round(r.stock_value))}
-                              </TableCell>
-                              <TableCell>
-                                <StatusBadge status={r.status} />
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                        {filtered.map((r) => (
+                          <TableRow
+                            key={`${r.product_id}-${r.location_id}`}
+                            className={
+                              r.status === "critical" ? "bg-destructive/5" :
+                              r.status === "low" ? "bg-yellow-500/5" : undefined
+                            }
+                          >
+                            <TableCell className="py-2">
+                              <div className="font-medium text-sm">{r.product_name}</div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {r.category ?? "—"}
+                                {r.is_bottle && r.capacity_ml ? ` · ${r.capacity_ml}ml` : ""}
+                                <span className="lg:hidden"> · {r.location_name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell text-xs text-muted-foreground py-2">
+                              {r.location_name}
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums py-2">
+                              {formatStock(r)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums py-2">
+                              {formatCLPCompact(r.stock_value)}
+                            </TableCell>
+                            <TableCell className="py-2">
+                              <StatusBadge status={r.status} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </div>
