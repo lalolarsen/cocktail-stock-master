@@ -65,13 +65,16 @@ export function CashReconciliationDialog({
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [posResult, locationsResult] = await Promise.all([
+      const [posResult, locationsResult, openingsResult, salesResult, ticketsResult] = await Promise.all([
         supabase
           .from("pos_terminals")
           .select("id, name, location_id")
           .eq("is_active", true)
           .eq("is_cash_register", true),
         supabase.from("stock_locations").select("id, name"),
+        supabase.from("jornada_cash_openings").select("pos_id, opening_cash_amount").eq("jornada_id", jornadaId),
+        supabase.from("sales").select("pos_id, total_amount").eq("jornada_id", jornadaId).eq("payment_method", "cash").eq("is_cancelled", false),
+        supabase.from("ticket_sales").select("pos_id, total").eq("jornada_id", jornadaId).eq("payment_method", "cash").eq("payment_status", "paid"),
       ]);
 
       if (posResult.error) throw posResult.error;
@@ -81,14 +84,36 @@ export function CashReconciliationDialog({
         locationMap[loc.id] = loc.name;
       });
 
-      const list: POSChecklistItem[] = (posResult.data || []).map((pos: any) => ({
-        posId: pos.id,
-        posName: pos.name,
-        locationName: locationMap[pos.location_id] || "Sin ubicación",
-        bartenderName: "",
-        confirmed: false,
-        notes: "",
-      }));
+      const openingMap = new Map<string, number>();
+      (openingsResult.data || []).forEach((o: any) => openingMap.set(o.pos_id, Number(o.opening_cash_amount) || 0));
+
+      const alcoholMap = new Map<string, number>();
+      (salesResult.data || []).forEach((s: any) => {
+        alcoholMap.set(s.pos_id, (alcoholMap.get(s.pos_id) || 0) + (Number(s.total_amount) || 0));
+      });
+      const ticketsMap = new Map<string, number>();
+      (ticketsResult.data || []).forEach((t: any) => {
+        ticketsMap.set(t.pos_id, (ticketsMap.get(t.pos_id) || 0) + (Number(t.total) || 0));
+      });
+
+      const list: POSChecklistItem[] = (posResult.data || []).map((pos: any) => {
+        const opening = openingMap.get(pos.id) || 0;
+        const alc = alcoholMap.get(pos.id) || 0;
+        const tk = ticketsMap.get(pos.id) || 0;
+        return {
+          posId: pos.id,
+          posName: pos.name,
+          locationName: locationMap[pos.location_id] || "Sin ubicación",
+          bartenderName: "",
+          confirmed: false,
+          notes: "",
+          openingCash: opening,
+          cashAlcohol: alc,
+          cashTickets: tk,
+          expectedCash: Math.round(opening + alc + tk),
+          countedCashStr: "",
+        };
+      });
 
       setItems(list);
     } catch (error) {
