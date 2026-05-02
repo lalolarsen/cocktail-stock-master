@@ -121,6 +121,13 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
             </Section>
           )}
 
+          {observacion_cierre && observacion_cierre.trim().length > 0 && (
+            <Section style={observationCard}>
+              <Text style={observationLabel}>Observación del cuadre</Text>
+              <Text style={observationText}>{observacion_cierre}</Text>
+            </Section>
+          )}
+
           <Section style={card}>
             <Heading as="h2" style={h2}>Información de la jornada</Heading>
             <Row>
