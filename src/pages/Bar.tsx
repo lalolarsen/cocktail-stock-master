@@ -131,7 +131,7 @@ function historyLabel(r: RedemptionResult): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function Bar() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const initialMode = (searchParams.get("mode") || "barra") as "barra" | "reposicion" | "conteo";
 
   // Session
