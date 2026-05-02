@@ -53,6 +53,7 @@ interface JornadaClosedProps {
   courtesies_cost?: number
   waste_cost?: number
   stock_alerts?: string[]
+  observacion_cierre?: string | null
 }
 
 const fmtCLP = (n?: number) =>
