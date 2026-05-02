@@ -261,6 +261,20 @@ export default function Bar() {
     setSecondBartender(null);
   }, [selectedBarId, barWorkers, currentUserId, userName]);
 
+  // Auto-open dialog based on ?mode= once bar is selected
+  const modeOpenedRef = useRef(false);
+  useEffect(() => {
+    if (showBarSelection || modeOpenedRef.current || !selectedBarId) return;
+    if (initialMode === "reposicion") {
+      modeOpenedRef.current = true;
+      setShowReplenishmentDialog(true);
+    } else if (initialMode === "conteo") {
+      modeOpenedRef.current = true;
+      setShowBlindCountDialog(true);
+    }
+  }, [showBarSelection, selectedBarId, initialMode]);
+
+
   // Also set head bartender when barWorkers loads after bar selection is already confirmed
   useEffect(() => {
     if (showBarSelection || !currentUserId || barWorkersLoading) return;
