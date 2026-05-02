@@ -30,6 +30,7 @@ import SystemMonitoring from "./pages/SystemMonitoring";
 import Proveedores from "./pages/Proveedores";
 import DebugProducts from "./pages/DebugProducts";
 import NoJornada from "./pages/NoJornada";
+import Unsubscribe from "./pages/Unsubscribe";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
@@ -206,6 +207,7 @@ function AppRoutes() {
         }
       />
       <Route path="/help" element={<Help />} />
+      <Route path="/unsubscribe" element={<Unsubscribe />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
