@@ -267,7 +267,7 @@ export default function Auth() {
     }
   };
 
-  const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
+  const handleModeSelect = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
     routeByRole(role);
   };
 
