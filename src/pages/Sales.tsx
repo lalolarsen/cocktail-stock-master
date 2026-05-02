@@ -658,8 +658,13 @@ export default function Sales() {
         { p_sale_id: sale.id }
       );
 
-      if (!tokenError && tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string };
+      console.log("[Sales] generate_pickup_token result:", { tokenError, tokenResult });
+
+      if (tokenError) {
+        console.error("[Sales] QR generation failed:", tokenError);
+        toast.error(`No se pudo generar QR: ${tokenError.message}`);
+      } else if (tokenResult) {
+        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
         if (result.success && result.token) {
           pickupData = {
             token: result.token,
@@ -668,7 +673,13 @@ export default function Sales() {
             items: cartItemsForQR,
             barName: undefined, // Bar determined at redemption
           };
+        } else {
+          console.error("[Sales] QR not generated:", result);
+          toast.error(result.message || "QR no generado (respuesta inválida del servidor)");
         }
+      } else {
+        console.error("[Sales] generate_pickup_token returned null");
+        toast.error("QR no generado (sin respuesta del servidor)");
       }
 
       // Determine if this is a hybrid POS
@@ -960,7 +971,7 @@ export default function Sales() {
             </p>
           </div>
 
-          {lastSaleData.pickupData && (
+          {lastSaleData.pickupData ? (
             <div className="border-t pt-6">
               <PickupQRDialog
                 open={true}
@@ -974,6 +985,20 @@ export default function Sales() {
                 shortCode={lastSaleData.pickupData.shortCode}
                 embedded
               />
+            </div>
+          ) : (
+            <div className="border-t pt-6 space-y-3">
+              <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-4 text-sm text-destructive">
+                ⚠️ El QR de retiro no se generó automáticamente.
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => viewSaleQR({ id: lastSaleData.saleId, sale_number: lastSaleData.saleNumber, total_amount: lastSaleData.total, sale_items: lastSaleData.cartItems.map(i => ({ cocktails: { name: i.name }, quantity: i.quantity, unit_price: i.price })) })}
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Reintentar generar QR
+              </Button>
             </div>
           )}
 
