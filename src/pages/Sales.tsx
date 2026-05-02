@@ -658,8 +658,13 @@ export default function Sales() {
         { p_sale_id: sale.id }
       );
 
-      if (!tokenError && tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string };
+      console.log("[Sales] generate_pickup_token result:", { tokenError, tokenResult });
+
+      if (tokenError) {
+        console.error("[Sales] QR generation failed:", tokenError);
+        toast.error(`No se pudo generar QR: ${tokenError.message}`);
+      } else if (tokenResult) {
+        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
         if (result.success && result.token) {
           pickupData = {
             token: result.token,
@@ -668,7 +673,13 @@ export default function Sales() {
             items: cartItemsForQR,
             barName: undefined, // Bar determined at redemption
           };
+        } else {
+          console.error("[Sales] QR not generated:", result);
+          toast.error(result.message || "QR no generado (respuesta inválida del servidor)");
         }
+      } else {
+        console.error("[Sales] generate_pickup_token returned null");
+        toast.error("QR no generado (sin respuesta del servidor)");
       }
 
       // Determine if this is a hybrid POS
