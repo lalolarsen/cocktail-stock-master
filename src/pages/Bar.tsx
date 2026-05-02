@@ -768,6 +768,32 @@ export default function Bar() {
           </div>
         </header>
 
+        {initialMode !== "barra" && (
+          <div className="px-4 py-2 bg-warning/10 border-b border-warning/30 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              {initialMode === "reposicion" ? (
+                <Package className="w-4 h-4 text-warning" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-warning" />
+              )}
+              <span className="font-medium text-warning">
+                Modo {initialMode === "reposicion" ? "Reposición" : "Conteo"}
+              </span>
+              <span className="text-muted-foreground hidden sm:inline">
+                · Sin acceso a entrega de pedidos
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }}
+            >
+              Cambiar modo
+            </Button>
+          </div>
+        )}
+
         
 
         {/* ── Main ── */}
