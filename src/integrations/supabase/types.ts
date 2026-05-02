@@ -1776,6 +1776,7 @@ export type Database = {
           id: string
           nombre: string
           numero_jornada: number
+          observacion_cierre: string | null
           requires_review: boolean
           semana_inicio: string
           updated_at: string
@@ -1794,6 +1795,7 @@ export type Database = {
           id?: string
           nombre?: string
           numero_jornada: number
+          observacion_cierre?: string | null
           requires_review?: boolean
           semana_inicio: string
           updated_at?: string
@@ -1812,6 +1814,7 @@ export type Database = {
           id?: string
           nombre?: string
           numero_jornada?: number
+          observacion_cierre?: string | null
           requires_review?: boolean
           semana_inicio?: string
           updated_at?: string
@@ -6072,7 +6075,11 @@ export type Database = {
       check_venue_limits: { Args: { p_venue_id: string }; Returns: Json }
       clean_berlin_demo_data: { Args: never; Returns: Json }
       close_jornada_manual: {
-        Args: { p_cash_closings: Json; p_jornada_id: string }
+        Args: {
+          p_cash_closings?: Json
+          p_jornada_id: string
+          p_observacion?: string
+        }
         Returns: Json
       }
       close_jornada_with_summary: {

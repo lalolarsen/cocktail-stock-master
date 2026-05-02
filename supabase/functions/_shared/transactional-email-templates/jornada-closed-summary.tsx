@@ -53,6 +53,7 @@ interface JornadaClosedProps {
   courtesies_cost?: number
   waste_cost?: number
   stock_alerts?: string[]
+  observacion_cierre?: string | null
 }
 
 const fmtCLP = (n?: number) =>
@@ -93,6 +94,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     courtesies_cost = 0,
     waste_cost = 0,
     stock_alerts = [],
+    observacion_cierre = null,
   } = props
 
   return (
@@ -116,6 +118,13 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
                 ⚠️ <strong>Cierre forzado</strong>
                 {forced_reason ? ` — ${forced_reason}` : ''}
               </Text>
+            </Section>
+          )}
+
+          {observacion_cierre && observacion_cierre.trim().length > 0 && (
+            <Section style={observationCard}>
+              <Text style={observationLabel}>Observación del cuadre</Text>
+              <Text style={observationText}>{observacion_cierre}</Text>
             </Section>
           )}
 
@@ -291,6 +300,7 @@ export const template = {
     courtesies_cost: 18000,
     waste_cost: 4500,
     stock_alerts: ['Absolut 750ml bajo mínimo en Bar Principal'],
+    observacion_cierre: 'Caja Principal cuadró exacto. Pista con sobrante de $5.000 sin justificar.',
   },
 } satisfies TemplateEntry
 
@@ -324,3 +334,6 @@ const alertBox = { backgroundColor: '#fff8e1', border: '1px solid #ffd54f', bord
 const alertText = { fontSize: '13px', color: '#8a6d00', margin: 0 }
 const alertItem = { fontSize: '13px', color: '#444444', margin: '4px 0' }
 const footer = { fontSize: '11px', color: '#999999', textAlign: 'center' as const, margin: '24px 0 0' }
+const observationCard = { backgroundColor: '#f5fff8', border: `1px solid ${BRAND_GREEN}`, borderLeft: `4px solid ${BRAND_GREEN}`, borderRadius: '4px', padding: '12px 14px', margin: '12px 0' }
+const observationLabel = { fontSize: '11px', color: '#005c2e', textTransform: 'uppercase' as const, fontWeight: 'bold' as const, letterSpacing: '0.5px', margin: '0 0 6px' }
+const observationText = { fontSize: '14px', color: '#000000', margin: 0, whiteSpace: 'pre-wrap' as const, lineHeight: '1.5' }
