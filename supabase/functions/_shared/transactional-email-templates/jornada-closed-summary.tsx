@@ -300,6 +300,7 @@ export const template = {
     courtesies_cost: 18000,
     waste_cost: 4500,
     stock_alerts: ['Absolut 750ml bajo mínimo en Bar Principal'],
+    observacion_cierre: 'Caja Principal cuadró exacto. Pista con sobrante de $5.000 sin justificar.',
   },
 } satisfies TemplateEntry
 
