@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket } from "lucide-react";
+import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket, Package, ClipboardCheck } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 import stockiaLogoFull from "@/assets/stockia-logo-full-white.png";
 
