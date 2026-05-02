@@ -147,7 +147,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
                 <Text style={kpiValue}>{fmtCLP(total_gross)}</Text>
               </Column>
               <Column style={kpiCol}>
-                <Text style={kpiLabel}>Comisión STOCKIA (2.5%)</Text>
+                <Text style={kpiLabel}>Comisión STOCKIA (1%)</Text>
                 <Text style={kpiValueAccent}>{fmtCLP(stockia_commission)}</Text>
               </Column>
             </Row>
