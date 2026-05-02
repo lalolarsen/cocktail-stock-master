@@ -971,7 +971,7 @@ export default function Sales() {
             </p>
           </div>
 
-          {lastSaleData.pickupData && (
+          {lastSaleData.pickupData ? (
             <div className="border-t pt-6">
               <PickupQRDialog
                 open={true}
@@ -985,6 +985,20 @@ export default function Sales() {
                 shortCode={lastSaleData.pickupData.shortCode}
                 embedded
               />
+            </div>
+          ) : (
+            <div className="border-t pt-6 space-y-3">
+              <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-4 text-sm text-destructive">
+                ⚠️ El QR de retiro no se generó automáticamente.
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => viewSaleQR({ id: lastSaleData.saleId, sale_number: lastSaleData.saleNumber, total_amount: lastSaleData.total, sale_items: lastSaleData.cartItems.map(i => ({ cocktails: { name: i.name }, quantity: i.quantity, unit_price: i.price })) })}
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Reintentar generar QR
+              </Button>
             </div>
           )}
 
