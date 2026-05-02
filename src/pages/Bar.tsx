@@ -10,7 +10,7 @@ import {
   Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard,
   RefreshCw, MapPin, Package, Trash2, History, QrCode, Bluetooth, Users, X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
