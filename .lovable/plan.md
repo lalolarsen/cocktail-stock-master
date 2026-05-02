@@ -1,165 +1,79 @@
-# Plan: Inventario transparente — v3 (definitivo)
+# Reportes automáticos por email al cerrar jornada
 
-## Decisiones consolidadas
+## Diagnóstico
 
-| Tema | Decisión |
-|---|---|
-| Fuente de verdad | Sistema (DiStock); diferencias quedan explícitas en reporte de canjes |
-| Umbral de alerta | **Sin umbral**: admin ve TODA diferencia, decide caso a caso |
-| Conteo no resuelto | **Bloquea apertura** de la siguiente jornada hasta que admin resuelva |
-| Reposición pre-jornada | Bartender pide → admin aprueba (mismo flujo que emergencia) |
-| Emergencias sin respuesta | Espera indefinida + recordatorio persistente en dashboard admin |
-| Ámbito conteo ciego | Insumos con salida en jornada **+ botellas cerradas en barra** |
-| Botellas abiertas | Slider visual 0–100% (declara ml restantes) |
-| Botellas cerradas | Cuenta TODAS las cerradas en barra (no solo recibidas hoy) |
-| Reposición ejecutada | Admin aprueba en app + verbal (maneja llaves de bodega) |
-| Conteo semanal | Encargado externo cuenta físicamente; sube planilla → app concilia automático |
-| Diferencias semanales | Sistema **genera informe**, no fuerza resolución (responsabilidad del cliente) |
-| Cierre sin movimiento | Pantalla con botón "Sin consumos hoy" para confirmación explícita |
-| Reporte de canjes | **Sin valores monetarios** — solo cantidades, productos, motivos |
+La infraestructura existe parcialmente pero **no se dispara nada al cerrar la jornada**:
 
----
+- Tabla `notification_logs` (cola de envíos) ✅
+- Tabla `notification_preferences` (qué gerencia recibe qué) ✅
+- UI **Notificaciones** en Admin para configurar emails de gerencia ✅
+- Edge function `send-jornada-summary` que procesa la cola y envía emails ✅ (pero usa Resend con remitente `onboarding@resend.dev` y un resumen muy básico)
+- **Falta:** lógica que al cerrar jornada (`close_jornada_manual`) inserte filas en `notification_logs` para cada gerencia activa
+- **Falta:** dispararlo automáticamente y que el email incluya desglose por POS, tickets, cortesías, comisión STOCKIA y cuadre — la misma información del reporte físico actual
 
-## Flujo end-to-end
+## Plan
 
-```
-FACTURA (IA) → BODEGA (CPP)
-     ↓
-[Bartender pide reposición pre-jornada] → Admin aprueba en app + entrega física
-     ↓
-JORNADA ACTIVA
-  ├─ Venta POS → QR (no toca stock)
-  ├─ Redención QR en barra → descuenta stock real
-  └─ [Emergencia] Bartender pide → Admin aprueba (espera indefinida + recordatorio)
-     ↓
-CIERRE CIEGO por bartender
-  ├─ Lista: insumos con salida + todas las botellas cerradas en barra
-  ├─ Botellas abiertas: slider 0–100% (ml)
-  ├─ Botellas cerradas: contador unidades
-  ├─ Si no hubo movimiento → botón "Sin consumos hoy"
-  └─ NO ve teórico, NO ve sugerido
-     ↓
-ADMIN ve diferencias (con $ y %) → aprueba/rechaza/ajusta
-  └─ Si quedan pendientes → BLOQUEA próxima apertura de jornada
-     ↓
-SEMANAL: encargado cuenta físicamente → sube planilla
-  └─ App concilia automático → genera INFORME (no fuerza resolución)
-```
+### 1. Disparo automático al cerrar jornada
+Modificar la función SQL `close_jornada_manual` para que, tras marcar la jornada como cerrada, encole una fila en `notification_logs` por cada miembro de gerencia/admin activo con `notification_email` definido y `notification_preferences.is_enabled = true` para `jornada_closed`. Idempotency key = `jornada-close-{jornada_id}-{worker_id}` para evitar duplicados si se reintenta.
 
----
+Tras encolar, llamar a la edge function `send-jornada-summary` vía `pg_net` (extension ya disponible) pasando `{ jornada_id }` para envío inmediato. Si falla la red, las filas quedan en cola y un cron las recoge.
 
-## Cambios concretos
+### 2. Cron de respaldo cada 5 minutos
+Job `pg_cron` que invoque `send-jornada-summary` sin `jornada_id` para drenar cualquier notificación quedada en `queued`.
 
-### A. Reposición pre-jornada (bartender pide, admin aprueba)
-- Bartender en `/bar` ve productos asignados con sugerido (consumo 7 días).
-- Genera `replenishment_request` con `is_emergency=false`.
-- Admin recibe en panel; aprueba con un clic.
-- Entrega física la coordina admin (tiene llaves de bodega).
-- Al aprobar: ejecuta transferencia Bodega→Barra al CPP del momento.
+### 3. Email enriquecido (mismo nivel que reporte físico)
+Reescribir `send-jornada-summary/index.ts` para que el resumen incluya:
 
-### B. Emergencia durante jornada
-- Mismo flujo, pero `is_emergency=true`.
-- **Toast realtime + badge persistente** en sidebar admin (no desaparece hasta resolverse).
-- Recordatorio cada 5 min mientras siga pendiente.
-- Sin auto-aprobación: espera indefinida.
+- **Cabecera:** venue, jornada #, fecha, horario apertura/cierre, motivo si fue cierre forzado
+- **Resumen general:** total bruto, comisión STOCKIA (2.5% informativa), # transacciones, total cortesías
+- **Desglose por POS** (igual al reporte físico):
+  - Alcohol/Carta: efectivo / tarjeta / otro (monto + cantidad)
+  - Tickets entrada: efectivo / tarjeta / otro
+  - Cuadre efectivo: apertura + ventas efectivo = esperado, contado, diferencia
+  - Bartender firmante, observaciones, estado confirmado
+- **Top 10 productos** (cantidad e ingresos)
+- **Alertas de stock bajo** generadas en la jornada
+- **Mermas aprobadas** del día con costo
+- **Indicador "cierre forzado"** si aplica (rojo, con motivo)
+- **PDF adjunto: Estado de Resultados (EERR)** del día — generado server-side desde `useCOGSData` equivalente RPC, con net sales, COGS, mermas, OPEX, resultado operacional
+- Link al panel web para ver más detalle
 
-### C. Conteo de cierre CIEGO ⭐
+Estilo: dark/minimal STOCKIA (negro, primary verde #00E676, blanco), SF/Inter, sin emojis decorativos.
 
-**Pantalla bartender:**
-1. Header: "Cierre de [Barra X] — Jornada N°{n}".
-2. Si NO hay productos consumidos ni cerradas → solo botón "Sin consumos hoy" + firma PIN.
-3. Si hay productos:
-   - **Sección "Botellas abiertas"** (las que tuvieron salida o están abiertas):
-     ```
-     Ron Havana 7 años (750ml)
-     [slider visual 0% ━━●━━━━━━ 100%] → 425 ml
-     ☐ No queda nada (toggle alternativo)
-     ```
-   - **Sección "Botellas cerradas en barra"** (todas las cerradas asignadas):
-     ```
-     Ron Havana 7 años (750ml cerrada)
-     Cantidad: [  3  ] unidades
-     ```
-   - **Sección "Unitarios consumidos"** (cervezas, bebidas, etc.):
-     ```
-     Cerveza Heineken 330ml
-     Cantidad restante: [  12  ]
-     ```
-4. Botón "Firmar y enviar" → PIN.
+### 4. Migrar a Lovable Emails (recomendado)
+Reemplazar Resend (`onboarding@resend.dev` no es profesional) por Lovable Emails con dominio del cliente. Esto requiere:
+- Configurar dominio sender (`notify.stockiachile.com`) — diálogo de setup
+- Scaffolding de transactional email infra
+- Plantilla React Email `jornada-closed-summary` que recibe el payload por `templateData`
+- La edge function `send-jornada-summary` pasa a invocar `send-transactional-email` por destinatario
 
-**Backend (invisible para bartender):**
-- `submit_blind_shift_count` calcula varianza por línea, inserta en `shift_counts` con `admin_decision='pending'`.
-- TODA diferencia ≠ 0 queda lista para admin (sin filtro por umbral).
-- Devuelve `{accepted_count}` sin revelar varianzas.
+Si el cliente prefiere mantener Resend en el corto plazo, sólo actualizamos `from` a un dominio verificado y enriquecemos el HTML.
 
-### D. Panel admin "Conteos por aprobar"
-Tabla por jornada/barra: producto | teórico | declarado | dif (uds + CLP) | acciones.
-Acciones: **Aprobar como merma** | **Ajuste manual (motivo)** | **Rechazar (recontar)**.
-Tracking reincidencia por bartender ("Juan: 3 alertas / 5 jornadas").
+### 5. Mejora UI Admin → Notificaciones
+- Mostrar **última fecha de envío exitoso** y **% de éxito** por destinatario
+- Botón **"Reenviar resumen de jornada X"** para casos en que un gerente no recibió
+- Toggle global "Pausar envíos de jornada" (útil para marcha blanca)
 
-### E. Bloqueo apertura próxima jornada
-- `manage-jornadas` (open) verifica si hay `shift_counts` con `admin_decision='pending'` del venue.
-- Si los hay → 403 con mensaje "Hay N conteos pendientes de resolver. Resuélvelos antes de abrir nueva jornada".
+## Detalles técnicos
 
-### F. Reporte de canjes SIN $
-PDF/UI operativo:
-- Total canjes, por barra, por bartender.
-- Productos canjeados (uds/ml).
-- Top productos por cantidad.
-- **Sección "Diferencias declaradas en cierre"**: producto, declarado, diferencia uds (+/−), motivo. Sin CLP.
-- **Sección "Reajustes aplicados"**: ajustes admin con motivo.
-- Mermas aprobadas (uds, motivo).
-- Emergencias atendidas (producto, uds, quién aprobó).
-- **Cero CLP/CPP en todo el documento.**
+**Migración SQL (resumen):**
+- `CREATE OR REPLACE FUNCTION close_jornada_manual` — añadir bloque al final que:
+  1. `INSERT INTO notification_logs (event_type, jornada_id, recipient_email, recipient_worker_id, idempotency_key, email_subject, status, venue_id) SELECT 'jornada_closed', p_jornada_id, p.notification_email, p.id, 'jornada-close-' || p_jornada_id || '-' || p.id, 'Cierre de Jornada #' || jornada.numero_jornada, 'queued', jornada.venue_id FROM profiles p JOIN worker_roles wr ON wr.worker_id = p.id WHERE wr.role IN ('gerencia','admin') AND p.is_active AND p.notification_email IS NOT NULL AND NOT EXISTS (...preferences disabled...) ON CONFLICT (idempotency_key) DO NOTHING;`
+  2. `PERFORM net.http_post(url := '<project>/functions/v1/send-jornada-summary', headers := ..., body := jsonb_build_object('jornada_id', p_jornada_id));`
+- Habilitar `pg_net` y `pg_cron` (ya están)
+- Crear cron job de respaldo
 
-### G. Conteo semanal — importación + informe
-1. Encargado externo cuenta cada barra + bodega (a su manera).
-2. Sube planilla Excel/CSV a la app (formato libre con `sku_base | cantidad | location_name`).
-3. App parsea con fuzzy matching, muestra preview con diferencias vs sistema.
-4. Admin aprueba carga → genera `stock_movements` tipo `conteo_ajuste` por cada diferencia.
-5. App genera **INFORME PDF** descargable: producto, ubicación, sistema, contado, diferencia (uds + CLP), histórico de movimientos del producto en últimos 7 días.
-6. **No hay flujo de "resolución obligatoria"**: el cliente decide qué hacer con el informe.
+**Edge function `send-jornada-summary`** — payload por POS reutiliza la misma query que `usePOSSalesReport` (ver `src/lib/printing/pos-sales-report.ts`): cash_registers + sales agregadas + ticket_sales + courtesy_qrs + waste_records.
 
----
+**EERR PDF** — generado con `jspdf` server-side (Deno-compatible vía `https://esm.sh/jspdf`) o como tabla HTML embebida en el cuerpo del email para evitar adjuntos (más confiable en bandeja de entrada).
 
-## Datos / RPCs
+## Archivos que se tocan
 
-### Tabla `shift_counts` (ya creada en migración previa)
-```
-id, venue_id, jornada_id, location_id, product_id,
-theoretical_qty, declared_qty, variance_qty, variance_pct,
-alerted boolean, signed_by_user_id, signed_at,
-admin_decision text ('pending'|'approved_waste'|'rejected'|'manual_adjust'),
-admin_decision_by, admin_decision_at, admin_notes
-```
-**Cambio v3**: `alerted` siempre `true` cuando `variance_qty != 0` (sin umbral).
+- `supabase/migrations/<new>.sql` — modificar `close_jornada_manual` + cron
+- `supabase/functions/send-jornada-summary/index.ts` — reescribir resumen y envío
+- `src/components/dashboard/NotificationsManagement.tsx` — métricas de éxito + botón reenviar
+- (Opcional Lovable Emails) `supabase/functions/_shared/transactional-email-templates/jornada-closed-summary.tsx` + scaffolding
 
-### RPCs
-- `get_shift_consumed_products(p_jornada_id, p_location_id)` → productos con salida + botellas cerradas asignadas. Sin teórico.
-- `submit_blind_shift_count(p_jornada_id, p_location_id, p_lines jsonb)` → declara, calcula varianza, inserta.
-- `admin_resolve_shift_count(p_count_id, p_decision, p_notes)` → resuelve.
-- `check_pending_shift_counts(p_venue_id)` → boolean para bloqueo de apertura.
-- `approve_emergency_request(p_request_id)` → ya existe.
-- `import_weekly_count(p_lines jsonb)` → procesa planilla, genera ajustes + informe.
+## Pregunta antes de implementar
 
-### Realtime
-- Admin suscrito a `replenishment_requests is_emergency=true status='pending'` (toast + badge persistente).
-- Admin suscrito a `shift_counts admin_decision='pending'` (badge en sidebar).
-
-### PDFs nuevos
-- `daily-redemptions-pdf.ts` (sin $).
-- `weekly-count-report-pdf.ts` (informe semanal con $ para admin).
-
----
-
-## Orden de implementación
-
-1. ✅ **Fase 1**: Tabla `shift_counts`, RPC base, dialog ciego, replenishment con `is_emergency`.
-2. ✅ **Fase 2**: Dialog ciego con cerradas + slider 0-100% + "Sin consumos hoy".
-3. ✅ **Fase 3**: Sin umbral. Panel admin "Conteos por aprobar" con resolución.
-4. ✅ **Fase 4**: Bloqueo apertura próxima jornada cuando hay pendientes.
-5. ✅ **Fase 5**: Recordatorio persistente de emergencias en dashboard admin.
-6. ✅ **Fase 6**: PDF reporte de canjes sin $ con secciones de diferencias y reajustes.
-7. ✅ **Fase 7**: Importador semanal (planilla → preview → ajustes opcionales → informe PDF).
-
-Cada fase es funcional por sí sola. Empiezo por Fase 2 en el siguiente turno.
+¿Prefieres que use **Lovable Emails con tu propio dominio** (`notify.stockiachile.com`, requiere ajustar DNS una vez, queda profesional y permanente) o que mantengamos **Resend con un dominio verificado** que ya tengas? Si no tienes preferencia, recomiendo Lovable Emails — es la opción más limpia y no requiere API keys adicionales.
