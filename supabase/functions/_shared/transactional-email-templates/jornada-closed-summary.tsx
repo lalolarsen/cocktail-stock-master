@@ -94,6 +94,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     courtesies_cost = 0,
     waste_cost = 0,
     stock_alerts = [],
+    observacion_cierre = null,
   } = props
 
   return (
