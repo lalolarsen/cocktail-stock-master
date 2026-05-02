@@ -10,7 +10,7 @@ import {
   Loader2, LogOut, CheckCircle2, XCircle, AlertCircle, Keyboard,
   RefreshCw, MapPin, Package, Trash2, History, QrCode, Bluetooth, Users, X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -131,6 +131,8 @@ function historyLabel(r: RedemptionResult): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function Bar() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialMode = (searchParams.get("mode") || "barra") as "barra" | "reposicion" | "conteo";
 
   // Session
   const [isVerified, setIsVerified] = useState(true);
@@ -258,6 +260,20 @@ export default function Bar() {
     setHeadBartender(jefe);
     setSecondBartender(null);
   }, [selectedBarId, barWorkers, currentUserId, userName]);
+
+  // Auto-open dialog based on ?mode= once bar is selected
+  const modeOpenedRef = useRef(false);
+  useEffect(() => {
+    if (showBarSelection || modeOpenedRef.current || !selectedBarId) return;
+    if (initialMode === "reposicion") {
+      modeOpenedRef.current = true;
+      setShowReplenishmentDialog(true);
+    } else if (initialMode === "conteo") {
+      modeOpenedRef.current = true;
+      setShowBlindCountDialog(true);
+    }
+  }, [showBarSelection, selectedBarId, initialMode]);
+
 
   // Also set head bartender when barWorkers loads after bar selection is already confirmed
   useEffect(() => {
@@ -751,6 +767,32 @@ export default function Bar() {
             </Button>
           </div>
         </header>
+
+        {initialMode !== "barra" && (
+          <div className="px-4 py-2 bg-warning/10 border-b border-warning/30 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              {initialMode === "reposicion" ? (
+                <Package className="w-4 h-4 text-warning" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-warning" />
+              )}
+              <span className="font-medium text-warning">
+                Modo {initialMode === "reposicion" ? "Reposición" : "Conteo"}
+              </span>
+              <span className="text-muted-foreground hidden sm:inline">
+                · Sin acceso a entrega de pedidos
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }}
+            >
+              Cambiar modo
+            </Button>
+          </div>
+        )}
 
         
 

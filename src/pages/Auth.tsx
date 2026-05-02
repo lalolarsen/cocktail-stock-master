@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket } from "lucide-react";
+import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket, Package, ClipboardCheck } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 import stockiaLogoFull from "@/assets/stockia-logo-full-white.png";
 
@@ -81,12 +81,17 @@ export default function Auth() {
       return;
     }
 
+    // Bar role: always show selector (Barra / Reposición / Conteo)
+    if (roles.includes("bar")) {
+      setWorkerRoles(roles);
+      setShowModeSelection(true);
+      return;
+    }
+
     if (roles.length === 1) {
       const role = roles[0];
       if (role === "admin" || role === "gerencia") {
         navigate("/admin");
-      } else if (role === "bar") {
-        navigate("/bar");
       } else if (role === "ticket_seller") {
         navigate("/tickets");
       }
@@ -105,14 +110,18 @@ export default function Auth() {
     setShowModeSelection(true);
   };
 
-  const routeByRole = (role: AppRole | "sales" | "tickets") => {
+  const routeByRole = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
     } else if (role === "vendedor" || role === "sales") {
       navigate("/sales");
-    } else if (role === "bar") {
-      navigate("/bar");
+    } else if (role === "bar" || role === "bar-redeem") {
+      navigate("/bar?mode=barra");
+    } else if (role === "bar-replenish") {
+      navigate("/bar?mode=reposicion");
+    } else if (role === "bar-count") {
+      navigate("/bar?mode=conteo");
     } else if (role === "ticket_seller" || role === "tickets") {
       navigate("/tickets");
     }
@@ -258,7 +267,7 @@ export default function Auth() {
     }
   };
 
-  const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
+  const handleModeSelect = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
     routeByRole(role);
   };
 
@@ -317,17 +326,44 @@ export default function Auth() {
             )}
 
             {workerRoles.includes("bar") && (
-              <Button
-                variant="outline"
-                className="w-full h-16 justify-start gap-4 text-left"
-                onClick={() => handleModeSelect("bar")}
-              >
-                <Wine className="h-6 w-6 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">Barra</div>
-                  <div className="text-xs text-muted-foreground">Entrega de pedidos</div>
+              <>
+                <div className="pt-1 pb-1">
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Modo Barra</p>
                 </div>
-              </Button>
+                <Button
+                  variant="outline"
+                  className="w-full h-16 justify-start gap-4 text-left"
+                  onClick={() => handleModeSelect("bar-redeem")}
+                >
+                  <Wine className="h-6 w-6 text-primary" />
+                  <div>
+                    <div className="font-medium">Barra · Entrega</div>
+                    <div className="text-xs text-muted-foreground">Escanear QR y entregar pedidos</div>
+                  </div>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full h-16 justify-start gap-4 text-left"
+                  onClick={() => handleModeSelect("bar-replenish")}
+                >
+                  <Package className="h-6 w-6 text-warning" />
+                  <div>
+                    <div className="font-medium">Reposición</div>
+                    <div className="text-xs text-muted-foreground">Pedir stock desde bodega</div>
+                  </div>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full h-16 justify-start gap-4 text-left"
+                  onClick={() => handleModeSelect("bar-count")}
+                >
+                  <ClipboardCheck className="h-6 w-6 text-info" />
+                  <div>
+                    <div className="font-medium">Conteo</div>
+                    <div className="text-xs text-muted-foreground">Conteo ciego de cierre</div>
+                  </div>
+                </Button>
+              </>
             )}
 
             {(workerRoles.includes("admin") || workerRoles.includes("gerencia")) && (
