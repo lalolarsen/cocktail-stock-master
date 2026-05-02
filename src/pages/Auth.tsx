@@ -81,12 +81,17 @@ export default function Auth() {
       return;
     }
 
+    // Bar role: always show selector (Barra / Reposición / Conteo)
+    if (roles.includes("bar")) {
+      setWorkerRoles(roles);
+      setShowModeSelection(true);
+      return;
+    }
+
     if (roles.length === 1) {
       const role = roles[0];
       if (role === "admin" || role === "gerencia") {
         navigate("/admin");
-      } else if (role === "bar") {
-        navigate("/bar");
       } else if (role === "ticket_seller") {
         navigate("/tickets");
       }
@@ -105,14 +110,18 @@ export default function Auth() {
     setShowModeSelection(true);
   };
 
-  const routeByRole = (role: AppRole | "sales" | "tickets") => {
+  const routeByRole = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
     } else if (role === "vendedor" || role === "sales") {
       navigate("/sales");
-    } else if (role === "bar") {
-      navigate("/bar");
+    } else if (role === "bar" || role === "bar-redeem") {
+      navigate("/bar?mode=barra");
+    } else if (role === "bar-replenish") {
+      navigate("/bar?mode=reposicion");
+    } else if (role === "bar-count") {
+      navigate("/bar?mode=conteo");
     } else if (role === "ticket_seller" || role === "tickets") {
       navigate("/tickets");
     }
