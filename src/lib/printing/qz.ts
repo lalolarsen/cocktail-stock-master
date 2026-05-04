@@ -36,6 +36,37 @@ export async function isQZConnected(): Promise<boolean> {
   return true;
 }
 
+// ── Warm-up: ensure the print-js iframe exists before the first real print ──
+// Without this, the first POS sale frequently fails to trigger the print
+// dialog because print-js creates its iframe lazily and the browser misses
+// the first `onload` → `print()` sequence.
+let _printWarmupDone = false;
+export function warmupPrintJs(): void {
+  if (typeof window === "undefined" || _printWarmupDone) return;
+  _printWarmupDone = true;
+  try {
+    // Pre-create the iframe print-js looks for (id="printJS"). If absent,
+    // print-js creates one on demand which is exactly the timing we want
+    // to avoid on the first sale of a session.
+    const existing = document.getElementById("printJS") as HTMLIFrameElement | null;
+    if (existing) return;
+    const iframe = document.createElement("iframe");
+    iframe.id = "printJS";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    iframe.srcdoc = "<!doctype html><html><body></body></html>";
+    document.body.appendChild(iframe);
+  } catch (err) {
+    console.warn("[PrintJS] warmup failed", err);
+  }
+}
+
 // ── Receipt data ──
 
 export interface ReceiptData {
