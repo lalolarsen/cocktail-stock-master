@@ -107,6 +107,14 @@ export function NotificationsManagement() {
 
       if (logsError) throw logsError;
       setLogs(logsData || []);
+
+      // Fetch external recipients
+      const { data: externalsData, error: externalsError } = await supabase
+        .from("jornada_notification_emails")
+        .select("id, email, label, is_enabled, created_at")
+        .order("created_at", { ascending: false });
+      if (externalsError) throw externalsError;
+      setExternals((externalsData as ExternalRecipient[]) || []);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Error al cargar datos");
