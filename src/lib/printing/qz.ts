@@ -298,6 +298,10 @@ export function printRaw(
 // ── Sale documents coordinator ──
 
 export function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
+  // Make sure the printJS iframe exists *before* we call printJS, otherwise
+  // the very first print of the session is silently swallowed in some
+  // browsers (no dialog appears, no error).
+  warmupPrintJs();
   return new Promise((resolve) => {
     try {
       printJS({
@@ -328,6 +332,7 @@ export async function printSaleDocuments(
   paperWidth: PaperWidth = "80mm",
   isHybrid: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
+  warmupPrintJs();
   const hasQr = !!data.pickupToken && !isHybrid;
 
   // Step 1: print QR if normal POS
