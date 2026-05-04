@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -85,6 +85,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
   {
     label: "Sistema",
     items: [
+      { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
   },
@@ -115,6 +116,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Sistema",
     items: [
+      { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
   },

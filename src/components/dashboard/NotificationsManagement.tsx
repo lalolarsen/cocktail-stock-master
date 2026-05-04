@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Mail, Bell, Check, X, AlertCircle, Send } from "lucide-react";
+import { Loader2, Mail, Bell, Check, X, AlertCircle, Send, Plus, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+interface ExternalRecipient {
+  id: string;
+  email: string;
+  label: string | null;
+  is_enabled: boolean;
+  created_at: string;
+}
 
 interface GerenciaWorker {
   id: string;
@@ -31,13 +40,18 @@ interface NotificationLog {
 }
 
 export function NotificationsManagement() {
+  const { venue } = useAppSession();
   const [workers, setWorkers] = useState<GerenciaWorker[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
+  const [externals, setExternals] = useState<ExternalRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [emailValue, setEmailValue] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -93,6 +107,14 @@ export function NotificationsManagement() {
 
       if (logsError) throw logsError;
       setLogs(logsData || []);
+
+      // Fetch external recipients
+      const { data: externalsData, error: externalsError } = await supabase
+        .from("jornada_notification_emails")
+        .select("id, email, label, is_enabled, created_at")
+        .order("created_at", { ascending: false });
+      if (externalsError) throw externalsError;
+      setExternals((externalsData as ExternalRecipient[]) || []);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Error al cargar datos");
@@ -164,6 +186,75 @@ export function NotificationsManagement() {
       toast.error("Error al cambiar preferencia");
     } finally {
       setSaving(null);
+    }
+  };
+
+  const handleAddExternal = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!validateEmail(email)) {
+      toast.error("Email inválido");
+      return;
+    }
+    if (!venue?.id) {
+      toast.error("Venue no disponible");
+      return;
+    }
+    setAdding(true);
+    try {
+      const { data, error } = await supabase
+        .from("jornada_notification_emails")
+        .insert({
+          venue_id: venue.id,
+          email,
+          label: newLabel.trim() || null,
+          is_enabled: true,
+        })
+        .select("id, email, label, is_enabled, created_at")
+        .single();
+      if (error) throw error;
+      setExternals((prev) => [data as ExternalRecipient, ...prev]);
+      setNewEmail("");
+      setNewLabel("");
+      toast.success("Destinatario agregado");
+    } catch (error: any) {
+      console.error(error);
+      if (error.code === "23505") {
+        toast.error("Ese email ya está registrado");
+      } else {
+        toast.error("Error al agregar destinatario");
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleToggleExternal = async (id: string, enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("jornada_notification_emails")
+        .update({ is_enabled: enabled })
+        .eq("id", id);
+      if (error) throw error;
+      setExternals((prev) => prev.map((r) => (r.id === id ? { ...r, is_enabled: enabled } : r)));
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al actualizar");
+    }
+  };
+
+  const handleDeleteExternal = async (id: string) => {
+    if (!confirm("¿Eliminar este destinatario?")) return;
+    try {
+      const { error } = await supabase
+        .from("jornada_notification_emails")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      setExternals((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Destinatario eliminado");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar");
     }
   };
 
@@ -307,6 +398,76 @@ export function NotificationsManagement() {
                       />
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* External Recipients */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
+            Correos externos
+          </CardTitle>
+          <CardDescription>
+            Agrega correos de personas que no son usuarios del sistema (ej. dueño, contador) para que reciban el resumen al cerrar cada jornada.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-2 p-4 border rounded-lg bg-muted/30">
+            <Input
+              type="email"
+              placeholder="email@ejemplo.com"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Input
+              type="text"
+              placeholder="Etiqueta (opcional)"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              className="sm:max-w-[200px]"
+            />
+            <Button onClick={handleAddExternal} disabled={adding || !newEmail.trim()}>
+              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              Agregar
+            </Button>
+          </div>
+
+          {externals.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6 text-sm">
+              No hay correos externos registrados.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {externals.map((r) => (
+                <div key={r.id} className="flex items-center justify-between p-3 border rounded-lg gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium truncate">{r.email}</span>
+                      {!r.is_enabled && <Badge variant="secondary">Pausado</Badge>}
+                    </div>
+                    {r.label && (
+                      <div className="text-xs text-muted-foreground mt-1 ml-6">{r.label}</div>
+                    )}
+                  </div>
+                  <Switch
+                    checked={r.is_enabled}
+                    onCheckedChange={(checked) => handleToggleExternal(r.id, checked)}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteExternal(r.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               ))}
             </div>

@@ -72,7 +72,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids", "comparison", "live-inventory"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids", "comparison", "live-inventory", "notifications"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -187,7 +187,7 @@ export default function Admin() {
               <InventoryHub isReadOnly={isReadOnly} />
             )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
-            {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
+            {activeView === "notifications" && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
             {activeView === "finance" && isReadOnly && <FinancePanel />}
             {activeView === "income" && <IncomeDeclarationPanel />}
