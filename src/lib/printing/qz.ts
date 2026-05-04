@@ -276,6 +276,7 @@ export function printRaw(
   data: ReceiptData,
   paperWidth: PaperWidth = "80mm",
 ): Promise<{ success: boolean; error?: string }> {
+  warmupPrintJs();
   try {
     const html = buildReceiptHtml(data, paperWidth);
     const css = buildReceiptCss(paperWidth);
