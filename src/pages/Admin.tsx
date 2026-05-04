@@ -187,7 +187,7 @@ export default function Admin() {
               <InventoryHub isReadOnly={isReadOnly} />
             )}
             {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
-            {activeView === "notifications" && !isReadOnly && <NotificationsManagement />}
+            {activeView === "notifications" && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
             {activeView === "finance" && isReadOnly && <FinancePanel />}
             {activeView === "income" && <IncomeDeclarationPanel />}
