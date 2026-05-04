@@ -40,7 +40,7 @@ interface NotificationLog {
 }
 
 export function NotificationsManagement() {
-  const { venue, isReadOnly } = useAppSession();
+  const { venue } = useAppSession();
   const [workers, setWorkers] = useState<GerenciaWorker[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [externals, setExternals] = useState<ExternalRecipient[]>([]);
