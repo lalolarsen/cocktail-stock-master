@@ -189,7 +189,75 @@ export function NotificationsManagement() {
     }
   };
 
-  const handleSendTestNotifications = async () => {
+  const handleAddExternal = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!validateEmail(email)) {
+      toast.error("Email inválido");
+      return;
+    }
+    if (!venue?.id) {
+      toast.error("Venue no disponible");
+      return;
+    }
+    setAdding(true);
+    try {
+      const { data, error } = await supabase
+        .from("jornada_notification_emails")
+        .insert({
+          venue_id: venue.id,
+          email,
+          label: newLabel.trim() || null,
+          is_enabled: true,
+        })
+        .select("id, email, label, is_enabled, created_at")
+        .single();
+      if (error) throw error;
+      setExternals((prev) => [data as ExternalRecipient, ...prev]);
+      setNewEmail("");
+      setNewLabel("");
+      toast.success("Destinatario agregado");
+    } catch (error: any) {
+      console.error(error);
+      if (error.code === "23505") {
+        toast.error("Ese email ya está registrado");
+      } else {
+        toast.error("Error al agregar destinatario");
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleToggleExternal = async (id: string, enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("jornada_notification_emails")
+        .update({ is_enabled: enabled })
+        .eq("id", id);
+      if (error) throw error;
+      setExternals((prev) => prev.map((r) => (r.id === id ? { ...r, is_enabled: enabled } : r)));
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al actualizar");
+    }
+  };
+
+  const handleDeleteExternal = async (id: string) => {
+    if (!confirm("¿Eliminar este destinatario?")) return;
+    try {
+      const { error } = await supabase
+        .from("jornada_notification_emails")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      setExternals((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Destinatario eliminado");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar");
+    }
+  };
+
     setSendingTest(true);
     try {
       const { data, error } = await supabase.functions.invoke("send-jornada-summary");
