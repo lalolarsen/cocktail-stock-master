@@ -47,11 +47,6 @@ function buildReportHtml(data: POSSalesData): string {
 
   const posBlocks = data.posSummary
     .map((pos) => {
-      const hasClosingInfo =
-        (pos.bartenderName && pos.bartenderName.trim()) ||
-        pos.confirmed ||
-        (pos.notes && pos.notes.trim());
-
       const tCash = pos.ticketCashTotal ?? 0;
       const tCard = pos.ticketCardTotal ?? 0;
       const tOther = pos.ticketOtherTotal ?? 0;
@@ -78,35 +73,6 @@ function buildReportHtml(data: POSSalesData): string {
         </tbody></table>`
         : "";
 
-      // Cuadre de caja (efectivo)
-      const opening = pos.openingCash ?? 0;
-      const expected = pos.expectedCash ?? 0;
-      const counted = pos.countedCash;
-      const diff = pos.difference;
-      const cashEffective = pos.cashTotal + tCash;
-      const showCuadre = opening > 0 || cashEffective > 0 || expected > 0 || counted != null;
-      const diffLabel = diff == null ? "Pendiente conteo" : diff === 0 ? "CUADRADO" : diff > 0 ? `SOBRANTE ${fmt(Math.abs(diff))}` : `FALTANTE ${fmt(Math.abs(diff))}`;
-      const cuadreBlock = showCuadre
-        ? `
-        <div class="subsection">CUADRE EFECTIVO</div>
-        <table class="items"><tbody>
-          <tr><td class="item-name">Apertura</td><td class="item-price">${fmt(opening)}</td></tr>
-          <tr><td class="item-name">+ Ventas efectivo</td><td class="item-price">${fmt(cashEffective)}</td></tr>
-          <tr><td class="item-name"><strong>= Esperado</strong></td><td class="item-price"><strong>${fmt(expected)}</strong></td></tr>
-          <tr><td class="item-name">Contado</td><td class="item-price">${counted != null ? fmt(counted) : "_______"}</td></tr>
-          <tr><td class="item-name"><strong>Diferencia</strong></td><td class="item-price"><strong>${diffLabel}</strong></td></tr>
-        </tbody></table>`
-        : "";
-
-      const closingBlock = hasClosingInfo
-        ? `
-        <div class="closing-block">
-          ${pos.bartenderName ? `<div class="closing-line"><strong>Bartender:</strong> ${escape(pos.bartenderName)}</div>` : ""}
-          <div class="closing-line">${pos.confirmed ? "[X]" : "[ ]"} Cuadre físico confirmado</div>
-          ${pos.notes ? `<div class="closing-line"><strong>Observaciones:</strong></div><div class="closing-notes">${escape(pos.notes)}</div>` : ""}
-        </div>`
-        : "";
-
       return `
       <div class="pos-block">
         <div class="pos-name">${escape(pos.posName)}</div>
@@ -116,12 +82,19 @@ function buildReportHtml(data: POSSalesData): string {
           <span>${pos.totalCount} ventas</span>
           <span class="pos-total-amount">${fmt(pos.total)}</span>
         </div>
-        ${cuadreBlock}
-        ${closingBlock}
         <div class="sep">${dash}</div>
       </div>`;
     })
     .join("");
+
+  const obs = (data.observacionCierre ?? "").trim();
+  const observacionBlock = obs
+    ? `
+      <div class="section-title">OBSERVACIÓN DEL CIERRE</div>
+      <div class="sep">${dash}</div>
+      <div class="closing-notes">${escape(obs)}</div>
+      <div class="sep">${dash}</div>`
+    : "";
 
   return `
     <div class="receipt">
