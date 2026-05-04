@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAppSession } from "@/contexts/AppSessionContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Mail, Bell, Check, X, AlertCircle, Send } from "lucide-react";
+import { Loader2, Mail, Bell, Check, X, AlertCircle, Send, Plus, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+interface ExternalRecipient {
+  id: string;
+  email: string;
+  label: string | null;
+  is_enabled: boolean;
+  created_at: string;
+}
 
 interface GerenciaWorker {
   id: string;
