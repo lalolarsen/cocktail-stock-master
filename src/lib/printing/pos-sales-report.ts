@@ -26,20 +26,14 @@ interface POSSalesData {
     ticketOtherCount?: number;
     total: number;
     totalCount: number;
-    // Cuadre de caja
-    openingCash?: number;
-    expectedCash?: number;
-    countedCash?: number | null;
-    difference?: number | null;
-    bartenderName?: string | null;
-    confirmed?: boolean;
-    notes?: string | null;
   }[];
   grandTotal: number;
   grandCash: number;
   grandCard: number;
   grandOther: number;
   grandCount: number;
+  /** Observación global del cierre de jornada (opcional) */
+  observacionCierre?: string | null;
 }
 
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
