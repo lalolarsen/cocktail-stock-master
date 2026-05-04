@@ -40,13 +40,18 @@ interface NotificationLog {
 }
 
 export function NotificationsManagement() {
+  const { venue, isReadOnly } = useAppSession();
   const [workers, setWorkers] = useState<GerenciaWorker[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
+  const [externals, setExternals] = useState<ExternalRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [emailValue, setEmailValue] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetchData();
