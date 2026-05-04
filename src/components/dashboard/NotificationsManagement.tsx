@@ -258,6 +258,7 @@ export function NotificationsManagement() {
     }
   };
 
+  const handleSendTestNotifications = async () => {
     setSendingTest(true);
     try {
       const { data, error } = await supabase.functions.invoke("send-jornada-summary");
