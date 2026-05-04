@@ -116,6 +116,7 @@ const GERENCIA_SECTIONS: MenuSection[] = [
   {
     label: "Sistema",
     items: [
+      { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
   },
