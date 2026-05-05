@@ -61,6 +61,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Reposición", value: "replenishment", icon: Truck },
       { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList },
       { title: "Productos", value: "products", icon: Package },
     ],
