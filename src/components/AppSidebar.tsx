@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity, Bell } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity, Bell, Truck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -61,6 +61,7 @@ const ADMIN_SECTIONS: MenuSection[] = [
     label: "Inventario",
     items: [
       { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Reposición", value: "replenishment", icon: Truck },
       { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList },
       { title: "Productos", value: "products", icon: Package },
     ],
