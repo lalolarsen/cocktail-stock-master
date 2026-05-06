@@ -118,7 +118,17 @@ export function WeeklyCountImporter() {
           raw_sku: skuKey ? String(r[skuKey] || "").trim() : "",
           raw_name: nameKey ? String(r[nameKey] || "").trim() : "",
           raw_location: locKey ? String(r[locKey] || "").trim() : "",
-          counted_qty: Number(r[qtyKey]) || 0,
+          counted_qty: (() => {
+            const raw = r[qtyKey];
+            if (typeof raw === "number") return raw;
+            let s = String(raw ?? "").trim().replace(/\s/g, "");
+            if (!s) return 0;
+            // If both "," and "." appear, assume "." is thousand-sep and "," is decimal (es-CL)
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+            else s = s.replace(",", ".");
+            const n = parseFloat(s);
+            return isNaN(n) ? 0 : n;
+          })(),
         }))
         .filter((r) => r.raw_sku || r.raw_name);
 
