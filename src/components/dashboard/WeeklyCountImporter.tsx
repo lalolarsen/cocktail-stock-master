@@ -33,6 +33,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { fuzzyMatchWithLearning, type ProductRef, type LocationRef } from "@/lib/excel-inventory-parser";
+import { fetchAllRows } from "@/lib/supabase-batch";
 import { formatCLP } from "@/lib/currency";
 
 interface ExcelRow {
