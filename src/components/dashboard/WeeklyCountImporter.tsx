@@ -33,6 +33,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { fuzzyMatchWithLearning, type ProductRef, type LocationRef } from "@/lib/excel-inventory-parser";
+import { fetchAllRows } from "@/lib/supabase-batch";
 import { formatCLP } from "@/lib/currency";
 
 interface ExcelRow {
@@ -133,23 +134,25 @@ export function WeeklyCountImporter() {
         .filter((r) => r.raw_sku || r.raw_name);
 
       // 2. Load catalog + locations + balances
-      const [
-        { data: products },
-        { data: locations },
-        { data: balances },
-      ] = await Promise.all([
-        supabase
-          .from("products")
-          .select("id, name, code, sku_base, capacity_ml, weighted_avg_cost")
-          .eq("venue_id", venue.id),
-        supabase
-          .from("stock_locations")
-          .select("id, name")
-          .eq("venue_id", venue.id),
-        supabase
-          .from("stock_balances")
-          .select("product_id, location_id, quantity")
-          .eq("venue_id", venue.id),
+      const [products, locations, balances] = await Promise.all([
+        fetchAllRows<any>(() =>
+          supabase
+            .from("products")
+            .select("id, name, code, sku_base, capacity_ml, weighted_avg_cost")
+            .eq("venue_id", venue.id)
+        ),
+        fetchAllRows<any>(() =>
+          supabase
+            .from("stock_locations")
+            .select("id, name")
+            .eq("venue_id", venue.id)
+        ),
+        fetchAllRows<any>(() =>
+          supabase
+            .from("stock_balances")
+            .select("product_id, location_id, quantity")
+            .eq("venue_id", venue.id)
+        ),
       ]);
 
       const productRefs: ProductRef[] = (products || []).map((p: any) => ({
@@ -172,6 +175,22 @@ export function WeeklyCountImporter() {
         balanceMap.set(`${b.product_id}__${b.location_id}`, Number(b.quantity) || 0);
       });
 
+      // Accent-insensitive scoring fallback
+      const tokens = (s: string) => norm(s).split(/[\s\-_./]+/).filter((t) => t.length >= 2);
+      const scoreAccentInsensitive = (a: string, b: string) => {
+        const na = norm(a);
+        const nb = norm(b);
+        if (!na || !nb) return 0;
+        if (na === nb) return 1;
+        if (na.includes(nb) || nb.includes(na)) return 0.92;
+        const ta = new Set(tokens(a));
+        const tb = new Set(tokens(b));
+        if (ta.size === 0 || tb.size === 0) return 0;
+        let inter = 0;
+        for (const t of ta) if (tb.has(t)) inter++;
+        return (2 * inter) / (ta.size + tb.size);
+      };
+
       // 3. Resolve each row
       const out: ResolvedRow[] = excelRows.map((r) => {
         // Match product: SKU exact first, else fuzzy by name
@@ -187,14 +206,38 @@ export function WeeklyCountImporter() {
           const m = fuzzyMatchWithLearning(r.raw_name, productRefs);
           prod = m.product;
         }
+        // Accent-insensitive fallback (catches "Nóbel" vs "Nobel", "35°" diffs)
+        if (!prod && r.raw_name) {
+          let best: ProductRef | null = null;
+          let bestScore = 0;
+          for (const p of productRefs) {
+            const s = Math.max(
+              scoreAccentInsensitive(r.raw_name, p.name),
+              p.code ? scoreAccentInsensitive(r.raw_name, p.code) : 0
+            );
+            if (s > bestScore) { bestScore = s; best = p; }
+          }
+          if (bestScore >= 0.45) prod = best;
+        }
 
-        // Match location
+        // Match location (accent-insensitive, partial)
         const locNorm = norm(r.raw_location);
-        const loc = locNorm
-          ? (locations || []).find(
-              (l: any) => norm(l.name) === locNorm || norm(l.name).includes(locNorm) || locNorm.includes(norm(l.name))
-            )
-          : null;
+        let loc: any = null;
+        if (locNorm) {
+          loc =
+            (locations || []).find((l: any) => norm(l.name) === locNorm) ||
+            (locations || []).find(
+              (l: any) => norm(l.name).includes(locNorm) || locNorm.includes(norm(l.name))
+            ) ||
+            (locations || []).find((l: any) => {
+              const ta = new Set(tokens(l.name));
+              const tb = new Set(tokens(r.raw_location));
+              for (const t of tb) if (ta.has(t)) return true;
+              return false;
+            });
+        }
+        // If a single location exists, default to it
+        if (!loc && (locations || []).length === 1) loc = (locations as any)[0];
 
         const sysQty = prod && loc ? balanceMap.get(`${prod.id}__${loc.id}`) || 0 : 0;
 
