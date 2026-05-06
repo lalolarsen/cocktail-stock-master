@@ -134,23 +134,25 @@ export function WeeklyCountImporter() {
         .filter((r) => r.raw_sku || r.raw_name);
 
       // 2. Load catalog + locations + balances
-      const [
-        { data: products },
-        { data: locations },
-        { data: balances },
-      ] = await Promise.all([
-        supabase
-          .from("products")
-          .select("id, name, code, sku_base, capacity_ml, weighted_avg_cost")
-          .eq("venue_id", venue.id),
-        supabase
-          .from("stock_locations")
-          .select("id, name")
-          .eq("venue_id", venue.id),
-        supabase
-          .from("stock_balances")
-          .select("product_id, location_id, quantity")
-          .eq("venue_id", venue.id),
+      const [products, locations, balances] = await Promise.all([
+        fetchAllRows<any>(() =>
+          supabase
+            .from("products")
+            .select("id, name, code, sku_base, capacity_ml, weighted_avg_cost")
+            .eq("venue_id", venue.id)
+        ),
+        fetchAllRows<any>(() =>
+          supabase
+            .from("stock_locations")
+            .select("id, name")
+            .eq("venue_id", venue.id)
+        ),
+        fetchAllRows<any>(() =>
+          supabase
+            .from("stock_balances")
+            .select("product_id, location_id, quantity")
+            .eq("venue_id", venue.id)
+        ),
       ]);
 
       const productRefs: ProductRef[] = (products || []).map((p: any) => ({
