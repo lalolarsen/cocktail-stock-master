@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/supabase-batch";
 import { Button } from "@/components/ui/button";
 import { Loader2, QrCode } from "lucide-react";
 import { toast } from "sonner";
