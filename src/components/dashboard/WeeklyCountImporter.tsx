@@ -121,7 +121,11 @@ export function WeeklyCountImporter() {
           counted_qty: (() => {
             const raw = r[qtyKey];
             if (typeof raw === "number") return raw;
-            const s = String(raw ?? "").trim().replace(/\./g, "").replace(",", ".");
+            let s = String(raw ?? "").trim().replace(/\s/g, "");
+            if (!s) return 0;
+            // If both "," and "." appear, assume "." is thousand-sep and "," is decimal (es-CL)
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+            else s = s.replace(",", ".");
             const n = parseFloat(s);
             return isNaN(n) ? 0 : n;
           })(),
