@@ -33,21 +33,19 @@ export function RedeemReportButton({ jornadaId, jornadaNumber, fecha }: RedeemRe
     e.stopPropagation();
     setLoading(true);
     try {
-      const { data: logs, error: logsErr } = await supabase
-        .from("pickup_redemptions_log")
-        .select("id, result, redeemed_at, bartender_id, delivered_by_worker_id, bar_location_id, items_snapshot, theoretical_consumption, metadata, pos_id")
-        .eq("jornada_id", jornadaId);
+      const allLogs = await fetchAllRows<RedeemLog>(() =>
+        supabase
+          .from("pickup_redemptions_log")
+          .select("id, result, redeemed_at, bartender_id, delivered_by_worker_id, bar_location_id, items_snapshot, theoretical_consumption, metadata, pos_id")
+          .eq("jornada_id", jornadaId)
+      );
 
-      if (logsErr) throw logsErr;
-      const allLogs = (logs || []) as RedeemLog[];
-
-      const { data: tokens, error: tokErr } = await supabase
-        .from("pickup_tokens")
-        .select("id, status")
-        .eq("jornada_id", jornadaId);
-
-      if (tokErr) throw tokErr;
-      const allTokens = tokens || [];
+      const allTokens = await fetchAllRows<{ id: string; status: string }>(() =>
+        supabase
+          .from("pickup_tokens")
+          .select("id, status")
+          .eq("jornada_id", jornadaId)
+      );
 
       if (allLogs.length === 0 && allTokens.length === 0) {
         toast.info("No hay datos de canje en esta jornada");
