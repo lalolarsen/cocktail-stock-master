@@ -138,7 +138,7 @@ export function WeeklyCountImporter() {
         fetchAllRows<any>(() =>
           supabase
             .from("products")
-            .select("id, name, code, sku_base, capacity_ml, weighted_avg_cost")
+            .select("id, name, code, capacity_ml, cost_per_unit")
             .eq("venue_id", venue.id)
         ),
         fetchAllRows<any>(() =>
@@ -158,13 +158,13 @@ export function WeeklyCountImporter() {
       const productRefs: ProductRef[] = (products || []).map((p: any) => ({
         id: p.id,
         name: p.name,
-        code: p.sku_base || p.code,
+        code: p.code || "",
         capacity_ml: p.capacity_ml,
-        cost_per_unit: Number(p.weighted_avg_cost) || 0,
+        cost_per_unit: Number(p.cost_per_unit) || 0,
         current_stock: 0,
       }));
       const cppMap = new Map<string, number>(
-        (products || []).map((p: any) => [p.id, Number(p.weighted_avg_cost) || 0])
+        (products || []).map((p: any) => [p.id, Number(p.cost_per_unit) || 0])
       );
       const capMap = new Map<string, number | null>(
         (products || []).map((p: any) => [p.id, p.capacity_ml ?? null])
@@ -175,11 +175,22 @@ export function WeeklyCountImporter() {
         balanceMap.set(`${b.product_id}__${b.location_id}`, Number(b.quantity) || 0);
       });
 
-      // Accent-insensitive scoring fallback
-      const tokens = (s: string) => norm(s).split(/[\s\-_./]+/).filter((t) => t.length >= 2);
+      // Accent-insensitive scoring fallback with common bar shorthand (RB → Redbull, S/A → sin azúcar)
+      const canonical = (s: string) =>
+        norm(s)
+          .replace(/\bred\s*bull\b/g, "redbull")
+          .replace(/\brb\b/g, "redbull")
+          .replace(/\bs\s*\/\s*a\b/g, "sin azucar")
+          .replace(/\bsin\s+azucar\b/g, "sin azucar")
+          .replace(/(\d+)\s*°/g, "$1")
+          .replace(/[^a-z0-9]+/g, " ")
+          .replace(/\b(litro|litros|lts|lt)\b/g, "l")
+          .replace(/\s+/g, " ")
+          .trim();
+      const tokens = (s: string) => canonical(s).split(" ").filter((t) => t.length >= 2 || t === "l");
       const scoreAccentInsensitive = (a: string, b: string) => {
-        const na = norm(a);
-        const nb = norm(b);
+        const na = canonical(a);
+        const nb = canonical(b);
         if (!na || !nb) return 0;
         if (na === nb) return 1;
         if (na.includes(nb) || nb.includes(na)) return 0.92;
