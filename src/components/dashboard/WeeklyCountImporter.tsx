@@ -159,6 +159,9 @@ export function WeeklyCountImporter() {
         ),
       ]);
 
+      if (!products?.length) throw new Error("No se cargó el catálogo de productos para este local");
+      if (!locations?.length) throw new Error("No se cargaron ubicaciones para este local");
+
       const productRefs: ProductRef[] = (products || []).map((p: any) => ({
         id: p.id,
         name: p.name,
