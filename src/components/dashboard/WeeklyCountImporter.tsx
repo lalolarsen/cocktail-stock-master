@@ -130,58 +130,12 @@ export function WeeklyCountImporter() {
       // 1. Parse file
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: "" });
+      const excelRows = parseWeeklyRowsFromWorkbook(wb);
 
-      if (rawRows.length === 0) {
+      if (excelRows.length === 0) {
         toast.error("La planilla está vacía");
         return;
       }
-
-      // Flexible column detection
-      const detectKey = (row: Record<string, any>, candidates: string[]) => {
-        const keys = Object.keys(row);
-        for (const cand in row) {
-          const n = norm(cand);
-          if (candidates.some((c) => n === norm(c) || n.includes(norm(c)))) return cand;
-        }
-        for (const k of keys) {
-          const n = norm(k);
-          if (candidates.some((c) => n.includes(norm(c)))) return k;
-        }
-        return null;
-      };
-
-      const first = rawRows[0];
-      const skuKey = detectKey(first, ["sku_base", "sku", "codigo"]);
-      const nameKey = detectKey(first, ["nombre", "producto", "product_name"]);
-      const qtyKey = detectKey(first, ["cantidad", "qty", "stock_contado", "contado"]);
-      const locKey = detectKey(first, ["location_name", "ubicacion", "barra", "bodega", "location"]);
-
-      if (!qtyKey || (!skuKey && !nameKey)) {
-        toast.error("La planilla debe incluir 'cantidad' y 'sku_base' o 'nombre'");
-        return;
-      }
-
-      const excelRows: ExcelRow[] = rawRows
-        .map((r, i) => ({
-          rowIndex: i + 2,
-          raw_sku: skuKey ? String(r[skuKey] || "").trim() : "",
-          raw_name: nameKey ? String(r[nameKey] || "").trim() : "",
-          raw_location: locKey ? String(r[locKey] || "").trim() : "",
-          counted_qty: (() => {
-            const raw = r[qtyKey];
-            if (typeof raw === "number") return raw;
-            let s = String(raw ?? "").trim().replace(/\s/g, "");
-            if (!s) return 0;
-            // If both "," and "." appear, assume "." is thousand-sep and "," is decimal (es-CL)
-            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
-            else s = s.replace(",", ".");
-            const n = parseFloat(s);
-            return isNaN(n) ? 0 : n;
-          })(),
-        }))
-        .filter((r) => r.raw_sku || r.raw_name);
 
       // 2. Load catalog + locations + balances
       const [products, locations, balances] = await Promise.all([
