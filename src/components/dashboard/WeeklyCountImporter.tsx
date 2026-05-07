@@ -63,6 +63,56 @@ const norm = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+const keyNorm = (s: string) => norm(s).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+const parseQty = (raw: any) => {
+  if (typeof raw === "number") return raw;
+  let s = String(raw ?? "").trim().replace(/\s/g, "");
+  if (!s) return 0;
+  if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+  else s = s.replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+
+const parseWeeklyRowsFromWorkbook = (wb: XLSX.WorkBook): ExcelRow[] => {
+  const out: ExcelRow[] = [];
+  const findHeader = (rows: any[][]) =>
+    rows.findIndex((row) => row.some((cell) => ["producto", "nombre", "sku base", "sku", "codigo"].includes(keyNorm(cell))));
+
+  wb.SheetNames.forEach((sheetName) => {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
+    const headerIndex = findHeader(rows);
+    if (headerIndex < 0) return;
+
+    const header = rows[headerIndex].map(keyNorm);
+    const productCol = header.findIndex((h) => h === "producto" || h === "nombre" || h === "product name");
+    const skuCol = header.findIndex((h) => h === "sku base" || h === "sku" || h === "codigo");
+    const locCol = header.findIndex((h) => h === "location name" || h === "ubicacion" || h === "barra" || h === "bodega" || h === "location");
+    const qtyCol = header.findIndex((h) => ["cantidad", "qty", "stock contado", "contado", "stock real contado"].includes(h));
+    const finalQtyCol = [...header.keys()].reverse().find((idx) => header[idx] === "inv final" || header[idx] === "inventario final");
+    const resolvedQtyCol = qtyCol >= 0 ? qtyCol : finalQtyCol ?? -1;
+    if (resolvedQtyCol < 0 || (productCol < 0 && skuCol < 0)) return;
+
+    for (let i = headerIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const raw_name = productCol >= 0 ? String(row[productCol] || "").trim() : "";
+      const raw_sku = skuCol >= 0 ? String(row[skuCol] || "").trim() : "";
+      if (!raw_name && !raw_sku) continue;
+      out.push({
+        rowIndex: i + 1,
+        raw_sku,
+        raw_name,
+        raw_location: locCol >= 0 ? String(row[locCol] || "").trim() : sheetName,
+        counted_qty: parseQty(row[resolvedQtyCol]),
+      });
+    }
+  });
+
+  return out;
+};
+
 export function WeeklyCountImporter() {
   const { venue } = useAppSession();
   const [loading, setLoading] = useState(false);
@@ -80,58 +130,12 @@ export function WeeklyCountImporter() {
       // 1. Parse file
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: "" });
+      const excelRows = parseWeeklyRowsFromWorkbook(wb);
 
-      if (rawRows.length === 0) {
+      if (excelRows.length === 0) {
         toast.error("La planilla está vacía");
         return;
       }
-
-      // Flexible column detection
-      const detectKey = (row: Record<string, any>, candidates: string[]) => {
-        const keys = Object.keys(row);
-        for (const cand in row) {
-          const n = norm(cand);
-          if (candidates.some((c) => n === norm(c) || n.includes(norm(c)))) return cand;
-        }
-        for (const k of keys) {
-          const n = norm(k);
-          if (candidates.some((c) => n.includes(norm(c)))) return k;
-        }
-        return null;
-      };
-
-      const first = rawRows[0];
-      const skuKey = detectKey(first, ["sku_base", "sku", "codigo"]);
-      const nameKey = detectKey(first, ["nombre", "producto", "product_name"]);
-      const qtyKey = detectKey(first, ["cantidad", "qty", "stock_contado", "contado"]);
-      const locKey = detectKey(first, ["location_name", "ubicacion", "barra", "bodega", "location"]);
-
-      if (!qtyKey || (!skuKey && !nameKey)) {
-        toast.error("La planilla debe incluir 'cantidad' y 'sku_base' o 'nombre'");
-        return;
-      }
-
-      const excelRows: ExcelRow[] = rawRows
-        .map((r, i) => ({
-          rowIndex: i + 2,
-          raw_sku: skuKey ? String(r[skuKey] || "").trim() : "",
-          raw_name: nameKey ? String(r[nameKey] || "").trim() : "",
-          raw_location: locKey ? String(r[locKey] || "").trim() : "",
-          counted_qty: (() => {
-            const raw = r[qtyKey];
-            if (typeof raw === "number") return raw;
-            let s = String(raw ?? "").trim().replace(/\s/g, "");
-            if (!s) return 0;
-            // If both "," and "." appear, assume "." is thousand-sep and "," is decimal (es-CL)
-            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
-            else s = s.replace(",", ".");
-            const n = parseFloat(s);
-            return isNaN(n) ? 0 : n;
-          })(),
-        }))
-        .filter((r) => r.raw_sku || r.raw_name);
 
       // 2. Load catalog + locations + balances
       const [products, locations, balances] = await Promise.all([
@@ -155,6 +159,9 @@ export function WeeklyCountImporter() {
         ),
       ]);
 
+      if (!products?.length) throw new Error("No se cargó el catálogo de productos para este local");
+      if (!locations?.length) throw new Error("No se cargaron ubicaciones para este local");
+
       const productRefs: ProductRef[] = (products || []).map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -164,7 +171,11 @@ export function WeeklyCountImporter() {
         current_stock: 0,
       }));
       const cppMap = new Map<string, number>(
-        (products || []).map((p: any) => [p.id, Number(p.cost_per_unit) || 0])
+        (products || []).map((p: any) => {
+          const cap = Number(p.capacity_ml) || 0;
+          const cost = Number(p.cost_per_unit) || 0;
+          return [p.id, cap > 0 ? cost / cap : cost];
+        })
       );
       const capMap = new Map<string, number | null>(
         (products || []).map((p: any) => [p.id, p.capacity_ml ?? null])
@@ -250,6 +261,8 @@ export function WeeklyCountImporter() {
         // If a single location exists, default to it
         if (!loc && (locations || []).length === 1) loc = (locations as any)[0];
 
+        const cap = prod ? capMap.get(prod.id) ?? 0 : 0;
+        const countedBaseQty = prod && cap > 0 ? r.counted_qty * cap : r.counted_qty;
         const sysQty = prod && loc ? balanceMap.get(`${prod.id}__${loc.id}`) || 0 : 0;
 
         return {
@@ -260,7 +273,8 @@ export function WeeklyCountImporter() {
           location_id: loc?.id || null,
           location_name: loc?.name || null,
           system_qty: sysQty,
-          diff: r.counted_qty - sysQty,
+          counted_qty: countedBaseQty,
+          diff: countedBaseQty - sysQty,
           cpp: prod ? cppMap.get(prod.id) || 0 : 0,
           matched: !!(prod && loc),
         };
