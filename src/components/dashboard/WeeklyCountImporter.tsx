@@ -171,7 +171,11 @@ export function WeeklyCountImporter() {
         current_stock: 0,
       }));
       const cppMap = new Map<string, number>(
-        (products || []).map((p: any) => [p.id, Number(p.cost_per_unit) || 0])
+        (products || []).map((p: any) => {
+          const cap = Number(p.capacity_ml) || 0;
+          const cost = Number(p.cost_per_unit) || 0;
+          return [p.id, cap > 0 ? cost / cap : cost];
+        })
       );
       const capMap = new Map<string, number | null>(
         (products || []).map((p: any) => [p.id, p.capacity_ml ?? null])
@@ -257,6 +261,8 @@ export function WeeklyCountImporter() {
         // If a single location exists, default to it
         if (!loc && (locations || []).length === 1) loc = (locations as any)[0];
 
+        const cap = prod ? capMap.get(prod.id) ?? 0 : 0;
+        const countedBaseQty = prod && cap > 0 ? r.counted_qty * cap : r.counted_qty;
         const sysQty = prod && loc ? balanceMap.get(`${prod.id}__${loc.id}`) || 0 : 0;
 
         return {
@@ -267,7 +273,8 @@ export function WeeklyCountImporter() {
           location_id: loc?.id || null,
           location_name: loc?.name || null,
           system_qty: sysQty,
-          diff: r.counted_qty - sysQty,
+          counted_qty: countedBaseQty,
+          diff: countedBaseQty - sysQty,
           cpp: prod ? cppMap.get(prod.id) || 0 : 0,
           matched: !!(prod && loc),
         };
