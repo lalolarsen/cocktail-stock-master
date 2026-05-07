@@ -63,6 +63,56 @@ const norm = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+const keyNorm = (s: string) => norm(s).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+const parseQty = (raw: any) => {
+  if (typeof raw === "number") return raw;
+  let s = String(raw ?? "").trim().replace(/\s/g, "");
+  if (!s) return 0;
+  if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+  else s = s.replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+
+const parseWeeklyRowsFromWorkbook = (wb: XLSX.WorkBook): ExcelRow[] => {
+  const out: ExcelRow[] = [];
+  const findHeader = (rows: any[][]) =>
+    rows.findIndex((row) => row.some((cell) => ["producto", "nombre", "sku base", "sku", "codigo"].includes(keyNorm(cell))));
+
+  wb.SheetNames.forEach((sheetName) => {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
+    const headerIndex = findHeader(rows);
+    if (headerIndex < 0) return;
+
+    const header = rows[headerIndex].map(keyNorm);
+    const productCol = header.findIndex((h) => h === "producto" || h === "nombre" || h === "product name");
+    const skuCol = header.findIndex((h) => h === "sku base" || h === "sku" || h === "codigo");
+    const locCol = header.findIndex((h) => h === "location name" || h === "ubicacion" || h === "barra" || h === "bodega" || h === "location");
+    const qtyCol = header.findIndex((h) => ["cantidad", "qty", "stock contado", "contado", "stock real contado"].includes(h));
+    const finalQtyCol = [...header.keys()].reverse().find((idx) => header[idx] === "inv final" || header[idx] === "inventario final");
+    const resolvedQtyCol = qtyCol >= 0 ? qtyCol : finalQtyCol ?? -1;
+    if (resolvedQtyCol < 0 || (productCol < 0 && skuCol < 0)) return;
+
+    for (let i = headerIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const raw_name = productCol >= 0 ? String(row[productCol] || "").trim() : "";
+      const raw_sku = skuCol >= 0 ? String(row[skuCol] || "").trim() : "";
+      if (!raw_name && !raw_sku) continue;
+      out.push({
+        rowIndex: i + 1,
+        raw_sku,
+        raw_name,
+        raw_location: locCol >= 0 ? String(row[locCol] || "").trim() : sheetName,
+        counted_qty: parseQty(row[resolvedQtyCol]),
+      });
+    }
+  });
+
+  return out;
+};
+
 export function WeeklyCountImporter() {
   const { venue } = useAppSession();
   const [loading, setLoading] = useState(false);
