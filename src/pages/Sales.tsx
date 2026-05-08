@@ -1403,7 +1403,7 @@ export default function Sales() {
                                 size="sm"
                                 className="h-6 px-1.5 gap-1"
                                 onClick={() => {
-                                  const items = (sale.sale_items || []).map((item: any) => ({
+                                  const items = (sale.sale_items || []).map((item: { cocktails?: { name?: string | null } | null; quantity: number; unit_price: number }) => ({
                                     name: item.cocktails?.name || "Item",
                                     quantity: item.quantity,
                                     price: item.unit_price,
