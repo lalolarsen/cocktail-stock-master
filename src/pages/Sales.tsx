@@ -704,13 +704,6 @@ export default function Sales() {
       fetchRecentSales();
 
       // ── Auto-print receipt + QR ──
-      const preferredPrinterKey =
-        venue?.id && selectedPosId
-          ? `preferred_printer:${venue.id}:${selectedPosId}`
-          : "stockia_printer_name";
-      const savedPrinter =
-        localStorage.getItem(preferredPrinterKey) || localStorage.getItem("stockia_printer_name");
-      const printerToUse = currentPos?.printer_name || savedPrinter || "browser-kiosk";
       // Kiosk flow: every completed POS sale must print immediately.
       // The printer label is kept only for audit/config; Chrome kiosk uses the default printer.
       const shouldAutoPrint = true;
