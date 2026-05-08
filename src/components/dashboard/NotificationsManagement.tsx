@@ -60,21 +60,23 @@ export function NotificationsManagement() {
   const fetchData = async () => {
     try {
       // Fetch gerencia/admin workers with their notification preferences
-      const { data: profilesData, error: profilesError } = await supabase
-        .from("profiles")
-        .select(`
-          id,
-          full_name,
-          notification_email,
-          is_active,
-          worker_roles!inner(role)
-        `)
-        .or("worker_roles.role.eq.gerencia,worker_roles.role.eq.admin");
+      const { data: rolesData, error: rolesError } = await supabase
+        .from("worker_roles")
+        .select("worker_id, role")
+        .in("role", ["admin", "gerencia"]);
+
+      if (rolesError) throw rolesError;
+
+      const workerIds = [...new Set((rolesData || []).map((r: any) => r.worker_id))];
+
+      const { data: profilesData, error: profilesError } = workerIds.length
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name, notification_email, is_active")
+            .in("id", workerIds)
+        : { data: [], error: null };
 
       if (profilesError) throw profilesError;
-
-      // Fetch notification preferences
-      const workerIds = profilesData?.map((p) => p.id) || [];
       const { data: prefsData } = await supabase
         .from("notification_preferences")
         .select("*")
