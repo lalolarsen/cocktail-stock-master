@@ -23,7 +23,7 @@ export interface CashierReportData {
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
-export function n(data: CashierReportData): void {
+export function downloadCashierReport(data: CashierReportData): void {
   const commission = calculateCommission(data.grandTotal);
   const ratePct = (STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "");
 
