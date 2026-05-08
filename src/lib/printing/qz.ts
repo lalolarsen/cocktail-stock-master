@@ -299,38 +299,87 @@ export function printRaw(
 
 // ── Sale documents coordinator ──
 
+/**
+ * Print one HTML document via a dedicated, freshly-created hidden iframe.
+ *
+ * We deliberately avoid print-js's shared iframe (id="printJS") because:
+ *  - it is reused across calls, so the second print of a sale cannot start
+ *    until the first one finishes — Chrome silently drops it.
+ *  - in kiosk mode the second print() call is sometimes considered
+ *    non-user-initiated and is suppressed.
+ *
+ * Each call gets its own iframe; we wait for it to load, call print() once,
+ * then resolve as soon as the print dialog closes (afterprint) or after a
+ * safety timeout. The iframe is cleaned up afterwards.
+ */
 export function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
-  // Make sure the printJS iframe exists *before* we call printJS, otherwise
-  // the very first print of the session is silently swallowed in some
-  // browsers (no dialog appears, no error).
-  warmupPrintJs();
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return Promise.resolve({ success: false, error: "No window" });
+  }
+
   return new Promise((resolve) => {
-    try {
-      printJS({
-        printable: html,
-        type: "raw-html",
-        style: css,
-        onError: (err: unknown) => {
-          console.error("[PrintJS] Error:", err);
-          resolve({ success: false, error: String(err) });
-        },
-      });
-      resolve({ success: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error de impresión";
-      resolve({ success: false, error: message });
-    }
+    let settled = false;
+    const done = (result: { success: boolean; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      try { iframe.parentNode?.removeChild(iframe); } catch { /* ignore */ }
+      resolve(result);
+    };
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${html}</body></html>`;
+
+    iframe.onload = () => {
+      try {
+        const win = iframe.contentWindow;
+        if (!win) {
+          done({ success: false, error: "iframe sin contentWindow" });
+          return;
+        }
+        const onAfterPrint = () => {
+          win.removeEventListener("afterprint", onAfterPrint);
+          // Small delay so the browser fully releases the print job before
+          // we tear down the iframe / start the next print.
+          setTimeout(() => done({ success: true }), 250);
+        };
+        win.addEventListener("afterprint", onAfterPrint);
+        // Safety net: kiosk-printing fires afterprint reliably, but in some
+        // edge cases it doesn't — never hang forever.
+        setTimeout(() => done({ success: true }), 8000);
+
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.error("[Print] Error:", err);
+        done({ success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    };
+
+    iframe.srcdoc = doc;
+    document.body.appendChild(iframe);
   });
 }
 
 /**
- * Print sale documents as a single browser job.
- * - Normal POS (pickupToken present, not hybrid): QR ticket + cashier receipt in one print dialog
- * - Hybrid POS (or no pickupToken): cashier receipt only
+ * Print sale documents as TWO separate jobs:
+ *   1) QR-only ticket (so the bartender gets a clean QR)
+ *   2) Cashier receipt
  *
- * Chrome/Windows can suppress chained print dialogs when the second call is no
- * longer considered user-initiated. Combining both pieces prevents cajas from
- * printing only the receipt and dropping the QR.
+ * They are printed sequentially via independent iframes — the second job
+ * only starts after the first one's `afterprint` fires (or the safety
+ * timeout elapses). This is required for kiosk-printing on Chrome/Windows,
+ * which otherwise drops chained print() calls on the same iframe.
+ *
+ * Hybrid POS (or sales without pickupToken) only print the receipt.
  */
 export async function printSaleDocuments(
   _printerName: string,
@@ -338,15 +387,30 @@ export async function printSaleDocuments(
   paperWidth: PaperWidth = "80mm",
   isHybrid: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
-  warmupPrintJs();
   const hasQr = !!data.pickupToken && !isHybrid;
-  const css = buildReceiptCss(paperWidth);
   const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
+  const receiptCss = buildCashierReceiptCss(paperWidth);
 
   if (!hasQr) {
-    return printOneDocument(receiptHtml, buildCashierReceiptCss(paperWidth));
+    return printOneDocument(receiptHtml, receiptCss);
   }
 
   const qrHtml = buildQrOnlyHtml(data, paperWidth);
-  return printOneDocument(`${qrHtml}<div class="print-break"></div>${receiptHtml}`, css);
+  const qrCss = buildReceiptCss(paperWidth);
+
+  // 1) QR first so it's the top piece on the roll.
+  const qrResult = await printOneDocument(qrHtml, qrCss);
+  if (!qrResult.success) {
+    console.error("[Print] QR print failed:", qrResult.error);
+  }
+
+  // 2) Cashier receipt as a separate job.
+  const receiptResult = await printOneDocument(receiptHtml, receiptCss);
+
+  if (!qrResult.success && !receiptResult.success) {
+    return { success: false, error: qrResult.error || receiptResult.error };
+  }
+  if (!receiptResult.success) return receiptResult;
+  if (!qrResult.success) return qrResult;
+  return { success: true };
 }
