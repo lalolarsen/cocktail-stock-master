@@ -371,8 +371,8 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
 
 /**
  * Print sale documents as TWO separate jobs:
- *   1) QR-only ticket (so the bartender gets a clean QR)
- *   2) Cashier receipt
+ *   1) Cashier receipt
+ *   2) QR-only ticket (so the bartender gets a clean QR)
  *
  * They are printed sequentially via independent iframes — the second job
  * only starts after the first one's `afterprint` fires (or the safety
@@ -398,14 +398,14 @@ export async function printSaleDocuments(
   const qrHtml = buildQrOnlyHtml(data, paperWidth);
   const qrCss = buildReceiptCss(paperWidth);
 
-  // 1) QR first so it's the top piece on the roll.
+  // 1) Cashier receipt as a separate job.
+  const receiptResult = await printOneDocument(receiptHtml, receiptCss);
+
+  // 2) QR as a separate job.
   const qrResult = await printOneDocument(qrHtml, qrCss);
   if (!qrResult.success) {
     console.error("[Print] QR print failed:", qrResult.error);
   }
-
-  // 2) Cashier receipt as a separate job.
-  const receiptResult = await printOneDocument(receiptHtml, receiptCss);
 
   if (!qrResult.success && !receiptResult.success) {
     return { success: false, error: qrResult.error || receiptResult.error };
