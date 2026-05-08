@@ -8,9 +8,8 @@
  * normales para garantizar que la barra los redime con el pipeline existente.
  */
 
-import printJS from "print-js";
 import { generateQRSvgString } from "./qr-svg";
-import type { PaperWidth } from "./qz";
+import { printOneDocument, type PaperWidth } from "./qz";
 import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
 
 const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
@@ -66,6 +65,7 @@ function buildCss(paperWidth: PaperWidth): string {
     .ticket-correlative { text-align: center; font-size: 12pt; margin-bottom: 6px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
     .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
+    .print-break { break-before: page; page-break-before: always; height: 0; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -165,30 +165,10 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
   `;
 }
 
-/* ── helper: print one piece ── */
-function printPiece(html: string, css: string): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      printJS({
-        printable: html,
-        type: "raw-html",
-        style: css,
-        onError: (err: any) => {
-          console.error("[ticket-print] error:", err);
-          resolve();
-        },
-      });
-      resolve();
-    } catch (err) {
-      console.error("[ticket-print] exception:", err);
-      resolve();
-    }
-  });
-}
-
 /**
- * Imprime las 3 piezas en orden: comprobante → entradas → covers.
- * Inserta delays entre piezas para evitar que el spooler colapse.
+ * Imprime todas las piezas en un solo trabajo del navegador:
+ * comprobante → entradas → covers, separadas por saltos de página.
+ * Esto evita que Chrome/Windows suprima diálogos encadenados y deje QRs sin imprimir.
  */
 export async function printTicketSale(
   data: TicketSalePrintData,
@@ -196,28 +176,18 @@ export async function printTicketSale(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const css = buildCss(paperWidth);
-
-    // 1. Comprobante
-    await printPiece(buildReceiptHtml(data, paperWidth), css);
-    await new Promise((r) => setTimeout(r, 1200));
-
-    // 2. Entradas (una por unidad)
+    const pieces: string[] = [buildReceiptHtml(data, paperWidth)];
     const totalEntries = data.entryTokens.length;
+
     for (let idx = 0; idx < totalEntries; idx++) {
-      await printPiece(
-        buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, paperWidth),
-        css,
-      );
-      await new Promise((r) => setTimeout(r, 1200));
+      pieces.push(buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, paperWidth));
     }
 
-    // 3. Covers (uno por cover)
     for (const cover of data.coverTokens) {
-      await printPiece(buildCoverHtml(cover, paperWidth), css);
-      await new Promise((r) => setTimeout(r, 1200));
+      pieces.push(buildCoverHtml(cover, paperWidth));
     }
 
-    return { success: true };
+    return printOneDocument(pieces.join('<div class="print-break"></div>'), css);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error de impresión";
     console.error("[printTicketSale] error:", error);
