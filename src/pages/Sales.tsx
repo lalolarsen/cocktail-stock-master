@@ -1419,8 +1419,16 @@ export default function Sales() {
                                     items,
                                     total: sale.total_amount,
                                     paymentMethod: sale.payment_method || "card",
+                                    pickupToken: pickupToken?.token,
+                                    shortCode: pickupToken?.short_code || undefined,
                                   };
-                                  printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
+                                  const isHybridSale = !!(selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id);
+                                  const hasRedeemableQr = !!pickupToken?.token && !isHybridSale;
+                                  if (hasRedeemableQr) {
+                                    autoPrintReceipt(rd, sale.id, pickupToken.id, false);
+                                  } else {
+                                    printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
+                                  }
                                 }}
                                 title="Reimprimir comprobante"
                               >
