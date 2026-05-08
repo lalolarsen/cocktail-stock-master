@@ -111,6 +111,7 @@ function buildReceiptCss(paperWidth: PaperWidth): string {
     .short-code-label { text-align: center; font-size: 11pt; color: #000; margin-top: 2px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
     .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
+    .print-break { break-before: page; page-break-before: always; height: 0; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -285,7 +286,7 @@ export function printRaw(
       printable: html,
       type: "raw-html",
       style: css,
-      onError: (err: any) => console.error("[PrintJS] Error:", err),
+      onError: (err: unknown) => console.error("[PrintJS] Error:", err),
     });
 
     return Promise.resolve({ success: true });
@@ -309,7 +310,7 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
         printable: html,
         type: "raw-html",
         style: css,
-        onError: (err: any) => {
+        onError: (err: unknown) => {
           console.error("[PrintJS] Error:", err);
           resolve({ success: false, error: String(err) });
         },
@@ -323,9 +324,13 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
 }
 
 /**
- * Print sale documents sequentially.
- * - Normal POS (pickupToken present, not hybrid): QR ticket → wait → cashier receipt
+ * Print sale documents as a single browser job.
+ * - Normal POS (pickupToken present, not hybrid): QR ticket + cashier receipt in one print dialog
  * - Hybrid POS (or no pickupToken): cashier receipt only
+ *
+ * Chrome/Windows can suppress chained print dialogs when the second call is no
+ * longer considered user-initiated. Combining both pieces prevents cajas from
+ * printing only the receipt and dropping the QR.
  */
 export async function printSaleDocuments(
   _printerName: string,
@@ -335,19 +340,13 @@ export async function printSaleDocuments(
 ): Promise<{ success: boolean; error?: string }> {
   warmupPrintJs();
   const hasQr = !!data.pickupToken && !isHybrid;
+  const css = buildReceiptCss(paperWidth);
+  const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
 
-  // Step 1: print QR if normal POS
-  if (hasQr) {
-    const qrHtml = buildQrOnlyHtml(data, paperWidth);
-    const qrCss = buildReceiptCss(paperWidth);
-    const qrResult = await printOneDocument(qrHtml, qrCss);
-    if (!qrResult.success) return qrResult;
-    // Wait for first print to finish spooling
-    await new Promise((r) => setTimeout(r, 1500));
+  if (!hasQr) {
+    return printOneDocument(receiptHtml, buildCashierReceiptCss(paperWidth));
   }
 
-  // Step 2: print cashier receipt
-  const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
-  const receiptCss = buildCashierReceiptCss(paperWidth);
-  return printOneDocument(receiptHtml, receiptCss);
+  const qrHtml = buildQrOnlyHtml(data, paperWidth);
+  return printOneDocument(`${qrHtml}<div class="print-break"></div>${receiptHtml}`, css);
 }
