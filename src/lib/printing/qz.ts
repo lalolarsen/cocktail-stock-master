@@ -286,7 +286,7 @@ export function printRaw(
       printable: html,
       type: "raw-html",
       style: css,
-      onError: (err: any) => console.error("[PrintJS] Error:", err),
+      onError: (err: unknown) => console.error("[PrintJS] Error:", err),
     });
 
     return Promise.resolve({ success: true });
@@ -310,7 +310,7 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
         printable: html,
         type: "raw-html",
         style: css,
-        onError: (err: any) => {
+        onError: (err: unknown) => {
           console.error("[PrintJS] Error:", err);
           resolve({ success: false, error: String(err) });
         },
