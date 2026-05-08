@@ -187,7 +187,17 @@ export async function printTicketSale(
       pieces.push(buildCoverHtml(cover, paperWidth));
     }
 
-    return printOneDocument(pieces.join('<div class="print-break"></div>'), css);
+    // Cada pieza se imprime como job independiente (iframe propio) para
+    // evitar que Chrome/kiosk descarte impresiones encadenadas.
+    let lastError: string | undefined;
+    let anySuccess = false;
+    for (const piece of pieces) {
+      const result = await printOneDocument(piece, css);
+      if (result.success) anySuccess = true;
+      else lastError = result.error;
+    }
+    if (!anySuccess) return { success: false, error: lastError || "Error de impresión" };
+    return { success: true, error: lastError };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error de impresión";
     console.error("[printTicketSale] error:", error);
