@@ -173,18 +173,21 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
 export async function printTicketSale(
   data: TicketSalePrintData,
   paperWidth: PaperWidth = "80mm",
+  options: { includeQrPieces?: boolean } = {},
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const css = buildCss(paperWidth);
     const pieces: string[] = [buildReceiptHtml(data, paperWidth)];
     const totalEntries = data.entryTokens.length;
 
-    for (let idx = 0; idx < totalEntries; idx++) {
-      pieces.push(buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, paperWidth));
-    }
+    if (options.includeQrPieces !== false) {
+      for (let idx = 0; idx < totalEntries; idx++) {
+        pieces.push(buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, paperWidth));
+      }
 
-    for (const cover of data.coverTokens) {
-      pieces.push(buildCoverHtml(cover, paperWidth));
+      for (const cover of data.coverTokens) {
+        pieces.push(buildCoverHtml(cover, paperWidth));
+      }
     }
 
     // Cada pieza se imprime como job independiente (iframe propio) para
