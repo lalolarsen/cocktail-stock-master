@@ -341,8 +341,8 @@ export default function Tickets() {
         entryTokens,
         coverTokens,
       };
-      await printTicketSale(printData, paperWidth);
-      toast.success("Reimprimiendo venta " + sale.ticket_number);
+      await printTicketSale(printData, paperWidth, { includeQrPieces: false });
+      toast.success("Reimprimiendo comprobante " + sale.ticket_number);
     } catch (err: any) {
       console.error("Reprint error:", err);
       toast.error(err.message || "Error al reimprimir");
@@ -1042,7 +1042,7 @@ export default function Tickets() {
                           className="h-7 px-2 shrink-0"
                           onClick={() => reprintSale(sale.id)}
                           disabled={reprintingId === sale.id}
-                          title="Reimprimir comprobante + QRs"
+                          title="Reimprimir solo comprobante"
                         >
                           {reprintingId === sale.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
