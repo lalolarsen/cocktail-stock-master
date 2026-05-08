@@ -710,10 +710,10 @@ export default function Sales() {
           : "stockia_printer_name";
       const savedPrinter =
         localStorage.getItem(preferredPrinterKey) || localStorage.getItem("stockia_printer_name");
-      const printerToUse = currentPos?.printer_name || savedPrinter;
-      const shouldAutoPrint = (currentPos?.auto_print_enabled || !!savedPrinter) && !!printerToUse;
+      const printerToUse = currentPos?.printer_name || savedPrinter || "browser-kiosk";
+      const shouldAutoPrint = currentPos?.auto_print_enabled || !!savedPrinter;
       
-      if (shouldAutoPrint && printerToUse) {
+      if (shouldAutoPrint) {
         const receiptData: ReceiptData = {
           saleNumber,
           venueName: venue?.name || "Venue",
@@ -1422,15 +1422,9 @@ export default function Sales() {
                                     pickupToken: pickupToken?.token,
                                     shortCode: pickupToken?.short_code || undefined,
                                   };
-                                  const isHybridSale = !!(selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id);
-                                  const hasRedeemableQr = !!pickupToken?.token && !isHybridSale;
-                                  if (hasRedeemableQr) {
-                                    autoPrintReceipt(rd, sale.id, pickupToken.id, false);
-                                  } else {
-                                    printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
-                                  }
+                                  printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
                                 }}
-                                title="Reimprimir comprobante"
+                                title="Reimprimir solo comprobante"
                               >
                                 <Printer className="w-3 h-3" />
                                 <span className="text-[9px]">Ticket</span>
