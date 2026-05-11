@@ -38,6 +38,7 @@ export function RedeemReconciliationPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [redeemCount, setRedeemCount] = useState(0);
   const [courtesyCount, setCourtesyCount] = useState(0);
+  const [courtesyIssuedCount, setCourtesyIssuedCount] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
