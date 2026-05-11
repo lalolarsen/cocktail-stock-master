@@ -48,7 +48,7 @@ export function NotificationsManagement() {
   const [saving, setSaving] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [emailValue, setEmailValue] = useState("");
-  const [sendingTest, setSendingTest] = useState(false);
+  
   const [newEmail, setNewEmail] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [adding, setAdding] = useState(false);
@@ -260,22 +260,7 @@ export function NotificationsManagement() {
     }
   };
 
-  const handleSendTestNotifications = async () => {
-    setSendingTest(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("send-jornada-summary");
-      
-      if (error) throw error;
-      
-      toast.success(`Procesados: ${data.processed || 0}, Enviados: ${data.sent || 0}`);
-      fetchData(); // Refresh logs
-    } catch (error: any) {
-      console.error("Error sending test:", error);
-      toast.error("Error al enviar notificaciones");
-    } finally {
-      setSendingTest(false);
-    }
-  };
+
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -489,18 +474,6 @@ export function NotificationsManagement() {
               Registro de emails enviados
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleSendTestNotifications}
-            disabled={sendingTest}
-          >
-            {sendingTest ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4 mr-2" />
-            )}
-            Procesar Cola
-          </Button>
         </CardHeader>
         <CardContent>
           {logs.length === 0 ? (

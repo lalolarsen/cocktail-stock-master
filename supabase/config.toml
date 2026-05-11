@@ -31,8 +31,6 @@ project_id = "rboiblptylnsgcciutrk"
     verify_jwt = false
   [functions.send-financial-summary]
     verify_jwt = false
-  [functions.send-jornada-summary]
-    verify_jwt = false
   [functions.send-transactional-email]
     verify_jwt = true
   [functions.setup-demo-users]
