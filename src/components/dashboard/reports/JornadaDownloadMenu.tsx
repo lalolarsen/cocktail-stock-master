@@ -226,6 +226,12 @@ export function JornadaDownloadMenu({
             QRs canjeados
           </DropdownMenuItem>
         )}
+        {isClosed && (
+          <DropdownMenuItem onClick={handleResendEmail} disabled={!!busy}>
+            <Mail className="h-3.5 w-3.5 mr-2" />
+            Reenviar correo
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs">Datos / Contabilidad</DropdownMenuLabel>
         {isClosed && (
