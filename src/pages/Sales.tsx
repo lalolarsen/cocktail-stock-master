@@ -1152,16 +1152,6 @@ export default function Sales() {
                 <div className="flex items-center gap-2">
                   <ShoppingCart className="w-3.5 h-3.5 text-muted-foreground" />
                   <h2 className="text-xs font-bold tracking-wide">Carrito</h2>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-[10px] gap-1 px-2"
-                    onClick={() => setShowCourtesyRedeem(true)}
-                    disabled={!hasActiveJornada}
-                  >
-                    <Gift className="w-3 h-3" />
-                    Cortesía
-                  </Button>
                 </div>
                 <div className="flex items-center gap-1">
                   {lastRemovedItem && (
