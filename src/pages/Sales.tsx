@@ -1472,13 +1472,6 @@ export default function Sales() {
           />
         )}
 
-        {/* Courtesy Redeem Dialog */}
-        <CourtesyRedeemDialog
-          open={showCourtesyRedeem}
-          onClose={() => setShowCourtesyRedeem(false)}
-          onRedeemed={handleCourtesyRedeemed}
-        />
-
         {/* Replenishment Request Dialog — hybrid POS only */}
         {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
           <ReplenishmentRequestDialog
