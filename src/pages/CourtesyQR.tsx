@@ -41,6 +41,7 @@ import {
   Clock,
   XCircle,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 
 type CourtesyQR = {
