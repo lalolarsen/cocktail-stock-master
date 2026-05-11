@@ -130,6 +130,11 @@ export function JornadaDownloadMenu({
         grandOther: posSummary.reduce((s, p) => s + p.otherTotal + (p.ticketOtherTotal ?? 0), 0),
         grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
         observacionCierre,
+        courtesy: {
+          issued: issuedCount,
+          redeemed: okReds.length,
+          topItems: courtesyTopItems,
+        },
       });
     } catch (err) {
       console.error(err);
