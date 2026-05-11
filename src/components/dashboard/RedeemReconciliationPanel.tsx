@@ -340,8 +340,8 @@ export function RedeemReconciliationPanel() {
             <Card>
               <CardContent className="p-4 text-center">
                 <Gift className="h-5 w-5 mx-auto mb-1 text-accent-foreground" />
-                <p className="text-2xl font-bold">{courtesyCount}</p>
-                <p className="text-xs text-muted-foreground">Cortesías</p>
+                <p className="text-2xl font-bold">{courtesyCount}<span className="text-xs text-muted-foreground font-normal"> / {courtesyIssuedCount}</span></p>
+                <p className="text-xs text-muted-foreground">Cortesías canjeadas / emitidas</p>
               </CardContent>
             </Card>
             <Card>
