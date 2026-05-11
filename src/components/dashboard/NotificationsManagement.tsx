@@ -48,7 +48,7 @@ export function NotificationsManagement() {
   const [saving, setSaving] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [emailValue, setEmailValue] = useState("");
-  const [sendingTest, setSendingTest] = useState(false);
+  
   const [newEmail, setNewEmail] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [adding, setAdding] = useState(false);
