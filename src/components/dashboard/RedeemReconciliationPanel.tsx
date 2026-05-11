@@ -93,6 +93,19 @@ export function RedeemReconciliationPanel() {
       const courtesyIds = (courtesyLogs || []).map((c: any) => c.courtesy_id);
       setCourtesyCount(courtesyIds.length);
 
+      // Count courtesy QRs issued during this jornada window
+      const jornadaInfo = jornadas.find(j => j.id === selectedJornada) as any;
+      if (jornadaInfo?.fecha) {
+        const dayStart = new Date(jornadaInfo.fecha + "T00:00:00").toISOString();
+        const dayEnd = new Date(jornadaInfo.fecha + "T23:59:59").toISOString();
+        const { count } = await supabase
+          .from("courtesy_qr").select("id", { count: "exact", head: true })
+          .gte("created_at", dayStart).lte("created_at", dayEnd);
+        setCourtesyIssuedCount(count ?? 0);
+      } else {
+        setCourtesyIssuedCount(0);
+      }
+
       let courtesyConsumption = new Map<string, { name: string; qty: number; unit: string }>();
 
       if (courtesyIds.length > 0) {
