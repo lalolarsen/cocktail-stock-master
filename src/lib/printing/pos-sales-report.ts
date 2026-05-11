@@ -158,6 +158,7 @@ function buildReportHtml(data: POSSalesData): string {
       </tbody></table>
       <div class="meta" style="font-size:8pt;">Informativo · no afecta caja</div>
       <div class="sep">${sep}</div>
+      ${courtesyBlock}
       ${observacionBlock}
       <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
     </div>
