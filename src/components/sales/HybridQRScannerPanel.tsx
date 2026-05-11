@@ -126,6 +126,7 @@ export function HybridQRScannerPanel({ barLocationId, barName, activeJornadaId }
         const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
           p_code: code,
           p_jornada_id: activeJornadaId ?? null,
+          p_pos_source: "hybrid_pos",
         });
         clearTimers();
         if (error) throw error;
