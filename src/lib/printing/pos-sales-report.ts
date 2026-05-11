@@ -34,6 +34,12 @@ interface POSSalesData {
   grandCount: number;
   /** Observación global del cierre de jornada (opcional) */
   observacionCierre?: string | null;
+  /** Cortesías de esta jornada (opcional) */
+  courtesy?: {
+    issued: number;
+    redeemed: number;
+    topItems?: { name: string; qty: number }[];
+  };
 }
 
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
