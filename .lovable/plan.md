@@ -1,115 +1,102 @@
 ## Objetivo
 
-Dejar el módulo de QR de Cortesía funcionando de punta a punta: generación (Admin/Gerencia) → impresión → canje (Barra HID + POS Híbrido) → registro en `courtesy_redemptions` → conteo visible en informes.
+Rediseñar el correo de cierre de jornada para que muestre **solo** la información solicitada, en este orden:
 
-## Diagnóstico actual
+1. Observación del cierre (ya está al inicio).
+2. Información de la jornada → incluir **nombre de la jornada** + **usuario que la cerró**.
+3. Resumen financiero → estilo reporte POS térmico: por cada POS, ventas separadas por medio de pago (Efectivo / Tarjeta / Otro), y si aplica, sub-bloque Tickets de entrada.
+4. **QR de cortesía emitidos**, agrupados por usuario que los emitió.
 
-Hay 0 filas en `courtesy_redemptions` históricamente, a pesar de que existen QRs creados. Causas detectadas:
-
-1. **Sales.tsx (POS Vendedor)** sí inserta en `courtesy_redemptions` directamente, pero por RLS / lógica del cajero esa inserción puede fallar silenciosamente y deja el QR sin marcar.
-2. **Bar.tsx + HybridQRScannerPanel** llaman al RPC `redeem_courtesy_qr` pero éste sólo registra en `courtesy_redemptions` cuando `p_jornada_id IS NOT NULL`. Si el bartender no tiene jornada cargada en `useAppSession`, el canje "funciona" pero no se audita.
-3. La UI del bar muestra `🎁 producto x N` pero no marca claramente "CORTESÍA" en pantalla grande, ni el motivo (`note`) ni quién lo creó → la barra no sabe si entregar.
-4. La impresión del QR ya usa `window.open + print`, pero el layout es genérico, sin branding ni tamaño 80 mm.
-5. No existe descarga de reporte de QRs de cortesía (Admin lo pidió).
-6. El **Reporte POS térmico** y el panel de **Reconciliación de canjes** no muestran cantidad de cortesías emitidas / canjeadas en la jornada.
+Se eliminan del correo las secciones que el usuario no pidió (Top productos, COGS, Margen bruto, Mermas, Alertas de stock, "QRs canjeados / pendientes").
 
 ---
 
 ## Cambios
 
-### 1. Backend (migración)
+### 1. Base de datos
 
-- Modificar `redeem_courtesy_qr` para que **siempre** registre el canje en `courtesy_redemptions` (jornada_id puede ser NULL si no hay jornada activa, registrando `result='success'` igual). Agregar columna opcional `pos_source` (`bar`, `hybrid_pos`, `vendedor_pos`) para trazabilidad.
-- Mantener seguridad: la función seguirá siendo `SECURITY DEFINER` con el chequeo de roles existente.
-- Asegurar que `courtesy_redemptions.jornada_id` permita NULL.
+- **`jornadas`**: agregar columna `closed_by_user_id uuid` con FK a `auth.users(id)` (sin ON DELETE CASCADE — usar SET NULL para preservar historial).
+- **RPC `close_jornada_manual`**: setear `closed_by_user_id = auth.uid()` en el `UPDATE jornadas SET estado='cerrada' …`.
+- **Cierre forzado**: si existe RPC separado `forced_close_jornada` (o equivalente), también setear `closed_by_user_id` con el usuario que ejecutó el cierre.
 
-### 2. Canje en Barra (`src/pages/Bar.tsx`)
+### 2. RPC `dispatch_jornada_closed_email(p_jornada_id)`
 
-- Pasar `p_pos_source: 'bar'` en la llamada RPC.
-- Cuando `result._courtesy === true`, mostrar un banner grande "🎁 CORTESÍA" arriba del nombre del producto, mostrar nota y motivo si existen, y el contador `usos_restantes`.
-- Agregar entry de auditoría con motivo (`note`) en `scanHistory`.
+Reescribir el payload `data` que se envía a `send-transactional-email`. Calcular y enviar **solo**:
 
-### 3. Canje en POS Híbrido (`src/components/sales/HybridQRScannerPanel.tsx`)
+- `venue_name`, `jornada_label` (= `jornadas.nombre`, fallback `'Jornada N° X · YYYY-MM-DD'`).
+- `opened_at`, `closed_at`, `forced_close`, `forced_reason`, `observacion_cierre`.
+- `closed_by_name`: lookup `profiles.full_name` o `auth.users.email` desde `closed_by_user_id` (o `forced_by_user_id` si fue cierre forzado). Fallback `'Sistema'`.
+- `total_gross`, `stockia_commission` (1%), `total_net`.
+- `pos_breakdown` (nueva forma, igual al reporte POS):
+  ```
+  [{ pos_name, alcohol: { cash, cash_count, card, card_count, other, other_count },
+                tickets: { cash, cash_count, card, card_count, other, other_count } | null,
+                total, total_count }]
+  ```
+  Fuente: `sales` (alcohol/carta) + `ticket_sales` (tickets) agrupados por `pos_locations.name` y `payment_method` (`cash` / `card` / cualquier otro → "other"), filtrados por `jornada_id` y no cancelados / `payment_status='paid'`.
+- `courtesies_issued`: lista agrupada por usuario emisor:
+  ```
+  [{ issuer_name, qr_count, total_uses, redeemed_count }]
+  ```
+  Fuente: `courtesy_qr` filtrado por `venue_id = v_jornada.venue_id` y `created_at` entre `fecha_apertura` y `fecha_cierre` (rango de la jornada). `redeemed_count` se calcula con `courtesy_redemptions` joined a esos `courtesy_qr`. `issuer_name` viene de `profiles.full_name` por `created_by`.
 
-- Pasar `p_pos_source: 'hybrid_pos'` en la llamada RPC.
-- Mostrar el mismo banner "CORTESÍA" en el resultado del scanner. Especificar que producto se debe entregar.
+Eliminar del payload: `cogs`, `gross_margin`, `top_products`, `qr_redeemed`, `qr_pending`, `courtesies_count`, `courtesies_cost`, `waste_cost`, `stock_alerts`.
 
-### 4. POS Vendedor — bloquear canje directo
+### 3. Template `supabase/functions/_shared/transactional-email-templates/jornada-closed-summary.tsx`
 
-- Quitar `CourtesyRedeemDialog` del flujo Vendedor (botón en `Sales.tsx` + bloque que inserta en `courtesy_redemptions`). Las cortesías ahora **sólo** se canjean en Barra/Híbrido (única fuente de verdad), eliminando la ruta que fallaba silenciosamente.
-- Mantener `isCourtesy` en cart sólo para el caso interno (no se ofrece UI para usarlo).
+Reestructurar a las 4 secciones exactas, en este orden:
 
-### 5. Generación Admin (`src/pages/CourtesyQR.tsx`)
+```text
+┌─────────────────────────────────────┐
+│ Header: Cierre de Jornada · Venue   │
+├─────────────────────────────────────┤
+│ [Observación del cierre]  ← si hay  │
+├─────────────────────────────────────┤
+│ Información de la jornada           │
+│   Jornada: <jornada_label>          │
+│   Apertura / Cierre                 │
+│   Cerrado por: <closed_by_name>     │
+├─────────────────────────────────────┤
+│ Resumen financiero                  │
+│   Ventas brutas / Comisión / Neto   │
+│   Por cada POS:                     │
+│     POS Nombre                      │
+│       ALCOHOL / CARTA               │
+│         Efectivo (n)        $...    │
+│         Tarjeta  (n)        $...    │
+│         Otro     (n)        $...    │
+│       TICKETS (entrada)  ← si hay   │
+│         Efectivo / Tarjeta / Otro   │
+│       Total POS  (N tx)     $...    │
+├─────────────────────────────────────┤
+│ Cortesías emitidas                  │
+│   Por <Usuario>: 4 códigos · 8 usos │
+│                  (3 canjeados)      │
+│   …                                 │
+└─────────────────────────────────────┘
+```
 
-- Vista compartida con Gerencia (ya lo es). Para Admin (detectar por `role === 'admin'`):
-  - Botón **"Descargar reporte"** en el header → genera CSV con: código, producto, qty, max_uses, used_count, status, note, created_by_name, created_at, expires_at, redemptions (fecha, jornada, resultado).
-  - Filtro extra por rango de fechas.
-- Mejorar diálogo "Ver QR":
-  - Layout de impresión 80 mm: logo Stockia, nombre producto grande, qty, código, motivo, "VÁLIDO HASTA", footer "Canjear en barra".
-  - `window.print()` con CSS `@media print { @page { size: 80mm auto; } }`.
+Quitar del JSX: `top_products`, `stock_alerts`, `cogs`, `gross_margin`, `waste_cost`, KPIs de QR canjeados/pendientes, sección "Cortesías" agregada actual.
 
-### 6. Informe POS Térmico (`src/lib/printing/pos-sales-report.ts`)
+Actualizar `previewData` para reflejar el nuevo shape.
 
-- Agregar al final una sección **"Cortesías"**:
-  - Cortesías emitidas en la jornada (cuenta de `courtesy_qr` creadas en jornada activa).
-  - Cortesías canjeadas en la jornada (cuenta de `courtesy_redemptions` con `result='success'`).
-  - Listado breve: producto × qty (top 5).
+### 4. Verificación
 
-### 7. Reconciliación de canjes (`RedeemReconciliationPanel.tsx`)
-
-- Ya muestra `courtesyCount`. Agregar también:
-  - Cortesías **emitidas** en la jornada (no sólo canjeadas).
-  - Detalle por producto.
-- Incluir esos datos en el CSV exportable.
-
-### 8. Memoria
-
-Actualizar `mem://features/sales/courtesy-qr-system` con: canje sólo Barra+Híbrido vía RPC, registro siempre auditado, `pos_source` para trazar origen.
+- Disparar manualmente `dispatch_jornada_closed_email('b6f9af1b-…')` (jornada de Berlín del 10/05) y reenviar el correo a `eduardolarsen101@gmail.com` para QA visual.
+- Confirmar `email_send_log.status = 'sent'`.
 
 ---
 
 ## Detalles técnicos
 
-```text
-Flujo de canje único
-────────────────────
-Admin/Gerencia ──▶ courtesy_qr (insert)
-                    │
-                    ▼
-            Imprime QR (80 mm)
-                    │
-                    ▼
-   Cliente ──▶ Barra HID  ─┐
-   Cliente ──▶ POS Híbrido ┴─▶ RPC redeem_courtesy_qr
-                                  │
-                                  ▼
-                       courtesy_qr.used_count++
-                       courtesy_redemptions (insert)
-                                  │
-                                  ▼
-                       Banner "🎁 CORTESÍA"
-```
+- Migración SQL en `supabase/migrations/<timestamp>_email_jornada_redesign.sql`: `ALTER TABLE jornadas ADD COLUMN closed_by_user_id …` + `CREATE OR REPLACE FUNCTION close_jornada_manual(...)` (recreado completo) + `CREATE OR REPLACE FUNCTION dispatch_jornada_closed_email(uuid)` (recreado completo, sin top_products/alerts/cogs).
+- Para el rango de cortesías usar `COALESCE(j.fecha_apertura, j.fecha) AT TIME ZONE 'America/Santiago'` y `COALESCE(j.fecha_cierre, now())` para evitar perder QRs si las columnas timestamp no están pobladas.
+- Tipos TS del template (`JornadaClosedProps`) actualizados: nueva interfaz `POSBreakdownV2` y `CourtesyIssuer`; `closed_by` se mantiene como string.
+- No tocar `send-jornada-summary` (legacy Resend) — el flujo en uso ya es `send-transactional-email`.
 
-```sql
--- Migración resumida
-ALTER TABLE courtesy_redemptions ADD COLUMN IF NOT EXISTS pos_source text;
-ALTER TABLE courtesy_redemptions ALTER COLUMN jornada_id DROP NOT NULL;
--- redeem_courtesy_qr: agregar p_pos_source text, INSERT siempre.
-```
-
-## Archivos a tocar
-
-- `supabase/migrations/<new>.sql`
-- `src/pages/CourtesyQR.tsx`
-- `src/pages/CourtesyQRSimple.tsx` (alinear impresión 80 mm)
-- `src/pages/Bar.tsx`
-- `src/components/sales/HybridQRScannerPanel.tsx`
-- `src/pages/Sales.tsx` (quitar diálogo cortesía)
-- `src/lib/printing/pos-sales-report.ts`
-- `src/components/dashboard/RedeemReconciliationPanel.tsx`
-- `mem://features/sales/courtesy-qr-system`
+---
 
 ## Fuera de alcance
 
-- No se toca el cálculo de COGS / DiStock (sigue deduciendo en barra como hoy).
-- No se agrega cortesía al PDF cajero ni al Excel mensual.
+- No se modifica el reporte POS térmico, ni `useCOGSData`, ni el panel de notificaciones.
+- No se agrega/quitan destinatarios (sigue tomando admins/gerencia + `jornada_notification_emails`).
