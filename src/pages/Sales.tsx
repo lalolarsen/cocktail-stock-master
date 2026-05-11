@@ -169,7 +169,7 @@ export default function Sales() {
 
   // Clear cart confirmation
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [showCourtesyRedeem, setShowCourtesyRedeem] = useState(false);
+  
   const [showReplenishmentRequest, setShowReplenishmentRequest] = useState(false);
   
   // Success screen state
