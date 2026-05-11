@@ -474,18 +474,6 @@ export function NotificationsManagement() {
               Registro de emails enviados
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleSendTestNotifications}
-            disabled={sendingTest}
-          >
-            {sendingTest ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4 mr-2" />
-            )}
-            Procesar Cola
-          </Button>
         </CardHeader>
         <CardContent>
           {logs.length === 0 ? (
