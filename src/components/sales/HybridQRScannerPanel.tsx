@@ -298,16 +298,26 @@ export function HybridQRScannerPanel({ barLocationId, barName, activeJornadaId }
           )}
 
           {scanState === "success" && result && (
-            <div className="rounded-lg bg-green-600/10 border border-green-600/20 p-5 space-y-2">
+            <div className={`rounded-lg p-5 space-y-2 border ${result.courtesy ? "bg-amber-500/15 border-amber-500/40" : "bg-green-600/10 border-green-600/20"}`}>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-                <span className="text-sm font-bold text-green-700">ENTREGAR</span>
+                <CheckCircle2 className={`w-5 h-5 shrink-0 ${result.courtesy ? "text-amber-600" : "text-green-600"}`} />
+                <span className={`text-sm font-bold ${result.courtesy ? "text-amber-700" : "text-green-700"}`}>
+                  {result.courtesy ? "🎁 CORTESÍA — ENTREGAR" : "ENTREGAR"}
+                </span>
               </div>
               {summary && (
                 <div className="flex items-center gap-2 pl-7">
-                  <Package className="w-4 h-4 text-green-600/70" />
-                  <p className="text-sm text-green-800 font-medium">{summary}</p>
+                  <Package className={`w-4 h-4 ${result.courtesy ? "text-amber-600/80" : "text-green-600/70"}`} />
+                  <p className={`text-sm font-medium ${result.courtesy ? "text-amber-800" : "text-green-800"}`}>{summary}</p>
                 </div>
+              )}
+              {result.courtesy?.note && (
+                <p className="text-[11px] italic text-amber-700 pl-7">"{result.courtesy.note}"</p>
+              )}
+              {result.courtesy && (
+                <p className="text-[10px] text-muted-foreground pl-7">
+                  Uso {result.courtesy.used_count}/{result.courtesy.max_uses}
+                </p>
               )}
             </div>
           )}
