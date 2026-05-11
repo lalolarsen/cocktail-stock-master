@@ -359,16 +359,6 @@ export default function Sales() {
     }
   };
 
-  const handleCourtesyRedeemed = (item: { cocktailId: string; name: string; qty: number }) => {
-    const cocktail = cocktails.find((c) => c.id === item.cocktailId) || {
-      id: item.cocktailId,
-      name: item.name,
-      price: 0,
-      category: "cortesia",
-    };
-    addToCart(cocktail, { isCourtesy: true, overrideQty: item.qty });
-    toast.success(`Cortesía agregada: ${item.name} × ${item.qty}`);
-  };
 
   const clearCart = () => {
     clearCartStore();
