@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
-import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
+
 import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
 import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
