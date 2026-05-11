@@ -23,6 +23,15 @@ interface RedemptionResult {
     quantity?: number;
     items?: DeliverItem[];
   };
+  courtesy?: {
+    code: string;
+    product_name: string;
+    qty: number;
+    note?: string | null;
+    used_count: number;
+    max_uses: number;
+    status: string;
+  };
   missing?: Array<{ product_name: string; required_qty: number; available_qty?: number; unit: string }>;
 }
 
