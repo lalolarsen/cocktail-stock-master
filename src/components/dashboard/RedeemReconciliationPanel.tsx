@@ -38,6 +38,7 @@ export function RedeemReconciliationPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [redeemCount, setRedeemCount] = useState(0);
   const [courtesyCount, setCourtesyCount] = useState(0);
+  const [courtesyIssuedCount, setCourtesyIssuedCount] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
@@ -91,6 +92,19 @@ export function RedeemReconciliationPanel() {
       // Get courtesy QR details for theoretical consumption
       const courtesyIds = (courtesyLogs || []).map((c: any) => c.courtesy_id);
       setCourtesyCount(courtesyIds.length);
+
+      // Count courtesy QRs issued during this jornada window
+      const jornadaInfo = jornadas.find(j => j.id === selectedJornada) as any;
+      if (jornadaInfo?.fecha) {
+        const dayStart = new Date(jornadaInfo.fecha + "T00:00:00").toISOString();
+        const dayEnd = new Date(jornadaInfo.fecha + "T23:59:59").toISOString();
+        const { count } = await supabase
+          .from("courtesy_qr").select("id", { count: "exact", head: true })
+          .gte("created_at", dayStart).lte("created_at", dayEnd);
+        setCourtesyIssuedCount(count ?? 0);
+      } else {
+        setCourtesyIssuedCount(0);
+      }
 
       let courtesyConsumption = new Map<string, { name: string; qty: number; unit: string }>();
 
@@ -183,7 +197,8 @@ export function RedeemReconciliationPanel() {
     lines.push(`Jornada,#${jornada?.numero_jornada || "?"} - ${jornada?.fecha || ""}`);
     lines.push(`Ubicación,${location?.name || "?"}`);
     lines.push(`Canjes QR,${redeemCount}`);
-    lines.push(`Cortesías,${courtesyCount}`);
+    lines.push(`Cortesías canjeadas,${courtesyCount}`);
+    lines.push(`Cortesías emitidas,${courtesyIssuedCount}`);
     lines.push("");
     lines.push("Insumo,Consumo ventas,Consumo cortesías,Consumo total,Unidad");
     rows.forEach(r => lines.push(`"${r.product_name}",${r.theoretical_consumption},${r.courtesy_consumption},${r.total_consumption},${r.unit}`));
@@ -326,8 +341,8 @@ export function RedeemReconciliationPanel() {
             <Card>
               <CardContent className="p-4 text-center">
                 <Gift className="h-5 w-5 mx-auto mb-1 text-accent-foreground" />
-                <p className="text-2xl font-bold">{courtesyCount}</p>
-                <p className="text-xs text-muted-foreground">Cortesías</p>
+                <p className="text-2xl font-bold">{courtesyCount}<span className="text-xs text-muted-foreground font-normal"> / {courtesyIssuedCount}</span></p>
+                <p className="text-xs text-muted-foreground">Cortesías canjeadas / emitidas</p>
               </CardContent>
             </Card>
             <Card>

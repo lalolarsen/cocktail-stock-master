@@ -34,6 +34,12 @@ interface POSSalesData {
   grandCount: number;
   /** Observación global del cierre de jornada (opcional) */
   observacionCierre?: string | null;
+  /** Cortesías de esta jornada (opcional) */
+  courtesy?: {
+    issued: number;
+    redeemed: number;
+    topItems?: { name: string; qty: number }[];
+  };
 }
 
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
@@ -96,6 +102,23 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="sep">${dash}</div>`
     : "";
 
+  const c = data.courtesy;
+  const courtesyBlock = c && (c.issued > 0 || c.redeemed > 0)
+    ? `
+      <div class="section-title">CORTESÍAS</div>
+      <div class="sep">${dash}</div>
+      <table class="items"><tbody>
+        <tr><td class="item-name">QR emitidos</td><td class="item-price">${c.issued}</td></tr>
+        <tr><td class="item-name">QR canjeados</td><td class="item-price">${c.redeemed}</td></tr>
+      </tbody></table>
+      ${c.topItems && c.topItems.length > 0 ? `
+        <div class="subsection">Top productos</div>
+        <table class="items"><tbody>
+          ${c.topItems.slice(0, 5).map(it => `<tr><td class="item-name">${escape(it.name)}</td><td class="item-price">×${it.qty}</td></tr>`).join("")}
+        </tbody></table>` : ""}
+      <div class="sep">${dash}</div>`
+    : "";
+
   return `
     <div class="receipt">
       <div class="venue-name">REPORTE DE VENTAS</div>
@@ -135,6 +158,7 @@ function buildReportHtml(data: POSSalesData): string {
       </tbody></table>
       <div class="meta" style="font-size:8pt;">Informativo · no afecta caja</div>
       <div class="sep">${sep}</div>
+      ${courtesyBlock}
       ${observacionBlock}
       <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
     </div>

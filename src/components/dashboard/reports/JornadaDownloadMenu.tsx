@@ -34,17 +34,47 @@ export function JornadaDownloadMenu({
   const handlePOS = async () => {
     setBusy("pos");
     try {
-      const [salesRes, ticketSalesRes, posRes, jornadaRes] = await Promise.all([
+      const [salesRes, ticketSalesRes, posRes, jornadaRes, courtesyRedRes] = await Promise.all([
         supabase.from("sales").select("total_amount, payment_method, point_of_sale, pos_id, is_cancelled").eq("jornada_id", jornadaId).eq("is_cancelled", false),
         supabase.from("ticket_sales").select("total, payment_method, pos_id").eq("jornada_id", jornadaId).eq("payment_status", "paid"),
         supabase.from("pos_terminals").select("id, name"),
-        supabase.from("jornadas").select("observacion_cierre").eq("id", jornadaId).maybeSingle(),
+        supabase.from("jornadas").select("observacion_cierre, opened_at, closed_at").eq("id", jornadaId).maybeSingle(),
+        supabase.from("courtesy_redemptions").select("courtesy_id, result, redeemed_at").eq("jornada_id", jornadaId),
       ]);
       if (salesRes.error) throw salesRes.error;
       const sales = salesRes.data || [];
       const ticketSales = ticketSalesRes.data || [];
       const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
-      const observacionCierre = (jornadaRes.data as { observacion_cierre?: string | null } | null)?.observacion_cierre ?? null;
+      const jornadaMeta = jornadaRes.data as { observacion_cierre?: string | null; opened_at?: string | null; closed_at?: string | null } | null;
+      const observacionCierre = jornadaMeta?.observacion_cierre ?? null;
+
+      // Courtesy stats for this jornada
+      const courtesyReds = (courtesyRedRes.data || []) as Array<{ courtesy_id: string; result: string; redeemed_at: string }>;
+      const okReds = courtesyReds.filter(r => r.result === "success");
+      const courtesyIds = [...new Set(okReds.map(r => r.courtesy_id))];
+      let courtesyTopItems: { name: string; qty: number }[] = [];
+      let issuedCount = 0;
+      if (jornadaMeta?.opened_at) {
+        const fromIso = jornadaMeta.opened_at;
+        const toIso = jornadaMeta.closed_at || new Date().toISOString();
+        const { count: issued } = await supabase
+          .from("courtesy_qr").select("id", { count: "exact", head: true })
+          .gte("created_at", fromIso).lte("created_at", toIso);
+        issuedCount = issued ?? 0;
+      }
+      if (courtesyIds.length > 0) {
+        const { data: qrRows } = await supabase
+          .from("courtesy_qr").select("id, product_name, qty").in("id", courtesyIds);
+        const map = new Map<string, { name: string; qty: number }>();
+        for (const red of okReds) {
+          const qr = (qrRows || []).find(q => q.id === red.courtesy_id);
+          if (!qr) continue;
+          const e = map.get(qr.product_name) || { name: qr.product_name, qty: 0 };
+          e.qty += Number(qr.qty) || 1;
+          map.set(qr.product_name, e);
+        }
+        courtesyTopItems = [...map.values()].sort((a, b) => b.qty - a.qty);
+      }
 
       if (sales.length === 0 && ticketSales.length === 0) {
         toast.info("No hay ventas en esta jornada");
@@ -100,6 +130,11 @@ export function JornadaDownloadMenu({
         grandOther: posSummary.reduce((s, p) => s + p.otherTotal + (p.ticketOtherTotal ?? 0), 0),
         grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
         observacionCierre,
+        courtesy: {
+          issued: issuedCount,
+          redeemed: okReds.length,
+          topItems: courtesyTopItems,
+        },
       });
     } catch (err) {
       console.error(err);

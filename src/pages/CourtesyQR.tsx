@@ -41,6 +41,7 @@ import {
   Clock,
   XCircle,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 
 type CourtesyQR = {
@@ -85,9 +86,10 @@ const SOCIOS = [
 ];
 
 export default function CourtesyQR() {
-  const { user } = useAppSession();
+  const { user, hasRole } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
+  const isAdmin = hasRole("admin");
 
   const [showCreate, setShowCreate] = useState(false);
   const [showQR, setShowQR] = useState<CourtesyQR | null>(null);
@@ -305,26 +307,74 @@ export default function CourtesyQR() {
 
   const handlePrint = (qr: CourtesyQR) => {
     const qrEl = document.getElementById("courtesy-qr-svg");
-    const w = window.open("", "_blank", "width=400,height=600");
+    const w = window.open("", "_blank", "width=380,height=620");
     if (!w) { toast.error("Popup bloqueado"); return; }
+    const expiresStr = fmtDateFull(qr.expires_at);
     w.document.write(`
       <html><head><title>QR Cortesía</title>
       <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; }
-        .product { font-size: 20px; font-weight: bold; margin: 12px 0 4px; }
-        .sub { color: #666; font-size: 14px; }
-        .code { font-family: monospace; font-size: 18px; letter-spacing: 2px; background: #f3f3f3; padding: 8px 16px; border-radius: 8px; display: inline-block; margin: 12px 0; }
-        .note { font-style: italic; color: #666; font-size: 14px; }
+        @page { size: 80mm auto; margin: 4mm; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 6px 4px; width: 72mm; color: #000; }
+        .brand { font-size: 11px; letter-spacing: 3px; font-weight: 700; }
+        .tag { display: inline-block; margin: 6px 0; padding: 3px 10px; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 800; letter-spacing: 1px; }
+        .product { font-size: 18px; font-weight: 800; line-height: 1.15; margin: 8px 4px 2px; word-wrap: break-word; }
+        .qty { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+        .qr { margin: 4px 0; }
+        .qr svg { width: 56mm !important; height: 56mm !important; }
+        .code { font-family: "Courier New", monospace; font-size: 16px; letter-spacing: 3px; background: #000; color: #fff; padding: 5px 10px; border-radius: 4px; display: inline-block; margin: 6px 0; }
+        .meta { font-size: 10px; color: #333; margin-top: 4px; }
+        .note { font-style: italic; font-size: 11px; margin-top: 4px; border-top: 1px dashed #999; padding-top: 4px; }
+        .footer { font-size: 9px; color: #555; margin-top: 6px; letter-spacing: 1px; }
       </style></head><body>
+      <div class="brand">STOCKIA</div>
+      <div class="tag">🎁 CORTESÍA</div>
       <div class="product">${qr.product_name}</div>
-      <div class="sub">× ${qr.qty} · ${qr.max_uses === 1 ? "1 uso" : `${qr.max_uses} usos`}</div>
-      ${qrEl?.outerHTML || ""}
+      <div class="qty">× ${qr.qty} · ${qr.max_uses === 1 ? "1 uso" : `${qr.max_uses} usos`}</div>
+      <div class="qr">${qrEl?.outerHTML || ""}</div>
       <div class="code">${qr.code}</div>
+      <div class="meta">Válido hasta: ${expiresStr}</div>
       ${qr.note ? `<div class="note">"${qr.note}"</div>` : ""}
+      <div class="footer">CANJEAR EN BARRA</div>
+      <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 300); };</script>
       </body></html>
     `);
     w.document.close();
-    w.print();
+  };
+
+  const downloadReport = () => {
+    const escape = (s: any) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+    const redemptionsByQr = new Map<string, Redemption[]>();
+    redemptions.forEach(r => {
+      const arr = redemptionsByQr.get(r.courtesy_id) || [];
+      arr.push(r);
+      redemptionsByQr.set(r.courtesy_id, arr);
+    });
+    const headers = [
+      "codigo", "producto", "cantidad", "max_usos", "usos", "estado",
+      "motivo", "creado", "expira", "canjes_exitosos", "canjes_fallidos", "fuente_canjes",
+    ];
+    const rows = qrs.map(qr => {
+      const reds = redemptionsByQr.get(qr.id) || [];
+      const ok = reds.filter(r => r.result === "success").length;
+      const fail = reds.filter(r => r.result !== "success").length;
+      const sources = [...new Set(reds.map(r => (r as any).pos_source).filter(Boolean))].join("|");
+      return [
+        qr.code, qr.product_name, qr.qty, qr.max_uses, qr.used_count, qr.status,
+        qr.note || "", qr.created_at, qr.expires_at, ok, fail, sources,
+      ].map(escape).join(",");
+    });
+    const csv = "\uFEFF" + headers.map(escape).join(",") + "\n" + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cortesias_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Reporte descargado");
   };
 
   return (
@@ -340,10 +390,18 @@ export default function CourtesyQR() {
             Genera, gestiona y audita cortesías
           </p>
         </div>
-        <Button onClick={() => { resetForm(); setShowCreate(true); }} size="lg">
-          <Plus className="w-4 h-4 mr-2" />
-          Crear QR
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button onClick={downloadReport} variant="outline" size="lg">
+              <Download className="w-4 h-4 mr-2" />
+              Descargar reporte
+            </Button>
+          )}
+          <Button onClick={() => { resetForm(); setShowCreate(true); }} size="lg">
+            <Plus className="w-4 h-4 mr-2" />
+            Crear QR
+          </Button>
+        </div>
       </div>
 
       {/* Stats cards */}

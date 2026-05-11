@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Gift, Printer, Settings2, Package, Download } from "lucide-react";
+import { Loader2, ShoppingCart, LogOut, CreditCard, Banknote, MapPin, Store, Plus, Minus, Trash2, Clock, Check, CheckCircle, AlertCircle, FileCheck, QrCode, X, Undo2, Printer, Settings2, Package, Download } from "lucide-react";
 import { downloadCashierReport, type CashierReportData } from "@/lib/reporting/jornada-cashier-report";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
-import { CourtesyRedeemDialog } from "@/components/sales/CourtesyRedeemDialog";
+
 import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
 import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
@@ -169,7 +169,7 @@ export default function Sales() {
 
   // Clear cart confirmation
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [showCourtesyRedeem, setShowCourtesyRedeem] = useState(false);
+  
   const [showReplenishmentRequest, setShowReplenishmentRequest] = useState(false);
   
   // Success screen state
@@ -359,16 +359,6 @@ export default function Sales() {
     }
   };
 
-  const handleCourtesyRedeemed = (item: { cocktailId: string; name: string; qty: number }) => {
-    const cocktail = cocktails.find((c) => c.id === item.cocktailId) || {
-      id: item.cocktailId,
-      name: item.name,
-      price: 0,
-      category: "cortesia",
-    };
-    addToCart(cocktail, { isCourtesy: true, overrideQty: item.qty });
-    toast.success(`Cortesía agregada: ${item.name} × ${item.qty}`);
-  };
 
   const clearCart = () => {
     clearCartStore();
@@ -1152,16 +1142,6 @@ export default function Sales() {
                 <div className="flex items-center gap-2">
                   <ShoppingCart className="w-3.5 h-3.5 text-muted-foreground" />
                   <h2 className="text-xs font-bold tracking-wide">Carrito</h2>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-[10px] gap-1 px-2"
-                    onClick={() => setShowCourtesyRedeem(true)}
-                    disabled={!hasActiveJornada}
-                  >
-                    <Gift className="w-3 h-3" />
-                    Cortesía
-                  </Button>
                 </div>
                 <div className="flex items-center gap-1">
                   {lastRemovedItem && (
@@ -1481,13 +1461,6 @@ export default function Sales() {
             shortCode={pickupQRData.shortCode}
           />
         )}
-
-        {/* Courtesy Redeem Dialog */}
-        <CourtesyRedeemDialog
-          open={showCourtesyRedeem}
-          onClose={() => setShowCourtesyRedeem(false)}
-          onRedeemed={handleCourtesyRedeemed}
-        />
 
         {/* Replenishment Request Dialog — hybrid POS only */}
         {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (

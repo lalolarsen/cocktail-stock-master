@@ -365,6 +365,7 @@ export default function Bar() {
         const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
           p_code: code,
           p_jornada_id: activeJornadaId ?? null,
+          p_pos_source: "bar",
         });
         if (abortRef.current?.signal.aborted) return undefined;
         if (error) throw error;
@@ -834,12 +835,26 @@ export default function Bar() {
             )}
             {scanState === "success" && result?.success && (
               <>
-                <p className="text-sm uppercase tracking-widest font-semibold text-primary">Entregar</p>
+                {result._courtesy ? (
+                  <div className="bg-amber-500/15 border-2 border-amber-500/60 rounded-xl px-4 py-2 mb-1">
+                    <p className="text-base uppercase tracking-widest font-black text-amber-500">🎁 Cortesía</p>
+                    {(result as any).courtesy?.note && (
+                      <p className="text-xs text-amber-600 font-medium mt-1">{(result as any).courtesy.note}</p>
+                    )}
+                    {(result as any).courtesy && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Uso {(result as any).courtesy.used_count}/{(result as any).courtesy.max_uses}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm uppercase tracking-widest font-semibold text-primary">Entregar</p>
+                )}
                 <h1 className="text-3xl font-black leading-tight">{delivery.name}</h1>
                 <p className="text-6xl font-black text-primary leading-none">×{delivery.quantity}</p>
                 {result.deliver?.source && <p className="text-sm text-muted-foreground">{getSourceLabel(result.deliver.source)}</p>}
-                {(result._forced || result._courtesy) && (
-                  <p className="text-xs text-amber-600 font-medium mt-1">⚠ {result._courtesy ? "Cortesía" : "Sin confirmar en sistema"}</p>
+                {result._forced && !result._courtesy && (
+                  <p className="text-xs text-amber-600 font-medium mt-1">⚠ Sin confirmar en sistema</p>
                 )}
                 {result.deliver?.type === "menu_items" && result.deliver.items && result.deliver.items.length > 1 && (
                   <div className="bg-muted rounded-xl p-3 text-left space-y-2 mt-2">

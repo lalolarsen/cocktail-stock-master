@@ -538,8 +538,9 @@ export type Database = {
         Row: {
           courtesy_id: string
           id: string
-          jornada_id: string
+          jornada_id: string | null
           pos_id: string | null
+          pos_source: string | null
           reason: string | null
           redeemed_at: string
           redeemed_by: string
@@ -550,8 +551,9 @@ export type Database = {
         Insert: {
           courtesy_id: string
           id?: string
-          jornada_id: string
+          jornada_id?: string | null
           pos_id?: string | null
+          pos_source?: string | null
           reason?: string | null
           redeemed_at?: string
           redeemed_by: string
@@ -562,8 +564,9 @@ export type Database = {
         Update: {
           courtesy_id?: string
           id?: string
-          jornada_id?: string
+          jornada_id?: string | null
           pos_id?: string | null
+          pos_source?: string | null
           reason?: string | null
           redeemed_at?: string
           redeemed_by?: string
@@ -6506,10 +6509,16 @@ export type Database = {
         }
         Returns: undefined
       }
-      redeem_courtesy_qr: {
-        Args: { p_code: string; p_jornada_id?: string }
-        Returns: Json
-      }
+      redeem_courtesy_qr:
+        | { Args: { p_code: string; p_jornada_id?: string }; Returns: Json }
+        | {
+            Args: {
+              p_code: string
+              p_jornada_id?: string
+              p_pos_source?: string
+            }
+            Returns: Json
+          }
       redeem_pickup_token: {
         Args: {
           p_bartender_bar_id?: string
