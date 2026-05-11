@@ -102,6 +102,23 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="sep">${dash}</div>`
     : "";
 
+  const c = data.courtesy;
+  const courtesyBlock = c && (c.issued > 0 || c.redeemed > 0)
+    ? `
+      <div class="section-title">CORTESÍAS</div>
+      <div class="sep">${dash}</div>
+      <table class="items"><tbody>
+        <tr><td class="item-name">QR emitidos</td><td class="item-price">${c.issued}</td></tr>
+        <tr><td class="item-name">QR canjeados</td><td class="item-price">${c.redeemed}</td></tr>
+      </tbody></table>
+      ${c.topItems && c.topItems.length > 0 ? `
+        <div class="subsection">Top productos</div>
+        <table class="items"><tbody>
+          ${c.topItems.slice(0, 5).map(it => `<tr><td class="item-name">${escape(it.name)}</td><td class="item-price">×${it.qty}</td></tr>`).join("")}
+        </tbody></table>` : ""}
+      <div class="sep">${dash}</div>`
+    : "";
+
   return `
     <div class="receipt">
       <div class="venue-name">REPORTE DE VENTAS</div>
