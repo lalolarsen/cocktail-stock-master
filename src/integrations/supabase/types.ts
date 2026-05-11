@@ -1808,6 +1808,7 @@ export type Database = {
       }
       jornadas: {
         Row: {
+          closed_by_user_id: string | null
           created_at: string
           estado: string
           fecha: string
@@ -1827,6 +1828,7 @@ export type Database = {
           venue_id: string
         }
         Insert: {
+          closed_by_user_id?: string | null
           created_at?: string
           estado?: string
           fecha: string
@@ -1846,6 +1848,7 @@ export type Database = {
           venue_id: string
         }
         Update: {
+          closed_by_user_id?: string | null
           created_at?: string
           estado?: string
           fecha?: string
