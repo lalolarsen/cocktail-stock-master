@@ -86,25 +86,21 @@ const handler = async (req: Request): Promise<Response> => {
       // No body provided, will process all queued notifications
     }
 
-    // Check if we're in demo mode - block sending real emails
-    const { data: demoVenue } = await supabase
-      .from("venues")
-      .select("id, is_demo")
-      .eq("is_demo", true)
-      .maybeSingle();
+    // Check if the specific jornada's venue is in demo mode
+    if (jornadaId) {
+      const { data: jornadaVenue } = await supabase
+        .from("jornadas")
+        .select("venue_id, venues!inner(is_demo)")
+        .eq("id", jornadaId)
+        .maybeSingle();
 
-    if (demoVenue?.is_demo) {
-      console.log("[send-jornada-summary] Demo mode detected - skipping email sending");
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Demo mode - emails blocked", 
-          processed: 0, 
-          sent: 0, 
-          failed: 0 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if ((jornadaVenue as any)?.venues?.is_demo) {
+        console.log("[send-jornada-summary] Jornada's venue is demo - skipping");
+        return new Response(
+          JSON.stringify({ success: true, message: "Demo venue - emails blocked", processed: 0, sent: 0, failed: 0 }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Fetch queued notifications
