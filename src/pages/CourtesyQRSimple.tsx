@@ -175,26 +175,38 @@ export default function CourtesyQRSimple() {
 
   const handlePrint = (qr: CourtesyQR) => {
     const qrEl = document.getElementById("courtesy-qr-svg-simple");
-    const w = window.open("", "_blank", "width=400,height=600");
+    const w = window.open("", "_blank", "width=380,height=620");
     if (!w) { toast.error("Popup bloqueado"); return; }
+    const expiresStr = new Date(qr.expires_at).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
     w.document.write(`
-      <html><head><title>QR</title>
+      <html><head><title>QR Cortesía</title>
       <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; padding: 24px; }
-        .name { font-size: 22px; font-weight: 700; margin: 16px 0 4px; }
-        .sub { color: #888; font-size: 15px; }
-        .code { font-family: monospace; font-size: 20px; letter-spacing: 3px; background: #f0f0f0; padding: 10px 20px; border-radius: 10px; display: inline-block; margin: 14px 0; }
-        .note { font-style: italic; color: #888; font-size: 14px; }
+        @page { size: 80mm auto; margin: 4mm; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 6px 4px; width: 72mm; color: #000; }
+        .brand { font-size: 11px; letter-spacing: 3px; font-weight: 700; }
+        .tag { display: inline-block; margin: 6px 0; padding: 3px 10px; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 800; letter-spacing: 1px; }
+        .product { font-size: 18px; font-weight: 800; line-height: 1.15; margin: 8px 4px 2px; word-wrap: break-word; }
+        .qty { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+        .qr svg { width: 56mm !important; height: 56mm !important; }
+        .code { font-family: "Courier New", monospace; font-size: 16px; letter-spacing: 3px; background: #000; color: #fff; padding: 5px 10px; border-radius: 4px; display: inline-block; margin: 6px 0; }
+        .meta { font-size: 10px; color: #333; margin-top: 4px; }
+        .note { font-style: italic; font-size: 11px; margin-top: 4px; border-top: 1px dashed #999; padding-top: 4px; }
+        .footer { font-size: 9px; color: #555; margin-top: 6px; letter-spacing: 1px; }
       </style></head><body>
-      <div class="name">${qr.product_name}</div>
-      <div class="sub">× ${qr.qty}</div>
-      ${qrEl?.outerHTML || ""}
+      <div class="brand">STOCKIA</div>
+      <div class="tag">🎁 CORTESÍA</div>
+      <div class="product">${qr.product_name}</div>
+      <div class="qty">× ${qr.qty}</div>
+      <div class="qr">${qrEl?.outerHTML || ""}</div>
       <div class="code">${qr.code}</div>
-      ${qr.note ? `<div class="note">${qr.note}</div>` : ""}
+      <div class="meta">Válido hasta: ${expiresStr}</div>
+      ${qr.note ? `<div class="note">"${qr.note}"</div>` : ""}
+      <div class="footer">CANJEAR EN BARRA</div>
+      <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 300); };</script>
       </body></html>
     `);
     w.document.close();
-    w.print();
   };
 
   const statusIcon = (s: string) => {
