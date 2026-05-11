@@ -365,6 +365,7 @@ export default function Bar() {
         const { data, error } = await supabase.rpc("redeem_courtesy_qr", {
           p_code: code,
           p_jornada_id: activeJornadaId ?? null,
+          p_pos_source: "bar",
         });
         if (abortRef.current?.signal.aborted) return undefined;
         if (error) throw error;
