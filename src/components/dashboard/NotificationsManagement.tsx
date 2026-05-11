@@ -260,22 +260,7 @@ export function NotificationsManagement() {
     }
   };
 
-  const handleSendTestNotifications = async () => {
-    setSendingTest(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("send-jornada-summary");
-      
-      if (error) throw error;
-      
-      toast.success(`Procesados: ${data.processed || 0}, Enviados: ${data.sent || 0}`);
-      fetchData(); // Refresh logs
-    } catch (error: any) {
-      console.error("Error sending test:", error);
-      toast.error("Error al enviar notificaciones");
-    } finally {
-      setSendingTest(false);
-    }
-  };
+
 
   const getStatusBadge = (status: string) => {
     switch (status) {
