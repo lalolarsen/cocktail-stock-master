@@ -85,9 +85,10 @@ const SOCIOS = [
 ];
 
 export default function CourtesyQR() {
-  const { user } = useAppSession();
+  const { user, hasRole } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
+  const isAdmin = hasRole("admin");
 
   const [showCreate, setShowCreate] = useState(false);
   const [showQR, setShowQR] = useState<CourtesyQR | null>(null);
