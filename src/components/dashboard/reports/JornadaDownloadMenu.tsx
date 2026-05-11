@@ -187,6 +187,20 @@ export function JornadaDownloadMenu({
     }
   };
 
+  const handleResendEmail = async () => {
+    setBusy("email");
+    try {
+      const { error } = await supabase.rpc("dispatch_jornada_closed_email", { p_jornada_id: jornadaId });
+      if (error) throw error;
+      toast.success("Correo de cierre reenviado");
+    } catch (err) {
+      console.error(err);
+      toast.error("No se pudo reenviar el correo");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
