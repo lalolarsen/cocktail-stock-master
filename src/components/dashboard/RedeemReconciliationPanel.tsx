@@ -197,7 +197,8 @@ export function RedeemReconciliationPanel() {
     lines.push(`Jornada,#${jornada?.numero_jornada || "?"} - ${jornada?.fecha || ""}`);
     lines.push(`Ubicación,${location?.name || "?"}`);
     lines.push(`Canjes QR,${redeemCount}`);
-    lines.push(`Cortesías,${courtesyCount}`);
+    lines.push(`Cortesías canjeadas,${courtesyCount}`);
+    lines.push(`Cortesías emitidas,${courtesyIssuedCount}`);
     lines.push("");
     lines.push("Insumo,Consumo ventas,Consumo cortesías,Consumo total,Unidad");
     rows.forEach(r => lines.push(`"${r.product_name}",${r.theoretical_consumption},${r.courtesy_consumption},${r.total_consumption},${r.unit}`));
