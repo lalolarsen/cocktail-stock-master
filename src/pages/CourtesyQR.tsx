@@ -389,10 +389,18 @@ export default function CourtesyQR() {
             Genera, gestiona y audita cortesías
           </p>
         </div>
-        <Button onClick={() => { resetForm(); setShowCreate(true); }} size="lg">
-          <Plus className="w-4 h-4 mr-2" />
-          Crear QR
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button onClick={downloadReport} variant="outline" size="lg">
+              <Download className="w-4 h-4 mr-2" />
+              Descargar reporte
+            </Button>
+          )}
+          <Button onClick={() => { resetForm(); setShowCreate(true); }} size="lg">
+            <Plus className="w-4 h-4 mr-2" />
+            Crear QR
+          </Button>
+        </div>
       </div>
 
       {/* Stats cards */}
