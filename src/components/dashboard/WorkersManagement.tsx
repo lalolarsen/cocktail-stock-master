@@ -43,6 +43,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { LockedAccountsPanel } from "./LockedAccountsPanel";
 
 interface Worker {
   id: string;
