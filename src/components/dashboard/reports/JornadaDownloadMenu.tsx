@@ -139,7 +139,7 @@ export function JornadaDownloadMenu({
         courtesy: {
           issued: issuedCount,
           redeemed: okReds.length,
-          topItems: courtesyTopItems,
+          items: courtesyItems,
         },
       });
     } catch (err) {
