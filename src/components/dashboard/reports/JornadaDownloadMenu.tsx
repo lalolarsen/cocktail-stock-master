@@ -216,20 +216,13 @@ export function JornadaDownloadMenu({
       }>;
 
       const courtesyIds = [...new Set(reds.map(r => r.courtesy_id).filter((x): x is string => !!x))];
-      const userIds = [...new Set(reds.map(r => r.redeemed_by).filter((x): x is string => !!x))];
 
-      const [qrRowsRes, workersRes, jMeta] = await Promise.all([
-        courtesyIds.length > 0
-          ? supabase.from("courtesy_qr").select("id, code, product_name, qty, note").in("id", courtesyIds)
-          : Promise.resolve({ data: [], error: null } as any),
-        userIds.length > 0
-          ? supabase.from("workers").select("user_id, name").in("user_id", userIds)
-          : Promise.resolve({ data: [], error: null } as any),
-        Promise.resolve(jornadaRes.data),
-      ]);
-      const qrMap = new Map((qrRowsRes.data || []).map((q: any) => [q.id, q]));
-      const workerMap = new Map((workersRes.data || []).map((w: any) => [w.user_id, w.name]));
+      const qrRowsRes: any = courtesyIds.length > 0
+        ? await supabase.from("courtesy_qr").select("id, code, product_name, qty, note").in("id", courtesyIds)
+        : { data: [], error: null };
+      const qrMap = new Map<string, any>((qrRowsRes.data || []).map((q: any) => [q.id, q]));
 
+      const jMeta = jornadaRes.data as { opened_at?: string | null; closed_at?: string | null } | null;
       let issuedCount = 0;
       if (jMeta?.opened_at) {
         const fromIso = jMeta.opened_at;
@@ -243,14 +236,14 @@ export function JornadaDownloadMenu({
       const posLabel = (s: string | null) => s === "bar" ? "Barra" : s === "hybrid_pos" ? "POS Híbrido" : "—";
 
       const rows: CourtesyRedemptionRow[] = reds.map(r => {
-        const qr: any = r.courtesy_id ? qrMap.get(r.courtesy_id) : null;
+        const qr = r.courtesy_id ? qrMap.get(r.courtesy_id) : null;
         return {
           redeemedAt: r.redeemed_at,
           product: qr?.product_name || "—",
           qty: Number(qr?.qty) || 1,
           note: qr?.note ?? null,
           code: qr?.code || "—",
-          redeemedBy: r.redeemed_by ? (workerMap.get(r.redeemed_by) || r.redeemed_by.slice(0, 8)) : "—",
+          redeemedBy: r.redeemed_by ? r.redeemed_by.slice(0, 8) : "—",
           posSource: posLabel(r.pos_source),
           result: r.result === "success" ? "success" : "fail",
           reason: r.reason,
