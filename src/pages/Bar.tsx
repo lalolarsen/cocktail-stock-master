@@ -80,6 +80,7 @@ function getErrorTitle(code?: string): string {
   switch (code) {
     case "ALREADY_REDEEMED": return "YA CANJEADO";
     case "TOKEN_EXPIRED": return "EXPIRADO";
+    case "TOKEN_CANCELLED": return "QR CANCELADO";
     case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
     case "SALE_CANCELLED": return "VENTA CANCELADA";
     case "QR_INVALID": return "QR INVÁLIDO";
@@ -87,6 +88,10 @@ function getErrorTitle(code?: string): string {
     case "TIMEOUT": return "TIEMPO AGOTADO";
     case "WRONG_BAR": return "BARRA INCORRECTA";
     case "INSUFFICIENT_BAR_STOCK": return "SIN STOCK EN ESTA BARRA";
+    case "UNAUTHENTICATED": return "SESIÓN NO INICIADA";
+    case "FORBIDDEN": return "SIN PERMISO";
+    case "VENUE_NOT_FOUND": return "LOCAL NO RESUELTO";
+    case "SYSTEM_ERROR": return "ERROR DEL SISTEMA";
     default: return "ERROR";
   }
 }
