@@ -345,6 +345,8 @@ export function WorkersManagement() {
   }
 
   return (
+    <>
+    <LockedAccountsPanel />
     <Card className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
