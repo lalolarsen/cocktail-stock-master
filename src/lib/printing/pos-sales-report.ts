@@ -34,11 +34,11 @@ interface POSSalesData {
   grandCount: number;
   /** Observación global del cierre de jornada (opcional) */
   observacionCierre?: string | null;
-  /** Cortesías de esta jornada (opcional) */
+  /** Cortesías canjeadas en esta jornada (lista detallada) */
   courtesy?: {
     issued: number;
     redeemed: number;
-    topItems?: { name: string; qty: number }[];
+    items?: { time: string; product: string; qty: number; note?: string | null }[];
   };
 }
 
