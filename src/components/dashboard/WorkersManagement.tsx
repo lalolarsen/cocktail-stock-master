@@ -43,6 +43,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { LockedAccountsPanel } from "./LockedAccountsPanel";
 
 interface Worker {
   id: string;
@@ -345,6 +346,8 @@ export function WorkersManagement() {
   }
 
   return (
+    <>
+    <LockedAccountsPanel />
     <Card className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
@@ -629,5 +632,6 @@ export function WorkersManagement() {
         </DialogContent>
       </Dialog>
     </Card>
+    </>
   );
 }

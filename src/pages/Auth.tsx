@@ -162,14 +162,16 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      // Check if account is locked
-      const { data: isLocked } = await supabase.rpc("is_account_locked", {
+      // Check lock status (8 fails / 10 min, resets on successful login)
+      const { data: lockStatus } = await supabase.rpc("get_lock_status", {
         p_rut_code: normalizedRut,
         p_venue_id: null
       });
+      const lock = Array.isArray(lockStatus) ? lockStatus[0] : lockStatus;
 
-      if (isLocked) {
-        toast.error("Cuenta bloqueada temporalmente. Intenta en 15 minutos.");
+      if (lock?.is_locked) {
+        const mins = Math.max(1, lock.minutes_remaining ?? 10);
+        toast.error(`Cuenta bloqueada temporalmente. Intenta en ${mins} min o pide a un administrador desbloquearla.`);
         setLoading(false);
         return;
       }
@@ -181,14 +183,8 @@ export default function Auth() {
       });
 
       if (workerError || !workers || workers.length === 0) {
-        // Record failed attempt
-        await supabase.rpc("record_login_attempt", {
-          p_rut_code: normalizedRut,
-          p_venue_id: null,
-          p_success: false,
-          p_user_agent: navigator.userAgent
-        });
-        toast.error("Credenciales incorrectas");
+        // RUT inexistente: NO contamos como intento fallido para no llenar el contador
+        toast.error("RUT no registrado. Verifica los dígitos.");
         setLoading(false);
         return;
       }
@@ -224,7 +220,12 @@ export default function Auth() {
           p_success: false,
           p_user_agent: navigator.userAgent
         });
-        toast.error("Credenciales incorrectas");
+        const remaining = Math.max(0, 8 - ((lock?.failed_count ?? 0) + 1));
+        if (remaining <= 0) {
+          toast.error("PIN incorrecto. Cuenta bloqueada por 10 minutos.");
+        } else {
+          toast.error(`PIN incorrecto. Te quedan ${remaining} intento${remaining === 1 ? "" : "s"}.`);
+        }
         setLoading(false);
         return;
       }
