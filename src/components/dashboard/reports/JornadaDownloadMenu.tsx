@@ -8,11 +8,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, FileText, Printer, Loader2, ChevronDown, Receipt, ListChecks, QrCode, Mail } from "lucide-react";
+import { Download, FileText, Printer, Loader2, ChevronDown, Receipt, ListChecks, QrCode, Mail, Gift } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
 import { generateProductSalesPDF, type POSProductBreakdown } from "@/lib/reporting/product-sales-pdf";
+import { generateCourtesyJornadaPDF, type CourtesyRedemptionRow } from "@/lib/reporting/courtesy-jornada-pdf";
 
 interface Props {
   jornadaId: string;
