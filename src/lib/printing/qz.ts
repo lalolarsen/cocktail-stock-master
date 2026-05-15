@@ -177,7 +177,11 @@ function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
 
 // ── QR-only ticket builder ──
 
-function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
+function buildQrOnlyHtml(
+  data: ReceiptData,
+  paperWidth: PaperWidth,
+  opts: { redeemed?: boolean } = {},
+): string {
   const sep = paperWidth === "58mm"
     ? "================================"
     : "================================================";
@@ -192,17 +196,28 @@ function buildQrOnlyHtml(data: ReceiptData, paperWidth: PaperWidth): string {
     .map((item) => `<div style="font-size:14pt;font-weight:bold;color:#000;padding:2px 0;">${item.quantity}x ${item.name}</div>`)
     .join("");
 
+  const redeemed = !!opts.redeemed;
+  const label = redeemed ? "QR CANJEADO — PINCHAR" : "QR DE RETIRO";
+  const instruction = redeemed
+    ? "Ya descontado del stock · Para conteo en caja"
+    : "Presenta este QR en la barra";
+  const stampHtml = redeemed
+    ? `<div style="text-align:center;margin:6px auto 8px;padding:6px 8px;border:3px solid #000;font-size:18pt;font-weight:900;letter-spacing:2px;display:inline-block;">CANJEADO ✓</div>`
+    : "";
+  const stampWrap = redeemed ? `<div style="text-align:center;">${stampHtml}</div>` : "";
+
   return `
     <div class="receipt">
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
       <div style="margin:6px 0;">${itemsHtml}</div>
+      ${stampWrap}
       <div class="qr-section">
-        <div class="qr-label">QR DE RETIRO</div>
+        <div class="qr-label">${label}</div>
         ${qrSvg}
         <div class="qr-instruction">
-          Presenta este QR en la barra
+          ${instruction}
         </div>
       </div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
@@ -387,7 +402,7 @@ export async function printSaleDocuments(
   paperWidth: PaperWidth = "80mm",
   isHybrid: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
-  const hasQr = !!data.pickupToken && !isHybrid;
+  const hasQr = !!data.pickupToken;
   const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
   const receiptCss = buildCashierReceiptCss(paperWidth);
 
@@ -395,7 +410,7 @@ export async function printSaleDocuments(
     return printOneDocument(receiptHtml, receiptCss);
   }
 
-  const qrHtml = buildQrOnlyHtml(data, paperWidth);
+  const qrHtml = buildQrOnlyHtml(data, paperWidth, { redeemed: isHybrid });
   const qrCss = buildReceiptCss(paperWidth);
 
   // 1) Cashier receipt as a separate job.
