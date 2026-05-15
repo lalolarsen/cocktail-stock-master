@@ -6334,6 +6334,25 @@ export type Database = {
           total_ventas: number
         }[]
       }
+      get_lock_status: {
+        Args: { p_rut_code: string; p_venue_id: string }
+        Returns: {
+          failed_count: number
+          is_locked: boolean
+          minutes_remaining: number
+        }[]
+      }
+      get_locked_workers: {
+        Args: never
+        Returns: {
+          failed_count: number
+          full_name: string
+          last_attempt_at: string
+          minutes_remaining: number
+          rut_code: string
+          worker_id: string
+        }[]
+      }
       get_monthly_jornadas_summary: {
         Args: { p_month: number; p_year: number }
         Returns: {
@@ -6643,6 +6662,7 @@ export type Database = {
         }
         Returns: Json
       }
+      unlock_worker_account: { Args: { p_rut_code: string }; Returns: Json }
       update_purchase_item_status: {
         Args: {
           p_classification?: string

@@ -1,75 +1,56 @@
-## Estado actual (verificado en BD)
+# Solución a bloqueos frecuentes de PIN de trabajadores
 
-- En `courtesy_qr` hay 15 QR generados → **todos siguen `status=active`, `used_count=0`**.
-- En `courtesy_redemptions` hay **0 filas**.
-- El RPC `redeem_courtesy_qr` (versión 3-arg) **sí está bien**: descuenta `used_count`, cambia `status`, e inserta una fila en `courtesy_redemptions` (incluso fallidos: `cancelled / expired / already_redeemed`).
-- El front de Barra (`src/pages/Bar.tsx` línea 361) llama correctamente al RPC con `p_pos_source: "bar"`.
+## Diagnóstico
 
-Conclusión: el flujo "no quema" porque el RPC nunca llega a ejecutarse o devuelve un error que la UI silencia. Hoy no hay forma de saber por qué (no hay toast de error visible al bartender, ni traza en `courtesy_redemptions` cuando falla la auth o el venue).
+Hoy el login de trabajadores (RUT + PIN) se bloquea con la regla **5 intentos fallidos en 15 minutos** (función `is_account_locked`). Esto produce bloqueos seguidos porque:
 
-## Cambios
+1. **El contador no se reinicia con un login exitoso.** Si el trabajador tipea mal el PIN 4 veces y luego acierta, el siguiente error (incluso al día siguiente dentro de 15 min) lo bloquea.
+2. **Errores de tipeo en el RUT generan "RUT fantasma"** (ej. `213263684` vs `21326368`) que igual incrementan intentos contra rut válidos cercanos cuando se corrige.
+3. **No hay forma de desbloquear desde Admin** — hay que esperar 15 min sí o sí.
+4. **No se distingue entre "RUT no existe" y "PIN incorrecto"**, ambos cuentan igual.
 
-### 1. Hacer visible el resultado del canje de cortesía en Barra
+Datos: en la última semana hay varios RUT con 5+ fallos en pocos minutos (`27838877`, `208843060`, etc.), confirmando el patrón.
 
-Archivo: `src/pages/Bar.tsx`
-- Mostrar en el banner de resultado el **error real** devuelto por el RPC (`UNAUTHENTICATED`, `FORBIDDEN`, `VENUE_NOT_FOUND`, `TOKEN_NOT_FOUND`, `TOKEN_CANCELLED`, `TOKEN_EXPIRED`, `ALREADY_REDEEMED`) con label en español, igual que ya se hace para `redeem_pickup_token`.
-- Agregar `toast.error(...)` además del banner cuando el canje cortesía falla, para que el bartender no lo deje pasar.
-- Loguear en consola el `data` y `error` crudo del RPC (con prefijo `[BarCourtesy]`) para poder diagnosticar el siguiente caso real.
+## Cambios propuestos
 
-### 2. Endurecer el RPC para que SIEMPRE deje rastro
+### 1. Backend — política de bloqueo más tolerante y auto-reset
 
-Migración SQL sobre `redeem_courtesy_qr (3-arg)`:
-- Insertar también una fila en `courtesy_redemptions` con `result='fail'` y `reason` ∈ {`unauthenticated`, `forbidden`, `venue_not_found`, `not_found`} en los caminos donde hoy retorna error sin loguear.
-- Esto garantiza que cualquier intento aparezca en el reporte de auditoría (hoy esos casos no dejan ninguna huella, lo que explica que veamos 0 filas mientras los bartenders sí escanean).
+Migración SQL:
 
-### 3. Reporte CORTESÍAS dentro del ticket POS térmico
+- **Subir umbral** a `8 intentos fallidos en 10 minutos` (en lugar de 5/15).
+- **`is_account_locked`** sólo cuenta fallos **posteriores al último éxito** del mismo `rut_code`. Así, un login correcto limpia el historial efectivo.
+- Nueva RPC **`unlock_worker_account(p_rut_code text)`** (SECURITY DEFINER, restringida a `admin` / `gerencia`) que borra los `login_attempts` fallidos de ese RUT en el `venue_id` actual y deja registro en `admin_audit_logs`.
+- Nueva RPC **`get_locked_workers()`** que devuelve trabajadores actualmente bloqueados del venue (rut, nombre, intentos, minutos restantes).
 
-Archivo: `src/lib/printing/pos-sales-report.ts` + `src/components/dashboard/reports/JornadaDownloadMenu.tsx`
+### 2. Frontend Auth (`src/pages/Auth.tsx`)
 
-Reemplazar el bloque actual ("QR emitidos / canjeados / Top productos") por una **lista detallada de cada canje exitoso** de la jornada:
+- Mostrar mensaje específico cuando el RUT no existe ("RUT no registrado") sin contarlo como intento fallido contra ese RUT (se sigue logueando, pero el conteo de bloqueo sólo aplica si el RUT existe).
+- Mostrar **minutos restantes** estimados cuando esté bloqueado, no sólo "15 minutos".
+- Texto de error de PIN incorrecto indicando intentos restantes antes del bloqueo (ej. "PIN incorrecto. Te quedan 3 intentos").
 
-```text
-CORTESÍAS DE LA JORNADA
-----------------------------------------
-01:42  JAGER + BEBIDA           x1
-       "Cumpleaños socio Juan"
-01:55  GIN 97                    x1
-       "Cortesía staff"
-02:10  PRUEBA                    x1
-----------------------------------------
-Emitidos: 3   Canjeados: 3
-```
+### 3. Admin UI — botón de desbloqueo
 
-Por cada canje se imprime: hora (HH:mm), producto, cantidad, y nota/observación (`courtesy_qr.note`) si existe. Si la jornada no tiene canjes, se omite el bloque entero.
+En **Dashboard → Trabajadores** (o sección equivalente de gestión de personal):
 
-`JornadaDownloadMenu.tsx` debe traer también `redeemed_at` y hacer JOIN con `courtesy_qr` para `product_name`, `qty`, `note`.
-
-### 4. Descargable desde Admin (PDF de cortesías de la jornada)
-
-Reemplazar el CSV actual de `CourtesyQR.tsx` (que mezcla todo histórico y es ilegible) por un **PDF de cortesías por jornada** disponible en `JornadaDownloadMenu`.
-
-Archivo nuevo: `src/lib/reporting/courtesy-jornada-pdf.ts`
-
-Contenido del PDF (jsPDF + autoTable, mismo patrón que `product-sales-pdf.ts`):
-- Cabecera: "Reporte de Cortesías — Jornada #N — fecha".
-- KPIs: emitidos, canjeados, valor estimado (suma de `qty × cocktails.price` cuando exista).
-- Tabla con columnas: **Hora · Producto · Cantidad · Observación · Código · Canjeado por · POS (Barra/Híbrido)**.
-- Pie: total de canjes y desglose por canal (bar vs hybrid_pos).
-
-Botón "Cortesías (PDF)" en `JornadaDownloadMenu.tsx`, junto a los demás reportes de jornada.
-
-### 5. Limpieza menor
-
-- Quitar el botón "Descargar CSV" actual de `CourtesyQR.tsx` (queda redundante) o mantenerlo solo como export histórico desde el tab Auditoría con las mismas columnas que el PDF.
+- Nuevo banner/sección **"Cuentas bloqueadas"** que aparece sólo si hay alguna, listando: nombre, RUT, intentos fallidos, hace cuánto.
+- Botón **"Desbloquear"** por fila → llama `unlock_worker_account` y muestra toast.
+- Permiso: visible sólo para `admin` y `gerencia`.
 
 ## Detalles técnicos
 
-- Sin cambios en el flujo de inventario: cortesía sigue sin descontar stock (es así por diseño en `courtesy-qr-system`).
-- `redeemed_at` viene en UTC; formatear con `Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' })` (regla CLP/Santiago de la memoria).
-- La migración del RPC mantiene la firma `(p_code, p_jornada_id, p_pos_source)` — solo agrega INSERTs adicionales, no rompe llamadores existentes.
-- No tocar la versión 2-arg del RPC (deprecada pero aún referenciada en types). Se eliminará en una siguiente iteración si nada la usa.
+```text
+Threshold actual:   5 fallos / 15 min, sin reset por éxito
+Threshold nuevo:    8 fallos / 10 min, reseteo automático tras login exitoso
+Desbloqueo manual:  RPC + botón en Trabajadores (admin/gerencia)
+```
+
+Archivos a tocar:
+- Migración nueva en `supabase/migrations/` (redefinir `is_account_locked`, crear `unlock_worker_account` y `get_locked_workers`).
+- `src/pages/Auth.tsx` — mensajes y conteo restante.
+- `src/components/dashboard/` — nuevo componente `LockedAccountsPanel.tsx` y montarlo donde se gestionan trabajadores.
 
 ## Fuera de alcance
 
-- No se cambia el diseño de generación del QR (`COURTESY:<code>`) ni el parseo (`src/lib/qr.ts`) — ya funcionan.
-- No se agrega un canjeador manual desde Admin: el rebuild original (#2060) ya lo dejó vía `redeem_courtesy_qr` y el problema actual no es de UI de admin sino de visibilidad y reporte.
+- Cambiar el método de auth (RUT+PIN se mantiene).
+- Reset de PIN (ya existe en gestión de trabajadores).
+- Captcha o 2FA.
