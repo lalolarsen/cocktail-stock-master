@@ -536,7 +536,7 @@ export type Database = {
       }
       courtesy_redemptions: {
         Row: {
-          courtesy_id: string
+          courtesy_id: string | null
           id: string
           jornada_id: string | null
           pos_id: string | null
@@ -549,7 +549,7 @@ export type Database = {
           venue_id: string
         }
         Insert: {
-          courtesy_id: string
+          courtesy_id?: string | null
           id?: string
           jornada_id?: string | null
           pos_id?: string | null
@@ -562,7 +562,7 @@ export type Database = {
           venue_id: string
         }
         Update: {
-          courtesy_id?: string
+          courtesy_id?: string | null
           id?: string
           jornada_id?: string | null
           pos_id?: string | null
