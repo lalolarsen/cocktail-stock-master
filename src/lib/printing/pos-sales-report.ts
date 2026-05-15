@@ -34,11 +34,11 @@ interface POSSalesData {
   grandCount: number;
   /** Observación global del cierre de jornada (opcional) */
   observacionCierre?: string | null;
-  /** Cortesías de esta jornada (opcional) */
+  /** Cortesías canjeadas en esta jornada (lista detallada) */
   courtesy?: {
     issued: number;
     redeemed: number;
-    topItems?: { name: string; qty: number }[];
+    items?: { time: string; product: string; qty: number; note?: string | null }[];
   };
 }
 
@@ -107,15 +107,21 @@ function buildReportHtml(data: POSSalesData): string {
     ? `
       <div class="section-title">CORTESÍAS</div>
       <div class="sep">${dash}</div>
+      ${c.items && c.items.length > 0 ? `
+        <table class="items"><tbody>
+          ${c.items.map(it => `
+            <tr>
+              <td class="item-name"><strong>${it.time}</strong> · ${escape(it.product)}</td>
+              <td class="item-price">x${it.qty}</td>
+            </tr>
+            ${it.note ? `<tr><td colspan="2" class="closing-notes">"${escape(it.note)}"</td></tr>` : ""}
+          `).join("")}
+        </tbody></table>
+        <div class="sep">${dash}</div>` : `<div class="meta">Sin canjes en esta jornada</div>`}
       <table class="items"><tbody>
         <tr><td class="item-name">QR emitidos</td><td class="item-price">${c.issued}</td></tr>
         <tr><td class="item-name">QR canjeados</td><td class="item-price">${c.redeemed}</td></tr>
       </tbody></table>
-      ${c.topItems && c.topItems.length > 0 ? `
-        <div class="subsection">Top productos</div>
-        <table class="items"><tbody>
-          ${c.topItems.slice(0, 5).map(it => `<tr><td class="item-name">${escape(it.name)}</td><td class="item-price">×${it.qty}</td></tr>`).join("")}
-        </tbody></table>` : ""}
       <div class="sep">${dash}</div>`
     : "";
 

@@ -80,6 +80,7 @@ function getErrorTitle(code?: string): string {
   switch (code) {
     case "ALREADY_REDEEMED": return "YA CANJEADO";
     case "TOKEN_EXPIRED": return "EXPIRADO";
+    case "TOKEN_CANCELLED": return "QR CANCELADO";
     case "PAYMENT_NOT_CONFIRMED": return "PAGO NO CONFIRMADO";
     case "SALE_CANCELLED": return "VENTA CANCELADA";
     case "QR_INVALID": return "QR INVÁLIDO";
@@ -87,6 +88,10 @@ function getErrorTitle(code?: string): string {
     case "TIMEOUT": return "TIEMPO AGOTADO";
     case "WRONG_BAR": return "BARRA INCORRECTA";
     case "INSUFFICIENT_BAR_STOCK": return "SIN STOCK EN ESTA BARRA";
+    case "UNAUTHENTICATED": return "SESIÓN NO INICIADA";
+    case "FORBIDDEN": return "SIN PERMISO";
+    case "VENUE_NOT_FOUND": return "LOCAL NO RESUELTO";
+    case "SYSTEM_ERROR": return "ERROR DEL SISTEMA";
     default: return "ERROR";
   }
 }
@@ -367,11 +372,13 @@ export default function Bar() {
           p_jornada_id: activeJornadaId ?? null,
           p_pos_source: "bar",
         });
+        console.log("[BarCourtesy] RPC result", { code: code.slice(0, 8), data, error });
         if (abortRef.current?.signal.aborted) return undefined;
         if (error) throw error;
         const r = { ...(data as RedemptionResult), _courtesy: true };
         if (!r.success) {
           setDebugStep("done-error"); setResult(r);
+          toast.error(`Cortesía: ${getErrorTitle(r.error_code)}`, { description: r.message || r.error_code });
           logAuditEvent({ action: "redeem_courtesy_qr", status: "fail", metadata: { code: code.slice(0, 8), error_code: r.error_code, bar_id: selectedBarId } });
           const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: r.error_code || "ERROR", tokenShort: token.slice(-6) };
           setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
@@ -379,6 +386,7 @@ export default function Bar() {
           return r;
         }
         setDebugStep("done-success"); setResult(r);
+        toast.success(`🎁 Cortesía canjeada: ${r.deliver?.name ?? ""}`);
         logAuditEvent({ action: "redeem_courtesy_qr", status: "success", metadata: { code: code.slice(0, 8), bar_id: selectedBarId, product: r.deliver?.name, qty: r.deliver?.quantity } });
         const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "SUCCESS", label: historyLabel(r), tokenShort: token.slice(-6) };
         setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
@@ -386,8 +394,10 @@ export default function Bar() {
         return r;
       } catch (err: any) {
         if (abortRef.current?.signal.aborted) return undefined;
+        console.error("[BarCourtesy] threw", err);
         const errorResult: RedemptionResult = { success: false, error_code: "SYSTEM_ERROR", message: err?.message || "Error de conexión", _courtesy: true };
         setDebugStep("done-error"); setResult(errorResult);
+        toast.error("Cortesía: error de conexión", { description: err?.message });
         logAuditEvent({ action: "redeem_courtesy_qr", status: "fail", metadata: { error: err?.message, bar_id: selectedBarId } });
         const entry: ScanHistoryEntry = { id: crypto.randomUUID(), time: new Date(), status: "ERROR", label: "ERROR: " + (err?.message || "").slice(0, 40), tokenShort: token.slice(-6) };
         setScanHistory(prev => [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES));
