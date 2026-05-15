@@ -50,9 +50,9 @@ export function JornadaDownloadMenu({
 
       // Courtesy stats for this jornada
       const courtesyReds = (courtesyRedRes.data || []) as Array<{ courtesy_id: string; result: string; redeemed_at: string }>;
-      const okReds = courtesyReds.filter(r => r.result === "success");
+      const okReds = courtesyReds.filter(r => r.result === "success" && r.courtesy_id);
       const courtesyIds = [...new Set(okReds.map(r => r.courtesy_id))];
-      let courtesyTopItems: { name: string; qty: number }[] = [];
+      let courtesyItems: { time: string; product: string; qty: number; note?: string | null }[] = [];
       let issuedCount = 0;
       if (jornadaMeta?.opened_at) {
         const fromIso = jornadaMeta.opened_at;
@@ -64,16 +64,22 @@ export function JornadaDownloadMenu({
       }
       if (courtesyIds.length > 0) {
         const { data: qrRows } = await supabase
-          .from("courtesy_qr").select("id, product_name, qty").in("id", courtesyIds);
-        const map = new Map<string, { name: string; qty: number }>();
-        for (const red of okReds) {
-          const qr = (qrRows || []).find(q => q.id === red.courtesy_id);
-          if (!qr) continue;
-          const e = map.get(qr.product_name) || { name: qr.product_name, qty: 0 };
-          e.qty += Number(qr.qty) || 1;
-          map.set(qr.product_name, e);
-        }
-        courtesyTopItems = [...map.values()].sort((a, b) => b.qty - a.qty);
+          .from("courtesy_qr").select("id, product_name, qty, note").in("id", courtesyIds);
+        const qrMap = new Map((qrRows || []).map(q => [q.id, q]));
+        const fmtTime = new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hour12: false });
+        courtesyItems = okReds
+          .map(red => {
+            const qr = qrMap.get(red.courtesy_id);
+            if (!qr) return null;
+            return {
+              time: fmtTime.format(new Date(red.redeemed_at)),
+              product: qr.product_name,
+              qty: Number(qr.qty) || 1,
+              note: qr.note,
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null)
+          .sort((a, b) => a.time.localeCompare(b.time));
       }
 
       if (sales.length === 0 && ticketSales.length === 0) {
