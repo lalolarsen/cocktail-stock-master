@@ -631,5 +631,6 @@ export function WorkersManagement() {
         </DialogContent>
       </Dialog>
     </Card>
+    </>
   );
 }
