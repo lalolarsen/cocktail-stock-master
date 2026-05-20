@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity, Bell, Truck } from "lucide-react";
+import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, ClipboardList, Activity, Bell, Truck, ShoppingCart, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -58,21 +58,24 @@ const ADMIN_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    label: "Inventario",
+    label: "Catálogo",
     items: [
-      { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
-      { title: "Reposición", value: "replenishment", icon: Truck },
-      { title: "Conteo semanal", value: "weekly-count", icon: ClipboardList },
       { title: "Productos", value: "products", icon: Package },
+      { title: "Carta / Recetas", value: "menu", icon: Martini },
+    ],
+  },
+  {
+    label: "Compras",
+    items: [
+      { title: "Compras", value: "proveedores", icon: ShoppingCart },
+      { title: "Mermas", value: "waste", icon: Trash2 },
     ],
   },
   {
     label: "Ventas",
     items: [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
-      { title: "Carta / Recetas", value: "menu", icon: Martini },
       { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
-      // { title: "Totems Passline", value: "passline-audit", icon: Monitor },
       { title: "Reportes", value: "reports", icon: FileText },
     ],
   },
@@ -101,9 +104,9 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    label: "Inventario",
+    label: "Compras",
     items: [
-      { title: "Inventario en vivo", value: "live-inventory", icon: Activity, badge: "NUEVO" },
+      { title: "Compras", value: "proveedores", icon: ShoppingCart },
     ],
   },
   {
