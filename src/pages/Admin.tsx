@@ -16,7 +16,8 @@ import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
 import { FinancePanel } from "@/components/dashboard/FinancePanel";
-import { ProveedoresPanel } from "@/components/dashboard/ProveedoresPanel";
+import { ComprasPanel } from "@/components/dashboard/ComprasPanel";
+import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import CourtesyQR from "@/pages/CourtesyQR";
 import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
 import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
@@ -72,7 +73,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "inventory", "finance", "courtesy-qr", "botellas", "income", "settings", "analytics", "voids", "comparison", "live-inventory", "notifications"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "finance", "courtesy-qr", "income", "settings", "analytics", "voids", "proveedores", "notifications"];
   
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -127,7 +128,7 @@ export default function Admin() {
       case "finance": return "Finanzas";
       case "income": return "Ingresos";
       case "analytics": return "Análisis";
-      case "proveedores": return "Proveedores";
+      case "proveedores": return "Compras";
       case "courtesy-qr": return "QR Cortesía";
       case "waste": return "Merma";
       case "botellas": return "Botellas";
@@ -191,7 +192,8 @@ export default function Admin() {
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
             {activeView === "finance" && isReadOnly && <FinancePanel />}
             {activeView === "income" && <IncomeDeclarationPanel />}
-            {activeView === "proveedores" && !isReadOnly && <ProveedoresPanel />}
+            {activeView === "proveedores" && !isReadOnly && <ComprasPanel />}
+            {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
             {activeView === "botellas" && <OpenBottlesMonitor />}
