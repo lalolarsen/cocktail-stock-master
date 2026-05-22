@@ -1887,6 +1887,7 @@ export type Database = {
           product_id: string
           raw_text: string
           supplier_rut: string | null
+          supplier_sku: string | null
           times_used: number
           venue_id: string
         }
@@ -1899,6 +1900,7 @@ export type Database = {
           product_id: string
           raw_text: string
           supplier_rut?: string | null
+          supplier_sku?: string | null
           times_used?: number
           venue_id: string
         }
@@ -1911,6 +1913,7 @@ export type Database = {
           product_id?: string
           raw_text?: string
           supplier_rut?: string | null
+          supplier_sku?: string | null
           times_used?: number
           venue_id?: string
         }
