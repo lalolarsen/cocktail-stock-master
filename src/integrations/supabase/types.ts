@@ -3317,6 +3317,7 @@ export type Database = {
           qty_invoiced: number | null
           raw_text: string | null
           status: string
+          supplier_sku: string | null
           tax_amount: number
           tax_category_id: string | null
           tax_rate: number | null
@@ -3339,6 +3340,7 @@ export type Database = {
           qty_invoiced?: number | null
           raw_text?: string | null
           status?: string
+          supplier_sku?: string | null
           tax_amount?: number
           tax_category_id?: string | null
           tax_rate?: number | null
@@ -3361,6 +3363,7 @@ export type Database = {
           qty_invoiced?: number | null
           raw_text?: string | null
           status?: string
+          supplier_sku?: string | null
           tax_amount?: number
           tax_category_id?: string | null
           tax_rate?: number | null
