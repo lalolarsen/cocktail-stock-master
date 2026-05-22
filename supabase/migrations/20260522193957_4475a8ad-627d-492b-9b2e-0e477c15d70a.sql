@@ -1,0 +1,2 @@
+ALTER TABLE public.learning_product_mappings ADD COLUMN IF NOT EXISTS supplier_sku TEXT;
+CREATE INDEX IF NOT EXISTS idx_learning_mappings_sku ON public.learning_product_mappings (venue_id, supplier_rut, supplier_sku);

@@ -1,0 +1,1 @@
+ALTER TABLE public.purchase_import_lines ADD COLUMN IF NOT EXISTS supplier_sku TEXT;

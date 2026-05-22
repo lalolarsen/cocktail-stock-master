@@ -1,83 +1,66 @@
-# Plan: Módulo de Compras (facturas + métricas) y limpieza de Inventario en vivo
-
 ## Objetivo
-1. Crear un módulo **Compras** donde se suben facturas (PDF/imagen), se reconocen automáticamente (proveedor, folio, fecha, total) y se muestran 3 métricas clave.
-2. Ocultar de la UI todos los módulos de inventario en vivo / reposición / conteos / comparaciones. **No se borran datos** — solo se ocultan del sidebar y rutas. Mermas, cortesías y reporte de canjes se conservan.
 
-## Parte 1 — Módulo "Compras"
+Hacer que el lector de facturas reconozca correctamente el formato CCU (las 3 facturas subidas) y mejore el auto-mapeo guardando el **código del proveedor como SKU**, sin romper lo que ya funciona.
 
-### Aprovechar lo existente
-Ya existe infraestructura de facturas que actualmente vive bajo "Proveedores":
-- Tabla `purchase_imports` (header con `supplier_name`, `document_number`, `document_date`, `total_amount`, etc.)
-- Tabla `purchase_import_lines` (líneas con producto, unidades, costo unitario)
-- Edge function `extract-invoice` (OCR/extracción)
-- `UploadInvoiceDialog`, `ProveedoresPanel`, `ProveedoresImportDetail`
+## Lo que confirmamos contigo
 
-**Decisión:** renombrar la vista "Proveedores" → **"Compras"** y agregar arriba un tab de **Métricas**. Así no se duplica nada y el flujo de subir factura ya está probado.
+- **Código CCU** → guardar como SKU para auto-match (ej: 871240 → Red Bull Tradicional).
+- **ILA / IABA** → siguen excluidos del costo (NETO sin ILA, regla actual).
+- **Flete (cód 9999)** → se sigue ignorando.
+- **Multiplicador** → Cantidad (cajas) × multiplicador de la descripción = unidades reales.
 
-### Estructura del nuevo panel
-`CompasPanel` con 2 tabs:
+## Cambios
 
-1. **Métricas** (nuevo) — selector de mes (default: mes actual, en `America/Santiago`):
-   - **KPI cards (fila superior):**
-     - Total comprado del mes (suma de `total_amount` de imports `CONFIRMED`).
-     - Total vendido del mes (suma de `sales.total` de ese mes, excluyendo cortesías).
-     - **Ratio Compras/Ventas** (%) — referencia rápida de salud.
-   - **Gráfico de línea:** comprado vs vendido por día del mes.
-   - **Top productos comprados (tabla):** producto, unidades totales compradas, monto total, último costo unitario. Top 20. Basado en `purchase_import_lines` de imports `CONFIRMED` del mes.
-   - **Evolución del costo unitario por producto:** buscador de producto → gráfico de línea con `cost_unit_net` de cada compra confirmada en los últimos 6 meses (detecta alzas).
+### 1. DB — agregar `supplier_sku` a la memoria de mapeos
 
-2. **Facturas** — listado actual de `ProveedoresPanel` (subir, ver estado, abrir detalle). Se mantiene tal cual.
+Migración pequeña sobre `learning_product_mappings`:
 
-### Reconocimiento automático
-La factura ya extrae: proveedor, RUT, folio, fecha, neto, IVA, **total**, líneas con producto/unidades/costo. No requiere cambios. El usuario solo necesita revisar y confirmar (flujo existente `ProveedoresImportDetail`).
+- Nuevo campo `supplier_sku TEXT NULL`.
+- Nuevo índice `(venue_id, supplier_rut, supplier_sku)` para lookup rápido.
+- No rompe registros existentes (campo opcional).
 
-### Detalles técnicos
-- Nuevo archivo: `src/components/dashboard/ComprasPanel.tsx` (wrapper con tabs).
-- Nuevo archivo: `src/components/dashboard/compras/PurchaseMetrics.tsx` (las métricas).
-- Hook nuevo: `src/hooks/useComprasMetrics.ts` con queries paginadas (`fetchAllRows`) por `venue_id`, filtradas por mes.
-- Ventas del mes: leer de `sales` (excluyendo `is_courtesy=true`) sumando `total`.
-- Compras del mes: `purchase_imports` filtrado por `status='CONFIRMED'` y `document_date` dentro del mes.
-- Gráficos con `recharts` (ya está en el proyecto).
-- Sidebar: agregar item **"Compras"** (icono `Receipt`/`FileText`) en sección "Ventas" o nueva sección "Finanzas". Eliminar la entrada antigua "Proveedores" para no duplicar.
+### 2. Edge function `extract-invoice` — prompt y parser afinados al formato CCU
 
-## Parte 2 — Ocultar Inventario en vivo (solo UI)
+**Prompt al modelo (Gemini):**
+- Pedir explícitamente las columnas del formato CCU: `Código`, `Descripción`, `Grado Alcoh`, `UM`, `Cantidad`, `Precio Unit`, `% Descuento`, `Valor`, `[P.U.] Unidad`.
+- Nuevo campo por línea: `supplier_code` (el código numérico, ej "871240").
+- Pedir tomar `NETO` como `net_total_text` y `TOTAL FACTURA` como `gross_total_text`, ignorando IVA / ILA VIN / ILA CER / IABA (no se cargan a costo).
+- Reforzar que líneas con código `9999` o descripción "Flete de Mercaderías" se marcan `line_type: "expense"` y se descartan.
+- Aceptar fotos rotadas / con sombra (las 3 facturas están sobre un piso oscuro).
 
-### Items a quitar del sidebar (admin + gerencia)
-De `src/components/AppSidebar.tsx`:
-- `live-inventory` (Inventario en vivo)
-- `replenishment` (Reposición)
-- `weekly-count` (Conteo semanal)
-- `shift-counts` (Conteos por aprobar)
-- `botellas` (Botellas abiertas)
-- `comparison` (Comparación de inventario)
-- `reconciliation` (Cuadre de inventario)
-- `external-consumption` (Consumo externo)
-- `inventory` (Hub de inventario)
-- `passline-audit`
+**Parser:**
+- Persistir `supplier_code` (alias SKU) en cada línea extraída.
+- **Orden de auto-match** (nuevo):
+  1. `supplier_sku` + `supplier_rut` en `learning_product_mappings` (match exacto por código CCU del mismo proveedor).
+  2. Patrón RedBull / Mixer (como hoy).
+  3. `raw_text` en `learning_product_mappings` (como hoy).
+- Confirmar línea → guardar el aprendizaje incluyendo `supplier_sku` para que la próxima factura del mismo proveedor matchee al instante.
 
-### Qué SÍ se mantiene visible
-- **Reporte de canjes** (oro) — intacto, en Reportes.
-- **Mermas con aprobación** (`waste`) — intacto en el sidebar.
-- **Cortesías QR** y su reporte por jornada — intactos.
-- **Productos** (catálogo) — se conserva, ya que sigue siendo necesario para POS/recetas.
+### 3. Mejorar detección de multiplicador para CCU
 
-### Cambios concretos
-- Editar `AppSidebar.tsx`: quitar items listados arriba de ambos arrays (`ADMIN_SECTIONS`, `GERENCIA_SECTIONS`). La sección "Inventario" queda solo con "Productos".
-- Editar `Admin.tsx`: dejar los `case` y renders existentes en su lugar (no se rompe nada por URL directa), pero remover del `allowedViewsForGerencia` los valores ocultados para que gerencia no acceda.
-- **No tocar** la base de datos ni edge functions. **No tocar** la lógica de stock que ocurre en canjes (sigue escribiendo `stock_movements` por consistencia histórica, aunque ya no se muestre).
+Agregar patrones que aparecen en las facturas subidas:
+- `6PFX4-LAT350` / `4PCX6-VNR330` / `4PCK4` → `N x M` (ya cubierto).
+- `12PF-PET 600CC` → 12 unidades.
+- `PET1500X6-TR` / `PET1600X6-TR` → 6 unidades (X<n> al final).
+- `24PF-LAT250` → 24 unidades.
+- Tests rápidos en `purchase-calculator.test.ts` para los 10 casos vistos en las 3 fotos.
+
+### 4. UI — mostrar código del proveedor en la revisión
+
+En `MinimalReviewTable.tsx` (panel de revisión de líneas):
+- Nueva columna **Cód.** con `supplier_code` (solo lectura, gris pequeño).
+- Al confirmar la línea, el código viaja al `learning_product_mappings` (no requiere UI extra).
+
+## Out of scope
+
+- Cambiar reglas de CPP, IVA o ILA.
+- Tocar el flujo de Bodega / Replenishment / Transferencias.
+- Reconocer facturas de otros proveedores distintos a CCU (el prompt es genérico igual, pero solo verificamos contra CCU).
 
 ## Archivos a tocar
-- **Nuevos:**
-  - `src/components/dashboard/ComprasPanel.tsx`
-  - `src/components/dashboard/compras/PurchaseMetrics.tsx`
-  - `src/hooks/useComprasMetrics.ts`
-- **Editados:**
-  - `src/components/AppSidebar.tsx` (agregar Compras, quitar items de inventario y "Proveedores")
-  - `src/pages/Admin.tsx` (montar `<ComprasPanel/>` en `proveedores` o nuevo `compras`, recortar `allowedViewsForGerencia`)
 
-## Fuera de alcance
-- Cruce compras ↔ canjes para margen por producto (lo descartaste por ahora).
-- Drop de tablas o cambios de schema.
-- Cambios en POS, Bar, Jornadas, Cortesías, Mermas.
-- Cambios al flujo de extracción OCR de facturas (ya funciona).
+- `supabase/migrations/...` (nueva, agrega `supplier_sku`).
+- `supabase/functions/extract-invoice/index.ts` (prompt + parser + auto-match).
+- `src/components/purchase/MinimalReviewTable.tsx` (columna Cód.).
+- `src/lib/purchase-calculator.ts` + `src/lib/purchase-calculator.test.ts` (multiplicadores).
+- Persistir SKU al confirmar: revisar `src/pages/ProveedoresImportDetail.tsx` para incluir `supplier_sku` en el upsert a `learning_product_mappings`.
