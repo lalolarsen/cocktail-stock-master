@@ -707,6 +707,7 @@ export default function ProveedoresImportDetail() {
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
                     <TableHead className="w-16">Tipo</TableHead>
+                    <TableHead className="w-20">Cód.</TableHead>
                     <TableHead className="min-w-[180px]">Texto original</TableHead>
                     <TableHead className="w-16">Cant.</TableHead>
                     <TableHead className="w-14">Mult.</TableHead>
@@ -730,6 +731,11 @@ export default function ProveedoresImportDetail() {
                         <Badge variant={isExpense ? "secondary" : "outline"} className="text-[10px]">
                           {isExpense ? "GASTO" : "INV"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {line.supplier_sku || "—"}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Input
