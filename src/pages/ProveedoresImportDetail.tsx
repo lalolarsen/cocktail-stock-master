@@ -31,6 +31,7 @@ interface ImportLine {
   id: string;
   line_index: number;
   raw_text: string;
+  supplier_sku: string | null;
   qty_invoiced: number;
   unit_price_net: number | null;
   line_total_net: number | null;
