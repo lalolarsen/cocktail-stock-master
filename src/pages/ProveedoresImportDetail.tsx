@@ -456,32 +456,52 @@ export default function ProveedoresImportDetail() {
         }).eq("id", line.product_id!);
       }
 
-      // Learning: upsert product mappings
+      // Learning: upsert product mappings (prefer SKU when available)
       for (const line of invLines) {
-        if (!line.raw_text || !line.product_id) continue;
-        const { data: existing } = await learningProductMappingsTable()
-          .select("id, times_used")
-          .eq("venue_id", venue.id)
-          .eq("raw_text", line.raw_text)
-          .eq("product_id", line.product_id)
-          .maybeSingle();
+        if (!line.product_id) continue;
+        const sku = (line.supplier_sku || "").trim() || null;
+        const raw = (line.raw_text || "").trim();
+        if (!sku && !raw) continue;
 
-        const existingRow = existing as unknown as { id: string; times_used: number } | null;
+        // Try to find existing by (venue, supplier_rut, sku) first; fallback to raw_text
+        let existingRow: { id: string; times_used: number } | null = null;
+        if (sku) {
+          const { data } = await learningProductMappingsTable()
+            .select("id, times_used")
+            .eq("venue_id", venue.id)
+            .eq("supplier_rut", imp.supplier_rut || "")
+            .eq("supplier_sku", sku)
+            .maybeSingle();
+          existingRow = (data as unknown as { id: string; times_used: number } | null) || null;
+        }
+        if (!existingRow && raw) {
+          const { data } = await learningProductMappingsTable()
+            .select("id, times_used")
+            .eq("venue_id", venue.id)
+            .eq("raw_text", raw)
+            .eq("product_id", line.product_id)
+            .maybeSingle();
+          existingRow = (data as unknown as { id: string; times_used: number } | null) || null;
+        }
+
         if (existingRow) {
           await learningProductMappingsTable().update({
             times_used: (existingRow.times_used || 0) + 1,
             detected_multiplier: line.detected_multiplier,
+            supplier_sku: sku,
+            product_id: line.product_id,
             last_used_at: new Date().toISOString(),
             confidence: Math.min(0.95, 0.8 + (existingRow.times_used || 0) * 0.02),
-          }).eq("id", existingRow.id);
+          } as any).eq("id", existingRow.id);
         } else {
           await learningProductMappingsTable().insert({
             venue_id: venue.id,
             supplier_rut: imp.supplier_rut,
-            raw_text: line.raw_text,
+            supplier_sku: sku,
+            raw_text: raw,
             product_id: line.product_id,
             detected_multiplier: line.detected_multiplier,
-          });
+          } as any);
         }
       }
 
