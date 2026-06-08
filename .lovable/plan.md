@@ -169,7 +169,7 @@ Gerencia: subset read-only.
 | **F5 — Reporte de gasto de insumos** ✅ | `IngredientUsageReportButton` reemplaza `RedeemReportButton`. PDF basado en `sale_items × cocktail_ingredients` + cortesías redimidas. | hecho |
 | **F6 — Eliminar EERR + simplificar dashboard** ✅ | Borrados `IncomeStatement`, `FinancePanel`, `IncomeDeclarationPanel`, `JornadaCloseSummaryDialog`, `COGSBreakdownPanel`, `useFinanceMTD`. Ruta `/admin/reports/estado-resultados` retirada, menú "Estado de Resultados" eliminado del download menu y del ReportsPanel. `useCOGSData` se conserva para Analytics/JornadaKPI hasta refactor mayor. | hecho |
 | **F7 — Lector de facturas protagónico** ✅ | `InvoiceAnalytics` con 4 vistas: Compras semanales (ISO), Histórico de precio por insumo, Venta vs Compra teórica, Top insumos por gasto y por variación. Tab "Análisis" como default en ComprasPanel. | hecho |
-| **F8 — Limpieza final** | Quitar rol `bar` del UI, sacar `Documents` si no aplica, actualizar memorias, README, security memory. | 1–2 días |
+| **F8 — Limpieza final** ✅ | Rol `bar` quitado del UI (CreateWorkerDialog ROLES, filtro WorkersManagementNew, allowedRoles de `/sales`). Documents/`/admin/documents` se conserva (gestiona reintentos de documentos tributarios). DB intacta. | hecho |
 | **Total** | | **~3 semanas de trabajo enfocado** |
 
 ---

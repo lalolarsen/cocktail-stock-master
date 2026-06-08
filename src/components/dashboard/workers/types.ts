@@ -1,4 +1,4 @@
-import { Shield, Eye, ShoppingCart, Wine, Sparkles } from "lucide-react";
+import { Shield, Eye, ShoppingCart, Sparkles } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 
 export interface Worker {
@@ -60,14 +60,6 @@ export const AVAILABLE_ROLES: {
     textColor: "text-emerald-700"
   },
   { 
-    value: "bar", 
-    label: "Barra", 
-    icon: Wine, 
-    color: "text-purple-500",
-    bgColor: "bg-purple-50",
-    textColor: "text-purple-700"
-  },
-  { 
     value: "ticket_seller", 
     label: "Ticketero", 
     icon: Sparkles, 
@@ -76,3 +68,4 @@ export const AVAILABLE_ROLES: {
     textColor: "text-rose-700"
   },
 ];
+

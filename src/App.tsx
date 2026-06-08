@@ -177,7 +177,7 @@ function AppRoutes() {
       <Route
         path="/sales"
         element={
-          <ProtectedRoute allowedRoles={["vendedor", "admin", "bar"]}>
+          <ProtectedRoute allowedRoles={["vendedor", "admin"]}>
             <Sales />
           </ProtectedRoute>
         }

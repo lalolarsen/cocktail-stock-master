@@ -140,7 +140,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
     }
     if (viewerRole === "admin") {
       return workerList.filter((w) =>
-        w.roles.some((r) => ["admin", "vendedor", "bar", "ticket_seller"].includes(r))
+        w.roles.some((r) => ["admin", "vendedor", "ticket_seller"].includes(r))
       );
     }
     return workerList;
