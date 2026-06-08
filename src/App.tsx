@@ -21,7 +21,7 @@ import NotFound from "./pages/NotFound";
 import SystemSettings from "./pages/SystemSettings";
 import Tickets from "./pages/Tickets";
 import Income from "./pages/Income";
-import IncomeStatement from "./pages/IncomeStatement";
+
 import PurchasesImport from "./pages/PurchasesImport";
 import ProveedoresImportDetail from "./pages/ProveedoresImportDetail";
 import PendingCatalog from "./pages/PendingCatalog";
@@ -110,14 +110,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
             <Income />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/reports/estado-resultados"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "gerencia"]}>
-            <IncomeStatement />
           </ProtectedRoute>
         }
       />
