@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
-import { formatCLP } from "@/lib/currency";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,36 +14,21 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { QRCodeSVG } from "qrcode.react";
-import {
   Plus,
-  QrCode,
-  Copy,
-  Ban,
-  Eye,
   Loader2,
   Gift,
   Search,
-  CopyPlus,
   Printer,
   History,
   CheckCircle,
-  Clock,
-  XCircle,
-  AlertTriangle,
   Download,
+  Receipt,
 } from "lucide-react";
+import { printCourtesyCover } from "@/lib/printing/courtesy-cover";
 
-type CourtesyQR = {
+type CourtesyRow = {
   id: string;
   code: string;
   product_id: string;
@@ -72,13 +56,6 @@ type Redemption = {
   sale_id: string | null;
 };
 
-const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof Gift }> = {
-  active: { label: "Activo", variant: "default", icon: CheckCircle },
-  redeemed: { label: "Canjeado", variant: "secondary", icon: Gift },
-  expired: { label: "Expirado", variant: "outline", icon: Clock },
-  cancelled: { label: "Cancelado", variant: "destructive", icon: XCircle },
-};
-
 const SOCIOS = [
   { key: "socio_md", label: "Socio: Mauricio Duque" },
   { key: "socio_cs", label: "Socio: Carlos Sinning" },
@@ -86,22 +63,19 @@ const SOCIOS = [
 ];
 
 export default function CourtesyQR() {
-  const { user, hasRole } = useAppSession();
+  const { user, hasRole, activeJornadaId } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
   const isAdmin = hasRole("admin");
 
   const [showCreate, setShowCreate] = useState(false);
-  const [showQR, setShowQR] = useState<CourtesyQR | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [lastIssued, setLastIssued] = useState<CourtesyRow | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Create form state
+  // Form state
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
-  const [expiryMode, setExpiryMode] = useState<"today" | "custom">("today");
-  const [customExpiry, setCustomExpiry] = useState("");
-  const [maxUses, setMaxUses] = useState(1);
   const [note, setNote] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -119,22 +93,22 @@ export default function CourtesyQR() {
     enabled: !!venue?.id,
   });
 
-  const { data: qrs = [], isLoading } = useQuery({
-    queryKey: ["courtesy-qrs", venue?.id],
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["courtesy-list-full", venue?.id],
     queryFn: async () => {
       if (!venue?.id) return [];
       const { data, error } = await supabase
         .from("courtesy_qr")
         .select("*")
         .eq("venue_id", venue.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (error) throw error;
-      return (data || []) as CourtesyQR[];
+      return (data || []) as CourtesyRow[];
     },
     enabled: !!venue?.id,
   });
 
-  // Fetch redemptions for audit tab
   const { data: redemptions = [], isLoading: loadingRedemptions } = useQuery({
     queryKey: ["courtesy-redemptions", venue?.id],
     queryFn: async () => {
@@ -151,8 +125,7 @@ export default function CourtesyQR() {
     enabled: !!venue?.id,
   });
 
-  // Fetch profiles for redeemer names
-  const redeemerIds = useMemo(() => [...new Set(redemptions.map(r => r.redeemed_by))], [redemptions]);
+  const redeemerIds = useMemo(() => [...new Set(redemptions.map((r) => r.redeemed_by))], [redemptions]);
   const { data: redeemerProfiles = [] } = useQuery({
     queryKey: ["redeemer-profiles", redeemerIds],
     queryFn: async () => {
@@ -168,60 +141,42 @@ export default function CourtesyQR() {
 
   const profileMap = useMemo(() => {
     const map: Record<string, string> = {};
-    redeemerProfiles.forEach(p => { map[p.id] = p.full_name || "Sin nombre"; });
+    redeemerProfiles.forEach((p) => { map[p.id] = p.full_name || "Sin nombre"; });
     return map;
   }, [redeemerProfiles]);
 
-  // Normalize expired QRs
-  const normalizedQRs = useMemo(() => 
-    qrs.map(qr => 
-      qr.status === "active" && new Date(qr.expires_at) < new Date()
-        ? { ...qr, status: "expired" }
-        : qr
-    ),
-  [qrs]);
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return rows;
+    const q = searchQuery.toLowerCase();
+    return rows.filter((r) =>
+      r.product_name.toLowerCase().includes(q) ||
+      r.code.toLowerCase().includes(q) ||
+      (r.note && r.note.toLowerCase().includes(q))
+    );
+  }, [rows, searchQuery]);
 
-  // Stats
-  const stats = useMemo(() => ({
-    active: normalizedQRs.filter(q => q.status === "active").length,
-    redeemed: normalizedQRs.filter(q => q.status === "redeemed").length,
-    expired: normalizedQRs.filter(q => q.status === "expired").length,
-    cancelled: normalizedQRs.filter(q => q.status === "cancelled").length,
-    total: normalizedQRs.length,
-  }), [normalizedQRs]);
-
-  // Filter
-  const filteredQRs = useMemo(() => {
-    let result = normalizedQRs;
-    if (statusFilter !== "all") result = result.filter(q => q.status === statusFilter);
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(qr =>
-        qr.product_name.toLowerCase().includes(q) ||
-        qr.code.toLowerCase().includes(q) ||
-        (qr.note && qr.note.toLowerCase().includes(q))
-      );
-    }
-    return result;
-  }, [normalizedQRs, statusFilter, searchQuery]);
-
-  // Redemptions enriched with QR data
   const enrichedRedemptions = useMemo(() => {
-    const qrMap: Record<string, CourtesyQR> = {};
-    qrs.forEach(q => { qrMap[q.id] = q; });
-    return redemptions.map(r => ({
+    const map: Record<string, CourtesyRow> = {};
+    rows.forEach((r) => { map[r.id] = r; });
+    return redemptions.map((r) => ({
       ...r,
-      qr: qrMap[r.courtesy_id],
+      ref: map[r.courtesy_id],
       redeemerName: profileMap[r.redeemed_by] || "Desconocido",
     }));
-  }, [redemptions, qrs, profileMap]);
+  }, [redemptions, rows, profileMap]);
+
+  const filteredCocktails = useMemo(() => {
+    if (!productSearch.trim()) return cocktails;
+    const q = productSearch.toLowerCase();
+    return cocktails.filter((c) => c.name.toLowerCase().includes(q));
+  }, [cocktails, productSearch]);
+
+  const selectedProduct = cocktails.find((c) => c.id === selectedProductId);
 
   const resetForm = () => {
     setSelectedProductId("");
+    setProductSearch("");
     setQty(1);
-    setExpiryMode("today");
-    setCustomExpiry("");
-    setMaxUses(1);
     setNote("");
   };
 
@@ -232,18 +187,11 @@ export default function CourtesyQR() {
     }
     setCreating(true);
     try {
-      const product = cocktails.find(c => c.id === selectedProductId);
+      const product = cocktails.find((c) => c.id === selectedProductId);
       if (!product) throw new Error("Producto no encontrado");
 
-      let expiresAt: string;
-      if (expiryMode === "today") {
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
-        expiresAt = endOfDay.toISOString();
-      } else {
-        if (!customExpiry) { toast.error("Selecciona fecha"); setCreating(false); return; }
-        expiresAt = new Date(customExpiry).toISOString();
-      }
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
 
       const { data, error } = await supabase
         .from("courtesy_qr")
@@ -251,8 +199,10 @@ export default function CourtesyQR() {
           product_id: selectedProductId,
           product_name: product.name,
           qty,
-          expires_at: expiresAt,
-          max_uses: maxUses,
+          expires_at: endOfDay.toISOString(),
+          max_uses: 1,
+          used_count: 1,
+          status: "redeemed",
           note: note || null,
           created_by: user.id,
           venue_id: venue.id,
@@ -261,110 +211,64 @@ export default function CourtesyQR() {
         .single();
 
       if (error) throw error;
-      toast.success("QR de cortesía creado");
-      queryClient.invalidateQueries({ queryKey: ["courtesy-qrs"] });
+      const row = data as CourtesyRow;
+
+      if (activeJornadaId) {
+        await supabase.from("courtesy_redemptions").insert({
+          courtesy_id: row.id,
+          redeemed_by: user.id,
+          jornada_id: activeJornadaId,
+          venue_id: venue.id,
+          result: "success",
+          pos_id: null,
+        });
+      }
+
+      toast.success("Cortesía emitida");
+      queryClient.invalidateQueries({ queryKey: ["courtesy-list-full"] });
+      queryClient.invalidateQueries({ queryKey: ["courtesy-redemptions"] });
       setShowCreate(false);
       resetForm();
-      setShowQR(data as CourtesyQR);
+      setLastIssued(row);
+      printCourtesyCover({
+        productName: row.product_name,
+        qty: row.qty,
+        code: row.code,
+        note: row.note,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+      });
     } catch (err: any) {
-      toast.error(err.message || "Error al crear QR");
+      toast.error(err.message || "Error al emitir cortesía");
     } finally {
       setCreating(false);
     }
   };
 
-  const handleCancel = async (qr: CourtesyQR) => {
-    const { error } = await supabase
-      .from("courtesy_qr")
-      .update({ status: "cancelled" })
-      .eq("id", qr.id);
-    if (error) toast.error("Error al cancelar");
-    else {
-      toast.success("QR cancelado");
-      queryClient.invalidateQueries({ queryKey: ["courtesy-qrs"] });
-    }
-  };
-
-  const handleDuplicate = (qr: CourtesyQR) => {
-    setSelectedProductId(qr.product_id);
-    setQty(qr.qty);
-    setMaxUses(qr.max_uses);
-    setNote(qr.note || "");
-    setExpiryMode("today");
-    setShowCreate(true);
-  };
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    toast.success("Código copiado");
+  const reprint = (row: CourtesyRow) => {
+    printCourtesyCover({
+      productName: row.product_name,
+      qty: row.qty,
+      code: row.code,
+      note: row.note,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    });
   };
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-  const fmtDateFull = (iso: string) =>
-    new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-  const handlePrint = (qr: CourtesyQR) => {
-    const qrEl = document.getElementById("courtesy-qr-svg");
-    const w = window.open("", "_blank", "width=380,height=620");
-    if (!w) { toast.error("Popup bloqueado"); return; }
-    const expiresStr = fmtDateFull(qr.expires_at);
-    w.document.write(`
-      <html><head><title>QR Cortesía</title>
-      <style>
-        @page { size: 80mm auto; margin: 4mm; }
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 6px 4px; width: 72mm; color: #000; }
-        .brand { font-size: 11px; letter-spacing: 3px; font-weight: 700; }
-        .tag { display: inline-block; margin: 6px 0; padding: 3px 10px; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 800; letter-spacing: 1px; }
-        .product { font-size: 18px; font-weight: 800; line-height: 1.15; margin: 8px 4px 2px; word-wrap: break-word; }
-        .qty { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
-        .qr { margin: 4px 0; }
-        .qr svg { width: 56mm !important; height: 56mm !important; }
-        .code { font-family: "Courier New", monospace; font-size: 16px; letter-spacing: 3px; background: #000; color: #fff; padding: 5px 10px; border-radius: 4px; display: inline-block; margin: 6px 0; }
-        .meta { font-size: 10px; color: #333; margin-top: 4px; }
-        .note { font-style: italic; font-size: 11px; margin-top: 4px; border-top: 1px dashed #999; padding-top: 4px; }
-        .footer { font-size: 9px; color: #555; margin-top: 6px; letter-spacing: 1px; }
-      </style></head><body>
-      <div class="brand">STOCKIA</div>
-      <div class="tag">🎁 CORTESÍA</div>
-      <div class="product">${qr.product_name}</div>
-      <div class="qty">× ${qr.qty} · ${qr.max_uses === 1 ? "1 uso" : `${qr.max_uses} usos`}</div>
-      <div class="qr">${qrEl?.outerHTML || ""}</div>
-      <div class="code">${qr.code}</div>
-      <div class="meta">Válido hasta: ${expiresStr}</div>
-      ${qr.note ? `<div class="note">"${qr.note}"</div>` : ""}
-      <div class="footer">CANJEAR EN BARRA</div>
-      <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 300); };</script>
-      </body></html>
-    `);
-    w.document.close();
-  };
-
   const downloadReport = () => {
     const escape = (s: any) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-    const redemptionsByQr = new Map<string, Redemption[]>();
-    redemptions.forEach(r => {
-      const arr = redemptionsByQr.get(r.courtesy_id) || [];
-      arr.push(r);
-      redemptionsByQr.set(r.courtesy_id, arr);
-    });
     const headers = [
-      "codigo", "producto", "cantidad", "max_usos", "usos", "estado",
-      "motivo", "creado", "expira", "canjes_exitosos", "canjes_fallidos", "fuente_canjes",
+      "codigo", "producto", "cantidad", "estado", "motivo", "emitido", "expira", "creado_por",
     ];
-    const rows = qrs.map(qr => {
-      const reds = redemptionsByQr.get(qr.id) || [];
-      const ok = reds.filter(r => r.result === "success").length;
-      const fail = reds.filter(r => r.result !== "success").length;
-      const sources = [...new Set(reds.map(r => (r as any).pos_source).filter(Boolean))].join("|");
-      return [
-        qr.code, qr.product_name, qr.qty, qr.max_uses, qr.used_count, qr.status,
-        qr.note || "", qr.created_at, qr.expires_at, ok, fail, sources,
-      ].map(escape).join(",");
-    });
-    const csv = "\uFEFF" + headers.map(escape).join(",") + "\n" + rows.join("\n");
+    const csvRows = rows.map((r) =>
+      [r.code, r.product_name, r.qty, r.status, r.note || "", r.created_at, r.expires_at, r.created_by]
+        .map(escape).join(",")
+    );
+    const csv = "\uFEFF" + headers.map(escape).join(",") + "\n" + csvRows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -379,311 +283,226 @@ export default function CourtesyQR() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Gift className="w-6 h-6 text-primary" />
-            QR de Cortesía
+            Cortesías
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Genera, gestiona y audita cortesías
+            Emite cover físico de cortesía · sin QR
           </p>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
             <Button onClick={downloadReport} variant="outline" size="lg">
               <Download className="w-4 h-4 mr-2" />
-              Descargar reporte
+              CSV
             </Button>
           )}
           <Button onClick={() => { resetForm(); setShowCreate(true); }} size="lg">
             <Plus className="w-4 h-4 mr-2" />
-            Crear QR
+            Emitir cortesía
           </Button>
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Activos", value: stats.active, icon: CheckCircle, color: "text-green-500" },
-          { label: "Canjeados", value: stats.redeemed, icon: Gift, color: "text-blue-500" },
-          { label: "Expirados", value: stats.expired, icon: AlertTriangle, color: "text-amber-500" },
-          { label: "Cancelados", value: stats.cancelled, icon: XCircle, color: "text-destructive" },
-        ].map(s => (
-          <Card key={s.label} className="p-4 flex items-center gap-3">
-            <s.icon className={`w-8 h-8 ${s.color} shrink-0`} />
-            <div>
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-            </div>
-          </Card>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Card className="p-4 flex items-center gap-3">
+          <Receipt className="w-8 h-8 text-primary shrink-0" />
+          <div>
+            <p className="text-2xl font-bold">{rows.length}</p>
+            <p className="text-xs text-muted-foreground">Total emitidas</p>
+          </div>
+        </Card>
+        <Card className="p-4 flex items-center gap-3">
+          <Gift className="w-8 h-8 text-blue-500 shrink-0" />
+          <div>
+            <p className="text-2xl font-bold">{rows.reduce((s, r) => s + (r.qty || 0), 0)}</p>
+            <p className="text-xs text-muted-foreground">Unidades</p>
+          </div>
+        </Card>
+        <Card className="p-4 flex items-center gap-3">
+          <History className="w-8 h-8 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-2xl font-bold">{redemptions.length}</p>
+            <p className="text-xs text-muted-foreground">Registros</p>
+          </div>
+        </Card>
       </div>
 
-      {/* Tabs: Cortesías + Auditoría */}
-      <Tabs defaultValue="qrs" className="space-y-4">
+      <Tabs defaultValue="list" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="qrs" className="gap-1.5">
-            <QrCode className="w-4 h-4" />
+          <TabsTrigger value="list" className="gap-1.5">
+            <Receipt className="w-4 h-4" />
             Cortesías
           </TabsTrigger>
           <TabsTrigger value="audit" className="gap-1.5">
             <History className="w-4 h-4" />
-            Historial de Canjes
+            Historial
           </TabsTrigger>
         </TabsList>
 
-        {/* QRs Tab */}
-        <TabsContent value="qrs" className="space-y-4">
-          {/* Filters */}
-          <div className="flex gap-3 items-center flex-wrap">
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar producto o código…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-1.5 flex-wrap">
-              {["all", "active", "redeemed", "expired", "cancelled"].map(s => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                    statusFilter === s
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border/50 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {s === "all" ? "Todos" : STATUS_CONFIG[s]?.label || s}
-                </button>
-              ))}
-            </div>
+        <TabsContent value="list" className="space-y-4">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto, código o motivo…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
 
-          {/* QR Cards */}
           {isLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : filteredQRs.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <Card className="p-12 text-center">
               <Gift className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
               <p className="text-muted-foreground font-medium">No hay cortesías</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">Crea una para empezar</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">Emite la primera para empezar</p>
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredQRs.map(qr => {
-                const st = STATUS_CONFIG[qr.status] || STATUS_CONFIG.active;
-                const isActive = qr.status === "active";
-                return (
-                  <Card key={qr.id} className={`p-4 space-y-3 transition-all ${isActive ? "border-primary/30" : "opacity-75"}`}>
-                    {/* Top row: product + status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-base truncate">{qr.product_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          × {qr.qty} · {qr.used_count}/{qr.max_uses} usos
-                        </p>
-                      </div>
-                      <Badge variant={st.variant} className="shrink-0">{st.label}</Badge>
+              {filtered.map((r) => (
+                <Card key={r.id} className="p-4 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{r.product_name}</p>
+                      <p className="text-xs text-muted-foreground">× {r.qty} · {fmtDate(r.created_at)}</p>
                     </div>
-
-                    {/* Code */}
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm bg-muted px-3 py-1.5 rounded-md font-mono tracking-wide flex-1 text-center">
-                        {qr.code}
-                      </code>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => copyCode(qr.code)}>
-                        <Copy className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-
-                    {/* Note */}
-                    {qr.note && (
-                      <p className="text-xs text-muted-foreground italic truncate">"{qr.note}"</p>
-                    )}
-
-                    {/* Meta row */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Expira: {fmtDate(qr.expires_at)}</span>
-                      <span>Creado: {fmtDate(qr.created_at)}</span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-1.5">
-                      <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => setShowQR(qr)}>
-                        <Eye className="w-3.5 h-3.5 mr-1" />
-                        Ver QR
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-xs" onClick={() => handleDuplicate(qr)}>
-                        <CopyPlus className="w-3.5 h-3.5" />
-                      </Button>
-                      {isActive && (
-                        <Button variant="outline" size="sm" className="text-xs text-destructive hover:text-destructive" onClick={() => handleCancel(qr)}>
-                          <Ban className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+                    <Badge variant="secondary" className="text-[10px]">{r.status}</Badge>
+                  </div>
+                  {r.note && (
+                    <p className="text-xs italic text-muted-foreground line-clamp-2">"{r.note}"</p>
+                  )}
+                  <Button size="sm" variant="outline" className="gap-1.5 mt-1" onClick={() => reprint(r)}>
+                    <Printer className="w-4 h-4" />
+                    Reimprimir cover
+                  </Button>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
 
-        {/* Audit Tab */}
-        <TabsContent value="audit" className="space-y-4">
+        <TabsContent value="audit" className="space-y-2">
           {loadingRedemptions ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : enrichedRedemptions.length === 0 ? (
-            <Card className="p-12 text-center">
-              <History className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-muted-foreground font-medium">Sin canjes registrados</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">Los canjes aparecerán aquí automáticamente</p>
+            <Card className="p-8 text-center">
+              <p className="text-sm text-muted-foreground">Sin registros</p>
             </Card>
           ) : (
-            <div className="space-y-2">
-              {enrichedRedemptions.map(r => (
-                <Card key={r.id} className="p-4 flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                    r.result === "success" ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"
-                  }`}>
-                    {r.result === "success" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+            <div className="border rounded-lg divide-y">
+              {enrichedRedemptions.map((r) => (
+                <div key={r.id} className="p-3 flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {r.ref?.product_name || "—"}{" "}
+                      <span className="text-muted-foreground font-normal">× {r.ref?.qty ?? 0}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {fmtDate(r.redeemed_at)} · {r.redeemerName}
+                      {r.ref?.note ? ` · ${r.ref.note}` : ""}
+                    </p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate">
-                        {r.qr?.product_name || "Producto eliminado"}
-                      </p>
-                      {r.qr && (
-                        <span className="text-xs text-muted-foreground">× {r.qr.qty}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                      <span>Canjeó: {r.redeemerName}</span>
-                      {r.qr?.note && <span>· {r.qr.note}</span>}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-medium">{r.result === "success" ? "Exitoso" : "Fallido"}</p>
-                    <p className="text-xs text-muted-foreground">{fmtDateFull(r.redeemed_at)}</p>
-                  </div>
-                </Card>
+                  <Badge variant={r.result === "success" ? "default" : "destructive"} className="text-[10px]">
+                    {r.result}
+                  </Badge>
+                </div>
               ))}
             </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Create Dialog */}
+      {/* Emitir Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="text-xl flex items-center gap-2">
               <Gift className="w-5 h-5 text-primary" />
-              Crear QR de Cortesía
+              Nueva cortesía
             </DialogTitle>
-            <DialogDescription>
-              El producto se entrega gratis. Stock y costo se registran al canjear.
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Producto</label>
-              <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar producto…" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {cocktails.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name} — {formatCLP(c.price)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Cantidad</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={qty}
-                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Usos máximos</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={maxUses}
-                  onChange={e => setMaxUses(Math.max(1, parseInt(e.target.value) || 1))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Válido hasta</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setExpiryMode("today")}
-                  className={`p-2.5 text-sm rounded-md border-2 transition-colors ${
-                    expiryMode === "today"
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-border/50 text-muted-foreground"
-                  }`}
-                >
-                  Solo hoy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExpiryMode("custom")}
-                  className={`p-2.5 text-sm rounded-md border-2 transition-colors ${
-                    expiryMode === "custom"
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-border/50 text-muted-foreground"
-                  }`}
-                >
-                  Personalizado
-                </button>
-              </div>
-              {expiryMode === "custom" && (
-                <Input
-                  type="datetime-local"
-                  value={customExpiry}
-                  onChange={e => setCustomExpiry(e.target.value)}
-                  className="mt-2"
-                />
+          <div className="space-y-5 mt-1">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Producto</label>
+              {selectedProduct ? (
+                <div className="flex items-center gap-2 p-3 rounded-xl border-2 border-primary bg-primary/5">
+                  <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                  <span className="font-semibold text-base flex-1">{selectedProduct.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-8"
+                    onClick={() => { setSelectedProductId(""); setProductSearch(""); }}
+                  >
+                    Cambiar
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar producto…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="h-12 text-base pl-10"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1 border rounded-xl p-1">
+                    {filteredCocktails.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Sin resultados</p>
+                    ) : (
+                      filteredCocktails.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setSelectedProductId(c.id); setProductSearch(""); }}
+                          className="w-full text-left p-3 rounded-lg hover:bg-accent active:scale-[0.98] transition-all text-base"
+                        >
+                          <span className="font-medium">{c.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{c.category}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Motivo</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {SOCIOS.map(s => (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Cantidad</label>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="icon" className="h-12 w-12 text-lg rounded-xl"
+                  onClick={() => setQty(Math.max(1, qty - 1))} disabled={qty <= 1}>−</Button>
+                <span className="text-3xl font-bold w-12 text-center">{qty}</span>
+                <Button variant="outline" size="icon" className="h-12 w-12 text-lg rounded-xl"
+                  onClick={() => setQty(Math.min(20, qty + 1))}>+</Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Motivo</label>
+              <div className="grid grid-cols-1 gap-2">
+                {SOCIOS.map((s) => (
                   <button
                     key={s.key}
                     type="button"
-                    onClick={() => setNote(s.label)}
-                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                    onClick={() => setNote(note === s.label ? "" : s.label)}
+                    className={`p-3 text-sm rounded-xl border-2 text-left transition-all active:scale-[0.98] ${
                       note === s.label
                         ? "border-primary bg-primary/10 text-primary font-medium"
-                        : "border-border/50 text-muted-foreground hover:text-foreground"
+                        : "border-border/50 text-foreground"
                     }`}
                   >
                     {s.label}
@@ -691,66 +510,49 @@ export default function CourtesyQR() {
                 ))}
               </div>
               <Input
-                placeholder="Ej: VIP mesa 3, cumpleaños…"
-                value={note}
-                onChange={e => setNote(e.target.value)}
+                placeholder="Otro motivo…"
+                value={SOCIOS.some((s) => s.label === note) ? "" : note}
+                onChange={(e) => setNote(e.target.value)}
+                className="h-12 text-base"
               />
             </div>
 
-            <Button onClick={handleCreate} disabled={creating || !selectedProductId} className="w-full" size="lg">
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !selectedProductId}
+              className="w-full h-14 text-lg gap-2 rounded-xl"
+            >
               {creating ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generando…</>
+                <><Loader2 className="w-5 h-5 animate-spin" />Emitiendo…</>
               ) : (
-                <><QrCode className="w-4 h-4 mr-2" />Generar QR</>
+                <><Printer className="w-5 h-5" />Emitir e imprimir cover</>
               )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* View QR Dialog */}
-      <Dialog open={!!showQR} onOpenChange={() => setShowQR(null)}>
-        <DialogContent className="max-w-sm text-center">
+      {/* Confirmación post-emisión */}
+      <Dialog open={!!lastIssued} onOpenChange={() => setLastIssued(null)}>
+        <DialogContent className="max-w-sm rounded-2xl text-center">
           <DialogHeader>
-            <DialogTitle>QR de Cortesía</DialogTitle>
+            <DialogTitle className="sr-only">Cortesía emitida</DialogTitle>
           </DialogHeader>
-          {showQR && (
-            <div className="space-y-4 py-4">
-              <div className="flex justify-center">
-                <div className="bg-white p-4 rounded-xl">
-                  <QRCodeSVG
-                    id="courtesy-qr-svg"
-                    value={`COURTESY:${showQR.code}`}
-                    size={200}
-                    level="H"
-                    includeMargin
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                  />
-                </div>
-              </div>
+          {lastIssued && (
+            <div className="space-y-5 py-2">
+              <CheckCircle className="w-16 h-16 mx-auto text-primary" />
               <div>
-                <p className="text-lg font-bold">{showQR.product_name}</p>
-                <p className="text-sm text-muted-foreground">
-                  × {showQR.qty} · {showQR.max_uses === 1 ? "1 uso" : `${showQR.max_uses} usos`}
-                </p>
+                <p className="text-xl font-bold">{lastIssued.product_name}</p>
+                <p className="text-muted-foreground">× {lastIssued.qty}</p>
               </div>
-              <code className="block text-lg font-mono tracking-wider bg-muted px-4 py-2 rounded-lg">
-                {showQR.code}
-              </code>
-              {showQR.note && (
-                <p className="text-sm text-muted-foreground italic">"{showQR.note}"</p>
-              )}
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => copyCode(showQR.code)} className="flex-1">
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar
-                </Button>
-                <Button onClick={() => handlePrint(showQR)} className="flex-1">
-                  <Printer className="w-4 h-4 mr-2" />
-                  Imprimir
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Cover físico enviado a impresora. Entrégalo al cliente para canjear en barra.
+              </p>
+              <Button size="lg" variant="outline" className="w-full h-12 gap-2 rounded-xl"
+                onClick={() => reprint(lastIssued)}>
+                <Printer className="w-5 h-5" />
+                Reimprimir
+              </Button>
             </div>
           )}
         </DialogContent>

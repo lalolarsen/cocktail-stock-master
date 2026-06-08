@@ -541,44 +541,10 @@ export default function Sales() {
         }
       }
 
-      // Record courtesy redemptions if applicable
-      const courtesyItems = cart.filter((item) => item.isCourtesy && item.courtesyCode);
-      for (const cItem of courtesyItems) {
-        // Update courtesy_qr used_count + status
-        const { data: qr, error: qrFetchError } = await supabase
-          .from("courtesy_qr")
-          .select("id, used_count, max_uses")
-          .eq("code", cItem.courtesyCode!)
-          .maybeSingle();
+      // (Cortesías: el flujo legacy de canje vía QR fue eliminado en F3.
+      //  Las cortesías ahora se generan desde el panel de admin y se imprimen
+      //  como cover físico; no se canjean en POS.)
 
-        if (qrFetchError) throw new Error(`Error cargando QR cortesía: ${qrFetchError.message}`);
-
-        if (qr) {
-          const newUsedCount = (qr.used_count || 0) + 1;
-          const newStatus = newUsedCount >= qr.max_uses ? "redeemed" : "active";
-          const { error: qrUpdateError } = await supabase
-            .from("courtesy_qr")
-            .update({ used_count: newUsedCount, status: newStatus })
-            .eq("id", qr.id);
-
-          if (qrUpdateError) throw new Error(`Error actualizando QR cortesía: ${qrUpdateError.message}`);
-
-          // Insert redemption record
-          const { error: redemptionError } = await supabase
-            .from("courtesy_redemptions")
-            .insert({
-              courtesy_id: qr.id,
-              redeemed_by: session.session.user.id,
-              pos_id: selectedPosId,
-              jornada_id: activeJornadaId!,
-              sale_id: sale.id,
-              result: "success",
-              venue_id: venue?.id!,
-            });
-
-          if (redemptionError) throw new Error(`Error registrando cortesía: ${redemptionError.message}`);
-        }
-      }
 
       // Record gross income entry (only if non-courtesy amount > 0)
       if (totalAmount > 0) {
