@@ -1,15 +1,18 @@
 /**
  * Printing module – browser-based via print-js.
  *
- * Replaces the QZ Tray integration.
- * No desktop application required – uses the browser's native print dialog.
+ * STOCKIA POS (post-QR pivot): cada venta imprime DOS piezas físicas
+ *   1) COVER del cliente — formato grande, detalle de productos legible.
+ *   2) COMPROBANTE del vendedor — ticket compacto con total y método de pago.
+ *
+ * Ya no se genera ni se imprime ningún QR. El cover físico ES la evidencia
+ * que el cliente entrega al staff.
  *
  * Exported names are kept compatible with the old QZ module so callers
  * don't need import changes.
  */
 
 import printJS from "print-js";
-import { generateQRSvgString } from "./qr-svg";
 import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
 
 export type PaperWidth = "58mm" | "80mm";
@@ -37,17 +40,11 @@ export async function isQZConnected(): Promise<boolean> {
 }
 
 // ── Warm-up: ensure the print-js iframe exists before the first real print ──
-// Without this, the first POS sale frequently fails to trigger the print
-// dialog because print-js creates its iframe lazily and the browser misses
-// the first `onload` → `print()` sequence.
 let _printWarmupDone = false;
 export function warmupPrintJs(): void {
   if (typeof window === "undefined" || _printWarmupDone) return;
   _printWarmupDone = true;
   try {
-    // Pre-create the iframe print-js looks for (id="printJS"). If absent,
-    // print-js creates one on demand which is exactly the timing we want
-    // to avoid on the first sale of a session.
     const existing = document.getElementById("printJS") as HTMLIFrameElement | null;
     if (existing) return;
     const iframe = document.createElement("iframe");
@@ -77,171 +74,98 @@ export interface ReceiptData {
   items: Array<{ name: string; quantity: number; price: number }>;
   total: number;
   paymentMethod: string;
+  /** @deprecated Sin QR. Se mantiene para compatibilidad de tipo; se ignora. */
   pickupToken?: string;
+  /** @deprecated Sin QR. Se mantiene para compatibilidad de tipo; se ignora. */
   shortCode?: string;
+  /** Nombre del vendedor para imprimir en el comprobante */
+  sellerName?: string;
+  /** Marca de cortesía – cambia título y oculta total/pago */
+  isCourtesy?: boolean;
+  /** Motivo de cortesía (opcional) */
+  courtesyReason?: string;
 }
 
 /** Fixed venue title for all receipts */
 const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
 
-// ── HTML receipt builder ──
+const SEP = {
+  "58mm": "================================",
+  "80mm": "================================================",
+} as const;
+const DASH = {
+  "58mm": "--------------------------------",
+  "80mm": "------------------------------------------------",
+} as const;
+
+// ── Builders ──
 
 /**
- * Builds the print CSS with a paper-specific @page size rule.
+ * COVER del cliente — tipografía grande, detalle legible a distancia.
+ * Pieza que el cliente entrega físicamente al staff.
  */
-function buildReceiptCss(paperWidth: PaperWidth): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
-    .receipt { width: 100%; padding: 0 2px; padding-bottom: 40mm; color: #000; }
-    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
-    .meta { text-align: center; font-size: 11pt; color: #000; }
-    .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    .items td { padding: 2px 0; vertical-align: top; font-size: 14pt; font-weight: bold; color: #000; }
-    .item-name { text-align: left; color: #000; }
-    .item-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 14pt; font-weight: bold; color: #000; }
-    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
-    .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
-    .qr-section { text-align: center; margin: 10px 0; }
-    .qr-section svg { display: inline-block; max-width: 90%; height: auto; }
-    .qr-label { font-size: 13pt; font-weight: bold; margin-bottom: 4px; color: #000; }
-    .qr-instruction { font-size: 10pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; color: #000; }
-    .short-code { text-align: center; margin-top: 8px; font-size: 22pt; font-weight: bold; letter-spacing: 6px; color: #000; }
-    .short-code-label { text-align: center; font-size: 11pt; color: #000; margin-top: 2px; }
-    .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
-    .print-break { break-before: page; page-break-before: always; height: 0; }
-    @media print {
-      @page { margin: 0; size: ${paperWidth} auto; }
-      body { margin: 2mm; }
-    }
-  `;
-}
-
-function buildReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
-  const sep58 = "================================";
-  const sep80 = "================================================";
-  const dash58 = "--------------------------------";
-  const dash80 = "------------------------------------------------";
-
-  const sep = paperWidth === "58mm" ? sep58 : sep80;
-  const dash = paperWidth === "58mm" ? dash58 : dash80;
+export function buildCoverHtml(data: ReceiptData, paperWidth: PaperWidth): string {
+  const sep = SEP[paperWidth];
+  const dash = DASH[paperWidth];
 
   const itemsHtml = data.items
     .map(
       (item) => `
-      <tr>
-        <td class="item-name">${item.quantity}x ${item.name}</td>
-        <td class="item-price">$${item.price.toLocaleString("es-CL")}</td>
-      </tr>`,
+        <div class="cover-item">
+          <span class="cover-qty">${item.quantity}×</span>
+          <span class="cover-name">${item.name}</span>
+        </div>`,
     )
     .join("");
 
-  // Generate QR code SVG if pickup token exists
-  let qrHtml = "";
-  if (data.pickupToken) {
-    const qrContent = `PICKUP:${data.pickupToken}`;
-    const qrSize = paperWidth === "58mm" ? 220 : 280;
-    const qrSvg = generateQRSvgString(qrContent, qrSize);
-    qrHtml = `
-      <div class="qr-section">
-        <div class="sep">${dash}</div>
-        <div class="qr-label">QR DE RETIRO</div>
-        ${qrSvg}
-        <div class="qr-instruction">
-          Presenta este QR en la barra
-        </div>
-      </div>`;
-  }
-
-  const paymentLabel = data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta";
-
-  return `
-    <div class="receipt">
-      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
-      <div class="sep">${sep}</div>
-      <div class="meta">Venta: ${data.saleNumber}</div>
-      <div class="meta">${data.dateTime}</div>
-      <div class="sep">${sep}</div>
-      <table class="items"><tbody>${itemsHtml}</tbody></table>
-      <div class="sep">${dash}</div>
-      <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
-      <div class="payment">Pago: ${paymentLabel}</div>
-      ${qrHtml}
-      <div class="footer">Gracias por tu compra</div>
-      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
-    </div>
-  `;
-}
-
-// ── QR-only ticket builder ──
-
-function buildQrOnlyHtml(
-  data: ReceiptData,
-  paperWidth: PaperWidth,
-  opts: { redeemed?: boolean } = {},
-): string {
-  const sep = paperWidth === "58mm"
-    ? "================================"
-    : "================================================";
-
-  if (!data.pickupToken) return "";
-
-  const qrContent = `PICKUP:${data.pickupToken}`;
-  const qrSize = paperWidth === "58mm" ? 220 : 280;
-  const qrSvg = generateQRSvgString(qrContent, qrSize);
-
-  const itemsHtml = data.items
-    .map((item) => `<div style="font-size:14pt;font-weight:bold;color:#000;padding:2px 0;">${item.quantity}x ${item.name}</div>`)
-    .join("");
-
-  const redeemed = !!opts.redeemed;
-  const label = redeemed ? "QR CANJEADO — PINCHAR" : "QR DE RETIRO";
-  const instruction = redeemed
-    ? "Ya descontado del stock · Para conteo en caja"
-    : "Presenta este QR en la barra";
-  const stampHtml = redeemed
-    ? `<div style="text-align:center;margin:6px auto 8px;padding:6px 8px;border:3px solid #000;font-size:18pt;font-weight:900;letter-spacing:2px;display:inline-block;">CANJEADO ✓</div>`
+  const titleLabel = data.isCourtesy ? "CORTESÍA" : "COVER";
+  const courtesyTag = data.isCourtesy
+    ? `<div class="courtesy-stamp">CORTESÍA · $0</div>${
+        data.courtesyReason
+          ? `<div class="courtesy-reason">Motivo: ${data.courtesyReason}</div>`
+          : ""
+      }`
     : "";
-  const stampWrap = redeemed ? `<div style="text-align:center;">${stampHtml}</div>` : "";
 
   return `
-    <div class="receipt">
+    <div class="receipt cover">
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
-      <div class="meta">Venta: ${data.saleNumber}</div>
-      <div style="margin:6px 0;">${itemsHtml}</div>
-      ${stampWrap}
-      <div class="qr-section">
-        <div class="qr-label">${label}</div>
-        ${qrSvg}
-        <div class="qr-instruction">
-          ${instruction}
-        </div>
-      </div>
+      <div class="cover-kind">${titleLabel}</div>
+      <div class="cover-sale">Venta N° ${data.saleNumber}</div>
+      <div class="cover-datetime">${data.dateTime}</div>
+      <div class="sep">${dash}</div>
+      ${courtesyTag}
+      <div class="cover-items">${itemsHtml}</div>
+      <div class="sep">${dash}</div>
+      <div class="cover-footer">Entrega este comprobante al staff</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
 
-// ── Cashier receipt builder (no QR) ──
-
+/**
+ * COMPROBANTE del vendedor — ticket compacto, queda como respaldo del cajero.
+ */
 export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidth): string {
-  const sep = paperWidth === "58mm"
-    ? "================================"
-    : "================================================";
-  const dash = paperWidth === "58mm"
-    ? "--------------------------------"
-    : "------------------------------------------------";
+  const sep = SEP[paperWidth];
+  const dash = DASH[paperWidth];
 
   const itemsHtml = data.items
     .map(
-      (item) => `<div class="item-line">${item.quantity}x ${item.name} $${item.price.toLocaleString("es-CL")}</div>`,
+      (item) =>
+        `<div class="item-line">${item.quantity}x ${item.name} $${item.price.toLocaleString("es-CL")}</div>`,
     )
     .join("");
 
   const paymentLabel = data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta";
+  const sellerLine = data.sellerName ? `<div class="meta">Vendedor: ${data.sellerName}</div>` : "";
+
+  const totalsBlock = data.isCourtesy
+    ? `<div class="total-line">CORTESÍA · $0</div>`
+    : `
+        <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
+        <div class="payment">Pago: ${paymentLabel}</div>`;
 
   return `
     <div class="receipt">
@@ -250,31 +174,58 @@ export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidt
       <div class="meta">${data.posName}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
       <div class="meta">${data.dateTime}</div>
+      ${sellerLine}
       <div class="sep">${sep}</div>
       <div class="items-list">${itemsHtml}</div>
       <div class="sep">${dash}</div>
-      <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
-      <div class="payment">Pago: ${paymentLabel}</div>
-      <div class="footer">Gracias por tu compra</div>
+      ${totalsBlock}
+      <div class="footer">${data.isCourtesy ? "Cortesía registrada" : "Comprobante del vendedor"}</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
+
+// ── CSS ──
 
 export function buildCashierReceiptCss(paperWidth: PaperWidth): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
     body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
     .receipt { width: 100%; padding: 0 2px; padding-bottom: 40mm; color: #000; }
-    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; }
-    .meta { text-align: center; font-size: 11pt; color: #000; }
+    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; }
+    .sep { margin: 3px 0; white-space: pre; text-align: center; }
+    .meta { text-align: center; font-size: 11pt; }
     .items-list { margin: 6px 0; }
-    .item-line { font-size: 14pt; font-weight: bold; color: #000; padding: 2px 0; }
-    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; color: #000; }
-    .payment { text-align: center; margin: 4px 0; font-size: 11pt; color: #000; }
-    .footer { text-align: center; margin-top: 10px; font-size: 11pt; color: #000; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
+    .item-line { font-size: 14pt; font-weight: bold; padding: 2px 0; }
+    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; }
+    .payment { text-align: center; margin: 4px 0; font-size: 11pt; }
+    .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
+    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
+    @media print {
+      @page { margin: 0; size: ${paperWidth} auto; }
+      body { margin: 2mm; }
+    }
+  `;
+}
+
+export function buildCoverCss(paperWidth: PaperWidth): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 12pt; color: #000; background: #fff; }
+    .receipt.cover { width: 100%; padding: 4px 4px 40mm; }
+    .venue-name { font-size: 18pt; font-weight: 900; text-align: center; margin-bottom: 6px; }
+    .sep { margin: 4px 0; white-space: pre; text-align: center; font-size: 9pt; }
+    .cover-kind { text-align: center; font-size: 28pt; font-weight: 900; letter-spacing: 6px; margin: 8px 0 6px; padding: 6px 0; border-top: 3px solid #000; border-bottom: 3px solid #000; }
+    .cover-sale { text-align: center; font-size: 14pt; font-weight: bold; margin-top: 6px; }
+    .cover-datetime { text-align: center; font-size: 12pt; margin-bottom: 4px; }
+    .courtesy-stamp { text-align: center; font-size: 22pt; font-weight: 900; padding: 6px; border: 3px solid #000; margin: 8px 0; letter-spacing: 3px; }
+    .courtesy-reason { text-align: center; font-size: 12pt; font-style: italic; margin-bottom: 6px; }
+    .cover-items { margin: 10px 0; }
+    .cover-item { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #000; }
+    .cover-qty { font-size: 26pt; font-weight: 900; min-width: 60px; }
+    .cover-name { font-size: 20pt; font-weight: bold; flex: 1; word-break: break-word; line-height: 1.15; }
+    .cover-footer { text-align: center; margin-top: 12px; font-size: 12pt; font-weight: bold; }
+    .stockia-footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
     @media print {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
@@ -286,6 +237,7 @@ export function buildCashierReceiptCss(paperWidth: PaperWidth): string {
 
 /**
  * Print a receipt via print-js (browser print dialog or kiosk-silent).
+ * Sin QR — imprime solo el comprobante del vendedor.
  */
 export function printRaw(
   _printerName: string,
@@ -294,8 +246,8 @@ export function printRaw(
 ): Promise<{ success: boolean; error?: string }> {
   warmupPrintJs();
   try {
-    const html = buildReceiptHtml(data, paperWidth);
-    const css = buildReceiptCss(paperWidth);
+    const html = buildCashierReceiptHtml(data, paperWidth);
+    const css = buildCashierReceiptCss(paperWidth);
 
     printJS({
       printable: html,
@@ -316,16 +268,8 @@ export function printRaw(
 
 /**
  * Print one HTML document via a dedicated, freshly-created hidden iframe.
- *
- * We deliberately avoid print-js's shared iframe (id="printJS") because:
- *  - it is reused across calls, so the second print of a sale cannot start
- *    until the first one finishes — Chrome silently drops it.
- *  - in kiosk mode the second print() call is sometimes considered
- *    non-user-initiated and is suppressed.
- *
- * Each call gets its own iframe; we wait for it to load, call print() once,
- * then resolve as soon as the print dialog closes (afterprint) or after a
- * safety timeout. The iframe is cleaned up afterwards.
+ * Cada llamada usa su propio iframe para evitar que Chrome/kiosk descarte
+ * impresiones encadenadas sobre el iframe compartido de print-js.
  */
 export function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -362,13 +306,9 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
         }
         const onAfterPrint = () => {
           win.removeEventListener("afterprint", onAfterPrint);
-          // Small delay so the browser fully releases the print job before
-          // we tear down the iframe / start the next print.
           setTimeout(() => done({ success: true }), 250);
         };
         win.addEventListener("afterprint", onAfterPrint);
-        // Safety net: kiosk-printing fires afterprint reliably, but in some
-        // edge cases it doesn't — never hang forever.
         setTimeout(() => done({ success: true }), 8000);
 
         win.focus();
@@ -385,47 +325,35 @@ export function printOneDocument(html: string, css: string): Promise<{ success: 
 }
 
 /**
- * Print sale documents as TWO separate jobs:
- *   1) Cashier receipt
- *   2) QR-only ticket (so the bartender gets a clean QR)
+ * Imprime las DOS piezas de una venta POS:
+ *   1) COVER del cliente (formato grande)
+ *   2) COMPROBANTE del vendedor (formato compacto)
  *
- * They are printed sequentially via independent iframes — the second job
- * only starts after the first one's `afterprint` fires (or the safety
- * timeout elapses). This is required for kiosk-printing on Chrome/Windows,
- * which otherwise drops chained print() calls on the same iframe.
- *
- * Hybrid POS (or sales without pickupToken) only print the receipt.
+ * El parámetro `isHybrid` se mantiene por compatibilidad pero ya no
+ * afecta el flujo (sin QR no hay diferencia entre POS normal e híbrido).
  */
 export async function printSaleDocuments(
   _printerName: string,
   data: ReceiptData,
   paperWidth: PaperWidth = "80mm",
-  isHybrid: boolean = false,
+  _isHybrid: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
-  const hasQr = !!data.pickupToken;
+  const coverHtml = buildCoverHtml(data, paperWidth);
+  const coverCss = buildCoverCss(paperWidth);
+
   const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
   const receiptCss = buildCashierReceiptCss(paperWidth);
 
-  if (!hasQr) {
-    return printOneDocument(receiptHtml, receiptCss);
-  }
+  // 1) Cover del cliente
+  const coverResult = await printOneDocument(coverHtml, coverCss);
 
-  const qrHtml = buildQrOnlyHtml(data, paperWidth, { redeemed: isHybrid });
-  const qrCss = buildReceiptCss(paperWidth);
-
-  // 1) Cashier receipt as a separate job.
+  // 2) Comprobante del vendedor
   const receiptResult = await printOneDocument(receiptHtml, receiptCss);
 
-  // 2) QR as a separate job.
-  const qrResult = await printOneDocument(qrHtml, qrCss);
-  if (!qrResult.success) {
-    console.error("[Print] QR print failed:", qrResult.error);
+  if (!coverResult.success && !receiptResult.success) {
+    return { success: false, error: coverResult.error || receiptResult.error };
   }
-
-  if (!qrResult.success && !receiptResult.success) {
-    return { success: false, error: qrResult.error || receiptResult.error };
-  }
+  if (!coverResult.success) return coverResult;
   if (!receiptResult.success) return receiptResult;
-  if (!qrResult.success) return qrResult;
   return { success: true };
 }
