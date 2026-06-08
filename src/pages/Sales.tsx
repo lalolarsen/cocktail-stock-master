@@ -1160,14 +1160,8 @@ export default function Sales() {
                 <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
               </div>
 
-              {/* QR SCANNER PANEL — solo para caja híbrida */}
-              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
-                <HybridQRScannerPanel
-                  barLocationId={selectedPosObj.bar_location_id}
-                  barName={barNameForHeader}
-                  activeJornadaId={activeJornadaId}
-                />
-              )}
+              {/* HybridQRScannerPanel removido — POS ya no escanea QRs */}
+
 
               {/* HISTORIAL COLAPSABLE — shrink-0, at bottom */}
               {recentSales.length > 0 && (
@@ -1203,21 +1197,8 @@ export default function Sales() {
                               <p className="text-[10px] text-muted-foreground/60">{formatTime(sale.created_at)}</p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-1.5 gap-1"
-                                  onClick={() => viewSaleQR(sale)}
-                                  title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
-                                >
-                                  <QrCode className="w-3 h-3" />
-                                  <span className="text-[9px]">
-                                    {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
-                                  </span>
-                                  {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
-                                </Button>
-                              )}
+                              {/* Reimpresión de QR eliminada — POS solo imprime cover + comprobante */}
+
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1239,8 +1220,6 @@ export default function Sales() {
                                     items,
                                     total: sale.total_amount,
                                     paymentMethod: sale.payment_method || "card",
-                                    pickupToken: pickupToken?.token,
-                                    shortCode: pickupToken?.short_code || undefined,
                                   };
                                   printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
                                 }}
