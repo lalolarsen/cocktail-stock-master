@@ -683,42 +683,8 @@ export default function Sales() {
     setLastSaleData(null);
   };
 
-  const viewSaleQR = async (sale: any) => {
-    try {
-      const { data: tokenResult, error: tokenError } = await supabase.rpc(
-        "generate_pickup_token",
-        { p_sale_id: sale.id }
-      );
+  // viewSaleQR removed — el flujo de POS ya no genera QRs.
 
-      if (tokenError) throw tokenError;
-      
-      if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
-        if (result.success && result.token) {
-          const items = (sale.sale_items || []).map((item: any) => ({
-            name: item.cocktails?.name || "Item",
-            quantity: item.quantity,
-            price: item.unit_price,
-          }));
-
-          setPickupQRData({
-            token: result.token,
-            saleNumber: sale.sale_number,
-            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            items,
-            total: sale.total_amount,
-            barName: result.bar_name,
-            shortCode: result.short_code,
-          });
-          setShowPickupQR(true);
-        } else {
-          toast.error(result.message || "No se pudo generar QR");
-        }
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Error al generar QR");
-    }
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
