@@ -1,66 +1,94 @@
-## Objetivo
 
-Hacer que el lector de facturas reconozca correctamente el formato CCU (las 3 facturas subidas) y mejore el auto-mapeo guardando el **código del proveedor como SKU**, sin romper lo que ya funciona.
+# Plan: STOCKIA dedicado a Berlín (single-venue oficial)
 
-## Lo que confirmamos contigo
+## Decisiones tomadas
 
-- **Código CCU** → guardar como SKU para auto-match (ej: 871240 → Red Bull Tradicional).
-- **ILA / IABA** → siguen excluidos del costo (NETO sin ILA, regla actual).
-- **Flete (cód 9999)** → se sigue ignorando.
-- **Multiplicador** → Cantidad (cajas) × multiplicador de la descripción = unidades reales.
+- **Marca:** sigue siendo **STOCKIA**, pero la instancia es exclusiva de **Berlín Valdivia**. Internamente "venue" desaparece de la UI de usuario.
+- **DB intacta:** mantenemos tabla `venues`, columnas `venue_id` y RLS actuales. Reversible en el futuro. Cero migraciones de datos.
+- **Edge functions:** se quita el guard `enforcePilotVenue` (ya no tiene sentido), pero los inserts siguen escribiendo el `venue_id` constante.
+- **Onboarding multi-venue:** se elimina. No habrá selector de venue, ni en developer panel.
 
-## Cambios
+---
 
-### 1. DB — agregar `supplier_sku` a la memoria de mapeos
+## Alcance del cambio
 
-Migración pequeña sobre `learning_product_mappings`:
+### 1. UI: borrar el concepto "venue/local" del usuario final
 
-- Nuevo campo `supplier_sku TEXT NULL`.
-- Nuevo índice `(venue_id, supplier_rut, supplier_sku)` para lookup rápido.
-- No rompe registros existentes (campo opcional).
+- **Sidebar y headers:** quitar el `VenueIndicator` y `PilotBadge`. El header muestra solo "STOCKIA · Berlín".
+- **Pantallas de jornada, dashboard, reportes:** sacar cualquier label "Local: Berlín", "Venue ID", "Pilot mode".
+- **NoJornada, error screens:** texto neutro sin referencias a "tu local".
+- **Developer panel:** ocultar `VenueSelector` y la pestaña que dependa de cambiar venue. Mantener el resto del panel intacto.
 
-### 2. Edge function `extract-invoice` — prompt y parser afinados al formato CCU
+### 2. Centralizar el `venue_id` en un único punto
 
-**Prompt al modelo (Gemini):**
-- Pedir explícitamente las columnas del formato CCU: `Código`, `Descripción`, `Grado Alcoh`, `UM`, `Cantidad`, `Precio Unit`, `% Descuento`, `Valor`, `[P.U.] Unidad`.
-- Nuevo campo por línea: `supplier_code` (el código numérico, ej "871240").
-- Pedir tomar `NETO` como `net_total_text` y `TOTAL FACTURA` como `gross_total_text`, ignorando IVA / ILA VIN / ILA CER / IABA (no se cargan a costo).
-- Reforzar que líneas con código `9999` o descripción "Flete de Mercaderías" se marcan `line_type: "expense"` y se descartan.
-- Aceptar fotos rotadas / con sombra (las 3 facturas están sobre un piso oscuro).
+- `src/lib/venue.ts`: queda como **única fuente de verdad**. Se renombra `PILOT_VENUE_ID` → `BERLIN_VENUE_ID` (alias `VENUE_ID`). Se borra `PILOT_MODE`, `assertPilotVenue`, y los aliases `DEFAULT_*` se mantienen como re-exports para no romper imports.
+- `AppSessionContext.tsx`: el venue sigue hardcodeado (ya lo está), pero limpiamos `venueError` y el código muerto de "no se pudo cargar el local".
+- `VenueGuard.tsx`: se simplifica a un passthrough (o se elimina su uso en rutas).
 
-**Parser:**
-- Persistir `supplier_code` (alias SKU) en cada línea extraída.
-- **Orden de auto-match** (nuevo):
-  1. `supplier_sku` + `supplier_rut` en `learning_product_mappings` (match exacto por código CCU del mismo proveedor).
-  2. Patrón RedBull / Mixer (como hoy).
-  3. `raw_text` en `learning_product_mappings` (como hoy).
-- Confirmar línea → guardar el aprendizaje incluyendo `supplier_sku` para que la próxima factura del mismo proveedor matchee al instante.
+### 3. Edge functions: quitar el guard pero conservar el ID
 
-### 3. Mejorar detección de multiplicador para CCU
+- `supabase/functions/_shared/pilot.ts` → renombrar a `venue.ts`, exporta `BERLIN_VENUE_ID`. Se elimina `enforcePilotVenue` (reemplazar las 3 llamadas por uso directo del ID).
+- Funciones afectadas: `extract-invoice`, `create-worker-user`, `parse-invoice`. Siguen recibiendo `venue_id` del request por compatibilidad, pero ya no validan.
 
-Agregar patrones que aparecen en las facturas subidas:
-- `6PFX4-LAT350` / `4PCX6-VNR330` / `4PCK4` → `N x M` (ya cubierto).
-- `12PF-PET 600CC` → 12 unidades.
-- `PET1500X6-TR` / `PET1600X6-TR` → 6 unidades (X<n> al final).
-- `24PF-LAT250` → 24 unidades.
-- Tests rápidos en `purchase-calculator.test.ts` para los 10 casos vistos en las 3 fotos.
+### 4. Hooks e inserts hardcodeados
 
-### 4. UI — mostrar código del proveedor en la revisión
+- **NO se tocan.** Los ~100 sitios que hoy escriben `venue_id: DEFAULT_VENUE_ID` quedan así (correctos ahora que la app es oficialmente single-venue).
+- Solo se actualiza el import si renombramos el símbolo.
 
-En `MinimalReviewTable.tsx` (panel de revisión de líneas):
-- Nueva columna **Cód.** con `supplier_code` (solo lectura, gris pequeño).
-- Al confirmar la línea, el código viaja al `learning_product_mappings` (no requiere UI extra).
+### 5. Rebrand sutil
 
-## Out of scope
+- Título de pestaña: `STOCKIA — Berlín`
+- `index.html` meta description: incluir "Berlín Valdivia".
+- Manifest PWA: nombre corto `STOCKIA Berlín`, ícono actual.
+- Pantalla de login y splash: subtítulo "Berlín Valdivia".
+- Footer y mails transaccionales: misma línea.
 
-- Cambiar reglas de CPP, IVA o ILA.
-- Tocar el flujo de Bodega / Replenishment / Transferencias.
-- Reconocer facturas de otros proveedores distintos a CCU (el prompt es genérico igual, pero solo verificamos contra CCU).
+### 6. Limpieza de código muerto
 
-## Archivos a tocar
+- Borrar `assertPilotVenue` y sus call sites.
+- Borrar `PILOT_MODE` y cualquier `if (PILOT_MODE)`.
+- Borrar `VenueSelector` del developer panel y los tabs que lo consumían si quedan inservibles.
+- Borrar `useActiveVenue` si solo retorna el constante (o simplificarlo a re-export).
 
-- `supabase/migrations/...` (nueva, agrega `supplier_sku`).
-- `supabase/functions/extract-invoice/index.ts` (prompt + parser + auto-match).
-- `src/components/purchase/MinimalReviewTable.tsx` (columna Cód.).
-- `src/lib/purchase-calculator.ts` + `src/lib/purchase-calculator.test.ts` (multiplicadores).
-- Persistir SKU al confirmar: revisar `src/pages/ProveedoresImportDetail.tsx` para incluir `supplier_sku` en el upsert a `learning_product_mappings`.
+### 7. Documentación
+
+- Actualizar `README.md`: la app es oficialmente para Berlín; instrucciones para revertir a multi-venue si algún día se necesita.
+- Actualizar memoria `Multi-tenant Isolation` → marcarla como obsoleta o reescribirla como "Single-venue: Berlín".
+
+---
+
+## Lo que NO se hace (explícito)
+
+- ❌ No se eliminan columnas `venue_id` de las tablas.
+- ❌ No se modifican las 226 políticas RLS.
+- ❌ No se toca `get_user_venue_id()` ni la tabla `user_venue_roles`.
+- ❌ No se tapan los 5 gaps de RLS (no es necesario con un solo venue).
+- ❌ No se renombra la marca STOCKIA.
+- ❌ No se borran las edge functions, solo se simplifican.
+
+---
+
+## Detalle técnico
+
+**Archivos editados:**
+- `src/lib/venue.ts` — quitar PILOT_MODE, renombrar exports, mantener aliases.
+- `src/contexts/AppSessionContext.tsx` — limpiar lógica de error de venue.
+- `src/components/VenueGuard.tsx` — simplificar o eliminar usos.
+- `src/components/VenueIndicator.tsx`, `PilotBadge.tsx` — eliminar o vaciar.
+- `src/components/AppSidebar.tsx`, headers de páginas — quitar referencias UI.
+- `src/components/developer/*` — ocultar VenueSelector.
+- `index.html`, `public/manifest.*` — rebrand.
+- `supabase/functions/_shared/pilot.ts` → renombrado, sin guard.
+- `supabase/functions/{extract-invoice,create-worker-user,parse-invoice}/index.ts` — remover `enforcePilotVenue`.
+- `README.md` — actualizar.
+- `mem://architecture/enforced-multi-tenant-isolation` — actualizar a single-venue.
+
+**Migraciones DB:** ninguna.
+
+**Estimación:** 1 sesión de trabajo (cambios mecánicos, sin lógica nueva).
+
+---
+
+## Riesgo
+
+Muy bajo. Todos los cambios son cosméticos o de eliminación de guards. El comportamiento operativo (jornadas, ventas, stock, redenciones) no cambia.
