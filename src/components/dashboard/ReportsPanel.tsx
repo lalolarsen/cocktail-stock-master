@@ -430,7 +430,6 @@ function JornadaRow({
               isClosed={isClosed}
               hasFinancial={!!fin}
               onCSV={onCSV}
-              onCSV={onCSV}
             />
           </div>
         </div>
