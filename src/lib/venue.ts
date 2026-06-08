@@ -1,29 +1,24 @@
 /**
- * Pilot Mode — Single-venue lock.
+ * Single-venue mode — STOCKIA es una instancia dedicada a Berlín Valdivia.
  *
- * When PILOT_MODE is true the entire app is scoped to PILOT_VENUE_ID.
- * Set PILOT_MODE to false to restore multi-venue behaviour.
+ * Todas las queries, inserts y RLS asumen este único venue. La columna
+ * `venue_id` se mantiene en la base de datos por compatibilidad histórica
+ * y para permitir revertir a multi-venue en el futuro sin migrar datos.
  */
-export const PILOT_MODE = true;
+export const BERLIN_VENUE_ID = "4e128e76-980d-4233-a438-92aa02cfb50b";
+export const BERLIN_VENUE_NAME = "Berlín Valdivia";
+export const BERLIN_VENUE_SLUG = "berlin-valdivia";
+export const BERLIN_VENUE_DISPLAY = "Berlín – Valdivia";
 
-export const PILOT_VENUE_ID  = "4e128e76-980d-4233-a438-92aa02cfb50b";
-export const PILOT_VENUE_NAME = "Berlín Valdivia";
-export const PILOT_VENUE_SLUG = "berlin-valdivia";
-export const PILOT_VENUE_DISPLAY = "Berlín – Valdivia";
+// Backward-compat aliases (used across the codebase)
+export const VENUE_ID = BERLIN_VENUE_ID;
+export const DEFAULT_VENUE_ID = BERLIN_VENUE_ID;
+export const DEFAULT_VENUE_NAME = BERLIN_VENUE_NAME;
+export const DEFAULT_VENUE_SLUG = BERLIN_VENUE_SLUG;
+export const DEFAULT_VENUE_DISPLAY = BERLIN_VENUE_DISPLAY;
 
-// Backward-compat aliases (used across codebase)
-export const DEFAULT_VENUE_ID      = PILOT_VENUE_ID;
-export const DEFAULT_VENUE_NAME    = PILOT_VENUE_NAME;
-export const DEFAULT_VENUE_SLUG    = PILOT_VENUE_SLUG;
-export const DEFAULT_VENUE_DISPLAY = PILOT_VENUE_DISPLAY;
-
-/**
- * Guard: throws if a venue_id doesn't match the pilot venue while pilot mode is on.
- */
-export function assertPilotVenue(venueId: string | null | undefined): string {
-  if (!PILOT_MODE) return venueId || PILOT_VENUE_ID;
-  if (venueId && venueId !== PILOT_VENUE_ID) {
-    throw new Error("Pilot mode: only Berlín is enabled");
-  }
-  return PILOT_VENUE_ID;
-}
+// Pilot-mode aliases kept temporarily for legacy imports
+export const PILOT_VENUE_ID = BERLIN_VENUE_ID;
+export const PILOT_VENUE_NAME = BERLIN_VENUE_NAME;
+export const PILOT_VENUE_SLUG = BERLIN_VENUE_SLUG;
+export const PILOT_VENUE_DISPLAY = BERLIN_VENUE_DISPLAY;

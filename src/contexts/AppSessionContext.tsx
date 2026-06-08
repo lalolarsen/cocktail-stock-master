@@ -25,6 +25,7 @@ interface AppSessionContextValue {
   canModify: boolean;
   hasRole: (role: AppRole) => boolean;
   venue: ActiveVenue | null;
+  /** @deprecated single-venue: always null */
   venueError: string | null;
   displayName: string | null;
   isDemo: boolean;

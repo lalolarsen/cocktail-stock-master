@@ -1,19 +1,14 @@
 /**
- * Pilot-mode constants shared across all edge functions.
- *
- * When PILOT_MODE is true every write/read is locked to PILOT_VENUE_ID.
- * To disable, set PILOT_MODE = false and redeploy.
+ * Single-venue mode — STOCKIA es una instancia dedicada a Berlín Valdivia.
+ * Estas constantes se mantienen como única fuente de verdad del venue.
  */
-export const PILOT_MODE = true;
-export const PILOT_VENUE_ID = "4e128e76-980d-4233-a438-92aa02cfb50b";
+export const BERLIN_VENUE_ID = "4e128e76-980d-4233-a438-92aa02cfb50b";
+export const PILOT_VENUE_ID = BERLIN_VENUE_ID;
 
 /**
- * Returns the pilot venue id or throws if the incoming venueId doesn't match.
+ * Devuelve siempre el venue de Berlín. Conservada como helper compatible
+ * con call sites legacy. Ya no valida ni lanza errores.
  */
-export function enforcePilotVenue(venueId?: string | null): string {
-  if (!PILOT_MODE) return venueId || PILOT_VENUE_ID;
-  if (venueId && venueId !== PILOT_VENUE_ID) {
-    throw new Error("Pilot mode: only Berlín is enabled");
-  }
-  return PILOT_VENUE_ID;
+export function enforcePilotVenue(_venueId?: string | null): string {
+  return BERLIN_VENUE_ID;
 }

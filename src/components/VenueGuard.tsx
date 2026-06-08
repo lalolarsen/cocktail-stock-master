@@ -1,59 +1,13 @@
 import { ReactNode } from "react";
-import { useAppSession } from "@/contexts/AppSessionContext";
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 
 interface VenueGuardProps {
   children: ReactNode;
 }
 
+/**
+ * Single-venue mode — passthrough. Kept as a component to preserve
+ * call sites; the original multi-venue error/loading screen is no longer needed.
+ */
 export function VenueGuard({ children }: VenueGuardProps) {
-  const { venue, isLoading, venueError } = useAppSession();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/auth");
-  };
-
-  // Show loading screen while session is initializing OR while venue is being fetched
-  // Only show error if loading is complete AND there's an error/no venue
-  if (isLoading || (!venueError && !venue)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Cargando información del local...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (venueError || !venue) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 via-background to-destructive/5">
-        <div className="max-w-md mx-auto p-8 text-center space-y-6">
-          <div className="w-16 h-16 mx-auto rounded-full bg-destructive/10 flex items-center justify-center">
-            <AlertTriangle className="w-8 h-8 text-destructive" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-foreground">Error Crítico</h1>
-            <p className="text-muted-foreground">
-              {venueError || "No se pudo cargar la información del local asignado."}
-            </p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Contacta al administrador del sistema para que te asigne un local válido.
-          </p>
-          <Button variant="outline" onClick={handleLogout} className="mt-4">
-            Cerrar sesión
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return <>{children}</>;
 }

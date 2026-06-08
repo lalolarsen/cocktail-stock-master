@@ -1,8 +1,13 @@
-# Welcome to your Lovable project
+# STOCKIA — Berlín Valdivia
+
+Instancia dedicada de STOCKIA para **Berlín Valdivia**. La app opera en modo single-venue: todas las queries, inserts y RLS asumen un único `venue_id` (`BERLIN_VENUE_ID`, definido en `src/lib/venue.ts` y `supabase/functions/_shared/pilot.ts`).
+
+La columna `venue_id` se mantiene en la base de datos por compatibilidad histórica y para permitir revertir a multi-venue en el futuro sin migrar datos. Ver `.lovable/plan.md` para el contexto del refactor.
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/b8b69534-d9c8-404e-98ce-e35d3e2f6b5c
+
 
 ## How can I edit this code?
 
