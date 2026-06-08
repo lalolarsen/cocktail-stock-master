@@ -1,94 +1,205 @@
 
-# Plan: STOCKIA dedicado a Berlín (single-venue oficial)
+# Plan definitivo: STOCKIA → POS puro + análisis de insumos vía facturas
 
-## Decisiones tomadas
+## Concepto
 
-- **Marca:** sigue siendo **STOCKIA**, pero la instancia es exclusiva de **Berlín Valdivia**. Internamente "venue" desaparece de la UI de usuario.
-- **DB intacta:** mantenemos tabla `venues`, columnas `venue_id` y RLS actuales. Reversible en el futuro. Cero migraciones de datos.
-- **Edge functions:** se quita el guard `enforcePilotVenue` (ya no tiene sentido), pero los inserts siguen escribiendo el `venue_id` constante.
-- **Onboarding multi-venue:** se elimina. No habrá selector de venue, ni en developer panel.
+STOCKIA deja de ser un sistema DiStock y se convierte en:
 
----
+1. **POS puro** (Alcohol + Tickets) que imprime **cover grande + comprobante**, sin QR.
+2. **Lector de facturas** como módulo protagónico de análisis de compras.
+3. **Reporte de gasto de insumos** basado en ventas POS (cantidad vendida × receta = consumo teórico).
+4. **Catálogo de insumos + Carta con recetas** se conserva: es la columna vertebral que conecta venta → consumo → compra.
 
-## Alcance del cambio
-
-### 1. UI: borrar el concepto "venue/local" del usuario final
-
-- **Sidebar y headers:** quitar el `VenueIndicator` y `PilotBadge`. El header muestra solo "STOCKIA · Berlín".
-- **Pantallas de jornada, dashboard, reportes:** sacar cualquier label "Local: Berlín", "Venue ID", "Pilot mode".
-- **NoJornada, error screens:** texto neutro sin referencias a "tu local".
-- **Developer panel:** ocultar `VenueSelector` y la pestaña que dependa de cambiar venue. Mantener el resto del panel intacto.
-
-### 2. Centralizar el `venue_id` en un único punto
-
-- `src/lib/venue.ts`: queda como **única fuente de verdad**. Se renombra `PILOT_VENUE_ID` → `BERLIN_VENUE_ID` (alias `VENUE_ID`). Se borra `PILOT_MODE`, `assertPilotVenue`, y los aliases `DEFAULT_*` se mantienen como re-exports para no romper imports.
-- `AppSessionContext.tsx`: el venue sigue hardcodeado (ya lo está), pero limpiamos `venueError` y el código muerto de "no se pudo cargar el local".
-- `VenueGuard.tsx`: se simplifica a un passthrough (o se elimina su uso en rutas).
-
-### 3. Edge functions: quitar el guard pero conservar el ID
-
-- `supabase/functions/_shared/pilot.ts` → renombrar a `venue.ts`, exporta `BERLIN_VENUE_ID`. Se elimina `enforcePilotVenue` (reemplazar las 3 llamadas por uso directo del ID).
-- Funciones afectadas: `extract-invoice`, `create-worker-user`, `parse-invoice`. Siguen recibiendo `venue_id` del request por compatibilidad, pero ya no validan.
-
-### 4. Hooks e inserts hardcodeados
-
-- **NO se tocan.** Los ~100 sitios que hoy escriben `venue_id: DEFAULT_VENUE_ID` quedan así (correctos ahora que la app es oficialmente single-venue).
-- Solo se actualiza el import si renombramos el símbolo.
-
-### 5. Rebrand sutil
-
-- Título de pestaña: `STOCKIA — Berlín`
-- `index.html` meta description: incluir "Berlín Valdivia".
-- Manifest PWA: nombre corto `STOCKIA Berlín`, ícono actual.
-- Pantalla de login y splash: subtítulo "Berlín Valdivia".
-- Footer y mails transaccionales: misma línea.
-
-### 6. Limpieza de código muerto
-
-- Borrar `assertPilotVenue` y sus call sites.
-- Borrar `PILOT_MODE` y cualquier `if (PILOT_MODE)`.
-- Borrar `VenueSelector` del developer panel y los tabs que lo consumían si quedan inservibles.
-- Borrar `useActiveVenue` si solo retorna el constante (o simplificarlo a re-export).
-
-### 7. Documentación
-
-- Actualizar `README.md`: la app es oficialmente para Berlín; instrucciones para revertir a multi-venue si algún día se necesita.
-- Actualizar memoria `Multi-tenant Isolation` → marcarla como obsoleta o reescribirla como "Single-venue: Berlín".
+Se elimina todo lo relacionado a stock físico, /bar, QRs y EERR.
 
 ---
 
-## Lo que NO se hace (explícito)
+## 1. Catálogo de insumos y Carta — se conservan (correcciones clave)
 
-- ❌ No se eliminan columnas `venue_id` de las tablas.
-- ❌ No se modifican las 226 políticas RLS.
-- ❌ No se toca `get_user_venue_id()` ni la tabla `user_venue_roles`.
-- ❌ No se tapan los 5 gaps de RLS (no es necesario con un solo venue).
-- ❌ No se renombra la marca STOCKIA.
-- ❌ No se borran las edge functions, solo se simplifican.
+> Aclaración nueva: el catálogo de productos NO desaparece. Es esencial para:
+> - Que el **lector de facturas** matchee cada línea contra un `sku_base` y construya histórico de precios.
+> - Que la **Carta (recetas)** convierta una venta de cocktail en cantidades concretas de insumos consumidos.
+> - Que el **reporte de gasto de insumos** sume consumos reales por insumo, no solo "productos vendidos".
 
----
+### Modelo simplificado
 
-## Detalle técnico
+- **Producto-insumo** (`products`): identificador `sku_base`, nombre, categoría, formato (ej. PET 1500cc × 6), precio de referencia opcional. **Se mantiene** `sku_base` y la lógica de SKU para el lector de facturas. Se eliminan los campos puramente físicos del UI (`capacity_ml`, lógica de "es botella") aunque se conserven en DB.
+- **Producto-vendible / Carta** (`cocktails` + `cocktail_ingredients`): receta que define qué insumos (y qué cantidad) consume cada ítem vendible del POS. **Se mantiene tal cual**.
+- **Add-ons** (`cocktail_addons`, `product_addons`): se mantienen como modificadores de precio.
 
-**Archivos editados:**
-- `src/lib/venue.ts` — quitar PILOT_MODE, renombrar exports, mantener aliases.
-- `src/contexts/AppSessionContext.tsx` — limpiar lógica de error de venue.
-- `src/components/VenueGuard.tsx` — simplificar o eliminar usos.
-- `src/components/VenueIndicator.tsx`, `PilotBadge.tsx` — eliminar o vaciar.
-- `src/components/AppSidebar.tsx`, headers de páginas — quitar referencias UI.
-- `src/components/developer/*` — ocultar VenueSelector.
-- `index.html`, `public/manifest.*` — rebrand.
-- `supabase/functions/_shared/pilot.ts` → renombrado, sin guard.
-- `supabase/functions/{extract-invoice,create-worker-user,parse-invoice}/index.ts` — remover `enforcePilotVenue`.
-- `README.md` — actualizar.
-- `mem://architecture/enforced-multi-tenant-isolation` — actualizar a single-venue.
+### Lógica de consumo
 
-**Migraciones DB:** ninguna.
-
-**Estimación:** 1 sesión de trabajo (cambios mecánicos, sin lógica nueva).
+Una venta en POS de "Gin Tonic" genera:
+- 1 `sale_item` (Gin Tonic, qty 1, precio X).
+- Implícitamente consume: 60ml Gin + 1 lata Schweppes Tonic + 1 rodaja limón (según receta).
+- El **reporte de gasto de insumos** explota cada `sale_item` por su receta y suma cantidades por `sku_base`.
+- Para productos vendibles **sin receta** (ej. cerveza vendida directa), el insumo = el propio producto, qty = qty vendida.
 
 ---
 
-## Riesgo
+## 2. Flujo POS nuevo (sin QR)
 
-Muy bajo. Todos los cambios son cosméticos o de eliminación de guards. El comportamiento operativo (jornadas, ventas, stock, redenciones) no cambia.
+Al finalizar una venta en cualquier POS (Alcohol o Tickets):
+
+- **Pieza 1 — Cover del cliente**: ticket grande con detalle de productos en tipografía generosa (categoría, nombre, cantidad, addons), número de venta, fecha/hora, vendedor. **Sin QR, sin código de barras.**
+- **Pieza 2 — Comprobante para el vendedor**: ticket compacto que se queda el vendedor como respaldo físico (número de venta, total, método de pago, productos, comisión STOCKIA).
+- Opcional: documento tributario (boleta/factura) sigue igual que hoy.
+
+El cover físico reemplaza al QR como evidencia que el cliente entrega al barman/staff. No hay validación digital posterior.
+
+---
+
+## 3. Cortesías sin QR — integradas al reporte POS
+
+> Aclaración nueva: las cortesías generadas aparecen explícitamente en el **reporte de ventas por POS** (no en un reporte separado).
+
+- El admin/vendedor genera una cortesía (productos + motivo + beneficiario).
+- Al confirmar se **imprime un cover físico** idéntico al de venta, con etiqueta destacada **"CORTESÍA — $0"** y el motivo.
+- Se registra en `courtesy_redemptions` con `metadata.physical_cover = true`. Sin `pickup_token`, sin QR.
+- **En el reporte de ventas POS**:
+  - Sección dedicada **"Cortesías de la jornada"** con: hora, beneficiario, productos, motivo, autorizó.
+  - Subtotal "Cortesías $0" no suma a caja pero **sí cuenta para gasto de insumos** (la cortesía consume receta igual que una venta).
+- Mantiene el reporte PDF de cortesías por jornada existente, pero ahora también aparecen embedded en el reporte de cajero.
+
+---
+
+## 4. Lector de facturas — módulo protagónico
+
+Se mantiene la edge function `extract-invoice` + `parse-invoice` y el flujo de revisión (`ProveedoresImportDetail`, `MinimalReviewTable`) con énfasis analítico.
+
+### Catálogo-first sigue siendo regla
+
+El lector solo confirma líneas que matcheen un `sku_base` existente en el catálogo de insumos. Si no existe, el admin debe **crear el insumo primero** (flujo actual de PendingCatalog se conserva, simplificado).
+
+### Métricas nuevas (vistas del módulo)
+
+1. **Compras semanales**: agregación de facturas confirmadas por semana ISO con totales por proveedor y por insumo.
+2. **Histórico de precio por insumo**: gráfico de evolución de costo unitario neto en el tiempo (de `purchase_import_lines`).
+3. **Relación venta vs compra por insumo**: comparación entre unidades compradas y **unidades teóricamente consumidas** (calculadas desde `sale_items` × recetas) por rango. Indicador de "tasa de uso" o variación atribuible a merma/error.
+4. **Top insumos por gasto / por variación de precio**.
+
+Todo se calcula desde `purchase_import_lines` (compras) y `sale_items` + `cocktail_ingredients` (consumo teórico). Sin stock, sin CPP, sin replenishment.
+
+---
+
+## 5. Reporte de gasto de insumos (reemplaza Reporte de Canjes)
+
+- Sustituye `RedeemReportButton` y el PDF de canjes.
+- Fuente: `SUM(sale_items.quantity × cocktail_ingredients.cantidad)` agrupado por `sku_base`, por jornada o rango.
+- Incluye consumos derivados de **cortesías** (mismo cálculo).
+- UX: mismo formato térmico 80mm + export, pero el dato es consumo teórico de insumos, no redenciones.
+
+---
+
+## 6. Eliminaciones
+
+### Páginas y rutas
+- `/bar` (Bar.tsx) y todo el flujo de bartender.
+- `/admin/pickup-tokens`, `/admin/pickups`.
+- `/admin/reports/estado-resultados` (IncomeStatement).
+- `/admin/catalog/pending` (solo si era específico a stock; revisar si lo necesita el lector).
+
+### Sidebar admin
+- **Inventario completo**: live-inventory, replenishment, botellas, mermas, conteos, weekly-count, external-consumption, passline-audit, reconciliation, comparison.
+- **EERR / Income Statement**.
+- Se conservan: Dashboard, Jornadas, POS, Anulaciones, Productos (insumos), Carta, Cortesías, Reporte de gasto de insumos, Lector de facturas, Trabajadores, Tickets, Notificaciones, Configuración.
+
+### Componentes y hooks
+- `components/bar/*` (scanner, RedemptionHistory, OpenBottleDialog, BlindShiftCountDialog).
+- `components/dashboard/`: Inventory*, Replenishment*, OpenBottles*, Waste*, PasslineAudit*, ExternalConsumption*, ShiftCounts*, LiveInventory*, Reconciliation*, Comparison*, WeeklyCount*, BarReplenishment.
+- `components/sales/HybridQRScannerPanel`, partes QR de `HybridPostSaleWizard`, `CourtesyRedeemDialog` (reemplazado por flujo cover sin QR).
+- `components/PickupQRDialog`.
+- Hooks: `useStockData`, `useRealtimeInventory`, `useOpenBottles`, `useStockAlertsLive`, `useCOGSData`, `useFinanceMTD` (revisar dependencias antes).
+- `lib/qr.ts`, `lib/printing/qr-svg.ts` (solo si no quedan usos).
+- `lib/excel-inventory-parser.ts`.
+- `lib/purchase-financial-engine.ts` (CPP/COGS).
+- `lib/reporting/inventory-snapshot-pdf.ts`.
+- `pages/CourtesyQR.tsx`/`CourtesyQRSimple.tsx`: refactor a "Cortesía cover" sin QR.
+
+### Edge functions y RPC
+- `predict-consumption` (basado en stock).
+- RPCs `auto_redeem_sale_token`, `redeem_pickup_token`, etc.: se **dejan en DB** sin uso (cero migración).
+
+### Roles
+- Rol `bar` se quita del UI y rutas. Tabla `worker_roles` intacta; registros existentes ignorados.
+
+### DB
+- **Cero migraciones de eliminación**. Tablas `stock_*`, `pickup_*`, `courtesy_qr`, `open_bottles`, `waste_requests`, etc. se conservan para auditoría histórica y rollback.
+- El catálogo `products` (con `sku_base`), `cocktails`, `cocktail_ingredients`, `purchase_*`, `learning_product_mappings`, `sales`, `sale_items` quedan plenamente activos.
+
+---
+
+## 7. Sidebar final (Admin)
+
+```text
+Dashboard
+Operación
+  Jornadas
+  Puntos de Venta
+  Anulaciones
+Catálogo
+  Productos / Insumos      (con sku_base, sin campos físicos visibles)
+  Carta / Recetas
+Ventas
+  Análisis
+  Cortesías                (sin QR; cover físico)
+  Reporte de gasto de insumos
+Compras
+  Lector de facturas + métricas
+Gestión
+  Trabajadores
+  Tickets
+Sistema
+  Notificaciones
+  Configuración
+```
+
+Gerencia: subset read-only.
+
+---
+
+## 8. Fases de implementación
+
+| Fase | Alcance | Duración |
+|---|---|---|
+| **F1 — POS nuevo flujo de impresión** | Reescribir `ticket-print.ts` y `usePrintJob` para imprimir cover grande + comprobante. Sin QR. Testing en ambos POS. | 3–4 días |
+| **F2 — Eliminar /bar + scanner + QR** | Borrar `pages/Bar.tsx`, `components/bar/*`, `HybridQRScannerPanel`, `PickupQRDialog`, `lib/qr.ts`, ruta `/bar`. | 2–3 días |
+| **F3 — Cortesías sin QR + integración en reporte POS** | Refactor `CourtesyQR*` y `CourtesyRedeemDialog` a flujo cover. Embed cortesías en reporte de cajero. | 2–3 días |
+| **F4 — Eliminar inventario (UI)** | Borrar componentes/hooks/páginas de inventario, replenishment, mermas, botellas, conteos, external consumption. Limpiar sidebar y rutas. **Conservar** Productos y Carta. | 5–7 días |
+| **F5 — Reporte de gasto de insumos** | Nuevo reporte basado en `sale_items × cocktail_ingredients`. PDF térmico + export. Incluye consumos de cortesías. | 2–3 días |
+| **F6 — Eliminar EERR + simplificar dashboard** | Borrar IncomeStatement, useCOGSData, useFinanceMTD, paneles finance, `purchase-financial-engine`. Dashboard solo ventas/comisión/cortesías/gasto insumos. | 2–3 días |
+| **F7 — Lector de facturas protagónico** | Construir las 4 vistas de métricas (compras semanales, histórico precio, venta vs compra teórica, top insumos). | 4–5 días |
+| **F8 — Limpieza final** | Quitar rol `bar` del UI, sacar `Documents` si no aplica, actualizar memorias, README, security memory. | 1–2 días |
+| **Total** | | **~3 semanas de trabajo enfocado** |
+
+---
+
+## 9. Riesgos y consideraciones
+
+1. **Cero migraciones DB**. Datos históricos (pickup_tokens, stock_movements, etc.) se conservan; las edge functions de redención quedan inactivas.
+2. **Recetas son ahora la fuente única del consumo teórico**. Productos vendibles sin receta consumen directamente su propio `sku_base`. Faltantes de receta = subestimación de consumo.
+3. **Cortesía sin QR**: cualquiera con el papel puede consumir. Decisión operativa aceptada.
+4. **Cierre de jornada**: hoy depende de COGS para `financial_summary`. Al eliminar EERR/COGS, el cierre queda con caja, ventas y consumo teórico de insumos (sin margen ni resultado operacional).
+5. **Trabajadores con rol `bar`**: deben reasignarse manualmente; UI deja de mostrar la opción, pero la DB no se toca.
+6. **Catálogo-first se vuelve crítico**: cualquier insumo nuevo debe crearse antes de que el lector de facturas pueda matchearlo. El flujo de PendingCatalog se simplifica pero se mantiene.
+
+---
+
+## 10. Lo que se conserva intacto
+
+- Auth (RUT + PIN), `create-worker-user`, login flow.
+- Jornadas (apertura, cierre, caja, vendedores, ajustes, financial_summary simplificado).
+- POS Alcohol + POS Tickets (motor de venta, sale_items, sales, payments, addons, voids).
+- **Catálogo de insumos (`products` con `sku_base`)** + **Carta (`cocktails`, `cocktail_ingredients`, `cocktail_addons`)**.
+- Lector de facturas (`extract-invoice`, `parse-invoice`, `learning_product_mappings`, `supplier_sku`).
+- Cortesías (rediseñadas sin QR, integradas en reporte POS).
+- Comisión STOCKIA 2.5%.
+- Notificaciones transaccionales.
+- Tickets cover multi-opción (impresión física, no QR).
+- PWA Android, branding, single-venue Berlín.
+
+---
+
+## 11. Confirmación esperada
+
+Ejecuto en orden **F1 → F8**, validando al final de cada fase. ¿Procedo?

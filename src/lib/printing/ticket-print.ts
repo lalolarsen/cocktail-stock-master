@@ -1,14 +1,14 @@
 /**
- * Ticket sale printing — 3 piezas por venta:
- *  1. Comprobante de venta (resumen items + total + medio de pago)
- *  2. Entrada(s)  — 1 ticket por unidad con QR PICKUP:<token>
- *  3. Cover(s)    — 1 ticket por cover con QR PICKUP:<token> + cocktail asignado
+ * Ticket sale printing — pivot post-QR.
  *
- * Usa el mismo formato de QR (PICKUP:<token>) y short_code que las ventas POS
- * normales para garantizar que la barra los redime con el pipeline existente.
+ * Cada venta imprime:
+ *  1) COMPROBANTE del vendedor (resumen items + total + medio de pago)
+ *  2) Una pieza COVER por cada entrada vendida — formato grande, sin QR
+ *  3) Una pieza COVER por cada cover/cocktail vendido — formato grande, sin QR
+ *
+ * El cliente entrega físicamente las piezas al staff (acceso / barra).
  */
 
-import { generateQRSvgString } from "./qr-svg";
 import { printOneDocument, type PaperWidth } from "./qz";
 import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
 
@@ -21,7 +21,7 @@ export interface TicketSaleItem {
 }
 
 export interface TicketTokenPiece {
-  /** raw token string stored in pickup_tokens.token */
+  /** raw token string stored in pickup_tokens.token — kept for traceability only */
   token: string;
   short_code?: string | null;
   ticket_type: string;
@@ -36,41 +36,10 @@ export interface TicketSalePrintData {
   items: TicketSaleItem[];
   total: number;
   paymentMethod: "cash" | "card" | string;
-  /** uno por unidad de entrada vendida (no covers) */
+  /** una por unidad de entrada vendida */
   entryTokens: TicketTokenPiece[];
   /** covers individuales */
   coverTokens: TicketTokenPiece[];
-}
-
-/* ── CSS común para todas las piezas ── */
-function buildCss(paperWidth: PaperWidth): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; background: #fff; }
-    .receipt { width: 100%; padding: 0 2px; padding-bottom: 40mm; color: #000; }
-    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; }
-    .meta { text-align: center; font-size: 11pt; }
-    .item-line { font-size: 14pt; font-weight: bold; padding: 2px 0; }
-    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; }
-    .payment { text-align: center; margin: 4px 0; font-size: 11pt; }
-    .qr-section { text-align: center; margin: 10px 0; }
-    .qr-section svg { display: inline-block; max-width: 90%; height: auto; }
-    .qr-label { font-size: 14pt; font-weight: bold; margin-bottom: 4px; }
-    .qr-instruction { font-size: 10pt; margin-top: 6px; padding: 6px; border: 1px dashed #000; }
-    .short-code { text-align: center; margin-top: 8px; font-size: 22pt; font-weight: bold; letter-spacing: 6px; }
-    .short-code-label { text-align: center; font-size: 11pt; margin-top: 2px; }
-    .ticket-kind { font-size: 18pt; font-weight: bold; text-align: center; margin: 6px 0; padding: 4px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
-    .ticket-name { text-align: center; font-size: 14pt; font-weight: bold; margin: 4px 0; }
-    .ticket-correlative { text-align: center; font-size: 12pt; margin-bottom: 6px; }
-    .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
-    .stockia-footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; color: #000; letter-spacing: 0.3px; }
-    .print-break { break-before: page; page-break-before: always; height: 0; }
-    @media print {
-      @page { margin: 0; size: ${paperWidth} auto; }
-      body { margin: 2mm; }
-    }
-  `;
 }
 
 const SEP = {
@@ -82,7 +51,33 @@ const DASH = {
   "80mm": "------------------------------------------------",
 } as const;
 
-/* ── 1. Comprobante de venta ── */
+/* ── CSS común ── */
+function buildCss(paperWidth: PaperWidth): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 11pt; color: #000; background: #fff; }
+    .receipt { width: 100%; padding: 4px 2px; padding-bottom: 40mm; }
+    .venue-name { font-size: 18pt; font-weight: 900; margin-bottom: 4px; text-align: center; }
+    .sep { margin: 4px 0; white-space: pre; text-align: center; font-size: 9pt; }
+    .meta { text-align: center; font-size: 11pt; }
+    .item-line { font-size: 14pt; font-weight: bold; padding: 2px 0; }
+    .total-line { font-size: 15pt; font-weight: bold; text-align: right; margin: 4px 0; }
+    .payment { text-align: center; margin: 4px 0; font-size: 11pt; }
+    .ticket-kind { font-size: 28pt; font-weight: 900; text-align: center; letter-spacing: 6px; margin: 8px 0 6px; padding: 6px 0; border-top: 3px solid #000; border-bottom: 3px solid #000; }
+    .ticket-name { text-align: center; font-size: 22pt; font-weight: 900; margin: 8px 0; word-break: break-word; line-height: 1.15; }
+    .ticket-correlative { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 6px; }
+    .ticket-instruction { text-align: center; font-size: 12pt; margin-top: 10px; padding: 8px; border: 2px dashed #000; font-weight: bold; }
+    .sale-meta { text-align: center; font-size: 11pt; margin-top: 8px; }
+    .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
+    .stockia-footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
+    @media print {
+      @page { margin: 0; size: ${paperWidth} auto; }
+      body { margin: 2mm; }
+    }
+  `;
+}
+
+/* ── 1. Comprobante del vendedor ── */
 function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
   const sep = SEP[pw];
   const dash = DASH[pw];
@@ -106,22 +101,21 @@ function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
       <div class="sep">${dash}</div>
       <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
       <div class="payment">Pago: ${paymentLabel}</div>
-      <div class="footer">Gracias por tu compra</div>
+      <div class="footer">Comprobante del vendedor</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
 
-/* ── 2. Entrada individual ── */
+/* ── 2. Entrada individual (sin QR) ── */
 function buildEntryHtml(
   piece: TicketTokenPiece,
   index: number,
   total: number,
+  saleNumber: string,
   pw: PaperWidth,
 ): string {
   const sep = SEP[pw];
-  const qrSize = pw === "58mm" ? 220 : 280;
-  const qrSvg = generateQRSvgString(`PICKUP:${piece.token}`, qrSize);
 
   return `
     <div class="receipt">
@@ -130,22 +124,16 @@ function buildEntryHtml(
       <div class="ticket-kind">ENTRADA</div>
       <div class="ticket-name">${piece.ticket_type}</div>
       <div class="ticket-correlative">${index} / ${total}</div>
-      <div class="qr-section">
-        ${qrSvg}
-        <div class="qr-instruction">
-          Presenta este QR en el acceso
-        </div>
-      </div>
+      <div class="ticket-instruction">Entrega este ticket en el acceso</div>
+      <div class="sale-meta">Venta N° ${saleNumber}</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
 
-/* ── 3. Cover individual ── */
-function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
+/* ── 3. Cover individual (sin QR) ── */
+function buildCoverHtml(piece: TicketTokenPiece, saleNumber: string, pw: PaperWidth): string {
   const sep = SEP[pw];
-  const qrSize = pw === "58mm" ? 220 : 280;
-  const qrSvg = generateQRSvgString(`PICKUP:${piece.token}`, qrSize);
 
   return `
     <div class="receipt">
@@ -154,21 +142,20 @@ function buildCoverHtml(piece: TicketTokenPiece, pw: PaperWidth): string {
       <div class="ticket-kind">COVER</div>
       <div class="ticket-name">${piece.cocktail_name || "Cover"}</div>
       <div class="ticket-correlative">${piece.ticket_type}</div>
-      <div class="qr-section">
-        ${qrSvg}
-        <div class="qr-instruction">
-          Presenta este QR en la barra
-        </div>
-      </div>
+      <div class="ticket-instruction">Entrega este cover en la barra</div>
+      <div class="sale-meta">Venta N° ${saleNumber}</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
 
 /**
- * Imprime todas las piezas en un solo trabajo del navegador:
- * comprobante → entradas → covers, separadas por saltos de página.
- * Esto evita que Chrome/Windows suprima diálogos encadenados y deje QRs sin imprimir.
+ * Imprime todas las piezas como jobs independientes (iframe propio cada uno):
+ * comprobante → entradas → covers. Sin QRs.
+ *
+ * `options.includeQrPieces` se conserva por compatibilidad: si es `false`,
+ * solo se imprime el comprobante; si es `true` o no se especifica, se
+ * imprimen también las entradas y covers (ahora sin QR).
  */
 export async function printTicketSale(
   data: TicketSalePrintData,
@@ -182,16 +169,16 @@ export async function printTicketSale(
 
     if (options.includeQrPieces !== false) {
       for (let idx = 0; idx < totalEntries; idx++) {
-        pieces.push(buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, paperWidth));
+        pieces.push(
+          buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, data.saleNumber, paperWidth),
+        );
       }
 
       for (const cover of data.coverTokens) {
-        pieces.push(buildCoverHtml(cover, paperWidth));
+        pieces.push(buildCoverHtml(cover, data.saleNumber, paperWidth));
       }
     }
 
-    // Cada pieza se imprime como job independiente (iframe propio) para
-    // evitar que Chrome/kiosk descarte impresiones encadenadas.
     let lastError: string | undefined;
     let anySuccess = false;
     for (const piece of pieces) {
