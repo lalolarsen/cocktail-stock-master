@@ -13,8 +13,6 @@ import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 
-import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
-import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
   Collapsible,
   CollapsibleContent,
@@ -25,7 +23,7 @@ import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import PickupQRDialog from "@/components/PickupQRDialog";
+
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
@@ -179,30 +177,9 @@ export default function Sales() {
     saleNumber: string;
     total: number;
     sellerId: string;
-    isHybrid: boolean;
-    barLocationId?: string;
-    barName?: string;
-    pickupData?: {
-      token: string;
-      shortCode?: string;
-      expiresAt: string;
-      items: Array<{ name: string; quantity: number; price: number }>;
-      barName?: string;
-    };
     cartItems: Array<{ name: string; quantity: number; price: number }>;
   } | null>(null);
-  
-  // Pickup QR state (for viewing recent sales QR)
-  const [showPickupQR, setShowPickupQR] = useState(false);
-  const [pickupQRData, setPickupQRData] = useState<{
-    token: string;
-    saleNumber: string;
-    expiresAt: string;
-    items: Array<{ name: string; quantity: number; price: number }>;
-    total: number;
-    barName?: string;
-    shortCode?: string;
-  } | null>(null);
+
   
   const navigate = useNavigate();
   const cartScrollRef = useRef<HTMLDivElement>(null);
@@ -641,57 +618,23 @@ export default function Sales() {
         receiptStatus = "paid_external";
       }
 
-      // Generate pickup QR token
-      let pickupData: typeof lastSaleData["pickupData"] = undefined;
-      const { data: tokenResult, error: tokenError } = await supabase.rpc(
-        "generate_pickup_token",
-        { p_sale_id: sale.id }
-      );
-
-      console.log("[Sales] generate_pickup_token result:", { tokenError, tokenResult });
-
-      if (tokenError) {
-        console.error("[Sales] QR generation failed:", tokenError);
-        toast.error(`No se pudo generar QR: ${tokenError.message}`);
-      } else if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
-        if (result.success && result.token) {
-          pickupData = {
-            token: result.token,
-            shortCode: result.short_code || undefined,
-            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            items: cartItemsForQR,
-            barName: undefined, // Bar determined at redemption
-          };
-        } else {
-          console.error("[Sales] QR not generated:", result);
-          toast.error(result.message || "QR no generado (respuesta inválida del servidor)");
-        }
-      } else {
-        console.error("[Sales] generate_pickup_token returned null");
-        toast.error("QR no generado (sin respuesta del servidor)");
-      }
-
-      // Determine if this is a hybrid POS
+      // POS pivot: ya no se generan tokens de retiro (QR).
+      // La venta se entrega físicamente mediante COVER + comprobante impresos.
       const currentPos = posTerminals.find(p => p.id === selectedPosId);
-      const isHybridPOS = !!(currentPos?.auto_redeem && currentPos.bar_location_id);
 
-      // Show success/wizard screen
+      // Show success screen
       setLastSaleData({
         saleId: sale.id,
         saleNumber,
         total: totalAmount,
         sellerId: session.session.user.id,
-        isHybrid: isHybridPOS,
-        barLocationId: currentPos?.bar_location_id || undefined,
-        barName: currentPos?.bar_location?.name || undefined,
-        pickupData,
         cartItems: cartItemsForQR,
       });
       setShowSuccessScreen(true);
       clearCartStore();
       setPaymentMethod(null);
       fetchRecentSales();
+
 
       // ── Auto-print receipt + QR ──
       // Kiosk flow: every completed POS sale must print immediately.
@@ -707,11 +650,9 @@ export default function Sales() {
           items: cartItemsForQR,
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
-          pickupToken: pickupData?.token,
-          shortCode: pickupData?.shortCode,
         };
         // Fire-and-forget with toast feedback
-        autoPrintReceipt(receiptData, sale.id, undefined, isHybridPOS).then((result) => {
+        autoPrintReceipt(receiptData, sale.id).then((result) => {
           if (result.success) {
             toast.success("Impreso OK", { duration: 2000 });
           } else {
@@ -742,42 +683,8 @@ export default function Sales() {
     setLastSaleData(null);
   };
 
-  const viewSaleQR = async (sale: any) => {
-    try {
-      const { data: tokenResult, error: tokenError } = await supabase.rpc(
-        "generate_pickup_token",
-        { p_sale_id: sale.id }
-      );
+  // viewSaleQR removed — el flujo de POS ya no genera QRs.
 
-      if (tokenError) throw tokenError;
-      
-      if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
-        if (result.success && result.token) {
-          const items = (sale.sale_items || []).map((item: any) => ({
-            name: item.cocktails?.name || "Item",
-            quantity: item.quantity,
-            price: item.unit_price,
-          }));
-
-          setPickupQRData({
-            token: result.token,
-            saleNumber: sale.sale_number,
-            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            items,
-            total: sale.total_amount,
-            barName: result.bar_name,
-            shortCode: result.short_code,
-          });
-          setShowPickupQR(true);
-        } else {
-          toast.error(result.message || "No se pudo generar QR");
-        }
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Error al generar QR");
-    }
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -918,36 +825,15 @@ export default function Sales() {
   // Resolve bar name for hybrid POS header display
   const barNameForHeader = selectedPosObj?.bar_location?.name || "";
 
-  // Success Screen after sale
+  // Success Screen after sale (cover + comprobante físico — sin QR)
   if (showSuccessScreen && lastSaleData) {
-    // Hybrid POS: show guided wizard (mixer → redeem → deliver)
-    if (lastSaleData.isHybrid && lastSaleData.barLocationId && lastSaleData.barName) {
-      return (
-        <HybridPostSaleWizard
-          saleId={lastSaleData.saleId}
-          saleNumber={lastSaleData.saleNumber}
-          total={lastSaleData.total}
-          items={lastSaleData.cartItems}
-          barLocationId={lastSaleData.barLocationId}
-          barName={lastSaleData.barName}
-          sellerId={lastSaleData.sellerId}
-          venueId={venue?.id}
-          pickupToken={lastSaleData.pickupData?.token}
-          pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
-          pickupShortCode={lastSaleData.pickupData?.shortCode}
-          onComplete={handleNewSale}
-        />
-      );
-    }
-
-    // Normal POS: show classic success screen with QR
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center space-y-6">
           <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
             <Check className="w-10 h-10 text-green-500" />
           </div>
-          
+
           <div className="space-y-2">
             <h1 className="text-3xl font-bold">¡Venta Exitosa!</h1>
             <p className="text-4xl font-bold text-primary">{lastSaleData.saleNumber}</p>
@@ -956,56 +842,15 @@ export default function Sales() {
             </p>
           </div>
 
-          {lastSaleData.pickupData ? (
-            <div className="border-t pt-6">
-              <PickupQRDialog
-                open={true}
-                onClose={() => {}}
-                token={lastSaleData.pickupData.token}
-                saleNumber={lastSaleData.saleNumber}
-                expiresAt={lastSaleData.pickupData.expiresAt}
-                items={lastSaleData.pickupData.items}
-                total={lastSaleData.total}
-                barName={lastSaleData.pickupData.barName}
-                shortCode={lastSaleData.pickupData.shortCode}
-                embedded
-              />
-            </div>
-          ) : (
-            <div className="border-t pt-6 space-y-3">
-              <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-4 text-sm text-destructive">
-                ⚠️ El QR de retiro no se generó automáticamente.
-              </div>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => viewSaleQR({ id: lastSaleData.saleId, sale_number: lastSaleData.saleNumber, total_amount: lastSaleData.total, sale_items: lastSaleData.cartItems.map(i => ({ cocktails: { name: i.name }, quantity: i.quantity, unit_price: i.price })) })}
-              >
-                <Printer className="w-4 h-4 mr-2" />
-                Reintentar generar QR
-              </Button>
-            </div>
-          )}
+          <div className="border-t pt-6 space-y-2 text-sm">
+            <p className="font-semibold text-foreground">Entrega física</p>
+            <p className="text-muted-foreground">
+              Se imprimieron 2 piezas: <strong>COVER</strong> para el cliente y
+              <strong> comprobante</strong> para caja.
+            </p>
+          </div>
 
-          {/* Print status + reprint */}
-          {lastPrintStatus === "success" && (
-            <div className="flex items-center justify-center gap-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>Impreso correctamente</span>
-            </div>
-          )}
-          {lastPrintStatus === "failed" && (
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" />
-                Impresión falló
-              </span>
-              <Button variant="outline" size="sm" onClick={() => reprintLast()} disabled={isPrinting}>
-                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 mr-1" />}
-                Reimprimir
-              </Button>
-            </div>
-          )}
+
 
           <Button
             onClick={handleNewSale}
@@ -1315,14 +1160,8 @@ export default function Sales() {
                 <PrintingPanel venueName={venue?.name} venueId={venue?.id} posId={selectedPosId} />
               </div>
 
-              {/* QR SCANNER PANEL — solo para caja híbrida */}
-              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
-                <HybridQRScannerPanel
-                  barLocationId={selectedPosObj.bar_location_id}
-                  barName={barNameForHeader}
-                  activeJornadaId={activeJornadaId}
-                />
-              )}
+              {/* HybridQRScannerPanel removido — POS ya no escanea QRs */}
+
 
               {/* HISTORIAL COLAPSABLE — shrink-0, at bottom */}
               {recentSales.length > 0 && (
@@ -1358,21 +1197,8 @@ export default function Sales() {
                               <p className="text-[10px] text-muted-foreground/60">{formatTime(sale.created_at)}</p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-1.5 gap-1"
-                                  onClick={() => viewSaleQR(sale)}
-                                  title={tokenStatus === 'redeemed' ? 'Ya canjeado' : 'Reimprimir QR'}
-                                >
-                                  <QrCode className="w-3 h-3" />
-                                  <span className="text-[9px]">
-                                    {tokenStatus === 'redeemed' ? 'Canjeado' : 'QR'}
-                                  </span>
-                                  {tokenStatus === 'redeemed' && <Check className="w-2.5 h-2.5 text-green-600" />}
-                                </Button>
-                              )}
+                              {/* Reimpresión de QR eliminada — POS solo imprime cover + comprobante */}
+
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1394,8 +1220,6 @@ export default function Sales() {
                                     items,
                                     total: sale.total_amount,
                                     paymentMethod: sale.payment_method || "card",
-                                    pickupToken: pickupToken?.token,
-                                    shortCode: pickupToken?.short_code || undefined,
                                   };
                                   printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
                                 }}
@@ -1444,23 +1268,8 @@ export default function Sales() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Pickup QR Dialog (for viewing recent sales) */}
-        {showPickupQR && pickupQRData && (
-          <PickupQRDialog
-            open={showPickupQR}
-            onClose={() => {
-              setShowPickupQR(false);
-              setPickupQRData(null);
-            }}
-            token={pickupQRData.token}
-            saleNumber={pickupQRData.saleNumber}
-            expiresAt={pickupQRData.expiresAt}
-            items={pickupQRData.items}
-            total={pickupQRData.total}
-            barName={pickupQRData.barName}
-            shortCode={pickupQRData.shortCode}
-          />
-        )}
+        {/* PickupQRDialog removido — POS pivot a cover físico */}
+
 
         {/* Replenishment Request Dialog — hybrid POS only */}
         {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (

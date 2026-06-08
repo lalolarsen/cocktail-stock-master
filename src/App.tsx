@@ -13,7 +13,7 @@ import Admin from "./pages/Admin";
 import Documents from "./pages/Documents";
 import PickupTokens from "./pages/PickupTokens";
 import PickupRedemptions from "./pages/PickupRedemptions";
-import Bar from "./pages/Bar";
+
 import Auth from "./pages/Auth";
 import DevAuth from "./pages/DevAuth";
 import Help from "./pages/Help";
@@ -187,14 +187,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["vendedor", "admin", "bar"]}>
             <Sales />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bar"
-        element={
-          <ProtectedRoute allowedRoles={["bar"]}>
-            <Bar />
           </ProtectedRoute>
         }
       />
