@@ -1,4 +1,4 @@
-import { Shield, Eye, ShoppingCart, Wine, Sparkles } from "lucide-react";
+import { Shield, Eye, ShoppingCart, Sparkles } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 
 export interface Worker {
@@ -69,16 +69,3 @@ export const AVAILABLE_ROLES: {
   },
 ];
 
-// Legacy entry kept for reference (no longer offered in UI):
-// { value: "bar", label: "Barra", icon: Wine, ... }
-const _legacy_bar = { Wine };
-void _legacy_bar;
-  { 
-    value: "ticket_seller", 
-    label: "Ticketero", 
-    icon: Sparkles, 
-    color: "text-rose-500",
-    bgColor: "bg-rose-50",
-    textColor: "text-rose-700"
-  },
-];
