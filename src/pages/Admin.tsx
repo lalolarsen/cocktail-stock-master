@@ -7,29 +7,16 @@ import { MenuWrapper } from "@/components/dashboard/MenuWrapper";
 import { WorkersManagementNew } from "@/components/dashboard/WorkersManagementNew";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
-import { ExpenseDeclaration } from "@/components/dashboard/ExpenseDeclaration";
 import { ReportsPanel } from "@/components/dashboard/ReportsPanel";
-import { DocumentsRetryPanel } from "@/components/dashboard/DocumentsRetryPanel";
 import { POSBarsManagement } from "@/components/dashboard/POSBarsManagement";
-import { InventoryHub } from "@/components/dashboard/InventoryHub";
-import { BarReplenishment } from "@/components/dashboard/BarReplenishment";
 import { NotificationsManagement } from "@/components/dashboard/NotificationsManagement";
 import { TicketTypesManagement } from "@/components/dashboard/TicketTypesManagement";
-import { FinancePanel } from "@/components/dashboard/FinancePanel";
 import { ComprasPanel } from "@/components/dashboard/ComprasPanel";
-import { WasteManagement } from "@/components/dashboard/WasteManagement";
 import CourtesyQR from "@/pages/CourtesyQR";
 import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
-import { PasslineAuditPanel } from "@/components/dashboard/PasslineAuditPanel";
-import { OpenBottlesMonitor } from "@/components/dashboard/OpenBottlesMonitor";
 import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
-import { IncomeDeclarationPanel } from "@/components/dashboard/IncomeDeclarationPanel";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
-import { InventoryComparisonModule } from "@/components/dashboard/InventoryComparisonModule";
-import { RealtimeInventoryDashboard } from "@/components/dashboard/RealtimeInventoryDashboard";
-import { BlindShiftCountsPanel } from "@/components/dashboard/BlindShiftCountsPanel";
-import { WeeklyCountImporter } from "@/components/dashboard/WeeklyCountImporter";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
@@ -38,7 +25,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports" | "documents" | "pos" | "inventory" | "replenishment" | "notifications" | "tickets" | "finance" | "proveedores" | "courtesy-qr" | "waste" | "botellas" | "settings" | "passline-audit" | "income" | "analytics" | "voids" | "external-consumption" | "reconciliation" | "comparison" | "live-inventory" | "shift-counts" | "weekly-count";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -73,8 +60,8 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "expenses", "reports", "documents", "workers", "finance", "courtesy-qr", "income", "settings", "analytics", "voids", "proveedores", "notifications"];
-  
+  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "reports", "workers", "courtesy-qr", "settings", "analytics", "voids", "proveedores", "notifications"];
+
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
       return;
@@ -117,30 +104,15 @@ export default function Admin() {
       case "menu": return "Carta";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
-      case "expenses": return "Gastos";
       case "reports": return "Reportes";
-      case "documents": return "Documentos";
       case "pos": return "Barras y POS";
-      case "inventory": return "Inventario";
-      case "replenishment": return "Reposición";
       case "notifications": return "Notificaciones";
       case "tickets": return "Entradas";
-      case "finance": return "Finanzas";
-      case "income": return "Ingresos";
       case "analytics": return "Análisis";
       case "proveedores": return "Compras";
-      case "courtesy-qr": return "QR Cortesía";
-      case "waste": return "Merma";
-      case "botellas": return "Botellas";
+      case "courtesy-qr": return "Cortesías";
       case "settings": return "Config";
-      case "passline-audit": return "Passline";
       case "voids": return "Anulaciones";
-      case "external-consumption": return "Consumo Externo";
-      case "reconciliation": return "Cuadre de Inventario";
-      case "comparison": return "Comparación de Inventario";
-      case "live-inventory": return "Inventario en vivo";
-      case "shift-counts": return "Conteos por aprobar";
-      case "weekly-count": return "Conteo semanal";
       default: return "Admin";
     }
   };
@@ -150,7 +122,7 @@ export default function Admin() {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-background">
           <AppSidebar activeView={activeView} setActiveView={handleViewChange} isReadOnly={isReadOnly} />
-          
+
           <main className="flex-1 overflow-auto min-w-0">
             <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-3 sm:px-6 py-2.5 sm:py-3">
               <div className="flex items-center justify-between">
@@ -166,7 +138,7 @@ export default function Admin() {
 
           <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 animate-fade-in">
             {activeView === "overview" && (
-              <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange} />
+              <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange as any} />
             )}
 
             {activeView === "products" && <ProductsList isReadOnly={isReadOnly} />}
@@ -180,30 +152,15 @@ export default function Admin() {
             )}
 
             {activeView === "jornadas" && !isReadOnly && <JornadaManagement />}
-            {activeView === "expenses" && <ExpenseDeclaration />}
             {activeView === "reports" && <ReportsPanel />}
-            {activeView === "documents" && <DocumentsRetryPanel />}
             {activeView === "pos" && !isReadOnly && <POSBarsManagement />}
-            {activeView === "inventory" && (
-              <InventoryHub isReadOnly={isReadOnly} />
-            )}
-            {activeView === "replenishment" && !isReadOnly && <BarReplenishment />}
             {activeView === "notifications" && <NotificationsManagement />}
             {activeView === "tickets" && !isReadOnly && <TicketTypesManagement />}
-            {activeView === "finance" && isReadOnly && <FinancePanel />}
-            {activeView === "income" && <IncomeDeclarationPanel />}
             {activeView === "proveedores" && !isReadOnly && <ComprasPanel />}
-            {activeView === "waste" && !isReadOnly && <WasteManagement />}
             {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
-            {activeView === "botellas" && <OpenBottlesMonitor />}
             {activeView === "settings" && <ReceiptSettingsCard />}
-            {activeView === "passline-audit" && !isReadOnly && <PasslineAuditPanel />}
             {activeView === "voids" && <VoidRequestsPanel />}
-            {activeView === "comparison" && <InventoryComparisonModule />}
-            {activeView === "live-inventory" && <RealtimeInventoryDashboard />}
-            {activeView === "shift-counts" && !isReadOnly && <BlindShiftCountsPanel />}
-            {activeView === "weekly-count" && !isReadOnly && <WeeklyCountImporter />}
           </div>
         </main>
       </div>
