@@ -258,7 +258,7 @@ export default function Auth() {
     }
   };
 
-  const handleModeSelect = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
+  const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
     routeByRole(role);
   };
 
@@ -316,46 +316,8 @@ export default function Auth() {
               </Button>
             )}
 
-            {workerRoles.includes("bar") && (
-              <>
-                <div className="pt-1 pb-1">
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Modo Barra</p>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full h-16 justify-start gap-4 text-left"
-                  onClick={() => handleModeSelect("bar-redeem")}
-                >
-                  <Wine className="h-6 w-6 text-primary" />
-                  <div>
-                    <div className="font-medium">Barra · Entrega</div>
-                    <div className="text-xs text-muted-foreground">Escanear QR y entregar pedidos</div>
-                  </div>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-16 justify-start gap-4 text-left"
-                  onClick={() => handleModeSelect("bar-replenish")}
-                >
-                  <Package className="h-6 w-6 text-warning" />
-                  <div>
-                    <div className="font-medium">Reposición</div>
-                    <div className="text-xs text-muted-foreground">Pedir stock desde bodega</div>
-                  </div>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-16 justify-start gap-4 text-left"
-                  onClick={() => handleModeSelect("bar-count")}
-                >
-                  <ClipboardCheck className="h-6 w-6 text-info" />
-                  <div>
-                    <div className="font-medium">Conteo</div>
-                    <div className="text-xs text-muted-foreground">Conteo ciego de cierre</div>
-                  </div>
-                </Button>
-              </>
-            )}
+            {/* Bar role deprecated: STOCKIA is now pure POS (cover + receipt). */}
+
 
             {(workerRoles.includes("admin") || workerRoles.includes("gerencia")) && (
               <Button
