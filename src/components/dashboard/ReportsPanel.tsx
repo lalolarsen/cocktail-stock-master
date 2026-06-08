@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
-import { RedeemReportButton } from "./RedeemReportButton";
+import { IngredientUsageReportButton } from "./IngredientUsageReportButton";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { JornadaDownloadMenu } from "./reports/JornadaDownloadMenu";
 
@@ -433,7 +433,7 @@ function JornadaRow({
 
           {/* Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <RedeemReportButton jornadaId={report.id} jornadaNumber={report.numero_jornada} fecha={report.fecha} />
+            <IngredientUsageReportButton jornadaId={report.id} jornadaNumber={report.numero_jornada} fecha={report.fecha} />
             <JornadaDownloadMenu
               jornadaId={report.id}
               jornadaNumber={report.numero_jornada}
