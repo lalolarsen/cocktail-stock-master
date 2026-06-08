@@ -825,36 +825,15 @@ export default function Sales() {
   // Resolve bar name for hybrid POS header display
   const barNameForHeader = selectedPosObj?.bar_location?.name || "";
 
-  // Success Screen after sale
+  // Success Screen after sale (cover + comprobante físico — sin QR)
   if (showSuccessScreen && lastSaleData) {
-    // Hybrid POS: show guided wizard (mixer → redeem → deliver)
-    if (lastSaleData.isHybrid && lastSaleData.barLocationId && lastSaleData.barName) {
-      return (
-        <HybridPostSaleWizard
-          saleId={lastSaleData.saleId}
-          saleNumber={lastSaleData.saleNumber}
-          total={lastSaleData.total}
-          items={lastSaleData.cartItems}
-          barLocationId={lastSaleData.barLocationId}
-          barName={lastSaleData.barName}
-          sellerId={lastSaleData.sellerId}
-          venueId={venue?.id}
-          pickupToken={lastSaleData.pickupData?.token}
-          pickupExpiresAt={lastSaleData.pickupData?.expiresAt}
-          pickupShortCode={lastSaleData.pickupData?.shortCode}
-          onComplete={handleNewSale}
-        />
-      );
-    }
-
-    // Normal POS: show classic success screen with QR
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-500/10 via-background to-primary/5 flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center space-y-6">
           <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
             <Check className="w-10 h-10 text-green-500" />
           </div>
-          
+
           <div className="space-y-2">
             <h1 className="text-3xl font-bold">¡Venta Exitosa!</h1>
             <p className="text-4xl font-bold text-primary">{lastSaleData.saleNumber}</p>
@@ -863,56 +842,15 @@ export default function Sales() {
             </p>
           </div>
 
-          {lastSaleData.pickupData ? (
-            <div className="border-t pt-6">
-              <PickupQRDialog
-                open={true}
-                onClose={() => {}}
-                token={lastSaleData.pickupData.token}
-                saleNumber={lastSaleData.saleNumber}
-                expiresAt={lastSaleData.pickupData.expiresAt}
-                items={lastSaleData.pickupData.items}
-                total={lastSaleData.total}
-                barName={lastSaleData.pickupData.barName}
-                shortCode={lastSaleData.pickupData.shortCode}
-                embedded
-              />
-            </div>
-          ) : (
-            <div className="border-t pt-6 space-y-3">
-              <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-4 text-sm text-destructive">
-                ⚠️ El QR de retiro no se generó automáticamente.
-              </div>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => viewSaleQR({ id: lastSaleData.saleId, sale_number: lastSaleData.saleNumber, total_amount: lastSaleData.total, sale_items: lastSaleData.cartItems.map(i => ({ cocktails: { name: i.name }, quantity: i.quantity, unit_price: i.price })) })}
-              >
-                <Printer className="w-4 h-4 mr-2" />
-                Reintentar generar QR
-              </Button>
-            </div>
-          )}
+          <div className="border-t pt-6 space-y-2 text-sm">
+            <p className="font-semibold text-foreground">Entrega física</p>
+            <p className="text-muted-foreground">
+              Se imprimieron 2 piezas: <strong>COVER</strong> para el cliente y
+              <strong> comprobante</strong> para caja.
+            </p>
+          </div>
 
-          {/* Print status + reprint */}
-          {lastPrintStatus === "success" && (
-            <div className="flex items-center justify-center gap-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>Impreso correctamente</span>
-            </div>
-          )}
-          {lastPrintStatus === "failed" && (
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" />
-                Impresión falló
-              </span>
-              <Button variant="outline" size="sm" onClick={() => reprintLast()} disabled={isPrinting}>
-                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 mr-1" />}
-                Reimprimir
-              </Button>
-            </div>
-          )}
+
 
           <Button
             onClick={handleNewSale}
