@@ -1268,23 +1268,8 @@ export default function Sales() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Pickup QR Dialog (for viewing recent sales) */}
-        {showPickupQR && pickupQRData && (
-          <PickupQRDialog
-            open={showPickupQR}
-            onClose={() => {
-              setShowPickupQR(false);
-              setPickupQRData(null);
-            }}
-            token={pickupQRData.token}
-            saleNumber={pickupQRData.saleNumber}
-            expiresAt={pickupQRData.expiresAt}
-            items={pickupQRData.items}
-            total={pickupQRData.total}
-            barName={pickupQRData.barName}
-            shortCode={pickupQRData.shortCode}
-          />
-        )}
+        {/* PickupQRDialog removido — POS pivot a cover físico */}
+
 
         {/* Replenishment Request Dialog — hybrid POS only */}
         {selectedPosObj?.auto_redeem && selectedPosObj.bar_location_id && (
