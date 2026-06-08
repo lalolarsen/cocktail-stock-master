@@ -164,7 +164,7 @@ Gerencia: subset read-only.
 |---|---|---|
 | **F1 — POS nuevo flujo de impresión** | Reescribir `ticket-print.ts` y `usePrintJob` para imprimir cover grande + comprobante. Sin QR. Testing en ambos POS. | 3–4 días |
 | **F2 — Eliminar /bar + scanner + QR** | Borrar `pages/Bar.tsx`, `components/bar/*`, `HybridQRScannerPanel`, `PickupQRDialog`, `lib/qr.ts`, ruta `/bar`. | 2–3 días |
-| **F3 — Cortesías sin QR + integración en reporte POS** | Refactor `CourtesyQR*` y `CourtesyRedeemDialog` a flujo cover. Embed cortesías en reporte de cajero. | 2–3 días |
+| **F3 — Cortesías sin QR + integración en reporte POS** ✅ | Refactor `CourtesyQR*` a flujo cover físico, autoredención al emitir, `CourtesyRedeemDialog` eliminado, bloque de canje en `Sales.tsx` retirado. | hecho |
 | **F4 — Eliminar inventario (UI)** | Borrar componentes/hooks/páginas de inventario, replenishment, mermas, botellas, conteos, external consumption. Limpiar sidebar y rutas. **Conservar** Productos y Carta. | 5–7 días |
 | **F5 — Reporte de gasto de insumos** | Nuevo reporte basado en `sale_items × cocktail_ingredients`. PDF térmico + export. Incluye consumos de cortesías. | 2–3 días |
 | **F6 — Eliminar EERR + simplificar dashboard** | Borrar IncomeStatement, useCOGSData, useFinanceMTD, paneles finance, `purchase-financial-engine`. Dashboard solo ventas/comisión/cortesías/gasto insumos. | 2–3 días |
