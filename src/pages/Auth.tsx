@@ -81,12 +81,8 @@ export default function Auth() {
       return;
     }
 
-    // Bar role: always show selector (Barra / Reposición / Conteo)
-    if (roles.includes("bar")) {
-      setWorkerRoles(roles);
-      setShowModeSelection(true);
-      return;
-    }
+    // Bar role deprecated: STOCKIA is now pure POS — no /bar destination
+    // (bar users without other roles will simply remain on the auth screen)
 
     if (roles.length === 1) {
       const role = roles[0];
@@ -110,18 +106,12 @@ export default function Auth() {
     setShowModeSelection(true);
   };
 
-  const routeByRole = (role: AppRole | "sales" | "tickets" | "bar-redeem" | "bar-replenish" | "bar-count") => {
+  const routeByRole = (role: AppRole | "sales" | "tickets") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
     } else if (role === "vendedor" || role === "sales") {
       navigate("/sales");
-    } else if (role === "bar" || role === "bar-redeem") {
-      navigate("/bar?mode=barra");
-    } else if (role === "bar-replenish") {
-      navigate("/bar?mode=reposicion");
-    } else if (role === "bar-count") {
-      navigate("/bar?mode=conteo");
     } else if (role === "ticket_seller" || role === "tickets") {
       navigate("/tickets");
     }
