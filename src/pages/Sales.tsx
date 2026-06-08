@@ -13,8 +13,6 @@ import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 
-import { HybridPostSaleWizard } from "@/components/sales/HybridPostSaleWizard";
-import { HybridQRScannerPanel } from "@/components/sales/HybridQRScannerPanel";
 import {
   Collapsible,
   CollapsibleContent,
@@ -25,7 +23,7 @@ import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCLP } from "@/lib/currency";
 import WorkerPinDialog from "@/components/WorkerPinDialog";
-import PickupQRDialog from "@/components/PickupQRDialog";
+
 import { issueDocument, type DocumentType } from "@/lib/invoicing/index";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
@@ -179,30 +177,9 @@ export default function Sales() {
     saleNumber: string;
     total: number;
     sellerId: string;
-    isHybrid: boolean;
-    barLocationId?: string;
-    barName?: string;
-    pickupData?: {
-      token: string;
-      shortCode?: string;
-      expiresAt: string;
-      items: Array<{ name: string; quantity: number; price: number }>;
-      barName?: string;
-    };
     cartItems: Array<{ name: string; quantity: number; price: number }>;
   } | null>(null);
-  
-  // Pickup QR state (for viewing recent sales QR)
-  const [showPickupQR, setShowPickupQR] = useState(false);
-  const [pickupQRData, setPickupQRData] = useState<{
-    token: string;
-    saleNumber: string;
-    expiresAt: string;
-    items: Array<{ name: string; quantity: number; price: number }>;
-    total: number;
-    barName?: string;
-    shortCode?: string;
-  } | null>(null);
+
   
   const navigate = useNavigate();
   const cartScrollRef = useRef<HTMLDivElement>(null);
