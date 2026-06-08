@@ -228,13 +228,8 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
 
   return (
     <div className="space-y-5 sm:space-y-8">
-      {/* ── Bandeja de admin: requiere atención inmediata ── */}
-      {!isReadOnly && (
-        <div className="space-y-3">
-          <EmergencyRequestsBanner onNavigate={onNavigate} />
-          <PendingShiftCountsBanner onNavigate={onNavigate} />
-        </div>
-      )}
+
+
 
       {/* ── Alerts (compact on mobile) ── */}
       {!jornadaActive && !isReadOnly && (
@@ -382,21 +377,8 @@ export function AdminOverview({ isReadOnly = false, onNavigate }: Props) {
             <JornadaKPIPanel jornadaId={jornada?.id} />
           </section>
 
-          {/* BLOQUE 2.5 — Inventario en vivo (acceso rápido) */}
-          <section>
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Inventario en vivo
-            </h2>
-            <LiveInventoryQuickCard onNavigate={onNavigate} />
-          </section>
 
-          {/* BLOQUE 3 — Alertas y estado */}
-          <section>
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Alertas y estado
-            </h2>
-            <StockAlertsPanel onNavigate={onNavigate} />
-          </section>
+
         </>
       )}
     </div>
