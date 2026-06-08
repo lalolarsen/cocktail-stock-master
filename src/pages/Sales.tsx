@@ -618,57 +618,23 @@ export default function Sales() {
         receiptStatus = "paid_external";
       }
 
-      // Generate pickup QR token
-      let pickupData: typeof lastSaleData["pickupData"] = undefined;
-      const { data: tokenResult, error: tokenError } = await supabase.rpc(
-        "generate_pickup_token",
-        { p_sale_id: sale.id }
-      );
-
-      console.log("[Sales] generate_pickup_token result:", { tokenError, tokenResult });
-
-      if (tokenError) {
-        console.error("[Sales] QR generation failed:", tokenError);
-        toast.error(`No se pudo generar QR: ${tokenError.message}`);
-      } else if (tokenResult) {
-        const result = tokenResult as { success: boolean; token?: string; short_code?: string; expires_at?: string; bar_name?: string; message?: string };
-        if (result.success && result.token) {
-          pickupData = {
-            token: result.token,
-            shortCode: result.short_code || undefined,
-            expiresAt: result.expires_at || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            items: cartItemsForQR,
-            barName: undefined, // Bar determined at redemption
-          };
-        } else {
-          console.error("[Sales] QR not generated:", result);
-          toast.error(result.message || "QR no generado (respuesta inválida del servidor)");
-        }
-      } else {
-        console.error("[Sales] generate_pickup_token returned null");
-        toast.error("QR no generado (sin respuesta del servidor)");
-      }
-
-      // Determine if this is a hybrid POS
+      // POS pivot: ya no se generan tokens de retiro (QR).
+      // La venta se entrega físicamente mediante COVER + comprobante impresos.
       const currentPos = posTerminals.find(p => p.id === selectedPosId);
-      const isHybridPOS = !!(currentPos?.auto_redeem && currentPos.bar_location_id);
 
-      // Show success/wizard screen
+      // Show success screen
       setLastSaleData({
         saleId: sale.id,
         saleNumber,
         total: totalAmount,
         sellerId: session.session.user.id,
-        isHybrid: isHybridPOS,
-        barLocationId: currentPos?.bar_location_id || undefined,
-        barName: currentPos?.bar_location?.name || undefined,
-        pickupData,
         cartItems: cartItemsForQR,
       });
       setShowSuccessScreen(true);
       clearCartStore();
       setPaymentMethod(null);
       fetchRecentSales();
+
 
       // ── Auto-print receipt + QR ──
       // Kiosk flow: every completed POS sale must print immediately.
@@ -684,11 +650,9 @@ export default function Sales() {
           items: cartItemsForQR,
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
-          pickupToken: pickupData?.token,
-          shortCode: pickupData?.shortCode,
         };
         // Fire-and-forget with toast feedback
-        autoPrintReceipt(receiptData, sale.id, undefined, isHybridPOS).then((result) => {
+        autoPrintReceipt(receiptData, sale.id).then((result) => {
           if (result.success) {
             toast.success("Impreso OK", { duration: 2000 });
           } else {
