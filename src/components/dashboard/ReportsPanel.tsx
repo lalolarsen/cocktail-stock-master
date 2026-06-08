@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { JornadaCloseSummaryDialog } from "./JornadaCloseSummaryDialog";
+
 import { IngredientUsageReportButton } from "./IngredientUsageReportButton";
 import { fetchJornadaLiveReport } from "@/lib/jornada-reporting";
 import { JornadaDownloadMenu } from "./reports/JornadaDownloadMenu";
@@ -80,8 +80,7 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
   const [loadingSales, setLoadingSales] = useState<string | null>(null);
-  
-  const [eerrOpen, setEerrOpen] = useState<{ id: string; num: number; date: string } | null>(null);
+
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -336,22 +335,11 @@ export function ReportsPanel() {
                   onToggle={() => handleExpand(report.id)}
                   loadingSales={loadingSales === report.id}
                   onCSV={() => handleExportJornadaCSV(report)}
-                  onOpenEERR={() => setEerrOpen({ id: report.id, num: report.numero_jornada, date: report.fecha })}
                 />
               ))}
             </div>
           </section>
         </>
-      )}
-
-      {eerrOpen && (
-        <JornadaCloseSummaryDialog
-          open
-          onClose={() => setEerrOpen(null)}
-          jornadaId={eerrOpen.id}
-          jornadaNumber={eerrOpen.num}
-          jornadaDate={eerrOpen.date}
-        />
       )}
     </div>
   );
@@ -390,10 +378,10 @@ function KPI({ label, value, sub, icon: Icon, accent, negative, trend }: {
 /* ── Jornada Row ── */
 
 function JornadaRow({
-  report, expanded, onToggle, loadingSales, onCSV, onOpenEERR,
+  report, expanded, onToggle, loadingSales, onCSV,
 }: {
   report: JornadaReport; expanded: boolean; onToggle: () => void;
-  loadingSales: boolean; onCSV: () => void; onOpenEERR: () => void;
+  loadingSales: boolean; onCSV: () => void;
 }) {
   const fin = report.financial;
   const isClosed = report.estado === "cerrada";
@@ -442,7 +430,7 @@ function JornadaRow({
               isClosed={isClosed}
               hasFinancial={!!fin}
               onCSV={onCSV}
-              onEERR={onOpenEERR}
+              onCSV={onCSV}
             />
           </div>
         </div>

@@ -23,7 +23,7 @@ interface Props {
   isClosed: boolean;
   hasFinancial: boolean;
   onCSV: () => void;
-  onEERR: () => void;
+  onEERR?: () => void;
   onRedeem?: () => void;
 }
 
@@ -317,12 +317,6 @@ export function JornadaDownloadMenu({
           <DropdownMenuItem onClick={onCSV}>
             <FileText className="h-3.5 w-3.5 mr-2" />
             CSV de ventas
-          </DropdownMenuItem>
-        )}
-        {isClosed && hasFinancial && (
-          <DropdownMenuItem onClick={onEERR}>
-            <Receipt className="h-3.5 w-3.5 mr-2" />
-            Estado de Resultados
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
