@@ -166,7 +166,7 @@ Gerencia: subset read-only.
 | **F2 — Eliminar /bar + scanner + QR** | Borrar `pages/Bar.tsx`, `components/bar/*`, `HybridQRScannerPanel`, `PickupQRDialog`, `lib/qr.ts`, ruta `/bar`. | 2–3 días |
 | **F3 — Cortesías sin QR + integración en reporte POS** ✅ | Refactor `CourtesyQR*` a flujo cover físico, autoredención al emitir, `CourtesyRedeemDialog` eliminado, bloque de canje en `Sales.tsx` retirado. | hecho |
 | **F4 — Eliminar inventario (UI)** ✅ | Sidebar limpio (sin inventario, mermas, conteos). Admin.tsx solo dispatcha vistas POS/Catálogo/Compras/Ventas/Gestión. AdminOverview sin LiveInventoryQuickCard / StockAlertsPanel / PendingShiftCountsBanner / EmergencyRequestsBanner. | hecho |
-| **F5 — Reporte de gasto de insumos** | Nuevo reporte basado en `sale_items × cocktail_ingredients`. PDF térmico + export. Incluye consumos de cortesías. | 2–3 días |
+| **F5 — Reporte de gasto de insumos** ✅ | `IngredientUsageReportButton` reemplaza `RedeemReportButton`. PDF basado en `sale_items × cocktail_ingredients` + cortesías redimidas. | hecho |
 | **F6 — Eliminar EERR + simplificar dashboard** | Borrar IncomeStatement, useCOGSData, useFinanceMTD, paneles finance, `purchase-financial-engine`. Dashboard solo ventas/comisión/cortesías/gasto insumos. | 2–3 días |
 | **F7 — Lector de facturas protagónico** | Construir las 4 vistas de métricas (compras semanales, histórico precio, venta vs compra teórica, top insumos). | 4–5 días |
 | **F8 — Limpieza final** | Quitar rol `bar` del UI, sacar `Documents` si no aplica, actualizar memorias, README, security memory. | 1–2 días |
