@@ -13,19 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { QRCodeSVG } from "qrcode.react";
 import {
   Plus,
-  QrCode,
-  Copy,
   Loader2,
   Gift,
   Printer,
   CheckCircle,
-  Clock,
-  XCircle,
   Search,
+  Receipt,
 } from "lucide-react";
+import { printCourtesyCover } from "@/lib/printing/courtesy-cover";
 
 const SOCIOS = [
   { key: "socio_md", label: "Socio: Mauricio Duque" },
@@ -33,14 +30,7 @@ const SOCIOS = [
   { key: "rrhh_gh", label: "RRHH: Gabriel Hidalgo" },
 ];
 
-const STATUS_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-  active: { label: "Activo", variant: "default" },
-  redeemed: { label: "Canjeado", variant: "secondary" },
-  expired: { label: "Expirado", variant: "outline" },
-  cancelled: { label: "Cancelado", variant: "destructive" },
-};
-
-type CourtesyQR = {
+type CourtesyRow = {
   id: string;
   code: string;
   product_id: string;
@@ -56,14 +46,13 @@ type CourtesyQR = {
 };
 
 export default function CourtesyQRSimple() {
-  const { user } = useAppSession();
+  const { user, activeJornadaId } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [showQR, setShowQR] = useState<CourtesyQR | null>(null);
+  const [lastIssued, setLastIssued] = useState<CourtesyRow | null>(null);
 
-  // Create form
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
@@ -84,8 +73,8 @@ export default function CourtesyQRSimple() {
     enabled: !!venue?.id,
   });
 
-  const { data: qrs = [], isLoading } = useQuery({
-    queryKey: ["courtesy-qrs", venue?.id],
+  const { data: courtesies = [], isLoading } = useQuery({
+    queryKey: ["courtesy-list", venue?.id],
     queryFn: async () => {
       if (!venue?.id) return [];
       const { data, error } = await supabase
@@ -93,32 +82,20 @@ export default function CourtesyQRSimple() {
         .select("*")
         .eq("venue_id", venue.id)
         .order("created_at", { ascending: false })
-        .limit(30);
+        .limit(20);
       if (error) throw error;
-      return (data || []) as CourtesyQR[];
+      return (data || []) as CourtesyRow[];
     },
     enabled: !!venue?.id,
   });
 
-  const todayQRs = useMemo(() => {
-    const now = new Date();
-    return qrs.map(qr =>
-      qr.status === "active" && new Date(qr.expires_at) < now
-        ? { ...qr, status: "expired" }
-        : qr
-    ).slice(0, 15);
-  }, [qrs]);
-
-  const activeCount = todayQRs.filter(q => q.status === "active").length;
-
-  // Filtered cocktails for search
   const filteredCocktails = useMemo(() => {
     if (!productSearch.trim()) return cocktails;
     const q = productSearch.toLowerCase();
-    return cocktails.filter(c => c.name.toLowerCase().includes(q));
+    return cocktails.filter((c) => c.name.toLowerCase().includes(q));
   }, [cocktails, productSearch]);
 
-  const selectedProduct = cocktails.find(c => c.id === selectedProductId);
+  const selectedProduct = cocktails.find((c) => c.id === selectedProductId);
 
   const resetForm = () => {
     setSelectedProductId("");
@@ -134,12 +111,13 @@ export default function CourtesyQRSimple() {
     }
     setCreating(true);
     try {
-      const product = cocktails.find(c => c.id === selectedProductId);
+      const product = cocktails.find((c) => c.id === selectedProductId);
       if (!product) throw new Error("Producto no encontrado");
 
       const endOfDay = new Date();
       endOfDay.setHours(23, 59, 59, 999);
 
+      // Crear la cortesía como ya REDIMIDA (el cover físico es la entrega).
       const { data, error } = await supabase
         .from("courtesy_qr")
         .insert({
@@ -148,6 +126,8 @@ export default function CourtesyQRSimple() {
           qty,
           expires_at: endOfDay.toISOString(),
           max_uses: 1,
+          used_count: 1,
+          status: "redeemed",
           note: note || null,
           created_by: user.id,
           venue_id: venue.id,
@@ -156,140 +136,112 @@ export default function CourtesyQRSimple() {
         .single();
 
       if (error) throw error;
-      toast.success("QR creado");
-      queryClient.invalidateQueries({ queryKey: ["courtesy-qrs"] });
+      const row = data as CourtesyRow;
+
+      // Registrar redemption inmediatamente para que aparezca en reportes/jornada.
+      if (activeJornadaId) {
+        await supabase.from("courtesy_redemptions").insert({
+          courtesy_id: row.id,
+          redeemed_by: user.id,
+          jornada_id: activeJornadaId,
+          venue_id: venue.id,
+          result: "success",
+          pos_id: null,
+        });
+      }
+
+      toast.success("Cortesía emitida");
+      queryClient.invalidateQueries({ queryKey: ["courtesy-list"] });
       setShowCreate(false);
       resetForm();
-      setShowQR(data as CourtesyQR);
+      setLastIssued(row);
+      // Auto-imprime cover físico
+      printCourtesyCover({
+        productName: row.product_name,
+        qty: row.qty,
+        code: row.code,
+        note: row.note,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+      });
     } catch (err: any) {
-      toast.error(err.message || "Error al crear");
+      toast.error(err.message || "Error al emitir cortesía");
     } finally {
       setCreating(false);
     }
   };
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    toast.success("Código copiado");
-  };
-
-  const handlePrint = (qr: CourtesyQR) => {
-    const qrEl = document.getElementById("courtesy-qr-svg-simple");
-    const w = window.open("", "_blank", "width=380,height=620");
-    if (!w) { toast.error("Popup bloqueado"); return; }
-    const expiresStr = new Date(qr.expires_at).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-    w.document.write(`
-      <html><head><title>QR Cortesía</title>
-      <style>
-        @page { size: 80mm auto; margin: 4mm; }
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 6px 4px; width: 72mm; color: #000; }
-        .brand { font-size: 11px; letter-spacing: 3px; font-weight: 700; }
-        .tag { display: inline-block; margin: 6px 0; padding: 3px 10px; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 800; letter-spacing: 1px; }
-        .product { font-size: 18px; font-weight: 800; line-height: 1.15; margin: 8px 4px 2px; word-wrap: break-word; }
-        .qty { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
-        .qr svg { width: 56mm !important; height: 56mm !important; }
-        .code { font-family: "Courier New", monospace; font-size: 16px; letter-spacing: 3px; background: #000; color: #fff; padding: 5px 10px; border-radius: 4px; display: inline-block; margin: 6px 0; }
-        .meta { font-size: 10px; color: #333; margin-top: 4px; }
-        .note { font-style: italic; font-size: 11px; margin-top: 4px; border-top: 1px dashed #999; padding-top: 4px; }
-        .footer { font-size: 9px; color: #555; margin-top: 6px; letter-spacing: 1px; }
-      </style></head><body>
-      <div class="brand">STOCKIA</div>
-      <div class="tag">🎁 CORTESÍA</div>
-      <div class="product">${qr.product_name}</div>
-      <div class="qty">× ${qr.qty}</div>
-      <div class="qr">${qrEl?.outerHTML || ""}</div>
-      <div class="code">${qr.code}</div>
-      <div class="meta">Válido hasta: ${expiresStr}</div>
-      ${qr.note ? `<div class="note">"${qr.note}"</div>` : ""}
-      <div class="footer">CANJEAR EN BARRA</div>
-      <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 300); };</script>
-      </body></html>
-    `);
-    w.document.close();
-  };
-
-  const statusIcon = (s: string) => {
-    if (s === "active") return <CheckCircle className="w-4 h-4 text-green-500" />;
-    if (s === "expired") return <Clock className="w-4 h-4 text-amber-500" />;
-    return <XCircle className="w-4 h-4 text-muted-foreground" />;
+  const reprint = (row: CourtesyRow) => {
+    printCourtesyCover({
+      productName: row.product_name,
+      qty: row.qty,
+      code: row.code,
+      note: row.note,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    });
   };
 
   return (
     <div className="space-y-4">
-      {/* Compact header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Gift className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-bold">Cortesías</h2>
-          {activeCount > 0 && (
-            <Badge variant="default" className="text-xs">{activeCount} activos</Badge>
-          )}
+          <Badge variant="outline" className="text-xs">Cover físico</Badge>
         </div>
         <Button size="lg" className="h-12 px-5 text-base gap-2" onClick={() => { resetForm(); setShowCreate(true); }}>
           <Plus className="w-5 h-5" />
-          Crear
+          Emitir
         </Button>
       </div>
 
-      {/* Simple list */}
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>
-      ) : todayQRs.length === 0 ? (
+      ) : courtesies.length === 0 ? (
         <div className="text-center py-16">
           <Gift className="w-14 h-14 mx-auto text-muted-foreground/20 mb-3" />
           <p className="text-muted-foreground text-lg font-medium">Sin cortesías</p>
-          <p className="text-sm text-muted-foreground/60 mt-1">Toca "Crear" para generar una</p>
+          <p className="text-sm text-muted-foreground/60 mt-1">Toca "Emitir" para imprimir una</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {todayQRs.map(qr => {
-            const isActive = qr.status === "active";
-            const badge = STATUS_BADGE[qr.status] || STATUS_BADGE.active;
-            return (
-              <button
-                key={qr.id}
-                onClick={() => isActive ? setShowQR(qr) : undefined}
-                disabled={!isActive}
-                className={`w-full text-left flex items-center gap-3 p-4 rounded-xl border transition-all active:scale-[0.98] ${
-                  isActive
-                    ? "bg-card border-primary/30 shadow-sm"
-                    : "bg-muted/30 border-border/30 opacity-60"
-                }`}
-              >
-                {statusIcon(qr.status)}
-                <div className="flex-1 min-w-0">
-                  <p className={`font-semibold truncate ${isActive ? "text-base" : "text-sm"}`}>
-                    {qr.product_name} <span className="font-normal text-muted-foreground">× {qr.qty}</span>
-                  </p>
-                  {qr.note && (
-                    <p className="text-xs text-muted-foreground truncate">{qr.note}</p>
-                  )}
-                </div>
-                <div className="shrink-0 flex items-center gap-2">
-                  <Badge variant={badge.variant} className="text-[11px]">{badge.label}</Badge>
-                  {isActive && <QrCode className="w-5 h-5 text-primary" />}
-                </div>
-              </button>
-            );
-          })}
+          {courtesies.map((row) => (
+            <div
+              key={row.id}
+              className="w-full flex items-center gap-3 p-4 rounded-xl border bg-card border-primary/20"
+            >
+              <Receipt className="w-5 h-5 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate text-base">
+                  {row.product_name} <span className="font-normal text-muted-foreground">× {row.qty}</span>
+                </p>
+                {row.note && (
+                  <p className="text-xs text-muted-foreground truncate">{row.note}</p>
+                )}
+              </div>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => reprint(row)}>
+                <Printer className="w-4 h-4" />
+                Reimprimir
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Create Dialog with product search */}
+      {/* Emitir Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-[95vw] sm:max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
               <Gift className="w-5 h-5 text-primary" />
-              Nueva Cortesía
+              Nueva cortesía
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 mt-1">
-            {/* Product search + selection */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Producto</label>
               {selectedProduct ? (
@@ -321,7 +273,7 @@ export default function CourtesyQRSimple() {
                     {filteredCocktails.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">Sin resultados</p>
                     ) : (
-                      filteredCocktails.map(c => (
+                      filteredCocktails.map((c) => (
                         <button
                           key={c.id}
                           type="button"
@@ -338,7 +290,6 @@ export default function CourtesyQRSimple() {
               )}
             </div>
 
-            {/* Quantity */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Cantidad</label>
               <div className="flex items-center gap-3">
@@ -363,11 +314,10 @@ export default function CourtesyQRSimple() {
               </div>
             </div>
 
-            {/* Quick note presets */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Motivo</label>
               <div className="grid grid-cols-1 gap-2">
-                {SOCIOS.map(s => (
+                {SOCIOS.map((s) => (
                   <button
                     key={s.key}
                     type="button"
@@ -384,8 +334,8 @@ export default function CourtesyQRSimple() {
               </div>
               <Input
                 placeholder="Otro motivo…"
-                value={SOCIOS.some(s => s.label === note) ? "" : note}
-                onChange={e => setNote(e.target.value)}
+                value={SOCIOS.some((s) => s.label === note) ? "" : note}
+                onChange={(e) => setNote(e.target.value)}
                 className="h-12 text-base"
               />
             </div>
@@ -396,56 +346,40 @@ export default function CourtesyQRSimple() {
               className="w-full h-14 text-lg gap-2 rounded-xl"
             >
               {creating ? (
-                <><Loader2 className="w-5 h-5 animate-spin" />Generando…</>
+                <><Loader2 className="w-5 h-5 animate-spin" />Emitiendo…</>
               ) : (
-                <><QrCode className="w-5 h-5" />Generar QR</>
+                <><Printer className="w-5 h-5" />Emitir e imprimir cover</>
               )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* View QR Dialog */}
-      <Dialog open={!!showQR} onOpenChange={() => setShowQR(null)}>
+      {/* Confirmación post-emisión */}
+      <Dialog open={!!lastIssued} onOpenChange={() => setLastIssued(null)}>
         <DialogContent className="max-w-[95vw] sm:max-w-sm rounded-2xl text-center">
           <DialogHeader>
-            <DialogTitle className="sr-only">QR</DialogTitle>
+            <DialogTitle className="sr-only">Cortesía emitida</DialogTitle>
           </DialogHeader>
-          {showQR && (
+          {lastIssued && (
             <div className="space-y-5 py-2">
-              <div className="flex justify-center">
-                <div className="bg-white p-5 rounded-2xl shadow-sm">
-                  <QRCodeSVG
-                    id="courtesy-qr-svg-simple"
-                    value={`COURTESY:${showQR.code}`}
-                    size={220}
-                    level="H"
-                    includeMargin
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                  />
-                </div>
-              </div>
+              <CheckCircle className="w-16 h-16 mx-auto text-primary" />
               <div>
-                <p className="text-xl font-bold">{showQR.product_name}</p>
-                <p className="text-muted-foreground">× {showQR.qty}</p>
+                <p className="text-xl font-bold">{lastIssued.product_name}</p>
+                <p className="text-muted-foreground">× {lastIssued.qty}</p>
               </div>
-              <code className="block text-2xl font-mono tracking-[0.2em] bg-muted px-5 py-3 rounded-xl">
-                {showQR.code}
-              </code>
-              {showQR.note && (
-                <p className="text-sm text-muted-foreground italic">"{showQR.note}"</p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" size="lg" className="h-14 text-base gap-2 rounded-xl" onClick={() => copyCode(showQR.code)}>
-                  <Copy className="w-5 h-5" />
-                  Copiar
-                </Button>
-                <Button size="lg" className="h-14 text-base gap-2 rounded-xl" onClick={() => handlePrint(showQR)}>
-                  <Printer className="w-5 h-5" />
-                  Imprimir
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Cover físico enviado a impresora. Entrégalo al cliente para canjear en barra.
+              </p>
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full h-12 gap-2 rounded-xl"
+                onClick={() => reprint(lastIssued)}
+              >
+                <Printer className="w-5 h-5" />
+                Reimprimir
+              </Button>
             </div>
           )}
         </DialogContent>
