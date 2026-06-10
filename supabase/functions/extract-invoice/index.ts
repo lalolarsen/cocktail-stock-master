@@ -329,7 +329,7 @@ For EACH product line extract:
   - qty_text: "Cantidad" (typically in cases / CJ).
   - uom_text: "UM" (CJ, UN, etc).
   - unit_price_text: "Precio Unit" (price per case before discount).
-  - discount_text: percentage from "%" column (e.g. "21.04", "13.51"). Null if absent.
+  - discount_text: percentage from "%" column ONLY (e.g. "11.90", "19.57"). This is the column labeled "%". NEVER use the monetary value from the "Descuento" column. Null if absent.
   - line_total_text: "Valor" (line subtotal after discount, before taxes).
   - line_type: "inventory" for products, "expense" for freight/services.
 
