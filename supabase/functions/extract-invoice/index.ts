@@ -292,8 +292,8 @@ function detectMultiplier(text: string): number {
   const trailingX = t.match(/(?:PET|LAT|LATA|VNR|BOT|VID|TR)\s*\d+\s*X\s*(\d+)/i);
   if (trailingX) return parseInt(trailingX[1]);
 
-  // 3) <N>PF standalone (no X following) → N units
-  const pfAlone = t.match(/(\d+)\s*PF(?!\s*X)/i);
+  // 3) <N>P<letra> standalone (no X, no dígito siguiente) → N units. e.g. "12PF-PET", "12PP-PET" (OCR), "24PR-LATA"
+  const pfAlone = t.match(/(\d+)\s*P[A-Z](?!\s*X)(?!\s*\d)/i);
   if (pfAlone) return parseInt(pfAlone[1]);
 
   // 4) <N> UN / U / UND
