@@ -135,9 +135,17 @@ serve(async (req) => {
       const discountPct = parseNum(line.discount_text?.replace?.("%", "") ?? line.discount_text);
 
       const unitsReal = qty * mult;
-      let packNet = lineTotal > 0 ? lineTotal / (qty || 1) : unitPrice;
-      if (discountPct > 0 && discountPct <= 100) {
-        packNet = packNet * (1 - discountPct / 100);
+      // "Valor" (lineTotal) en facturas CCU YA viene neto de descuento.
+      // No aplicamos descuento extra para evitar doble resta.
+      // Fallback: si no hay lineTotal, usamos unit_price y aplicamos descuento si parece % válido (0<x<=100).
+      let packNet: number;
+      if (lineTotal > 0) {
+        packNet = lineTotal / (qty || 1);
+      } else {
+        packNet = unitPrice;
+        if (discountPct > 0 && discountPct <= 100) {
+          packNet = packNet * (1 - discountPct / 100);
+        }
       }
       const costUnitNet = mult > 0 ? packNet / mult : packNet;
 
