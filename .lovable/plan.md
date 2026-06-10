@@ -1,56 +1,37 @@
+## Cambios
 
-# Métricas del Lector de Facturas
+### 1. KPIs en vivo — `src/components/dashboard/overview/JornadaKPIPanel.tsx`
+Reescribir las 3 tabs actuales (POS / Top / COGS) por **4 tabs accionables**:
 
-Reenfocar el dashboard de **Compras → Lector de facturas** para que las 3 métricas que pediste sean el foco principal, manteniendo además las pestañas existentes de "Venta vs Compra" y "Top insumos".
+1. **Por hora** — `BarChart` (recharts) agrupado por hora local America/Santiago, suma `sales.total_amount + ticket_sales.total`. Header destaca hora pico.
+2. **Por POS** — barras horizontales, alcohol vs tickets (lógica actual conservada).
+3. **Vendedor** — nuevo: agrupa `created_by` de `sales` + `ticket_sales`, join batch a `profiles.full_name`, top 8.
+4. **Top × pago** — top 8 productos con barra apilada efectivo / tarjeta / otro (mapeo `payment_method` → categoría). Footer con mix global.
 
-## Métricas principales (las 3 pedidas)
+Auto-refresh cada 30 s, summary strip con total, hora pico y # vendedores.
 
-1. **Precio neto del insumo vs compras anteriores**
-   - Refactor de `PriceHistoryView`.
-   - Selector de insumo (de los comprados en el rango).
-   - Tabla histórica: fecha · proveedor · documento · unidades · **costo unitario neto** · **Δ vs compra anterior** (% y CLP, verde/rojo).
-   - Mini-gráfico de evolución del costo unitario neto (ya existe).
+### 2. Limpieza inventario (componentes muertos)
+Borrar (verificado: sin imports externos vivos):
+- `RealtimeInventoryDashboard.tsx`, `InventoryHub.tsx`, `InventoryComparisonModule.tsx`
+- `WarehouseInventory.tsx`, `WarehouseStockIntake.tsx`, `BulkStockIntakeGrid.tsx`, `ManualStockEntryDialog.tsx`
+- `OpenBottlesMonitor.tsx`, `OpenBottleDetailDrawer.tsx`
+- `BarReplenishment.tsx`, `ReplenishmentRequestsPanel.tsx`
+- `ExternalConsumptionPanel.tsx`, `StockReconciliation.tsx`
+- `WasteManagement.tsx`, `WasteRegistrationDialog.tsx`
+- `InventoryFreezeBanner.tsx`, `InventoryFreezeToggle.tsx`
+- `hooks/useRealtimeInventory.ts`, `hooks/useOpenBottles.ts`
+- `lib/reporting/inventory-snapshot-pdf.ts`
+- carpeta `components/dashboard/replenishment/` completa
+- `components/dashboard/overview/LiveSalesChart.tsx` (reemplazado por KPI panel)
 
-2. **Valor total de cada compra** (nueva pestaña `Facturas`)
-   - Lista de facturas confirmadas en el rango: fecha · proveedor · N° doc · neto · IVA · **total** · N° líneas.
-   - KPIs arriba: total comprado, # de facturas, ticket promedio.
-   - Click en una fila → navega al detalle (`/admin/proveedores/import/:id`).
+**Conservar** `ReplenishmentRequestDialog.tsx` — lo usa `src/pages/Sales.tsx` (botón "Pedir reposición" del cajero).
 
-3. **Comparación semanal compra vs venta** (refactor de `WeeklyView`)
-   - Gráfico de barras dual por semana ISO: Comprado (neto) vs Vendido (neto sin IVA).
-   - Tabla: semana · comprado · vendido · **ratio compra/venta %** · diferencia.
+### 3. Sidebar — `src/components/AppSidebar.tsx`
+Limpiar el union `ViewType` quitando los 10 valores muertos (`inventory`, `replenishment`, `waste`, `botellas`, `external-consumption`, `reconciliation`, `comparison`, `live-inventory`, `shift-counts`, `weekly-count`, `expenses`, `documents`, `finance`, `passline-audit`, `income`). No se agregan ni cambian items visibles.
 
-## Pestañas que se mantienen
+## Sin cambios
+- DB / RLS / edge functions / POS / Bar / Tickets / Cortesías / Lector facturas / Análisis: intactos.
+- `useStockData`, `useCOGSData`, `stock_balances`: siguen vigentes.
 
-- **Venta vs Compra (por insumo)** — `SalesVsPurchaseView` sin cambios.
-- **Top insumos** — `TopInsumosView` sin cambios.
-
-## Orden final de tabs en `InvoiceAnalytics`
-
-1. Facturas (nuevo)
-2. Precio por insumo
-3. Semanal compra/venta
-4. Venta vs Compra
-5. Top insumos
-
-## Cambios en código
-
-### `src/components/dashboard/compras/InvoiceAnalytics.tsx`
-- Agregar carga de `purchase_imports` con `net_subtotal, vat_amount, total_amount, document_number` para el tab Facturas.
-- Agregar agregado semanal de `sales` (neto = `total_amount / 1.19`) por semana ISO en `America/Santiago` para el tab Semanal.
-- Nuevo componente `InvoicesListView` (tab Facturas) con KPIs + tabla clickeable.
-- Refactor `WeeklyView` → agrega columna Vendido, Ratio %, Diferencia y gráfico barras dual con Recharts.
-- Refactor `PriceHistoryView` → agrega columna Δ vs compra anterior y proveedor en la tabla bajo el gráfico.
-
-### `src/components/dashboard/ComprasPanel.tsx`
-- Quitar la pestaña **"Resumen mensual"** (`PurchaseMetrics`): el nuevo tab "Facturas" + "Semanal compra/venta" cubren esa información sin duplicar.
-- Dejar: `Análisis` (las 5 sub-pestañas) y `Facturas` (gestión/upload existente de `ProveedoresPanel`).
-
-### Archivos a borrar
-- `src/components/dashboard/compras/PurchaseMetrics.tsx`
-- `src/hooks/useComprasMetrics.ts`
-
-## Notas técnicas
-- Venta "neta" para ratio: `sales.total_amount / 1.19` (IVA 19% Chile). Documentar el supuesto bajo el ratio.
-- `isoWeek()` y `fetchAllRows` ya existen, se reutilizan.
-- Sin cambios de schema ni de backend.
+## Riesgo
+Bajo. UI/presentación solamente. Rollback vía History si algo no convence.
