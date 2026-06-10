@@ -279,13 +279,13 @@ function detectMultiplier(text: string): number {
     if (b > 0 && b <= 30) return a * b;
   }
 
-  // 1b) OCR-tolerant: "6PF24" / "6PC24" / "4PR6" — OCR a veces lee la X como 2/4.
-  //     Sólo aplica cuando el segundo número es chico (1-30 = unidades por pack).
+  // 1b) OCR-tolerant: "6PF4" / "4PR6" — OCR a veces omite la X entre letras y dígito.
+  //     Sólo aplica cuando el segundo número es muy chico (1-12 = pack típico). >12 podría ser ruido.
   const packOcr = t.match(/(\d+)\s*P[A-Z]\s*(\d+)\b/i);
   if (packOcr) {
     const a = parseInt(packOcr[1]);
     const b = parseInt(packOcr[2]);
-    if (b > 0 && b <= 30) return a * b;
+    if (b > 0 && b <= 12) return a * b;
   }
 
   // 2) Trailing X<n> in things like PET1500X6, LAT250X24, VNR330X6
