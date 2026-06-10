@@ -135,9 +135,17 @@ serve(async (req) => {
       const discountPct = parseNum(line.discount_text?.replace?.("%", "") ?? line.discount_text);
 
       const unitsReal = qty * mult;
-      let packNet = lineTotal > 0 ? lineTotal / (qty || 1) : unitPrice;
-      if (discountPct > 0 && discountPct <= 100) {
-        packNet = packNet * (1 - discountPct / 100);
+      // "Valor" (lineTotal) en facturas CCU YA viene neto de descuento.
+      // No aplicamos descuento extra para evitar doble resta.
+      // Fallback: si no hay lineTotal, usamos unit_price y aplicamos descuento si parece % válido (0<x<=100).
+      let packNet: number;
+      if (lineTotal > 0) {
+        packNet = lineTotal / (qty || 1);
+      } else {
+        packNet = unitPrice;
+        if (discountPct > 0 && discountPct <= 100) {
+          packNet = packNet * (1 - discountPct / 100);
+        }
       }
       const costUnitNet = mult > 0 ? packNet / mult : packNet;
 
@@ -263,9 +271,22 @@ function parseNum(val: any): number {
 function detectMultiplier(text: string): number {
   const t = text.toUpperCase();
 
-  // 1) PACK-of-PACK: <N><PC|PX|PF|PR|PK|PACK>[X]<M>  e.g. 6PFX4, 4PCX6, 6PACKX4, 4PRX6
-  const packOfPack = t.match(/(\d+)\s*(?:PC|PX|PF|PR|PK|PACK)\s*X\s*(\d+)/i);
-  if (packOfPack) return parseInt(packOfPack[1]) * parseInt(packOfPack[2]);
+  // 1) PACK-of-PACK: <N>P<letra>?X<M>  e.g. 6PFX4, 4PCX6, 6PACKX4, 4PRX6, 6PZX4 (OCR puede leer F/C/Z/etc.)
+  const packOfPack = t.match(/(\d+)\s*P[A-Z]{0,4}\s*X\s*(\d+)/i);
+  if (packOfPack) {
+    const a = parseInt(packOfPack[1]);
+    const b = parseInt(packOfPack[2]);
+    if (b > 0 && b <= 30) return a * b;
+  }
+
+  // 1b) OCR-tolerant: "6PF4" / "4PR6" — OCR a veces omite la X entre letras y dígito.
+  //     Sólo aplica cuando el segundo número es muy chico (1-12 = pack típico). >12 podría ser ruido.
+  const packOcr = t.match(/(\d+)\s*P[A-Z]\s*(\d+)\b/i);
+  if (packOcr) {
+    const a = parseInt(packOcr[1]);
+    const b = parseInt(packOcr[2]);
+    if (b > 0 && b <= 12) return a * b;
+  }
 
   // 2) Trailing X<n> in things like PET1500X6, LAT250X24, VNR330X6
   const trailingX = t.match(/(?:PET|LAT|LATA|VNR|BOT|VID|TR)\s*\d+\s*X\s*(\d+)/i);
@@ -312,7 +333,7 @@ For EACH product line extract:
   - qty_text: "Cantidad" (typically in cases / CJ).
   - uom_text: "UM" (CJ, UN, etc).
   - unit_price_text: "Precio Unit" (price per case before discount).
-  - discount_text: percentage from "%" column (e.g. "21.04", "13.51"). Null if absent.
+  - discount_text: percentage from "%" column ONLY (e.g. "11.90", "19.57"). This is the column labeled "%". NEVER use the monetary value from the "Descuento" column. Null if absent.
   - line_total_text: "Valor" (line subtotal after discount, before taxes).
   - line_type: "inventory" for products, "expense" for freight/services.
 
