@@ -271,13 +271,17 @@ function parseNum(val: any): number {
 function detectMultiplier(text: string): number {
   const t = text.toUpperCase();
 
-  // 1) PACK-of-PACK: <N><PC|PX|PF|PR|PK|PACK>[X]<M>  e.g. 6PFX4, 4PCX6, 6PACKX4, 4PRX6
-  const packOfPack = t.match(/(\d+)\s*(?:PC|PX|PF|PR|PK|PACK)\s*X\s*(\d+)/i);
-  if (packOfPack) return parseInt(packOfPack[1]) * parseInt(packOfPack[2]);
+  // 1) PACK-of-PACK: <N>P<letra>?X<M>  e.g. 6PFX4, 4PCX6, 6PACKX4, 4PRX6, 6PZX4 (OCR puede leer F/C/Z/etc.)
+  const packOfPack = t.match(/(\d+)\s*P[A-Z]{0,4}\s*X\s*(\d+)/i);
+  if (packOfPack) {
+    const a = parseInt(packOfPack[1]);
+    const b = parseInt(packOfPack[2]);
+    if (b > 0 && b <= 30) return a * b;
+  }
 
   // 1b) OCR-tolerant: "6PF24" / "6PC24" / "4PR6" — OCR a veces lee la X como 2/4.
   //     Sólo aplica cuando el segundo número es chico (1-30 = unidades por pack).
-  const packOcr = t.match(/(\d+)\s*(?:PC|PX|PF|PR|PK)\s*(\d+)\b/i);
+  const packOcr = t.match(/(\d+)\s*P[A-Z]\s*(\d+)\b/i);
   if (packOcr) {
     const a = parseInt(packOcr[1]);
     const b = parseInt(packOcr[2]);
