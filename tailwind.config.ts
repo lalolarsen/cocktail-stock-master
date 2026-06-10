@@ -8,9 +8,7 @@ export default {
     container: {
       center: true,
       padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
+      screens: { "2xl": "1400px" },
     },
     extend: {
       colors: {
@@ -22,6 +20,7 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          glow: "hsl(var(--primary-glow))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -75,6 +74,22 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      boxShadow: {
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+        glow: "var(--shadow-glow)",
+        hairline: "var(--shadow-hairline-inset)",
+      },
+      backgroundImage: {
+        "gradient-surface": "var(--gradient-surface)",
+        "gradient-primary": "var(--gradient-primary)",
+        "gradient-glow": "var(--gradient-glow)",
+      },
+      transitionTimingFunction: {
+        smooth: "cubic-bezier(0.4, 0, 0.2, 1)",
+        "out-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -88,11 +103,26 @@ export default {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.96)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
       },
       animation: {
-        "accordion-down": "accordion-down 0.15s ease-out",
-        "accordion-up": "accordion-up 0.15s ease-out",
-        "fade-in": "fade-in 0.15s ease-out",
+        "accordion-down": "accordion-down 0.18s cubic-bezier(0.4,0,0.2,1)",
+        "accordion-up": "accordion-up 0.18s cubic-bezier(0.4,0,0.2,1)",
+        "fade-in": "fade-in 0.2s cubic-bezier(0.4,0,0.2,1)",
+        "slide-up": "slide-up 0.22s cubic-bezier(0.16,1,0.3,1)",
+        "scale-in": "scale-in 0.18s cubic-bezier(0.16,1,0.3,1)",
+        shimmer: "shimmer 1.8s linear infinite",
       },
     },
   },

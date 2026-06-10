@@ -170,10 +170,10 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                       <SidebarMenuButton
                         onClick={() => setActiveView(item.value)}
                         tooltip={item.title}
-                        className={`h-8 rounded-md transition-colors duration-150 ${
+                        className={`relative h-8 rounded-md transition-all duration-150 ease-smooth ${
                           isActive
-                            ? "bg-primary/15 text-primary font-medium hover:bg-primary/20"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+                            ? "bg-primary/12 text-primary font-medium hover:bg-primary/18 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[2px] before:rounded-full before:bg-primary"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
                         }`}
                       >
                         <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
