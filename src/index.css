@@ -5,127 +5,124 @@
 @tailwind utilities;
 
 /**
- * STOCKIA by IAnticipa — Design System
- * B2B SaaS, minimal, high-contrast
- * Palette: #000000 / #FFFFFF / #6E6E6E / #00E676
+ * STOCKIA — Design System "Carbon Pro"
+ * Dark B2B SaaS, graphite layered surfaces + verde STOCKIA #00E676.
  * All colors MUST be HSL values only (no hsl() wrapper).
  */
 
 @layer base {
   :root {
-    /* Background & Foreground — DARK */
-    --background: 0 0% 4%;
+    /* ===== Carbon Pro palette ===== */
+    --background: 240 11% 5%;       /* #0B0B0F */
     --foreground: 0 0% 100%;
 
-    /* Card */
-    --card: 0 0% 7%;
+    --card: 240 11% 9%;             /* #16161D */
     --card-foreground: 0 0% 100%;
 
-    /* Popover */
-    --popover: 0 0% 7%;
+    --popover: 240 10% 11%;
     --popover-foreground: 0 0% 100%;
 
-    /* Primary (Verde IAnticipa #00E676) */
-    --primary: 145 100% 45%;
+    --primary: 145 100% 45%;        /* #00E676 */
     --primary-foreground: 0 0% 0%;
+    --primary-glow: 145 100% 55%;
 
-    /* Secondary */
-    --secondary: 0 0% 12%;
+    --secondary: 240 9% 16%;        /* #2A2A35 */
     --secondary-foreground: 0 0% 100%;
 
-    /* Muted */
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 43%;
+    --muted: 240 9% 14%;
+    --muted-foreground: 240 5% 60%;
 
-    /* Accent */
-    --accent: 0 0% 12%;
+    --accent: 240 9% 16%;
     --accent-foreground: 0 0% 100%;
 
-    /* Destructive (Red - subtle) */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Border & Input */
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
+    --border: 240 8% 20%;
+    --input: 240 8% 18%;
     --ring: 145 100% 45%;
 
-    /* Radius */
-    --radius: 0.25rem;
+    --radius: 0.5rem;
 
-    /* Sidebar (negro puro) */
-    --sidebar-background: 0 0% 0%;
+    /* Sidebar — deeper than the canvas */
+    --sidebar-background: 240 12% 4%;
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: 145 100% 45%;
     --sidebar-primary-foreground: 0 0% 0%;
-    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent: 240 10% 10%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 12%;
+    --sidebar-border: 240 8% 14%;
     --sidebar-ring: 145 100% 45%;
 
-    /* Semantic Colors */
+    /* Semantic */
     --success: 145 100% 45%;
     --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
-    --info: 210 100% 50%;
+    --info: 210 100% 55%;
     --info-foreground: 0 0% 100%;
 
-    /* Chart colors */
+    /* Charts */
     --chart-1: 145 100% 45%;
-    --chart-2: 210 100% 50%;
+    --chart-2: 210 100% 55%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* ===== Gradients ===== */
+    --gradient-surface: linear-gradient(180deg, hsl(240 11% 11%) 0%, hsl(240 11% 8%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 100%);
+    --gradient-glow: radial-gradient(60% 80% at 50% 0%, hsl(var(--primary) / 0.18) 0%, transparent 70%);
+
+    /* ===== Shadows / Elevation ===== */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.45), 0 2px 4px -2px hsl(0 0% 0% / 0.3);
+    --shadow-lg: 0 16px 40px -12px hsl(0 0% 0% / 0.6), 0 4px 12px -4px hsl(0 0% 0% / 0.4);
+    --shadow-glow: 0 0 0 1px hsl(var(--primary) / 0.25), 0 8px 24px -8px hsl(var(--primary) / 0.45);
+    --shadow-hairline-inset: inset 0 1px 0 0 hsl(0 0% 100% / 0.04);
+
+    /* ===== Motion ===== */
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .dark {
-    --background: 0 0% 4%;
+    --background: 240 11% 5%;
     --foreground: 0 0% 100%;
-
-    --card: 0 0% 7%;
+    --card: 240 11% 9%;
     --card-foreground: 0 0% 100%;
-
-    --popover: 0 0% 7%;
+    --popover: 240 10% 11%;
     --popover-foreground: 0 0% 100%;
-
     --primary: 145 100% 45%;
     --primary-foreground: 0 0% 0%;
-
-    --secondary: 0 0% 12%;
+    --primary-glow: 145 100% 55%;
+    --secondary: 240 9% 16%;
     --secondary-foreground: 0 0% 100%;
-
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 43%;
-
-    --accent: 0 0% 12%;
+    --muted: 240 9% 14%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 240 9% 16%;
     --accent-foreground: 0 0% 100%;
-
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
+    --border: 240 8% 20%;
+    --input: 240 8% 18%;
     --ring: 145 100% 45%;
-
-    --sidebar-background: 0 0% 0%;
+    --sidebar-background: 240 12% 4%;
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: 145 100% 45%;
     --sidebar-primary-foreground: 0 0% 0%;
-    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent: 240 10% 10%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 12%;
+    --sidebar-border: 240 8% 14%;
     --sidebar-ring: 145 100% 45%;
-
     --success: 145 100% 45%;
     --success-foreground: 0 0% 0%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
-    --info: 210 100% 50%;
+    --info: 210 100% 55%;
     --info-foreground: 0 0% 100%;
-
     --chart-1: 145 100% 45%;
-    --chart-2: 210 100% 50%;
+    --chart-2: 210 100% 55%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
@@ -143,126 +140,114 @@
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-image: radial-gradient(80% 50% at 50% -10%, hsl(var(--primary) / 0.06) 0%, transparent 60%);
+    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
     font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  /* Tabular numbers for tables and KPIs by default */
+  table, .kpi-value, [data-numeric] {
+    font-variant-numeric: tabular-nums;
   }
 }
 
 /* ============================================
-   CUSTOM SCROLLBAR
+   SCROLLBARS
    ============================================ */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 3px;
-}
-
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 3px;
+  background: hsl(var(--primary) / 0.3);
+  border-radius: 999px;
 }
-
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
-}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.5); }
 
 @layer components {
-  /* Card with subtle border */
   .card-minimal {
-    @apply bg-card border border-border rounded-lg;
+    @apply bg-card border border-border/60 rounded-lg shadow-[var(--shadow-sm)];
   }
 
-  /* Fast transitions */
-  .transition-fast {
-    transition: all 0.15s ease;
-  }
+  .transition-fast { transition: all 0.15s var(--ease-smooth); }
+  .transition-normal { transition: all 0.2s var(--ease-smooth); }
 
-  .transition-normal {
-    transition: all 0.2s ease;
-  }
-
-  /* Hover lift effect */
   .hover-lift {
-    transition: all 0.15s ease;
+    transition: transform 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth);
   }
-
   .hover-lift:hover {
     transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
   }
 
-  /* Fade in animation */
-  .fade-in {
-    animation: fade-in 0.15s ease;
+  /* Elevation layers */
+  .elevation-1 {
+    background: hsl(var(--card));
+    box-shadow: var(--shadow-sm), var(--shadow-hairline-inset);
+  }
+  .elevation-2 {
+    background: hsl(var(--popover));
+    box-shadow: var(--shadow-md), var(--shadow-hairline-inset);
+  }
+  .elevation-3 {
+    background: hsl(var(--popover));
+    box-shadow: var(--shadow-lg), var(--shadow-hairline-inset);
   }
 
+  .glass-surface {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid hsl(var(--border) / 0.7);
+  }
+
+  .hairline {
+    box-shadow: var(--shadow-hairline-inset);
+  }
+
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .btn-press {
+    transition: transform 0.12s var(--ease-smooth);
+  }
+  .btn-press:active { transform: scale(0.97); }
+
+  .fade-in { animation: fade-in 0.2s var(--ease-smooth); }
   @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* Outline badge variant */
   .badge-outline {
     @apply border border-border bg-transparent text-muted-foreground;
   }
 
-  /* Compact table styling */
   .table-compact th,
-  .table-compact td {
-    @apply py-2 px-3;
-  }
-
+  .table-compact td { @apply py-2 px-3; }
   .table-compact th {
     @apply text-xs font-medium text-muted-foreground uppercase tracking-wide;
   }
 
-  /* Standardized section spacing */
-  .section-gap {
-    @apply space-y-4;
-  }
+  .section-gap { @apply space-y-4; }
+  .section-gap-sm { @apply space-y-2; }
 
-  .section-gap-sm {
-    @apply space-y-2;
-  }
-
-  /* KPI number styling */
-  .kpi-value {
-    @apply text-2xl font-semibold tracking-tight;
-  }
-
-  .kpi-label {
-    @apply text-xs text-muted-foreground uppercase tracking-wide;
-  }
+  .kpi-value { @apply text-2xl font-semibold tracking-tight; }
+  .kpi-label { @apply text-xs text-muted-foreground uppercase tracking-wide; }
 }
 
-/* Hide scrollbar for horizontal chip containers */
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
+.scrollbar-none::-webkit-scrollbar { display: none; }
 
 /**
- * PRINT SAFETY NET
- * --------------------------------------------------------------
- * print-js inyecta un iframe oculto y dispara window.print() sobre él.
- * Sin embargo, en Chrome con --kiosk-printing y algunos drivers térmicos,
- * el navegador puede terminar imprimiendo la página visible (la pantalla
- * de "¡Venta Exitosa!", botones "Nueva Venta", URL, etc.) generando
- * tickets ilegibles con UI de la app.
- *
- * Estas reglas garantizan que cuando el navegador imprime la página
- * principal por accidente, no salga nada — solo el iframe de print-js
- * (que tiene sus propios estilos inline y queda fuera de este scope)
- * llega al cabezal térmico.
+ * PRINT SAFETY NET — sin cambios.
  */
 @media print {
   html, body {
@@ -270,12 +255,6 @@
     margin: 0 !important;
     padding: 0 !important;
   }
-  /* Ocultar TODA la app durante la impresión */
-  body > #root {
-    display: none !important;
-  }
-  /* No imprimir headers/footers del navegador con URLs */
-  @page {
-    margin: 0;
-  }
+  body > #root { display: none !important; }
+  @page { margin: 0; }
 }
