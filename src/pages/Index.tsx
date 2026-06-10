@@ -13,7 +13,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "expenses" | "reports";
+type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "reports";
 
 const Index = () => {
   const [activeView, setActiveView] = useState<ViewType>("overview");
@@ -29,7 +29,7 @@ const Index = () => {
       case "menu": return "Menú";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
-      case "expenses": return "Declaración de Gastos";
+      
       case "reports": return "Reportes";
       default: return "Dashboard";
     }
@@ -90,11 +90,6 @@ const Index = () => {
               </div>
             )}
 
-            {activeView === "expenses" && (
-              <div className="slide-in-up">
-                <ExpenseDeclaration />
-              </div>
-            )}
 
             {activeView === "reports" && (
               <div className="slide-in-up">
