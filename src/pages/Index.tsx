@@ -90,11 +90,6 @@ const Index = () => {
               </div>
             )}
 
-            {activeView === "expenses" && (
-              <div className="slide-in-up">
-                <ExpenseDeclaration />
-              </div>
-            )}
 
             {activeView === "reports" && (
               <div className="slide-in-up">
