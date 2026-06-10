@@ -154,12 +154,12 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
 
       const [posRes, salesRes, ticketRes] = await Promise.all([
         supabase.from("pos_terminals").select("id, name, pos_type").eq("is_active", true),
-        supabase.from("sales").select("id, pos_id, total_amount, created_at, created_by, payment_method").eq("jornada_id", jId).eq("payment_status", "paid").eq("is_cancelled", false),
-        supabase.from("ticket_sales").select("pos_id, total, created_at, created_by, payment_method").eq("jornada_id", jId).eq("payment_status", "paid"),
+        supabase.from("sales").select("id, pos_id, total_amount, created_at, seller_id, payment_method").eq("jornada_id", jId).eq("payment_status", "paid").eq("is_cancelled", false),
+        supabase.from("ticket_sales").select("pos_id, total, created_at, sold_by_worker_id, payment_method").eq("jornada_id", jId).eq("payment_status", "paid"),
       ]);
 
-      const alcoholSales = salesRes.data ?? [];
-      const ticketSales = ticketRes.data ?? [];
+      const alcoholSales = (salesRes.data ?? []) as Array<{ id: string; pos_id: string | null; total_amount: number; created_at: string; seller_id: string | null; payment_method: string | null }>;
+      const ticketSales = (ticketRes.data ?? []) as Array<{ pos_id: string | null; total: number; created_at: string; sold_by_worker_id: string | null; payment_method: string | null }>;
 
       // ── Sales by POS ──
       const posMap = new Map<string, SalesByPOS>();
@@ -202,8 +202,8 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
 
       // ── Sales by seller ──
       const sellerIds = new Set<string>();
-      alcoholSales.forEach(s => { if (s.created_by) sellerIds.add(s.created_by); });
-      ticketSales.forEach(s => { if (s.created_by) sellerIds.add(s.created_by); });
+      alcoholSales.forEach(s => { if (s.seller_id) sellerIds.add(s.seller_id); });
+      ticketSales.forEach(s => { if (s.sold_by_worker_id) sellerIds.add(s.sold_by_worker_id); });
       const sellerNames = new Map<string, string>();
       if (sellerIds.size > 0) {
         const { data: profs } = await supabase
@@ -220,8 +220,8 @@ export function JornadaKPIPanel({ jornadaId }: Props) {
         e.transactions += 1;
         sellerMap.set(uid, e);
       };
-      alcoholSales.forEach(s => addSeller(s.created_by, Number(s.total_amount)));
-      ticketSales.forEach(s => addSeller(s.created_by, Number(s.total)));
+      alcoholSales.forEach(s => addSeller(s.seller_id, Number(s.total_amount)));
+      ticketSales.forEach(s => addSeller(s.sold_by_worker_id, Number(s.total)));
       setSalesBySeller(Array.from(sellerMap.values()).sort((a, b) => b.total - a.total).slice(0, 8));
 
       // ── Payment mix global ──
