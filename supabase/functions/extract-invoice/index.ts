@@ -275,6 +275,15 @@ function detectMultiplier(text: string): number {
   const packOfPack = t.match(/(\d+)\s*(?:PC|PX|PF|PR|PK|PACK)\s*X\s*(\d+)/i);
   if (packOfPack) return parseInt(packOfPack[1]) * parseInt(packOfPack[2]);
 
+  // 1b) OCR-tolerant: "6PF24" / "6PC24" / "4PR6" — OCR a veces lee la X como 2/4.
+  //     Sólo aplica cuando el segundo número es chico (1-30 = unidades por pack).
+  const packOcr = t.match(/(\d+)\s*(?:PC|PX|PF|PR|PK)\s*(\d+)\b/i);
+  if (packOcr) {
+    const a = parseInt(packOcr[1]);
+    const b = parseInt(packOcr[2]);
+    if (b > 0 && b <= 30) return a * b;
+  }
+
   // 2) Trailing X<n> in things like PET1500X6, LAT250X24, VNR330X6
   const trailingX = t.match(/(?:PET|LAT|LATA|VNR|BOT|VID|TR)\s*\d+\s*X\s*(\d+)/i);
   if (trailingX) return parseInt(trailingX[1]);
