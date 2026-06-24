@@ -13,7 +13,7 @@
  */
 
 import printJS from "print-js";
-import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
+import { STOCKIA_PRINT_FOOTER } from "@/lib/branding";
 
 export type PaperWidth = "58mm" | "80mm";
 

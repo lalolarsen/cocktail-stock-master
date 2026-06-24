@@ -6,6 +6,7 @@ import {
   Heading,
   Hr,
   Html,
+  Img,
   Preview,
   Row,
   Column,
@@ -13,6 +14,8 @@ import {
   Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+
+const LOGO_URL = 'https://app.stockiachile.com/stockia-logo-full-white.png'
 
 // =============================================================================
 // STOCKIA · Cierre de Jornada — Carbon Pro dark theme
@@ -89,6 +92,12 @@ interface WasteSummary {
   items?: WasteItem[]
 }
 
+interface IngredientUse {
+  product_name: string
+  quantity: number
+  unit: string
+}
+
 interface JornadaClosedProps {
   recipient_name?: string
   venue_name?: string
@@ -100,12 +109,11 @@ interface JornadaClosedProps {
   forced_reason?: string | null
   observacion_cierre?: string | null
   total_gross?: number
-  stockia_commission?: number
-  total_net?: number
   pos_breakdown?: POSBreakdown[]
   courtesies_issued?: CourtesyIssuer[]
   payment_summary?: PaymentSummary
   top_products?: TopProduct[]
+  ingredient_usage?: IngredientUse[]
   waste_summary?: WasteSummary
 }
 
@@ -228,12 +236,11 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     forced_close = false,
     forced_reason,
     total_gross = 0,
-    stockia_commission = 0,
-    total_net = 0,
     pos_breakdown = [],
     courtesies_issued = [],
     payment_summary = {},
     top_products = [],
+    ingredient_usage = [],
     waste_summary = {},
     observacion_cierre = null,
   } = props
@@ -243,6 +250,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
   const wasteItems = waste_summary?.items ?? []
   const paymentTotal = payment_summary?.total ?? total_gross
   const totalTx = payment_summary?.tx ?? 0
+  const avgTicket = totalTx > 0 ? Math.round(total_gross / totalTx) : 0
 
   return (
     <Html lang="es" dir="ltr">
@@ -254,7 +262,12 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
         <Container style={container}>
           {/* HEADER */}
           <Section style={header}>
-            <Text style={brandMark}>{SITE_NAME}</Text>
+            <Img
+              src={LOGO_URL}
+              alt="STOCKIA"
+              height="32"
+              style={{ margin: '0 auto 12px', display: 'block' }}
+            />
             <Heading style={h1}>Cierre de Jornada</Heading>
             <Text style={subtitle}>
               {venue_name} · {jornada_label}
@@ -280,20 +293,15 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
           {/* KPIs HERO */}
           <Section style={heroCard}>
             <Row>
-              <KpiTile label="Ventas brutas" value={fmtCLP(total_gross)} />
-              <KpiTile
-                label="Comisión STOCKIA"
-                value={fmtCLP(stockia_commission)}
-                accent
-              />
-              <KpiTile label="Ventas netas" value={fmtCLP(total_net)} />
+              <KpiTile label="Ventas brutas" value={fmtCLP(total_gross)} accent />
+              <KpiTile label="Transacciones" value={totalTx.toString()} />
+              <KpiTile label="Ticket promedio" value={fmtCLP(avgTicket)} />
             </Row>
             <Hr style={hrDark} />
             <Row>
               <Column>
                 <Text style={metaLine}>
-                  {totalTx} transacciones · {fmtDate(opened_at)} →{' '}
-                  {fmtDate(closed_at)}
+                  {fmtDate(opened_at)} → {fmtDate(closed_at)}
                 </Text>
                 <Text style={metaLineDim}>Cerrado por {closed_by}</Text>
               </Column>
@@ -375,6 +383,33 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
               ))
             )}
           </Section>
+
+          {/* INGREDIENT USAGE — consumo teórico basado en ventas × receta */}
+          <Section style={card}>
+            <Heading as="h2" style={h2}>
+              Consumo teórico de insumos
+            </Heading>
+            <Text style={muted}>
+              Calculado a partir de ventas × receta de cada producto de carta.
+            </Text>
+            {ingredient_usage.length === 0 ? (
+              <Text style={muted}>Sin consumo registrado.</Text>
+            ) : (
+              ingredient_usage.map((ing, i) => (
+                <Row key={i} style={ingredientRow}>
+                  <Column>
+                    <Text style={ingredientName}>{ing.product_name}</Text>
+                  </Column>
+                  <Column style={{ width: '120px', textAlign: 'right' as const }}>
+                    <Text style={ingredientQty}>
+                      {ing.quantity} {ing.unit}
+                    </Text>
+                  </Column>
+                </Row>
+              ))
+            )}
+          </Section>
+
 
           {/* POS BREAKDOWN */}
           <Section style={card}>
@@ -518,8 +553,6 @@ export const template = {
     observacion_cierre:
       'Caja Principal cuadró exacto. Pista con sobrante de $5.000 sin justificar.',
     total_gross: 1250000,
-    stockia_commission: 12500,
-    total_net: 1237500,
     payment_summary: {
       cash: 420000,
       cash_count: 65,
@@ -585,6 +618,13 @@ export const template = {
     courtesies_issued: [
       { issuer_name: 'Admin Demo', qr_count: 4, total_uses: 8, redeemed_count: 5 },
       { issuer_name: 'Gerencia Demo', qr_count: 2, total_uses: 2, redeemed_count: 1 },
+    ],
+    ingredient_usage: [
+      { product_name: 'Pisco Mistral 35°', quantity: 5760, unit: 'ml' },
+      { product_name: 'Bebida Coca-Cola', quantity: 12800, unit: 'ml' },
+      { product_name: 'Limón', quantity: 48, unit: 'u' },
+      { product_name: 'Ron Havana Club', quantity: 1800, unit: 'ml' },
+      { product_name: 'Hierba buena', quantity: 30, unit: 'u' },
     ],
     waste_summary: {
       count: 3,
@@ -823,6 +863,24 @@ const wasteCostText = {
   color: RED,
   fontWeight: 'bold' as const,
   margin: '4px 0',
+}
+
+// Ingredients
+const ingredientRow = {
+  padding: '8px 0',
+  borderBottom: `1px solid ${BORDER}`,
+}
+const ingredientName = {
+  fontSize: '13px',
+  color: TEXT,
+  margin: '2px 0',
+}
+const ingredientQty = {
+  fontSize: '13px',
+  color: BRAND_GREEN,
+  fontWeight: 'bold' as const,
+  margin: '2px 0',
+  textAlign: 'right' as const,
 }
 
 // Alerts / observations

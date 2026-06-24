@@ -4,7 +4,7 @@
  * y que no se corte el contenido en impresoras térmicas.
  */
 import { formatCLP } from "@/lib/currency";
-import { calculateCommission, STOCKIA_COMMISSION_RATE } from "@/lib/commission";
+
 
 export interface CashierReportData {
   venueName: string;
@@ -24,8 +24,6 @@ const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 export function downloadCashierReport(data: CashierReportData): void {
-  const commission = calculateCommission(data.grandTotal);
-  const ratePct = (STOCKIA_COMMISSION_RATE * 100).toFixed(1).replace(/\.0$/, "");
 
   const html = `
 <!DOCTYPE html>
@@ -77,11 +75,6 @@ export function downloadCashierReport(data: CashierReportData): void {
     <hr />
     <div class="row total-row"><span class="lbl">TOTAL</span><span class="val">${formatCLP(data.grandTotal)}</span></div>
     <div class="right">${data.grandCount} ventas</div>
-
-    <div class="row" style="margin-top:6px;">
-      <span class="lbl">Comisión STOCKIA (${ratePct}%)</span>
-      <span class="val">${formatCLP(commission)}</span>
-    </div>
     <hr />
 
     <div class="sign-block">

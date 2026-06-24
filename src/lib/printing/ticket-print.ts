@@ -10,7 +10,7 @@
  */
 
 import { printOneDocument, type PaperWidth } from "./qz";
-import { STOCKIA_PRINT_FOOTER } from "@/lib/commission";
+import { STOCKIA_PRINT_FOOTER } from "@/lib/branding";
 
 const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
 

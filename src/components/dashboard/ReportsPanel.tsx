@@ -11,7 +11,7 @@ import {
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
-import { calculateCommission, STOCKIA_COMMISSION_RATE, STOCKIA_COMMISSION_LABEL } from "@/lib/commission";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -229,7 +229,7 @@ export function ReportsPanel() {
     }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0 });
   }, [jornadas]);
 
-  const commission = calculateCommission(totals.totalSales);
+  
 
   const trendPct = useMemo(() => {
     if (prevMonthTotal == null || prevMonthTotal === 0) return null;
@@ -285,7 +285,7 @@ export function ReportsPanel() {
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumen del mes</h2>
               <Badge variant="secondary" className="text-[10px] tabular-nums">{jornadas.length} jornadas</Badge>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <KPI
                 label="Ventas totales"
                 value={formatCLP(totals.totalSales)}
@@ -304,13 +304,6 @@ export function ReportsPanel() {
                 value={formatCLP(totals.cardSales)}
                 sub={`${totals.totalSales > 0 ? ((totals.cardSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
                 icon={CreditCard}
-              />
-              <KPI
-                label={STOCKIA_COMMISSION_LABEL}
-                value={formatCLP(commission)}
-                sub={`${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}% sobre ventas brutas`}
-                icon={DollarSign}
-                accent
               />
             </div>
             {totals.totalCancelled > 0 && (
@@ -450,7 +443,6 @@ function JornadaRow({
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
               <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
               <KPICell icon={Ticket} label="Entradas" value={formatCLP(report.ticketSales)} />
-              <KPICell icon={DollarSign} label={STOCKIA_COMMISSION_LABEL} value={formatCLP(calculateCommission(report.totalSales))} />
               <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 

@@ -1,91 +1,76 @@
-# Refresh Visual Global — Carbon Pro
+## 1. Eliminar referencias a "Comisión STOCKIA"
 
-Renovación puramente presentacional. Cero cambios de lógica, datos, rutas, permisos o backend. Toda la mejora pasa por tokens (`index.css`), Tailwind (`tailwind.config.ts`) y variantes de componentes shadcn.
+La comisión ya no existe. Se elimina toda mención (UI, impresiones, exports y correo).
 
-## Dirección visual
+- **`src/lib/commission.ts`** → eliminar archivo (mantener solo `STOCKIA_PRINT_FOOTER` re-ubicado en `src/lib/branding.ts` ya que se usa en tickets).
+- Actualizar imports y quitar bloques de comisión en:
+  - `src/lib/printing/pos-sales-report.ts`
+  - `src/lib/printing/ticket-print.ts`
+  - `src/lib/printing/qz.ts`
+  - `src/lib/reporting/monthly-excel-export.ts`
+  - `src/lib/reporting/jornada-cashier-report.ts`
+  - `src/components/dashboard/ReportsPanel.tsx`
+  - Memoria `mem://features/billing/stockia-commission` → remover entrada del index.
+- **Correo `jornada-closed-summary.tsx`**: quitar tile "Comisión STOCKIA" y campo `stockia_commission`. KPI hero queda solo con "Ventas brutas" + "Transacciones" + "Ticket promedio".
+- **Función `dispatch_jornada_closed_email`**: eliminar `v_commission`, `v_total_net` y `stockia_commission` del payload.
 
-**Carbon Pro + verde STOCKIA**, microinteracciones nivel 4 (transiciones suaves, scale en hover, fades, focus rings premium — sin animaciones gratuitas).
+## 2. Mejorar el correo de cierre de jornada
 
-Paleta nueva (HSL):
-- `--background` 240 11% 5%   (#0B0B0F)
-- `--card`       240 11% 9%   (#16161D)
-- `--popover`    240 10% 11%
-- `--secondary` / `--muted` / `--accent` 240 9% 16% (#2A2A35)
-- `--border`     240 8% 20%
-- `--input`      240 8% 18%
-- `--primary`    145 100% 45% (verde STOCKIA, sin cambio)
-- `--ring`       145 100% 45%
-- Sidebar: capa más profunda que el resto (240 12% 4%)
+### 2.1 Logo institucional
+Agregar `<Img>` en el header del template usando el logo blanco existente. Como los emails no pueden leer assets locales, se sirve desde la URL pública de Lovable:
+```
+https://app.stockiachile.com/stockia-logo-full-white.png
+```
+Reemplaza el `<Text>STOCKIA</Text>` actual por la imagen (height 28px, alt "STOCKIA").
 
-## Cambios
+### 2.2 Arreglar "Desglose por POS" (actualmente vacío)
+**Causa raíz detectada**: la función SQL referencia `pos_locations` y `s.pos_location_id`, pero las columnas/tabla reales son `pos_terminals` y `sales.pos_id` / `ticket_sales.pos_id`. El bloque cae en `EXCEPTION` y devuelve `[]`.
 
-### 1. Tokens — `src/index.css`
-- Reemplazar paleta `:root` y `.dark` por valores Carbon Pro (arriba).
-- Añadir tokens nuevos:
-  - `--radius: 0.5rem` (sube de 0.25 → más Apple-like)
-  - `--shadow-sm/md/lg/glow` (sombras suaves carbon)
-  - `--gradient-surface`, `--gradient-primary`, `--gradient-glow`
-  - `--elevation-1/2/3` (capas grafito)
-- Reemplazar `transition-fast/normal` por curvas con `cubic-bezier(0.4, 0, 0.2, 1)`.
-- Añadir utilidades: `.glass-surface`, `.hairline`, `.elevation-1/2/3`, `.glow-primary`, `.btn-press` (scale 0.97 active).
-- Keyframes nuevos: `shimmer`, `slide-up`, `scale-in`.
+**Fix**: reemplazar en `dispatch_jornada_closed_email`:
+- `LEFT JOIN pos_locations pl ON pl.id = s.pos_location_id` → `LEFT JOIN pos_terminals pl ON pl.id = s.pos_id`
+- `LEFT JOIN pos_locations pl ON pl.id = ts.pos_id` → `LEFT JOIN pos_terminals pl ON pl.id = ts.pos_id`
+- Quitar el `EXCEPTION WHEN OTHERS` que oculta el error (o cambiar a `RAISE WARNING`) para futuros diagnósticos.
 
-### 2. Tailwind — `tailwind.config.ts`
-- Extend `boxShadow`: `sm/md/lg/glow/inset-hairline` desde tokens.
-- Extend `backgroundImage`: `surface`, `primary`, `glow`.
-- Extend `transitionTimingFunction`: `smooth: cubic-bezier(0.4, 0, 0.2, 1)`.
-- Keyframes/animation: añadir `shimmer`, `slide-up`, `scale-in` (0.2s smooth).
+### 2.3 Agregar consumo teórico de insumos al correo
+Replicar la lógica del botón `IngredientUsageReportButton` dentro del SQL: `sale_items × cocktail_ingredients` agrupado por `product_id` para los 10 insumos más consumidos.
 
-### 3. Componentes shadcn (solo `className` / variants — sin lógica)
+```sql
+WITH ings AS (
+  SELECT ci.product_id,
+         SUM(si.quantity * ci.quantity) AS qty_used
+  FROM sale_items si
+  JOIN sales s ON s.id = si.sale_id
+  JOIN cocktail_ingredients ci ON ci.cocktail_id = si.cocktail_id
+  WHERE s.jornada_id = p_jornada_id
+    AND s.is_cancelled = false
+    AND ci.product_id IS NOT NULL
+    AND COALESCE(ci.is_mixer_slot, false) = false
+  GROUP BY ci.product_id
+)
+SELECT jsonb_agg(jsonb_build_object(
+  'product_name', p.name,
+  'quantity', round(qty_used::numeric, 1),
+  'unit', CASE WHEN p.capacity_ml > 0 THEN 'ml' ELSE COALESCE(p.unit,'u') END
+) ORDER BY qty_used DESC)
+FROM ings i JOIN products p ON p.id = i.product_id
+LIMIT 10;
+```
 
-| Componente | Cambio visual |
-|---|---|
-| `button.tsx` | Sombras sutiles, `active:scale-[0.98]`, transición `smooth 150ms`, variant `default` con leve gradient + glow en hover, `outline` con hairline border, nuevas variants `premium` (gradient + glow) y `subtle` (bg-secondary/50). Tamaño `lg` h-12. |
-| `card.tsx` | `bg-card` + `border-border/60` + `shadow-sm`, hover `shadow-md` opcional, radius `lg`. |
-| `input.tsx` / `textarea.tsx` | `bg-input/40`, hairline border, focus ring con glow verde, transición smooth. |
-| `select.tsx` | Trigger matchea input; content con `elevation-2` + scale-in. |
-| `dialog.tsx` / `sheet.tsx` / `popover.tsx` | Backdrop `bg-background/60 backdrop-blur-md`, contenedor con `elevation-3`, animación slide-up + scale-in. |
-| `tabs.tsx` | TabsList `bg-secondary/40 border border-border/40`, trigger activo con `bg-card shadow-sm` (indicador tipo pill). |
-| `table.tsx` | Header `bg-secondary/30 uppercase tracking-wide text-xs`, row hover `bg-secondary/30`, separadores `border-border/40`. |
-| `badge.tsx` | Variants con tintes (success/warning/info) más legibles, hairline. |
-| `tooltip.tsx` | `elevation-2`, micro animación. |
-| `switch.tsx` / `checkbox.tsx` | Track/thumb refinados, focus ring verde. |
-| `scroll-area` / scrollbars | Más finos (4px), thumb verde a 30%. |
-| `skeleton.tsx` | Shimmer animado con gradient. |
-| `progress.tsx` | Glow verde en fill. |
-| `sidebar.tsx` | Background `--sidebar-background` (más profundo), item activo con pill verde sutil + hairline izquierdo verde, hover `bg-sidebar-accent/70`. |
+Nuevo campo `ingredient_usage` en el payload y nueva `<Section>` "Consumo teórico de insumos" en el template (tabla simple: insumo · cantidad).
 
-### 4. Tipografía
-- Mantener SF Pro stack.
-- Aumentar `font-weight` de headings: 600 → 700 (ya está), pero añadir `tracking-tight` por defecto a `h1-h3` vía CSS base.
-- Tabular numbers (`font-variant-numeric: tabular-nums`) para `.kpi-value` y celdas numéricas de tablas.
+## Resumen de archivos
 
-### 5. Microinteracciones (nivel 4)
-- Toda transición de UI: `150–200ms` con `ease-smooth`.
-- `hover:scale-[1.01]` en cards interactivas, `active:scale-[0.98]` en botones/triggers.
-- `fade-in` + `slide-up` 200ms en montaje de dialogs, sheets, popovers, dropdowns.
-- Skeletons con shimmer.
-- Sin animaciones decorativas en KPIs financieros (lectura rápida).
+**Migration**:
+- Reemplaza `dispatch_jornada_closed_email`: fix tablas POS, elimina comisión, agrega `ingredient_usage`.
 
-## Fuera de alcance (no se toca)
+**Edge function template** (`jornada-closed-summary.tsx`):
+- Header con logo Img.
+- Quitar bloque comisión.
+- Nueva sección Consumo de insumos.
 
-- Lógica de POS, Bar, jornadas, cobros, tickets, lector de facturas, KPIs en vivo.
-- Hooks, queries Supabase, RLS, edge functions.
-- Estructura de páginas, navegación, permisos.
-- Tipografía base (sigue SF Pro).
-- Verde primario `#00E676` (sin cambio — branding core).
+**Frontend** (limpieza de comisión):
+- Eliminar `src/lib/commission.ts` y migrar `STOCKIA_PRINT_FOOTER` a `src/lib/branding.ts`.
+- Actualizar los 6 archivos que la importan removiendo cálculos/bloques de comisión.
+- Actualizar `mem://index.md`.
 
-## Riesgo
-
-🟢 Bajo. Solo presentación (tokens + classNames + variants). Reversible 1:1 vía History. Sin migraciones, sin cambios de tipos, sin renombres. Los componentes shadcn mantienen API idéntica, por lo que ningún consumidor se rompe.
-
-Posible colateral: contraste mínimo a verificar en `muted-foreground` sobre `card` nuevo — se ajusta si el test visual lo pide.
-
-## Verificación post-build
-
-1. `/admin` Dashboard — cards, KPIs, tabs JornadaKPIPanel.
-2. `/sales` POS — botones grandes, grids de productos legibles.
-3. `/bar` redención — escáner y dialogs.
-4. Sidebar — item activo distinguible.
-5. Modo Hybrid POS + Tickets.
-6. Tablas largas (Productos, Compras) — header sticky + zebra hover.
+Sin cambios en `IngredientUsageReportButton` (ya funciona bien).
