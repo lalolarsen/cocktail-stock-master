@@ -6,6 +6,7 @@ import {
   Heading,
   Hr,
   Html,
+  Img,
   Preview,
   Row,
   Column,
@@ -13,6 +14,8 @@ import {
   Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+
+const LOGO_URL = 'https://app.stockiachile.com/stockia-logo-full-white.png'
 
 // =============================================================================
 // STOCKIA · Cierre de Jornada — Carbon Pro dark theme
@@ -89,6 +92,12 @@ interface WasteSummary {
   items?: WasteItem[]
 }
 
+interface IngredientUse {
+  product_name: string
+  quantity: number
+  unit: string
+}
+
 interface JornadaClosedProps {
   recipient_name?: string
   venue_name?: string
@@ -100,12 +109,11 @@ interface JornadaClosedProps {
   forced_reason?: string | null
   observacion_cierre?: string | null
   total_gross?: number
-  stockia_commission?: number
-  total_net?: number
   pos_breakdown?: POSBreakdown[]
   courtesies_issued?: CourtesyIssuer[]
   payment_summary?: PaymentSummary
   top_products?: TopProduct[]
+  ingredient_usage?: IngredientUse[]
   waste_summary?: WasteSummary
 }
 
@@ -228,12 +236,11 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     forced_close = false,
     forced_reason,
     total_gross = 0,
-    stockia_commission = 0,
-    total_net = 0,
     pos_breakdown = [],
     courtesies_issued = [],
     payment_summary = {},
     top_products = [],
+    ingredient_usage = [],
     waste_summary = {},
     observacion_cierre = null,
   } = props
@@ -243,6 +250,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
   const wasteItems = waste_summary?.items ?? []
   const paymentTotal = payment_summary?.total ?? total_gross
   const totalTx = payment_summary?.tx ?? 0
+  const avgTicket = totalTx > 0 ? Math.round(total_gross / totalTx) : 0
 
   return (
     <Html lang="es" dir="ltr">
@@ -254,7 +262,12 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
         <Container style={container}>
           {/* HEADER */}
           <Section style={header}>
-            <Text style={brandMark}>{SITE_NAME}</Text>
+            <Img
+              src={LOGO_URL}
+              alt="STOCKIA"
+              height="32"
+              style={{ margin: '0 auto 12px', display: 'block' }}
+            />
             <Heading style={h1}>Cierre de Jornada</Heading>
             <Text style={subtitle}>
               {venue_name} · {jornada_label}
@@ -280,20 +293,15 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
           {/* KPIs HERO */}
           <Section style={heroCard}>
             <Row>
-              <KpiTile label="Ventas brutas" value={fmtCLP(total_gross)} />
-              <KpiTile
-                label="Comisión STOCKIA"
-                value={fmtCLP(stockia_commission)}
-                accent
-              />
-              <KpiTile label="Ventas netas" value={fmtCLP(total_net)} />
+              <KpiTile label="Ventas brutas" value={fmtCLP(total_gross)} accent />
+              <KpiTile label="Transacciones" value={totalTx.toString()} />
+              <KpiTile label="Ticket promedio" value={fmtCLP(avgTicket)} />
             </Row>
             <Hr style={hrDark} />
             <Row>
               <Column>
                 <Text style={metaLine}>
-                  {totalTx} transacciones · {fmtDate(opened_at)} →{' '}
-                  {fmtDate(closed_at)}
+                  {fmtDate(opened_at)} → {fmtDate(closed_at)}
                 </Text>
                 <Text style={metaLineDim}>Cerrado por {closed_by}</Text>
               </Column>
