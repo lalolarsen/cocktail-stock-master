@@ -1,6 +1,5 @@
 import * as XLSX from "xlsx";
 import { format, parseISO } from "date-fns";
-import { calculateCommission, STOCKIA_COMMISSION_RATE } from "@/lib/commission";
 
 export interface MonthlyJornadaRow {
   jornada_id: string;
@@ -59,9 +58,6 @@ export function generateMonthlyExcelReport(opts: {
     ["Ventas con tarjeta", Math.round(totalCard)],
     ["Otros medios de pago", Math.round(totalOther)],
     ["Cancelaciones", Math.round(totalCancelled)],
-    [],
-    ["Comisión STOCKIA", ""],
-    [`Tasa (${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}%)`, Math.round(calculateCommission(totalSales))],
   ];
   const wsResumen = XLSX.utils.aoa_to_sheet(resumen);
   wsResumen["!cols"] = [{ wch: 32 }, { wch: 22 }];
@@ -72,7 +68,6 @@ export function generateMonthlyExcelReport(opts: {
     "N°", "Nombre", "Fecha", "Apertura", "Cierre", "Estado",
     "Total ventas", "Transacciones", "Alcohol", "Tickets",
     "Efectivo", "Tarjeta", "Otros", "Cancelaciones", "N° canceladas",
-    `Comisión STOCKIA (${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}%)`,
   ];
   const jornadaRows = jornadas.map((j) => [
     j.numero_jornada,
@@ -90,7 +85,6 @@ export function generateMonthlyExcelReport(opts: {
     Math.round(j.other_payments),
     Math.round(j.cancelled_total),
     j.cancelled_count,
-    Math.round(calculateCommission(j.total_sales)),
   ]);
   const wsJornadas = XLSX.utils.aoa_to_sheet([jornadaHeaders, ...jornadaRows]);
   wsJornadas["!cols"] = jornadaHeaders.map(() => ({ wch: 14 }));

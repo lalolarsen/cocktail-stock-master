@@ -11,7 +11,7 @@ import {
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCLP } from "@/lib/currency";
-import { calculateCommission, STOCKIA_COMMISSION_RATE, STOCKIA_COMMISSION_LABEL } from "@/lib/commission";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -229,7 +229,7 @@ export function ReportsPanel() {
     }), { totalSales: 0, totalCancelled: 0, salesCount: 0, cancelledCount: 0, cashSales: 0, cardSales: 0 });
   }, [jornadas]);
 
-  const commission = calculateCommission(totals.totalSales);
+  
 
   const trendPct = useMemo(() => {
     if (prevMonthTotal == null || prevMonthTotal === 0) return null;
@@ -450,7 +450,6 @@ function JornadaRow({
               <KPICell icon={CreditCard} label="Tarjeta" value={formatCLP(report.cardSales)} />
               <KPICell icon={ShoppingCart} label="Alcohol" value={formatCLP(report.alcoholSales)} />
               <KPICell icon={Ticket} label="Entradas" value={formatCLP(report.ticketSales)} />
-              <KPICell icon={DollarSign} label={STOCKIA_COMMISSION_LABEL} value={formatCLP(calculateCommission(report.totalSales))} />
               <KPICell icon={XCircle} label="Canceladas" value={`${formatCLP(report.totalCancelled)} (${report.cancelledCount})`} destructive />
             </div>
 
