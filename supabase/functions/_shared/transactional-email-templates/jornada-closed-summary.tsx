@@ -384,6 +384,33 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
             )}
           </Section>
 
+          {/* INGREDIENT USAGE — consumo teórico basado en ventas × receta */}
+          <Section style={card}>
+            <Heading as="h2" style={h2}>
+              Consumo teórico de insumos
+            </Heading>
+            <Text style={muted}>
+              Calculado a partir de ventas × receta de cada producto de carta.
+            </Text>
+            {ingredient_usage.length === 0 ? (
+              <Text style={muted}>Sin consumo registrado.</Text>
+            ) : (
+              ingredient_usage.map((ing, i) => (
+                <Row key={i} style={ingredientRow}>
+                  <Column>
+                    <Text style={ingredientName}>{ing.product_name}</Text>
+                  </Column>
+                  <Column style={{ width: '120px', textAlign: 'right' as const }}>
+                    <Text style={ingredientQty}>
+                      {ing.quantity} {ing.unit}
+                    </Text>
+                  </Column>
+                </Row>
+              ))
+            )}
+          </Section>
+
+
           {/* POS BREAKDOWN */}
           <Section style={card}>
             <Heading as="h2" style={h2}>
