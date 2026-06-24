@@ -285,7 +285,7 @@ export function ReportsPanel() {
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumen del mes</h2>
               <Badge variant="secondary" className="text-[10px] tabular-nums">{jornadas.length} jornadas</Badge>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <KPI
                 label="Ventas totales"
                 value={formatCLP(totals.totalSales)}
@@ -304,13 +304,6 @@ export function ReportsPanel() {
                 value={formatCLP(totals.cardSales)}
                 sub={`${totals.totalSales > 0 ? ((totals.cardSales / totals.totalSales) * 100).toFixed(1) : "0"}% del total`}
                 icon={CreditCard}
-              />
-              <KPI
-                label={STOCKIA_COMMISSION_LABEL}
-                value={formatCLP(commission)}
-                sub={`${(STOCKIA_COMMISSION_RATE * 100).toFixed(STOCKIA_COMMISSION_RATE * 100 % 1 === 0 ? 0 : 1)}% sobre ventas brutas`}
-                icon={DollarSign}
-                accent
               />
             </div>
             {totals.totalCancelled > 0 && (
