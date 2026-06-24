@@ -553,8 +553,6 @@ export const template = {
     observacion_cierre:
       'Caja Principal cuadró exacto. Pista con sobrante de $5.000 sin justificar.',
     total_gross: 1250000,
-    stockia_commission: 12500,
-    total_net: 1237500,
     payment_summary: {
       cash: 420000,
       cash_count: 65,
@@ -620,6 +618,13 @@ export const template = {
     courtesies_issued: [
       { issuer_name: 'Admin Demo', qr_count: 4, total_uses: 8, redeemed_count: 5 },
       { issuer_name: 'Gerencia Demo', qr_count: 2, total_uses: 2, redeemed_count: 1 },
+    ],
+    ingredient_usage: [
+      { product_name: 'Pisco Mistral 35°', quantity: 5760, unit: 'ml' },
+      { product_name: 'Bebida Coca-Cola', quantity: 12800, unit: 'ml' },
+      { product_name: 'Limón', quantity: 48, unit: 'u' },
+      { product_name: 'Ron Havana Club', quantity: 1800, unit: 'ml' },
+      { product_name: 'Hierba buena', quantity: 30, unit: 'u' },
     ],
     waste_summary: {
       count: 3,
@@ -858,6 +863,24 @@ const wasteCostText = {
   color: RED,
   fontWeight: 'bold' as const,
   margin: '4px 0',
+}
+
+// Ingredients
+const ingredientRow = {
+  padding: '8px 0',
+  borderBottom: `1px solid ${BORDER}`,
+}
+const ingredientName = {
+  fontSize: '13px',
+  color: TEXT,
+  margin: '2px 0',
+}
+const ingredientQty = {
+  fontSize: '13px',
+  color: BRAND_GREEN,
+  fontWeight: 'bold' as const,
+  margin: '2px 0',
+  textAlign: 'right' as const,
 }
 
 // Alerts / observations
