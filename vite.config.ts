@@ -47,21 +47,31 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
-        navigateFallbackDenylist: [/^\/~oauth/],
+        skipWaiting: true,
+        clientsClaim: true,
+        navigateFallbackDenylist: [/^\/~oauth/, /^\/auth/, /\/auth\/v1\//],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            // Only cache Supabase data (REST). NEVER cache /auth/v1/*, /functions/v1/*,
+            // or /realtime/v1/* — those must always hit the network so a stale SW
+            // can't serve another worker's session token or a cached login response.
+            urlPattern: ({ url }) =>
+              /\.supabase\.co$/i.test(url.hostname) &&
+              url.pathname.startsWith("/rest/v1/"),
             handler: "NetworkFirst",
+            method: "GET",
             options: {
-              cacheName: "supabase-api",
+              cacheName: "supabase-rest",
+              networkTimeoutSeconds: 5,
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 5, // 5 minutes
+                maxAgeSeconds: 60, // 1 minute — POS operators rotate frequently
               },
             },
           },
         ],
       },
+
     }),
   ].filter(Boolean),
   resolve: {

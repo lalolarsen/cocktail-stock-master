@@ -30,24 +30,37 @@ export default function Auth() {
   const [showModeSelection, setShowModeSelection] = useState(false);
   const [workerRoles, setWorkerRoles] = useState<AppRole[]>([]);
   const [workerData, setWorkerData] = useState<WorkerData | null>(null);
+  const [hasStaleSession, setHasStaleSession] = useState(false);
   const navigate = useNavigate();
 
+  // Sanitize PIN: strip invisible/whitespace/control chars that Android keyboards
+  // and password managers sometimes inject. Prevents phantom "PIN incorrecto".
+  const sanitizePin = (raw: string): string =>
+    raw.replace(/[\u0000-\u001F\u007F-\u00A0\u200B-\u200F\uFEFF\s]/g, "");
+
   useEffect(() => {
-    // Check if user is already logged in
+    // If the user explicitly landed on /auth, do NOT auto-route them.
+    // Instead surface a "Cambiar de trabajador" prompt so the previous
+    // session can't ghost-block a new login on shared POS terminals.
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        handleExistingSession(session.user.id);
-      }
+      if (session) setHasStaleSession(true);
     });
   }, []);
 
-  const handleExistingSession = async (userId: string) => {
-    // Get worker roles
-    const roles = await fetchWorkerRoles(userId);
-    if (roles && roles.length > 0) {
-      routeByRoles(roles);
+  const handleSwitchWorker = async () => {
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // ignore — even if signOut fails we still want a clean form
     }
+    setHasStaleSession(false);
+    setRutCode("");
+    setPin("");
   };
+
+
+
+
 
   const fetchWorkerRoles = async (userId: string): Promise<AppRole[]> => {
     // First try worker_roles table
@@ -136,15 +149,16 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const normalizedRut = normalizeRut(rutCode);
-    
+    const cleanPin = sanitizePin(pin);
+
     if (!validateRut(rutCode)) {
       toast.error("RUT inválido. Ingresa entre 7 y 9 dígitos, o usa un RUT demo.");
       return;
     }
 
-    if (!pin || pin.length < 4) {
+    if (!cleanPin || cleanPin.length < 4) {
       toast.error("PIN debe tener al menos 4 dígitos");
       return;
     }
@@ -161,7 +175,7 @@ export default function Auth() {
 
       if (lock?.is_locked) {
         const mins = Math.max(1, lock.minutes_remaining ?? 10);
-        toast.error(`Cuenta bloqueada temporalmente. Intenta en ${mins} min o pide a un administrador desbloquearla.`);
+        toast.error(`Cuenta bloqueada temporalmente. Intenta en ${mins} min o pide desbloqueo en Admin → Trabajadores.`);
         setLoading(false);
         return;
       }
@@ -189,7 +203,7 @@ export default function Auth() {
 
       // Determine email to use for auth
       const authEmail = worker.internal_email || worker.email;
-      
+
       if (!authEmail) {
         toast.error("Error de configuración. Contacta al administrador.");
         setLoading(false);
@@ -197,18 +211,69 @@ export default function Auth() {
       }
 
       // Sign in using internal email + PIN as password
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: authEmail,
-        password: pin,
-      });
-
-      if (authError) {
-        // Record failed attempt
+      let authData: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
+      let signInError: any = null;
+      try {
+        const res = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: cleanPin,
+        });
+        authData = res.data;
+        signInError = res.error;
+      } catch (netErr) {
+        // Fetch failure / thrown exception (network, CORS, proxy). Do NOT count as fail.
+        console.error("[Auth] network error during signIn:", netErr);
         await supabase.rpc("record_login_attempt", {
           p_rut_code: normalizedRut,
           p_venue_id: worker.venue_id,
           p_success: false,
-          p_user_agent: navigator.userAgent
+          p_user_agent: navigator.userAgent,
+          p_failure_reason: "network",
+        });
+        toast.error("Sin conexión con el servidor. Verifica la red del POS e intenta de nuevo.");
+        setLoading(false);
+        return;
+      }
+
+      if (signInError) {
+        const status = (signInError as any).status as number | undefined;
+        const msg = String(signInError.message || "").toLowerCase();
+
+        // Rate limit: NOT a credential failure — don't count toward lockout.
+        if (status === 429 || msg.includes("rate") || msg.includes("too many")) {
+          await supabase.rpc("record_login_attempt", {
+            p_rut_code: normalizedRut,
+            p_venue_id: worker.venue_id,
+            p_success: false,
+            p_user_agent: navigator.userAgent,
+            p_failure_reason: "rate_limit",
+          });
+          toast.error("Muchos intentos en poco tiempo. Espera 30 segundos y vuelve a probar.");
+          setLoading(false);
+          return;
+        }
+
+        // Any other non-400 → treat as transient/network, don't count.
+        if (status && status !== 400 && status !== 401 && status !== 403) {
+          await supabase.rpc("record_login_attempt", {
+            p_rut_code: normalizedRut,
+            p_venue_id: worker.venue_id,
+            p_success: false,
+            p_user_agent: navigator.userAgent,
+            p_failure_reason: "network",
+          });
+          toast.error(`Error temporal del servidor (${status}). Intenta nuevamente.`);
+          setLoading(false);
+          return;
+        }
+
+        // Real invalid credentials → counts toward lockout.
+        await supabase.rpc("record_login_attempt", {
+          p_rut_code: normalizedRut,
+          p_venue_id: worker.venue_id,
+          p_success: false,
+          p_user_agent: navigator.userAgent,
+          p_failure_reason: "invalid_pin",
         });
         const remaining = Math.max(0, 8 - ((lock?.failed_count ?? 0) + 1));
         if (remaining <= 0) {
@@ -216,6 +281,12 @@ export default function Auth() {
         } else {
           toast.error(`PIN incorrecto. Te quedan ${remaining} intento${remaining === 1 ? "" : "s"}.`);
         }
+        setLoading(false);
+        return;
+      }
+
+      if (!authData?.user) {
+        toast.error("Respuesta inválida del servidor. Intenta de nuevo.");
         setLoading(false);
         return;
       }
@@ -230,7 +301,7 @@ export default function Auth() {
 
       // Record in login_history
       await supabase.from("login_history").insert({
-        user_id: authData.user!.id,
+        user_id: authData.user.id,
         user_agent: navigator.userAgent,
         venue_id: worker.venue_id,
       });
@@ -239,7 +310,7 @@ export default function Auth() {
       const roles = worker.roles || [];
       if (roles.length === 0) {
         // Fallback fetch
-        const fetchedRoles = await fetchWorkerRoles(authData.user!.id);
+        const fetchedRoles = await fetchWorkerRoles(authData.user.id);
         if (fetchedRoles.length > 0) {
           routeByRoles(fetchedRoles);
         } else {
@@ -257,6 +328,7 @@ export default function Auth() {
       setLoading(false);
     }
   };
+
 
   const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
     routeByRole(role);
@@ -363,18 +435,37 @@ export default function Auth() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        {hasStaleSession && (
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground space-y-2">
+            <p>Este equipo tiene una sesión activa de otro trabajador.</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={handleSwitchWorker}
+            >
+              Cambiar de trabajador
+            </Button>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
           <div className="space-y-2">
             <Label htmlFor="rut">RUT (sin puntos ni guión)</Label>
             <Input
               id="rut"
+              name="stockia-rut"
               type="text"
               placeholder="12345678"
               value={rutCode}
               onChange={(e) => setRutCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
               required
               maxLength={15}
-              autoComplete="username"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-form-type="other"
             />
             <p className="text-xs text-muted-foreground">
               Solo los dígitos, sin puntos ni guión
@@ -385,6 +476,7 @@ export default function Auth() {
             <Label htmlFor="pin">PIN</Label>
             <Input
               id="pin"
+              name="stockia-pin"
               type="password"
               inputMode="numeric"
               placeholder="••••"
@@ -392,8 +484,16 @@ export default function Auth() {
               onChange={(e) => setPin(e.target.value)}
               required
               maxLength={6}
-              autoComplete="current-password"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
+            <p className="text-xs text-muted-foreground">
+              Escribe tu PIN manualmente. Ignora sugerencias del teclado.
+            </p>
           </div>
 
           <Button
@@ -415,3 +515,4 @@ export default function Auth() {
     </div>
   );
 }
+

@@ -1,76 +1,86 @@
-## 1. Eliminar referencias a "Comisión STOCKIA"
+# Fix integral del login en POS
 
-La comisión ya no existe. Se elimina toda mención (UI, impresiones, exports y correo).
+## Diagnóstico
 
-- **`src/lib/commission.ts`** → eliminar archivo (mantener solo `STOCKIA_PRINT_FOOTER` re-ubicado en `src/lib/branding.ts` ya que se usa en tickets).
-- Actualizar imports y quitar bloques de comisión en:
-  - `src/lib/printing/pos-sales-report.ts`
-  - `src/lib/printing/ticket-print.ts`
-  - `src/lib/printing/qz.ts`
-  - `src/lib/reporting/monthly-excel-export.ts`
-  - `src/lib/reporting/jornada-cashier-report.ts`
-  - `src/components/dashboard/ReportsPanel.tsx`
-  - Memoria `mem://features/billing/stockia-commission` → remover entrada del index.
-- **Correo `jornada-closed-summary.tsx`**: quitar tile "Comisión STOCKIA" y campo `stockia_commission`. KPI hero queda solo con "Ventas brutas" + "Transacciones" + "Ticket promedio".
-- **Función `dispatch_jornada_closed_email`**: eliminar `v_commission`, `v_total_net` y `stockia_commission` del payload.
+Los síntomas ("PIN incorrecto / RUT no registrado" erróneos + "Cuenta bloqueada" frecuente, siempre en los **mismos POS**, tanto PWA como navegador) no calzan con los datos de la base:
 
-## 2. Mejorar el correo de cierre de jornada
+- Todos los trabajadores tienen `internal_email` bien formado y usuario en `auth.users`.
+- En los últimos 7 días solo hay **1–2 intentos fallidos** por RUT, muy lejos del umbral de bloqueo (8 fallos / 10 min).
 
-### 2.1 Logo institucional
-Agregar `<Img>` en el header del template usando el logo blanco existente. Como los emails no pueden leer assets locales, se sirve desde la URL pública de Lovable:
-```
-https://app.stockiachile.com/stockia-logo-full-white.png
-```
-Reemplaza el `<Text>STOCKIA</Text>` actual por la imagen (height 28px, alt "STOCKIA").
+Eso significa que el problema no está en la contraseña del trabajador ni en su registro. Está en **el POS que envía la petición**. Encontré cuatro causas concretas que se combinan:
 
-### 2.2 Arreglar "Desglose por POS" (actualmente vacío)
-**Causa raíz detectada**: la función SQL referencia `pos_locations` y `s.pos_location_id`, pero las columnas/tabla reales son `pos_terminals` y `sales.pos_id` / `ticket_sales.pos_id`. El bloque cae en `EXCEPTION` y devuelve `[]`.
+### 1. El PIN no se sanitiza
+El input de PIN se envía tal cual a Supabase. Los teclados de Android (y algunos gestores de contraseñas) meten espacios invisibles, saltos de línea o caracteres de layout que no se ven. Basta 1 carácter invisible para que `signInWithPassword` responda "invalid credentials" → cuenta un fallo → tras 8, bloqueo. Y como el POS lo hace **cada vez** que ese trabajador entra en ese equipo, se llena el contador.
 
-**Fix**: reemplazar en `dispatch_jornada_closed_email`:
-- `LEFT JOIN pos_locations pl ON pl.id = s.pos_location_id` → `LEFT JOIN pos_terminals pl ON pl.id = s.pos_id`
-- `LEFT JOIN pos_locations pl ON pl.id = ts.pos_id` → `LEFT JOIN pos_terminals pl ON pl.id = ts.pos_id`
-- Quitar el `EXCEPTION WHEN OTHERS` que oculta el error (o cambiar a `RAISE WARNING`) para futuros diagnósticos.
+### 2. Autocomplete rellena PINs viejos
+El campo PIN usa `autoComplete="current-password"`. Chrome/Samsung Pass/gestores rellenan **el PIN antiguo** del último trabajador que usó ese POS. El operador aprieta "Iniciar sesión" sin darse cuenta y falla. Repetir esto 8 veces = bloqueo real en DB.
 
-### 2.3 Agregar consumo teórico de insumos al correo
-Replicar la lógica del botón `IngredientUsageReportButton` dentro del SQL: `sale_items × cocktail_ingredients` agrupado por `product_id` para los 10 insumos más consumidos.
+### 3. Todo error se cuenta como "PIN incorrecto"
+En `Auth.tsx`, cualquier fallo de `signInWithPassword` (rate-limit 429, timeout de red, proxy caído, CORS) entra al mismo bloque `authError` que graba `record_login_attempt(success=false)`. Un POS con red inestable puede provocar el bloqueo por sí solo sin que el operador se equivoque.
 
-```sql
-WITH ings AS (
-  SELECT ci.product_id,
-         SUM(si.quantity * ci.quantity) AS qty_used
-  FROM sale_items si
-  JOIN sales s ON s.id = si.sale_id
-  JOIN cocktail_ingredients ci ON ci.cocktail_id = si.cocktail_id
-  WHERE s.jornada_id = p_jornada_id
-    AND s.is_cancelled = false
-    AND ci.product_id IS NOT NULL
-    AND COALESCE(ci.is_mixer_slot, false) = false
-  GROUP BY ci.product_id
-)
-SELECT jsonb_agg(jsonb_build_object(
-  'product_name', p.name,
-  'quantity', round(qty_used::numeric, 1),
-  'unit', CASE WHEN p.capacity_ml > 0 THEN 'ml' ELSE COALESCE(p.unit,'u') END
-) ORDER BY qty_used DESC)
-FROM ings i JOIN products p ON p.id = i.product_id
-LIMIT 10;
-```
+### 4. PWA con service worker desactualizado en tablets siempre encendidas
+`vite.config.ts` usa `registerType: "autoUpdate"` + `NetworkFirst` para `*.supabase.co`. En tablets Android que **nunca se cierran**, el service worker viejo sigue sirviendo un bundle antiguo por horas o días. Un POS específico puede quedar con lógica de auth vieja mientras los demás ya actualizaron. Además `NetworkFirst` sobre `/auth/v1/token` es peligroso: si cae la red, sirve una respuesta cacheada (aunque sea la sesión de otro trabajador).
 
-Nuevo campo `ingredient_usage` en el payload y nueva `<Section>` "Consumo teórico de insumos" en el template (tabla simple: insumo · cantidad).
+Como bonus, la sesión previa persiste en `localStorage` y `handleExistingSession` auto-rutea antes de que el operador pueda escribir credenciales nuevas — cuando eso falla silenciosamente (roles no cargados por token expirado), el usuario reintenta y suma fallos.
 
-## Resumen de archivos
+---
 
-**Migration**:
-- Reemplaza `dispatch_jornada_closed_email`: fix tablas POS, elimina comisión, agrega `ingredient_usage`.
+## Plan de fix
 
-**Edge function template** (`jornada-closed-summary.tsx`):
-- Header con logo Img.
-- Quitar bloque comisión.
-- Nueva sección Consumo de insumos.
+### A) Endurecer el flujo de login (`src/pages/Auth.tsx`)
 
-**Frontend** (limpieza de comisión):
-- Eliminar `src/lib/commission.ts` y migrar `STOCKIA_PRINT_FOOTER` a `src/lib/branding.ts`.
-- Actualizar los 6 archivos que la importan removiendo cálculos/bloques de comisión.
-- Actualizar `mem://index.md`.
+1. **Sanitizar PIN antes de enviarlo**: `pin.replace(/[\u0000-\u001F\u007F-\u00A0\u200B-\u200F\uFEFF\s]/g, "")`. Si tras limpiar queda vacío o <4, no llamar a Supabase.
+2. **Desactivar autofill de PIN viejo**: cambiar `autoComplete="current-password"` → `autoComplete="off"` + `data-form-type="other"` + `name="stockia-pin"` único. Igual para RUT: `autoComplete="off"`.
+3. **Forzar limpieza de sesión previa al montar /auth**: si `getSession()` devuelve sesión pero el usuario aterrizó explícitamente en `/auth`, hacer `signOut({ scope: 'local' })` antes de mostrar el form. Esto elimina el estado fantasma que confunde `AppSessionProvider`.
+4. **Distinguir error de red vs credenciales**: envolver `signInWithPassword` en try/catch y clasificar:
+   - `error.status === 400` con mensaje "Invalid login credentials" → PIN realmente malo → grabar `success=false`.
+   - `error.status === 429` (rate limit) → mostrar "Muchos intentos recientes, espera 30s" y **NO** grabar fallo.
+   - Error de red / timeout / status desconocido → mostrar "Sin conexión con el servidor" y **NO** grabar fallo.
+5. **Mensaje de bloqueo más útil**: cuando `is_locked`, incluir el nombre del admin de turno o instrucción explícita ("Pide desbloqueo en el panel Admin → Trabajadores").
 
-Sin cambios en `IngredientUsageReportButton` (ya funciona bien).
+### B) Aislar el login del service worker (`vite.config.ts`)
+
+1. Excluir `/auth/*` y `/auth/v1/*` del navegación fallback: agregar a `navigateFallbackDenylist` y quitar cualquier ruta de Supabase Auth del `runtimeCaching`.
+2. Cambiar el pattern de `runtimeCaching` para que **solo** cachee `/rest/v1/*` (datos) y **excluya** explícitamente `/auth/v1/*`, `/functions/v1/*` y `/realtime/v1/*`.
+3. Reducir `maxAgeSeconds` de 300 → 60 para las respuestas cacheadas (el problema del "voy a ver datos viejos" cuando cambias de POS).
+4. Agregar `skipWaiting: true` + `clientsClaim: true` en `workbox` para que el SW nuevo tome el control al primer refresh, no espere a cerrar todas las pestañas.
+
+### C) Auto-reload cuando hay nueva versión (`src/main.tsx`)
+
+Agregar un pequeño hook con `useRegisterSW` de `virtual:pwa-register/react` que, al detectar SW nuevo, muestre un toast "Nueva versión disponible" con botón "Actualizar" que llame `updateSW(true)`. Los tablets siempre encendidos dejan de arrastrar código viejo.
+
+### D) Endpoint de diagnóstico (`record_login_attempt` + nueva columna)
+
+Migración menor para poder ver qué está pasando en cada POS:
+
+- Agregar columna `failure_reason text` a `public.login_attempts`.
+- Modificar `record_login_attempt` para aceptar `p_failure_reason text DEFAULT NULL` (backwards compatible).
+- Desde `Auth.tsx`, pasar el motivo real (`'invalid_pin' | 'rate_limit' | 'network' | 'locked'`). Solo `invalid_pin` cuenta para el bloqueo — cambiar `is_account_locked` para filtrar `WHERE (failure_reason IS NULL OR failure_reason = 'invalid_pin')` (el `NULL` preserva histórico).
+
+Con esto podrás filtrar `SELECT rut_code, failure_reason, user_agent FROM login_attempts WHERE success=false` y ver de un vistazo qué POS específico está generando fallos y por qué.
+
+### E) UX de "usar otro trabajador" (bonus rápido)
+
+En `/auth`, si hay sesión activa, mostrar arriba del form un botón discreto **"Cambiar de trabajador"** que ejecuta `signOut()` y limpia el form. Hoy no existe una salida explícita — el operador queda en loop porque `handleExistingSession` lo rutea a `/admin` o `/sales` y no puede volver.
+
+---
+
+## Archivos que se tocan
+
+| Archivo | Cambio |
+|---|---|
+| `src/pages/Auth.tsx` | Sanitización PIN, autoComplete off, signOut al montar, clasificación de errores, mensajes |
+| `vite.config.ts` | Excluir Auth del SW, `skipWaiting`, `clientsClaim`, cache más corto y acotado a `/rest/v1/*` |
+| `src/main.tsx` | Hook `useRegisterSW` con prompt de actualización |
+| Nueva migración | `login_attempts.failure_reason` + `record_login_attempt` con parámetro opcional + `is_account_locked` filtrando por reason |
+
+## Fuera de alcance
+- No se cambia el modelo de sesión (Supabase sigue con JWT + refresh estándar).
+- No se toca la lógica de roles ni jornadas.
+- No se toca la impresión ni POS operativos.
+
+## Cómo verificar tras el fix
+1. En un POS "malo", entrar a /auth, verificar en DevTools → Application → Service Workers que se actualizó tras el reload.
+2. Escribir un PIN con espacio al final → debe autenticar igual.
+3. Simular red caída (DevTools → Offline) → debe decir "Sin conexión", **no** contar fallo.
+4. En `admin_audit_logs` + `login_attempts.failure_reason`, revisar 24h después para confirmar que los bloqueos bajan.
