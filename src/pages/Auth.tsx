@@ -59,13 +59,8 @@ export default function Auth() {
   };
 
 
-  const handleExistingSession = async (userId: string) => {
-    // Get worker roles
-    const roles = await fetchWorkerRoles(userId);
-    if (roles && roles.length > 0) {
-      routeByRoles(roles);
-    }
-  };
+
+
 
   const fetchWorkerRoles = async (userId: string): Promise<AppRole[]> => {
     // First try worker_roles table
