@@ -6221,6 +6221,7 @@ export type Database = {
         Args: { p_jornada_id: string }
         Returns: undefined
       }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       end_worker_session: {
         Args: { p_session_id: string }
         Returns: {
