@@ -1937,6 +1937,7 @@ export type Database = {
       login_attempts: {
         Row: {
           attempted_at: string
+          failure_reason: string | null
           id: string
           ip_address: string | null
           rut_code: string
@@ -1946,6 +1947,7 @@ export type Database = {
         }
         Insert: {
           attempted_at?: string
+          failure_reason?: string | null
           id?: string
           ip_address?: string | null
           rut_code: string
@@ -1955,6 +1957,7 @@ export type Database = {
         }
         Update: {
           attempted_at?: string
+          failure_reason?: string | null
           id?: string
           ip_address?: string | null
           rut_code?: string
@@ -6528,16 +6531,28 @@ export type Database = {
           read_ct: number
         }[]
       }
-      record_login_attempt: {
-        Args: {
-          p_ip_address?: string
-          p_rut_code: string
-          p_success: boolean
-          p_user_agent?: string
-          p_venue_id: string
-        }
-        Returns: undefined
-      }
+      record_login_attempt:
+        | {
+            Args: {
+              p_ip_address?: string
+              p_rut_code: string
+              p_success: boolean
+              p_user_agent?: string
+              p_venue_id: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_failure_reason?: string
+              p_ip_address?: string
+              p_rut_code: string
+              p_success: boolean
+              p_user_agent?: string
+              p_venue_id: string
+            }
+            Returns: undefined
+          }
       redeem_courtesy_qr:
         | { Args: { p_code: string; p_jornada_id?: string }; Returns: Json }
         | {
