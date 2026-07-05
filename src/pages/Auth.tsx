@@ -435,18 +435,37 @@ export default function Auth() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        {hasStaleSession && (
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground space-y-2">
+            <p>Este equipo tiene una sesión activa de otro trabajador.</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={handleSwitchWorker}
+            >
+              Cambiar de trabajador
+            </Button>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
           <div className="space-y-2">
             <Label htmlFor="rut">RUT (sin puntos ni guión)</Label>
             <Input
               id="rut"
+              name="stockia-rut"
               type="text"
               placeholder="12345678"
               value={rutCode}
               onChange={(e) => setRutCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
               required
               maxLength={15}
-              autoComplete="username"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-form-type="other"
             />
             <p className="text-xs text-muted-foreground">
               Solo los dígitos, sin puntos ni guión
@@ -457,6 +476,7 @@ export default function Auth() {
             <Label htmlFor="pin">PIN</Label>
             <Input
               id="pin"
+              name="stockia-pin"
               type="password"
               inputMode="numeric"
               placeholder="••••"
@@ -464,8 +484,16 @@ export default function Auth() {
               onChange={(e) => setPin(e.target.value)}
               required
               maxLength={6}
-              autoComplete="current-password"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
+            <p className="text-xs text-muted-foreground">
+              Escribe tu PIN manualmente. Ignora sugerencias del teclado.
+            </p>
           </div>
 
           <Button
@@ -487,3 +515,4 @@ export default function Auth() {
     </div>
   );
 }
+
