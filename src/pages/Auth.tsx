@@ -30,16 +30,34 @@ export default function Auth() {
   const [showModeSelection, setShowModeSelection] = useState(false);
   const [workerRoles, setWorkerRoles] = useState<AppRole[]>([]);
   const [workerData, setWorkerData] = useState<WorkerData | null>(null);
+  const [hasStaleSession, setHasStaleSession] = useState(false);
   const navigate = useNavigate();
 
+  // Sanitize PIN: strip invisible/whitespace/control chars that Android keyboards
+  // and password managers sometimes inject. Prevents phantom "PIN incorrecto".
+  const sanitizePin = (raw: string): string =>
+    raw.replace(/[\u0000-\u001F\u007F-\u00A0\u200B-\u200F\uFEFF\s]/g, "");
+
   useEffect(() => {
-    // Check if user is already logged in
+    // If the user explicitly landed on /auth, do NOT auto-route them.
+    // Instead surface a "Cambiar de trabajador" prompt so the previous
+    // session can't ghost-block a new login on shared POS terminals.
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        handleExistingSession(session.user.id);
-      }
+      if (session) setHasStaleSession(true);
     });
   }, []);
+
+  const handleSwitchWorker = async () => {
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // ignore — even if signOut fails we still want a clean form
+    }
+    setHasStaleSession(false);
+    setRutCode("");
+    setPin("");
+  };
+
 
   const handleExistingSession = async (userId: string) => {
     // Get worker roles
