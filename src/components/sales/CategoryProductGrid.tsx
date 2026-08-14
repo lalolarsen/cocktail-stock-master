@@ -260,7 +260,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
         {/* Product cards */}
         {visibleProducts.length > 0 && (
           <div className="space-y-3 pr-1">
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
               {visibleProducts.map((cocktail) => (
                 <ProductCard
                   key={cocktail.id}
@@ -318,9 +318,9 @@ const ProductCard = React.memo(function ProductCard({
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className="p-2 select-none opacity-40 cursor-not-allowed min-h-[68px] flex flex-col items-start justify-center rounded-md border border-border/30 bg-card/50"
+              className="p-3 select-none opacity-40 cursor-not-allowed min-h-[88px] flex flex-col items-start justify-center rounded-md border border-border/30 bg-card/50"
             >
-              <span className="text-xs font-medium leading-snug line-clamp-2 w-full">
+              <span className="text-sm font-medium leading-snug line-clamp-2 w-full">
                 {cocktail.name}
               </span>
               <span className="text-xs text-destructive flex items-center gap-1 mt-1">
@@ -339,13 +339,13 @@ const ProductCard = React.memo(function ProductCard({
   return (
     <button
       type="button"
-      className="p-2 text-left rounded-md border border-border/30 bg-card hover:border-primary/50 active:scale-[0.97] transition-all select-none min-h-[68px] flex flex-col justify-between w-full"
+      className="p-3 text-left rounded-lg border border-border/40 bg-card hover:border-primary/60 hover:bg-primary/[0.04] active:scale-[0.97] transition-all select-none min-h-[88px] flex flex-col justify-between w-full"
       onClick={() => onAddToCart(cocktail)}
     >
-      <span className="text-xs font-medium leading-snug line-clamp-2 text-foreground">
+      <span className="text-sm font-semibold leading-snug line-clamp-2 text-foreground">
         {cocktail.name}
       </span>
-      <span className="text-base font-bold text-primary mt-1">
+      <span className="text-lg font-bold text-primary mt-1.5 tabular-nums">
         {formatCLP(cocktail.price)}
       </span>
     </button>

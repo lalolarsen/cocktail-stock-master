@@ -39,13 +39,7 @@ import { useDemoLogging } from "@/hooks/useDemoLogging";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   TicketReceiptDialog,
   type SaleResult as ReceiptSaleResult,
@@ -625,11 +619,6 @@ export default function Tickets() {
     toast.success("Reimprimiendo");
   };
 
-  const paymentMethodLabels: Record<PaymentMethodType, { label: string; icon: React.ReactNode }> = {
-    cash: { label: "Efectivo", icon: <Banknote className="h-4 w-4" /> },
-    card: { label: "Tarjeta", icon: <CreditCard className="h-4 w-4" /> },
-  };
-
   /* ─── Renders ─── */
 
   if (loading) {
@@ -839,9 +828,12 @@ export default function Tickets() {
             </div>
 
             {ticketTypes.length === 0 && (
-              <Card className="p-8 text-center">
-                <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No hay tipos de entrada configurados</p>
+              <Card className="p-2">
+                <EmptyState
+                  icon={Ticket}
+                  title="No hay tipos de entrada configurados"
+                  description="Configúralos desde el panel de administración"
+                />
               </Card>
             )}
           </div>
@@ -852,8 +844,13 @@ export default function Tickets() {
               <CardContent className="p-4 flex flex-col h-full">
                 <h2 className="font-bold text-lg mb-4">Carrito</h2>
                 {cart.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                    <p className="text-sm">Toca una entrada para agregar</p>
+                  <div className="flex-1 flex items-center justify-center">
+                    <EmptyState
+                      compact
+                      icon={Ticket}
+                      title="Carrito vacío"
+                      description="Toca una entrada para agregarla"
+                    />
                   </div>
                 ) : (
                   <>
@@ -940,10 +937,10 @@ export default function Tickets() {
                       </div>
                     </ScrollArea>
 
-                    <div className="border-t pt-4 space-y-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Total</span>
-                        <span className="text-2xl font-bold">{formatCLP(getCartTotal())}</span>
+                    <div className="border-t pt-4 space-y-3">
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
+                        <span className="text-3xl font-bold text-primary tabular-nums">{formatCLP(getCartTotal())}</span>
                       </div>
 
                       {coversIncluded > 0 && (
@@ -953,35 +950,33 @@ export default function Tickets() {
                         </p>
                       )}
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Método de Pago *</label>
-                        <Select
-                          value={paymentMethod ?? ""}
-                          onValueChange={(v) => v && setPaymentMethod(v as PaymentMethodType)}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod("cash" as PaymentMethodType)}
+                          className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
+                            paymentMethod === "cash"
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                          }`}
                         >
-                          <SelectTrigger className={!paymentMethod ? "text-muted-foreground border-destructive/50" : ""}>
-                            <SelectValue placeholder="Seleccionar método">
-                              {paymentMethod && (
-                                <span className="flex items-center gap-2">
-                                  {paymentMethodLabels[paymentMethod].icon}
-                                  {paymentMethodLabels[paymentMethod].label}
-                                </span>
-                              )}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">
-                              <span className="flex items-center gap-2"><Banknote className="h-4 w-4" /> Efectivo</span>
-                            </SelectItem>
-                            <SelectItem value="card">
-                              <span className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Tarjeta</span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {!paymentMethod && (
-                          <p className="text-[11px] text-destructive">Selecciona un método de pago</p>
-                        )}
+                          <Banknote className="h-4 w-4" /> Efectivo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod("card" as PaymentMethodType)}
+                          className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
+                            paymentMethod === "card"
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                          }`}
+                        >
+                          <CreditCard className="h-4 w-4" /> Tarjeta
+                        </button>
                       </div>
+                      {!paymentMethod && (
+                        <p className="text-xs text-destructive text-center font-medium">Selecciona medio de pago</p>
+                      )}
 
                       {pendingCovers > 0 && (
                         <Alert variant="destructive" className="py-2">
@@ -993,17 +988,17 @@ export default function Tickets() {
                       )}
 
                       <Button
-                        size="lg" className="w-full h-12"
+                        size="lg" className="w-full h-14 text-base font-bold tracking-widest uppercase"
                         onClick={handleCheckout}
                         disabled={processing || cart.length === 0 || !paymentMethod || pendingCovers > 0}
                       >
                         {processing ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
                           <>
-                            {paymentMethod ? paymentMethodLabels[paymentMethod].icon : <CreditCard className="h-5 w-5" />}
-                            <span className="ml-2">Cobrar</span>
+                            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                            Procesando venta…
                           </>
+                        ) : (
+                          "Cobrar"
                         )}
                       </Button>
                     </div>

@@ -11,6 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PaymentPanel } from "@/components/sales/PaymentPanel";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 
 import {
@@ -946,7 +948,7 @@ export default function Sales() {
           </div>
 
           {/* RIGHT: Caja Panel — 340px fixed */}
-          <div className="w-[340px] shrink-0 p-3 pl-0 flex flex-col overflow-hidden">
+          <div className="w-[360px] shrink-0 p-3 pl-0 flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 flex flex-col overflow-hidden">
               {/* CARRITO header */}
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30 shrink-0">
@@ -976,9 +978,13 @@ export default function Sales() {
                     <span className="text-xs text-muted-foreground">Cargando carrito…</span>
                   </div>
                 ) : cart.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-muted-foreground gap-2">
-                    <ShoppingCart className="w-7 h-7" strokeWidth={1} />
-                    <span className="text-xs">Selecciona productos</span>
+                  <div className="flex h-full flex-col items-center justify-center">
+                    <EmptyState
+                      compact
+                      icon={ShoppingCart}
+                      title="Carrito vacío"
+                      description="Toca un producto para agregarlo"
+                    />
                     {lastRemovedItem && (
                       <Button variant="outline" size="sm" className="text-xs" onClick={undoLastRemove}>
                         <Undo2 className="w-3.5 h-3.5 mr-1" /> Deshacer
@@ -999,12 +1005,12 @@ export default function Sales() {
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1">
-                                <p className="truncate text-[11px] font-semibold">{item.cocktail.name}</p>
+                                <p className="truncate text-[13px] font-semibold">{item.cocktail.name}</p>
                                 {item.isCourtesy && (
                                   <span className="text-[9px] font-semibold bg-primary/20 text-primary px-1 py-0.5 rounded">CORTESÍA</span>
                                 )}
                               </div>
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="text-[12px] font-medium text-muted-foreground tabular-nums">
                                 {item.isCourtesy ? "$0" : formatCLP(itemTotal)}
                               </p>
                               {/* Add-ons */}
@@ -1031,12 +1037,12 @@ export default function Sales() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 rounded bg-muted px-1 py-0.5 shrink-0">
-                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                                <Minus className="w-3 h-3" />
+                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
+                                <Minus className="w-4 h-4" />
                               </button>
-                              <span className="min-w-[18px] text-center text-xs font-bold">{item.quantity}</span>
-                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                                <Plus className="w-3 h-3" />
+                              <span className="min-w-[22px] text-center text-sm font-bold tabular-nums">{item.quantity}</span>
+                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
+                                <Plus className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -1049,77 +1055,19 @@ export default function Sales() {
 
               {/* PAGO — shrink-0, always visible */}
               {cart.length > 0 && (
-                <div className="shrink-0 border-t border-border px-3 py-3 space-y-2.5">
-                  {/* Payment method */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("cash")}
-                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
-                        paymentMethod === "cash" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
-                      }`}
-                    >
-                      <Banknote className="w-3.5 h-3.5" /> Efectivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("card")}
-                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
-                        paymentMethod === "card" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
-                      }`}
-                    >
-                      <CreditCard className="w-3.5 h-3.5" /> Tarjeta
-                    </button>
-                  </div>
-                  {!paymentMethod && (
-                    <p className="text-[10px] text-destructive text-center font-medium">Selecciona medio de pago</p>
-                  )}
-
-                  {/* Document type */}
-                  {(paymentMethod === "cash" || receiptMode === "unified") && (
-                    <Select value={documentType} onValueChange={(value: DocumentType) => setDocumentType(value)}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="boleta">Boleta</SelectItem>
-                        <SelectItem value="factura">Factura</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {paymentMethod === "card" && receiptMode === "hybrid" && (
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      El comprobante se emite desde el POS externo
-                    </p>
-                  )}
-
-                  {/* Total */}
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
-                    <span className="text-xl font-bold text-primary tabular-nums">
-                      {formatCLP(calculateTotal())}
-                    </span>
-                  </div>
-
-                  {/* Cobrar */}
-                  <Button
-                    onClick={processSale}
-                    disabled={loading || !hasActiveJornada || !paymentMethod}
-                    className="w-full h-11 text-sm font-bold tracking-widest uppercase"
-                    size="lg"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Procesando...
-                      </>
-                    ) : (
-                      "Cobrar"
-                    )}
-                  </Button>
-                </div>
+                <PaymentPanel
+                  total={calculateTotal()}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={setPaymentMethod}
+                  documentType={documentType}
+                  onDocumentTypeChange={(value) => setDocumentType(value as DocumentType)}
+                  receiptMode={receiptMode}
+                  loading={loading}
+                  disabled={!hasActiveJornada}
+                  onCharge={processSale}
+                />
               )}
+
 
               {/* Printing Panel */}
               <div className="shrink-0">

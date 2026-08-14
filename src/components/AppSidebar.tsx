@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart } from "lucide-react";
+import { Wine, Package, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -15,12 +15,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { VenueIndicator } from "@/components/VenueIndicator";
 
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
+type ViewType = "overview" | "catalog" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -38,55 +39,36 @@ type MenuItem = {
 type MenuSection = {
   label: string;
   items: MenuItem[];
+  collapsible?: boolean;
 };
 
 // ── Admin: full access ──
 const ADMIN_SECTIONS: MenuSection[] = [
   {
-    label: "Dashboard",
-    items: [
-      { title: "Dashboard", value: "overview", icon: Wine },
-    ],
-  },
-  {
     label: "Operación",
     items: [
+      { title: "Dashboard", value: "overview", icon: Wine },
       { title: "Jornadas", value: "jornadas", icon: Calendar },
-      { title: "Puntos de Venta", value: "pos", icon: Receipt },
-      { title: "Anulaciones", value: "voids", icon: Undo2 },
+      { title: "Compras", value: "proveedores", icon: ShoppingCart },
     ],
   },
   {
-    label: "Catálogo",
-    items: [
-      { title: "Productos / Insumos", value: "products", icon: Package },
-      { title: "Carta / Recetas", value: "menu", icon: Martini },
-    ],
-  },
-  {
-    label: "Compras",
-    items: [
-      { title: "Lector de facturas", value: "proveedores", icon: ShoppingCart },
-    ],
-  },
-  {
-    label: "Ventas",
+    label: "Negocio",
     items: [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
-      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
+      { title: "Catálogo", value: "catalog", icon: Package },
     ],
   },
   {
-    label: "Gestión",
+    label: "Avanzado",
+    collapsible: true,
     items: [
+      { title: "Puntos de Venta", value: "pos", icon: Receipt },
       { title: "Trabajadores", value: "workers", icon: Users },
       { title: "Tickets", value: "tickets", icon: Ticket },
-    ],
-  },
-  {
-    label: "Sistema",
-    items: [
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
+      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
@@ -96,28 +78,25 @@ const ADMIN_SECTIONS: MenuSection[] = [
 // ── Gerencia: read-only subset ──
 const GERENCIA_SECTIONS: MenuSection[] = [
   {
-    label: "Dashboard",
+    label: "Operación",
     items: [
       { title: "Dashboard", value: "overview", icon: Wine },
-    ],
-  },
-  {
-    label: "Compras",
-    items: [
       { title: "Compras", value: "proveedores", icon: ShoppingCart },
     ],
   },
   {
-    label: "Ventas",
+    label: "Negocio",
     items: [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
-      { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
+      { title: "Catálogo", value: "catalog", icon: Package },
     ],
   },
   {
-    label: "Sistema",
+    label: "Avanzado",
+    collapsible: true,
     items: [
+      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
@@ -154,13 +133,8 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
       </SidebarHeader>
 
       <SidebarContent className="gap-0 px-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-sidebar-border [&::-webkit-scrollbar-thumb]:rounded-full">
-        {sections.map((section, idx) => (
-          <SidebarGroup key={section.label} className={`py-1 ${idx === 0 ? "pt-2" : ""}`}>
-            {!isCollapsed && (
-              <SidebarGroupLabel className="text-sidebar-foreground/35 uppercase text-[9px] tracking-[0.12em] font-semibold px-2 h-5 mb-0.5">
-                {section.label}
-              </SidebarGroupLabel>
-            )}
+        {sections.map((section, idx) => {
+          const menu = (
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {section.items.map((item) => {
@@ -170,7 +144,7 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                       <SidebarMenuButton
                         onClick={() => setActiveView(item.value)}
                         tooltip={item.title}
-                        className={`relative h-8 rounded-md transition-all duration-150 ease-smooth ${
+                        className={`relative h-9 rounded-md transition-all duration-150 ease-smooth ${
                           isActive
                             ? "bg-primary/12 text-primary font-medium hover:bg-primary/18 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[2px] before:rounded-full before:bg-primary"
                             : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
@@ -189,8 +163,38 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+          );
+
+          const sectionHasActive = section.items.some((i) => i.value === activeView);
+
+          if (section.collapsible && !isCollapsed) {
+            return (
+              <Collapsible key={section.label} defaultOpen={sectionHasActive} className="group/collapsible">
+                <SidebarGroup className="py-1">
+                  <CollapsibleTrigger className="w-full">
+                    <SidebarGroupLabel className="text-sidebar-foreground/35 uppercase text-[9px] tracking-[0.12em] font-semibold px-2 h-6 mb-0.5 w-full flex items-center justify-between hover:text-sidebar-foreground/60 transition-colors cursor-pointer">
+                      <span>{section.label}</span>
+                      <ChevronDown className="w-3 h-3 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                    </SidebarGroupLabel>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>{menu}</CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
+            );
+          }
+
+          return (
+            <SidebarGroup key={section.label} className={`py-1 ${idx === 0 ? "pt-2" : ""}`}>
+              {!isCollapsed && (
+                <SidebarGroupLabel className="text-sidebar-foreground/35 uppercase text-[9px] tracking-[0.12em] font-semibold px-2 h-5 mb-0.5">
+                  {section.label}
+                </SidebarGroupLabel>
+              )}
+              {menu}
+            </SidebarGroup>
+          );
+        })}
+
       </SidebarContent>
 
       <SidebarFooter className="p-2 border-t border-sidebar-border">
