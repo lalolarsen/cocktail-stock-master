@@ -1005,8 +1005,6 @@ export default function Tickets() {
                         )}
                       </Button>
                     </div>
-
-                    </div>
                   </>
                 )}
               </CardContent>
