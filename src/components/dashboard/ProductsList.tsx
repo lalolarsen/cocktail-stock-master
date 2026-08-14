@@ -257,9 +257,10 @@ export const ProductsList = ({ isReadOnly = false }: ProductsListProps) => {
       <Alert className="border-primary/30 bg-primary/5">
         <Info className="h-4 w-4 text-primary" />
         <AlertDescription className="text-xs leading-relaxed">
-          <span className="font-semibold text-foreground">Para ingresar stock a un producto, este debe existir en el catálogo primero.</span>
+          <span className="font-semibold text-foreground">Los insumos deben existir en el catálogo antes de aparecer en la carta o en una factura.</span>
           {" "}Usa el botón <span className="font-semibold text-foreground">"Nuevo producto"</span> para crearlo con su tipo (botella o unitario) y capacidad en ml.
-          Una vez creado, ve a <span className="font-semibold text-foreground">Inventario → Ingreso manual</span> para registrar el stock.
+          Luego podrás usarlo en recetas y en el <span className="font-semibold text-foreground">lector de facturas</span>.
+
         </AlertDescription>
       </Alert>
 
