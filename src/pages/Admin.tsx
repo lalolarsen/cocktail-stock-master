@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { AdminOverview } from "@/components/dashboard/AdminOverview";
-import { ProductsList } from "@/components/dashboard/ProductsList";
-import { MenuWrapper } from "@/components/dashboard/MenuWrapper";
+import { CatalogWrapper } from "@/components/dashboard/CatalogWrapper";
 import { WorkersManagementNew } from "@/components/dashboard/WorkersManagementNew";
 import { ActivityPanel } from "@/components/dashboard/ActivityPanel";
 import { JornadaManagement } from "@/components/dashboard/JornadaManagement";
@@ -25,7 +24,7 @@ import { VenueGuard } from "@/components/VenueGuard";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { Menu } from "lucide-react";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
+type ViewType = "overview" | "catalog" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
 
 function HeaderGreeting() {
   const { user } = useAppSession();
@@ -60,7 +59,7 @@ export default function Admin() {
   const [isVerified, setIsVerified] = useState(true);
   const [showPinDialog, setShowPinDialog] = useState(false);
 
-  const allowedViewsForGerencia: ViewType[] = ["overview", "products", "menu", "reports", "workers", "courtesy-qr", "settings", "analytics", "voids", "proveedores", "notifications"];
+  const allowedViewsForGerencia: ViewType[] = ["overview", "catalog", "products", "menu", "reports", "workers", "courtesy-qr", "settings", "analytics", "voids", "proveedores", "notifications"];
 
   const handleViewChange = (view: ViewType) => {
     if (isReadOnly && !allowedViewsForGerencia.includes(view)) {
@@ -100,8 +99,9 @@ export default function Admin() {
   const getViewTitle = () => {
     switch (activeView) {
       case "overview": return "Dashboard";
-      case "products": return "Productos";
-      case "menu": return "Carta";
+      case "catalog": return "Catálogo";
+      case "products": return "Catálogo";
+      case "menu": return "Catálogo";
       case "jornadas": return "Jornadas";
       case "workers": return "Trabajadores";
       case "reports": return "Reportes";
@@ -141,8 +141,9 @@ export default function Admin() {
               <AdminOverview isReadOnly={isReadOnly} onNavigate={handleViewChange as any} />
             )}
 
-            {activeView === "products" && <ProductsList isReadOnly={isReadOnly} />}
-            {activeView === "menu" && <MenuWrapper isReadOnly={isReadOnly} />}
+            {(activeView === "catalog" || activeView === "products" || activeView === "menu") && (
+              <CatalogWrapper isReadOnly={isReadOnly} />
+            )}
 
             {activeView === "workers" && (
               <div className="space-y-4 sm:space-y-6">
