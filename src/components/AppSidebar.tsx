@@ -1,4 +1,4 @@
-import { Wine, Package, Martini, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart } from "lucide-react";
+import { Wine, Package, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -15,12 +15,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { VenueIndicator } from "@/components/VenueIndicator";
 
 import { useAppSession } from "@/contexts/AppSessionContext";
 import stockiaLogo from "@/assets/stockia-logo-white.png";
 
-type ViewType = "overview" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
+type ViewType = "overview" | "catalog" | "products" | "menu" | "workers" | "jornadas" | "reports" | "pos" | "notifications" | "tickets" | "proveedores" | "courtesy-qr" | "settings" | "analytics" | "voids";
 
 interface AppSidebarProps {
   activeView: ViewType;
@@ -38,55 +39,36 @@ type MenuItem = {
 type MenuSection = {
   label: string;
   items: MenuItem[];
+  collapsible?: boolean;
 };
 
 // ── Admin: full access ──
 const ADMIN_SECTIONS: MenuSection[] = [
   {
-    label: "Dashboard",
-    items: [
-      { title: "Dashboard", value: "overview", icon: Wine },
-    ],
-  },
-  {
     label: "Operación",
     items: [
+      { title: "Dashboard", value: "overview", icon: Wine },
       { title: "Jornadas", value: "jornadas", icon: Calendar },
-      { title: "Puntos de Venta", value: "pos", icon: Receipt },
-      { title: "Anulaciones", value: "voids", icon: Undo2 },
+      { title: "Compras", value: "proveedores", icon: ShoppingCart },
     ],
   },
   {
-    label: "Catálogo",
-    items: [
-      { title: "Productos / Insumos", value: "products", icon: Package },
-      { title: "Carta / Recetas", value: "menu", icon: Martini },
-    ],
-  },
-  {
-    label: "Compras",
-    items: [
-      { title: "Lector de facturas", value: "proveedores", icon: ShoppingCart },
-    ],
-  },
-  {
-    label: "Ventas",
+    label: "Negocio",
     items: [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
-      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
+      { title: "Catálogo", value: "catalog", icon: Package },
     ],
   },
   {
-    label: "Gestión",
+    label: "Avanzado",
+    collapsible: true,
     items: [
+      { title: "Puntos de Venta", value: "pos", icon: Receipt },
       { title: "Trabajadores", value: "workers", icon: Users },
       { title: "Tickets", value: "tickets", icon: Ticket },
-    ],
-  },
-  {
-    label: "Sistema",
-    items: [
+      { title: "Anulaciones", value: "voids", icon: Undo2 },
+      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
@@ -96,28 +78,25 @@ const ADMIN_SECTIONS: MenuSection[] = [
 // ── Gerencia: read-only subset ──
 const GERENCIA_SECTIONS: MenuSection[] = [
   {
-    label: "Dashboard",
+    label: "Operación",
     items: [
       { title: "Dashboard", value: "overview", icon: Wine },
-    ],
-  },
-  {
-    label: "Compras",
-    items: [
       { title: "Compras", value: "proveedores", icon: ShoppingCart },
     ],
   },
   {
-    label: "Ventas",
+    label: "Negocio",
     items: [
       { title: "Análisis", value: "analytics", icon: BarChart3 },
-      { title: "QR Cortesía", value: "courtesy-qr", icon: Gift },
       { title: "Reportes", value: "reports", icon: FileText },
+      { title: "Catálogo", value: "catalog", icon: Package },
     ],
   },
   {
-    label: "Sistema",
+    label: "Avanzado",
+    collapsible: true,
     items: [
+      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
