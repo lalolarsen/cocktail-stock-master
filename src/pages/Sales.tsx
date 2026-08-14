@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PaymentPanel } from "@/components/sales/PaymentPanel";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 
 import {
