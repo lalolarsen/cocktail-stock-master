@@ -97,8 +97,8 @@ export function AddonSelector({
     onAddonsChange(selectedAddons.filter(a => a.id !== addonId));
   };
 
-  // No addons available for this product
-  if (availableAddons.length === 0 && !loading) {
+  // No addons available for this product (also hidden while loading to avoid flicker)
+  if (availableAddons.length === 0) {
     return null;
   }
 

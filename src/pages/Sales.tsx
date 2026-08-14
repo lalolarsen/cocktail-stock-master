@@ -999,12 +999,12 @@ export default function Sales() {
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1">
-                                <p className="truncate text-[11px] font-semibold">{item.cocktail.name}</p>
+                                <p className="truncate text-[13px] font-semibold">{item.cocktail.name}</p>
                                 {item.isCourtesy && (
                                   <span className="text-[9px] font-semibold bg-primary/20 text-primary px-1 py-0.5 rounded">CORTESÍA</span>
                                 )}
                               </div>
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="text-[12px] font-medium text-muted-foreground tabular-nums">
                                 {item.isCourtesy ? "$0" : formatCLP(itemTotal)}
                               </p>
                               {/* Add-ons */}
@@ -1031,12 +1031,12 @@ export default function Sales() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 rounded bg-muted px-1 py-0.5 shrink-0">
-                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                                <Minus className="w-3 h-3" />
+                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
+                                <Minus className="w-4 h-4" />
                               </button>
-                              <span className="min-w-[18px] text-center text-xs font-bold">{item.quantity}</span>
-                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                                <Plus className="w-3 h-3" />
+                              <span className="min-w-[22px] text-center text-sm font-bold tabular-nums">{item.quantity}</span>
+                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
+                                <Plus className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -1055,30 +1055,30 @@ export default function Sales() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod("cash")}
-                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
                         paymentMethod === "cash" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
                       }`}
                     >
-                      <Banknote className="w-3.5 h-3.5" /> Efectivo
+                      <Banknote className="w-4 h-4" /> Efectivo
                     </button>
                     <button
                       type="button"
                       onClick={() => setPaymentMethod("card")}
-                      className={`flex items-center justify-center gap-1.5 rounded-md border py-2 text-xs font-semibold transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
                         paymentMethod === "card" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
                       }`}
                     >
-                      <CreditCard className="w-3.5 h-3.5" /> Tarjeta
+                      <CreditCard className="w-4 h-4" /> Tarjeta
                     </button>
                   </div>
                   {!paymentMethod && (
-                    <p className="text-[10px] text-destructive text-center font-medium">Selecciona medio de pago</p>
+                    <p className="text-xs text-destructive text-center font-medium">Selecciona medio de pago</p>
                   )}
 
                   {/* Document type */}
                   {(paymentMethod === "cash" || receiptMode === "unified") && (
                     <Select value={documentType} onValueChange={(value: DocumentType) => setDocumentType(value)}>
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-10 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1096,8 +1096,8 @@ export default function Sales() {
 
                   {/* Total */}
                   <div className="flex items-baseline justify-between">
-                    <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
-                    <span className="text-xl font-bold text-primary tabular-nums">
+                    <span className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
+                    <span className="text-3xl font-bold text-primary tabular-nums">
                       {formatCLP(calculateTotal())}
                     </span>
                   </div>
@@ -1106,13 +1106,13 @@ export default function Sales() {
                   <Button
                     onClick={processSale}
                     disabled={loading || !hasActiveJornada || !paymentMethod}
-                    className="w-full h-11 text-sm font-bold tracking-widest uppercase"
+                    className="w-full h-14 text-base font-bold tracking-widest uppercase"
                     size="lg"
                   >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Procesando...
+                        Procesando venta…
                       </>
                     ) : (
                       "Cobrar"
