@@ -1054,77 +1054,19 @@ export default function Sales() {
 
               {/* PAGO — shrink-0, always visible */}
               {cart.length > 0 && (
-                <div className="shrink-0 border-t border-border px-3 py-3 space-y-2.5">
-                  {/* Payment method */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("cash")}
-                      className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
-                        paymentMethod === "cash" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
-                      }`}
-                    >
-                      <Banknote className="w-4 h-4" /> Efectivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("card")}
-                      className={`flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
-                        paymentMethod === "card" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
-                      }`}
-                    >
-                      <CreditCard className="w-4 h-4" /> Tarjeta
-                    </button>
-                  </div>
-                  {!paymentMethod && (
-                    <p className="text-xs text-destructive text-center font-medium">Selecciona medio de pago</p>
-                  )}
-
-                  {/* Document type */}
-                  {(paymentMethod === "cash" || receiptMode === "unified") && (
-                    <Select value={documentType} onValueChange={(value: DocumentType) => setDocumentType(value)}>
-                      <SelectTrigger className="h-10 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="boleta">Boleta</SelectItem>
-                        <SelectItem value="factura">Factura</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {paymentMethod === "card" && receiptMode === "hybrid" && (
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      El comprobante se emite desde el POS externo
-                    </p>
-                  )}
-
-                  {/* Total */}
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
-                    <span className="text-3xl font-bold text-primary tabular-nums">
-                      {formatCLP(calculateTotal())}
-                    </span>
-                  </div>
-
-                  {/* Cobrar */}
-                  <Button
-                    onClick={processSale}
-                    disabled={loading || !hasActiveJornada || !paymentMethod}
-                    className="w-full h-14 text-base font-bold tracking-widest uppercase"
-                    size="lg"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Procesando venta…
-                      </>
-                    ) : (
-                      "Cobrar"
-                    )}
-                  </Button>
-                </div>
+                <PaymentPanel
+                  total={calculateTotal()}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={setPaymentMethod}
+                  documentType={documentType}
+                  onDocumentTypeChange={(value) => setDocumentType(value as DocumentType)}
+                  receiptMode={receiptMode}
+                  loading={loading}
+                  disabled={!hasActiveJornada}
+                  onCharge={processSale}
+                />
               )}
+
 
               {/* Printing Panel */}
               <div className="shrink-0">
