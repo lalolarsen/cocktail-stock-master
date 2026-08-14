@@ -40,13 +40,6 @@ import { useAppSession } from "@/contexts/AppSessionContext";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   TicketReceiptDialog,
   type SaleResult as ReceiptSaleResult,
 } from "@/components/tickets/TicketReceiptDialog";
@@ -623,11 +616,6 @@ export default function Tickets() {
     if (!saleResult) return;
     await autoPrintSale(saleResult);
     toast.success("Reimprimiendo");
-  };
-
-  const paymentMethodLabels: Record<PaymentMethodType, { label: string; icon: React.ReactNode }> = {
-    cash: { label: "Efectivo", icon: <Banknote className="h-4 w-4" /> },
-    card: { label: "Tarjeta", icon: <CreditCard className="h-4 w-4" /> },
   };
 
   /* ─── Renders ─── */
