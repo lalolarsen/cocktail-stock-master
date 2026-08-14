@@ -39,6 +39,7 @@ import { useDemoLogging } from "@/hooks/useDemoLogging";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { VenueGuard } from "@/components/VenueGuard";
 import { VenueIndicator } from "@/components/VenueIndicator";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   TicketReceiptDialog,
   type SaleResult as ReceiptSaleResult,
@@ -827,9 +828,12 @@ export default function Tickets() {
             </div>
 
             {ticketTypes.length === 0 && (
-              <Card className="p-8 text-center">
-                <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No hay tipos de entrada configurados</p>
+              <Card className="p-2">
+                <EmptyState
+                  icon={Ticket}
+                  title="No hay tipos de entrada configurados"
+                  description="Configúralos desde el panel de administración"
+                />
               </Card>
             )}
           </div>
@@ -840,8 +844,13 @@ export default function Tickets() {
               <CardContent className="p-4 flex flex-col h-full">
                 <h2 className="font-bold text-lg mb-4">Carrito</h2>
                 {cart.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                    <p className="text-sm">Toca una entrada para agregar</p>
+                  <div className="flex-1 flex items-center justify-center">
+                    <EmptyState
+                      compact
+                      icon={Ticket}
+                      title="Carrito vacío"
+                      description="Toca una entrada para agregarla"
+                    />
                   </div>
                 ) : (
                   <>

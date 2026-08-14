@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryProductGrid } from "@/components/sales/CategoryProductGrid";
+import { EmptyState } from "@/components/ui/empty-state";
 import { AddonSelector, type SelectedAddon } from "@/components/sales/AddonSelector";
 
 import {
@@ -946,7 +947,7 @@ export default function Sales() {
           </div>
 
           {/* RIGHT: Caja Panel — 340px fixed */}
-          <div className="w-[340px] shrink-0 p-3 pl-0 flex flex-col overflow-hidden">
+          <div className="w-[360px] shrink-0 p-3 pl-0 flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0 rounded-lg border border-border/30 bg-card/80 flex flex-col overflow-hidden">
               {/* CARRITO header */}
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30 shrink-0">
@@ -976,9 +977,13 @@ export default function Sales() {
                     <span className="text-xs text-muted-foreground">Cargando carrito…</span>
                   </div>
                 ) : cart.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-muted-foreground gap-2">
-                    <ShoppingCart className="w-7 h-7" strokeWidth={1} />
-                    <span className="text-xs">Selecciona productos</span>
+                  <div className="flex h-full flex-col items-center justify-center">
+                    <EmptyState
+                      compact
+                      icon={ShoppingCart}
+                      title="Carrito vacío"
+                      description="Toca un producto para agregarlo"
+                    />
                     {lastRemovedItem && (
                       <Button variant="outline" size="sm" className="text-xs" onClick={undoLastRemove}>
                         <Undo2 className="w-3.5 h-3.5 mr-1" /> Deshacer
