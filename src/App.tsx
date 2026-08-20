@@ -6,34 +6,47 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppSessionProvider, useAppSession } from "@/contexts/AppSessionContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
+import { Suspense, lazy } from "react";
 
-// Lazy load pages for better performance
+// Eager: rutas críticas del POS y autenticación (deben abrir al instante en tablets)
 import Sales from "./pages/Sales";
-import Admin from "./pages/Admin";
-import Documents from "./pages/Documents";
-import PickupTokens from "./pages/PickupTokens";
-import PickupRedemptions from "./pages/PickupRedemptions";
-
-import Auth from "./pages/Auth";
-import DevAuth from "./pages/DevAuth";
-import Help from "./pages/Help";
-import NotFound from "./pages/NotFound";
-import SystemSettings from "./pages/SystemSettings";
 import Tickets from "./pages/Tickets";
-import Income from "./pages/Income";
-
-import PurchasesImport from "./pages/PurchasesImport";
-import ProveedoresImportDetail from "./pages/ProveedoresImportDetail";
-import PendingCatalog from "./pages/PendingCatalog";
-import FeatureFlagsAdmin from "./pages/FeatureFlagsAdmin";
-import SystemMonitoring from "./pages/SystemMonitoring";
-import Proveedores from "./pages/Proveedores";
-import DebugProducts from "./pages/DebugProducts";
+import Auth from "./pages/Auth";
 import NoJornada from "./pages/NoJornada";
-import Unsubscribe from "./pages/Unsubscribe";
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// Diferidas: admin, reportes, compras, developer y utilidades
+const Admin = lazy(() => import("./pages/Admin"));
+const Documents = lazy(() => import("./pages/Documents"));
+const PickupTokens = lazy(() => import("./pages/PickupTokens"));
+const PickupRedemptions = lazy(() => import("./pages/PickupRedemptions"));
+const DevAuth = lazy(() => import("./pages/DevAuth"));
+const Help = lazy(() => import("./pages/Help"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const SystemSettings = lazy(() => import("./pages/SystemSettings"));
+const Income = lazy(() => import("./pages/Income"));
+const PurchasesImport = lazy(() => import("./pages/PurchasesImport"));
+const ProveedoresImportDetail = lazy(() => import("./pages/ProveedoresImportDetail"));
+const PendingCatalog = lazy(() => import("./pages/PendingCatalog"));
+const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
+const SystemMonitoring = lazy(() => import("./pages/SystemMonitoring"));
+const Proveedores = lazy(() => import("./pages/Proveedores"));
+const DebugProducts = lazy(() => import("./pages/DebugProducts"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
+
 const queryClient = new QueryClient();
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="w-7 h-7 animate-spin text-primary" />
+        <p className="text-base text-muted-foreground">Cargando…</p>
+      </div>
+    </div>
+  );
+}
+
 
 // Inner component that uses the session context
 function AppRoutes() {
