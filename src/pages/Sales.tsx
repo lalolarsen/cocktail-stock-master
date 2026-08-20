@@ -1064,6 +1064,7 @@ export default function Sales() {
                   receiptMode={receiptMode}
                   loading={loading}
                   disabled={!hasActiveJornada}
+                  statusLabel={isPrinting ? "Imprimiendo comprobante…" : null}
                   onCharge={processSale}
                 />
               )}
