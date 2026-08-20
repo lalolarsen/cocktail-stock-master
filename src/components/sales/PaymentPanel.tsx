@@ -68,7 +68,7 @@ export function PaymentPanel({
 
       {(paymentMethod === "cash" || receiptMode === "unified") && (
         <Select value={documentType} onValueChange={(value) => onDocumentTypeChange(value as DocumentTypeOption)}>
-          <SelectTrigger className="h-10 text-sm">
+          <SelectTrigger className="h-12 text-base">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -79,26 +79,26 @@ export function PaymentPanel({
       )}
 
       {paymentMethod === "card" && receiptMode === "hybrid" && (
-        <p className="text-[10px] text-muted-foreground text-center">
+        <p className="text-xs text-muted-foreground text-center">
           El comprobante se emite desde el POS externo
         </p>
       )}
 
       <div className="flex items-baseline justify-between">
-        <span className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
-        <span className="text-3xl font-bold text-primary tabular-nums">{formatCLP(total)}</span>
+        <span className="text-base font-semibold tracking-widest text-muted-foreground uppercase">Total</span>
+        <span className="text-4xl font-bold text-primary tabular-nums">{formatCLP(total)}</span>
       </div>
 
       <Button
         onClick={onCharge}
         disabled={loading || disabled || !paymentMethod}
-        className="w-full h-14 text-base font-bold tracking-widest uppercase"
+        className="w-full h-16 text-lg font-bold tracking-widest uppercase"
         size="lg"
       >
         {loading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Procesando venta…
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Cobrando…
           </>
         ) : (
           "Cobrar"
