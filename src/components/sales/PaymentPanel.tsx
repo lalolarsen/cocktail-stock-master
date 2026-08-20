@@ -21,6 +21,8 @@ interface PaymentPanelProps {
   receiptMode: string;
   loading: boolean;
   disabled?: boolean;
+  /** Mensaje de estado operativo visible (ej: "Imprimiendo…"). */
+  statusLabel?: string | null;
   onCharge: () => void;
 }
 
@@ -34,29 +36,35 @@ export function PaymentPanel({
   receiptMode,
   loading,
   disabled = false,
+  statusLabel = null,
   onCharge,
 }: PaymentPanelProps) {
   const methodClass = (active: boolean) =>
-    `flex items-center justify-center gap-2 rounded-md border py-3 text-sm font-semibold transition-colors min-h-[48px] ${
+    `flex items-center justify-center gap-2 rounded-md border py-3 text-base font-bold transition-colors min-h-[64px] ${
       active
-        ? "border-primary bg-primary/10 text-primary"
-        : "border-border text-muted-foreground hover:border-muted-foreground/40"
+        ? "border-primary bg-primary/15 text-primary"
+        : "border-border text-foreground/80 hover:border-muted-foreground/40"
     }`;
 
   return (
     <div className="shrink-0 border-t border-border px-3 py-3 space-y-2.5">
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => onPaymentMethodChange("cash")} className={methodClass(paymentMethod === "cash")}>
-          <Banknote className="w-4 h-4" /> Efectivo
+          <Banknote className="w-5 h-5" /> Efectivo
         </button>
         <button type="button" onClick={() => onPaymentMethodChange("card")} className={methodClass(paymentMethod === "card")}>
-          <CreditCard className="w-4 h-4" /> Tarjeta
+          <CreditCard className="w-5 h-5" /> Tarjeta
         </button>
       </div>
 
       {!paymentMethod && (
-        <p className="text-xs text-destructive text-center font-medium">Selecciona medio de pago</p>
+        <p className="text-sm text-destructive text-center font-semibold">Selecciona medio de pago</p>
       )}
+
+      {statusLabel && (
+        <p className="text-sm text-primary text-center font-semibold">{statusLabel}</p>
+      )}
+
 
       {(paymentMethod === "cash" || receiptMode === "unified") && (
         <Select value={documentType} onValueChange={(value) => onDocumentTypeChange(value as DocumentTypeOption)}>
