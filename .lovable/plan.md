@@ -40,10 +40,21 @@ Cada paso con texto corto, íconos y tipografía grande, pensado para leerse en 
 Nota transversal: la app ya no depende de QR ni de canje en barra. El consumo se descuenta al momento de la venta según la receta del producto (`sale_items` × `cocktail_ingredients`). En la revisión de textos del POS, los mensajes de estado y la Guía rápida se elimina cualquier referencia a "canjear QR" o "retiro en barra" y se reemplaza por el flujo de ticket entregado.
 
 
+## 5. Auditoría de descuento de insumos e informe semanal
+
+Nuevo panel de "Consumo de insumos" (dentro de Reportes) construido sobre el consumo teórico ya definido: `sale_items.qty × cocktail_ingredients.cantidad`, más cortesías.
+
+- **Detalle por insumo**: cantidad vendida/descontada (ml o unidades), costo asociado, y en qué productos de carta se consumió — expandible para ver el desglose por receta.
+- **Trazabilidad de cada descuento**: por jornada, POS y vendedor, para poder auditar de dónde viene cada consumo.
+- **Comparación semanal**: semana actual vs semana anterior por insumo, con variación en cantidad y en % , y ranking de mayores subidas y bajas. Semanas calculadas en `America/Santiago`.
+- **Alertas de inconsistencia**: productos vendidos sin receta cargada y recetas con insumos inexistentes o de costo cero, listados para corregir en el Catálogo.
+- **Exportación** del detalle y de la comparación semanal a Excel/CSV.
+
 ## Detalles técnicos
 
-- Archivos: `src/App.tsx` (lazy routes), `src/pages/Sales.tsx`, `src/pages/Tickets.tsx`, `src/components/sales/CategoryProductGrid.tsx`, `src/components/sales/PaymentPanel.tsx`, `src/components/dashboard/ProductsList.tsx`, `src/components/AppSidebar.tsx`, `src/pages/Admin.tsx`, nuevo `src/components/dashboard/QuickGuidePanel.tsx`, ajustes de tokens/utilidades en `src/index.css`.
-- Sin migraciones de base de datos, sin cambios de RLS, ni en la lógica de ventas, jornadas, stock teórico o correos.
+- Archivos: `src/App.tsx` (lazy routes), `src/pages/Sales.tsx`, `src/pages/Tickets.tsx`, `src/components/sales/CategoryProductGrid.tsx`, `src/components/sales/PaymentPanel.tsx`, `src/components/dashboard/ProductsList.tsx`, `src/components/AppSidebar.tsx`, `src/pages/Admin.tsx`, nuevos `src/components/dashboard/QuickGuidePanel.tsx` y `src/components/dashboard/IngredientConsumptionPanel.tsx` (+ hook de consumo semanal), ajustes de tokens/utilidades en `src/index.css`.
+- Los informes se calculan por consulta de lectura sobre `sales`, `sale_items`, `cocktail_ingredients` y `products`, usando `fetchAllRows` para superar el límite de 1000 filas y `Math.round()` en montos CLP.
+- Sin migraciones de base de datos, sin cambios de RLS, ni en la lógica de ventas, jornadas o correos.
 - Rutas y permisos por rol se mantienen iguales.
 
 ## Orden de ejecución
@@ -52,4 +63,6 @@ Nota transversal: la app ya no depende de QR ni de canje en barra. El consumo se
 2. Memoización y debounce en POS; medición final comparativa.
 3. Ajustes visuales de disco (tipografía, toque, estados).
 4. Simplificación del catálogo con búsqueda y ordenamiento.
-5. Panel Guía rápida.
+5. Panel de auditoría de insumos y comparación semanal.
+6. Panel Guía rápida.
+
