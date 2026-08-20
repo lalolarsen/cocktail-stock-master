@@ -176,7 +176,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearchKeyDown}
-          className="pl-9 pr-9 h-12 text-base bg-card border-border/50"
+          className="pl-9 pr-9 h-14 text-lg bg-card border-border/50"
         />
         {searchQuery && (
           <button
