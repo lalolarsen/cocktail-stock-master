@@ -14,12 +14,13 @@ export function ComprasPanel() {
       <Tabs defaultValue="analytics" className="w-full">
         <TabsList>
           <TabsTrigger value="analytics" className="flex items-center gap-2">
-            <LineChart className="w-4 h-4" /> Análisis
+            <LineChart className="w-4 h-4" /> Resumen
           </TabsTrigger>
           <TabsTrigger value="invoices" className="flex items-center gap-2">
             <FileText className="w-4 h-4" /> Facturas
           </TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="analytics" className="mt-4">
           <InvoiceAnalytics />

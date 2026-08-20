@@ -10,7 +10,9 @@ export interface TemplateEntry {
 }
 
 import { template as jornadaClosedSummary } from './jornada-closed-summary.tsx'
+import { template as comprasSummary } from './compras-summary.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'jornada-closed-summary': jornadaClosedSummary,
+  'compras-summary': comprasSummary,
 }
