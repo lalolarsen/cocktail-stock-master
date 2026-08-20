@@ -289,78 +289,74 @@ export function InvoiceAnalytics() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-xl border border-border/60 bg-gradient-to-br from-card to-card/40 p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold tracking-tight">Resumen de compras</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {loading ? "Cargando datos…" : `${invoices.length} facturas · ${lines.length} líneas · ${start} → ${end}`}
-            </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold tracking-tight">Compras</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+            {loading ? "Cargando datos…" : `${start} → ${end} · ${invoices.length} facturas · ${lines.length} líneas`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-border/60 bg-muted/30 p-0.5">
+            {presets.map((p) => (
+              <button
+                key={p.days}
+                type="button"
+                onClick={() => setPreset(p.days)}
+                className="h-8 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-          <Button onClick={sendToGerencia} disabled={sending || loading} className="h-10">
+          <Input
+            type="date"
+            value={start}
+            onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
+            className="h-9 w-[140px]"
+            aria-label="Desde"
+          />
+          <Input
+            type="date"
+            value={end}
+            onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
+            className="h-9 w-[140px]"
+            aria-label="Hasta"
+          />
+          <Button onClick={sendToGerencia} disabled={sending || loading} variant="outline" className="h-9">
             {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
             Enviar a gerencia
           </Button>
         </div>
+      </div>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex gap-1.5">
-            {presets.map((p) => (
-              <Button key={p.days} type="button" variant="outline" size="sm" className="h-9" onClick={() => setPreset(p.days)}>
-                {p.label}
-              </Button>
-            ))}
-          </div>
-          <div className="flex items-end gap-2 ml-auto">
-            <div>
-              <label className="text-[11px] text-muted-foreground block mb-1">Desde</label>
-              <Input
-                type="date"
-                value={start}
-                onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
-                className="h-9 w-[150px]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground block mb-1">Hasta</label>
-              <Input
-                type="date"
-                value={end}
-                onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
-                className="h-9 w-[150px]"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {loading ? (
-            <>
-              <Skeleton className="h-[74px]" />
-              <Skeleton className="h-[74px]" />
-              <Skeleton className="h-[74px]" />
-              <Skeleton className="h-[74px]" />
-            </>
-          ) : (
-            <>
-              <Kpi label="Compras (neto)" value={formatCLP(totals.purchaseNet)} hint={`Total c/IVA ${formatCLP(totals.purchaseTotal)}`} />
-              <Kpi label="Ventas (neto)" value={formatCLP(totals.salesNet)} />
-              <Kpi
-                label="Margen estimado"
-                value={formatCLP(totals.margin)}
-                tone={totals.margin >= 0 ? "positive" : "negative"}
-              />
-              <Kpi
-                label="Compra / Venta"
-                value={totals.salesNet > 0 ? `${totals.ratio.toFixed(1)}%` : "—"}
-                hint="Menor es mejor"
-              />
-            </>
-          )}
-        </div>
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {loading ? (
+          <>
+            <Skeleton className="h-[76px]" />
+            <Skeleton className="h-[76px]" />
+            <Skeleton className="h-[76px]" />
+            <Skeleton className="h-[76px]" />
+          </>
+        ) : (
+          <>
+            <Kpi label="Compras (neto)" value={formatCLP(totals.purchaseNet)} hint={`Total c/IVA ${formatCLP(totals.purchaseTotal)}`} />
+            <Kpi label="Ventas (neto)" value={formatCLP(totals.salesNet)} />
+            <Kpi
+              label="Margen estimado"
+              value={formatCLP(totals.margin)}
+              tone={totals.margin >= 0 ? "positive" : "negative"}
+            />
+            <Kpi
+              label="Compra / Venta"
+              value={totals.salesNet > 0 ? `${totals.ratio.toFixed(1)}%` : "—"}
+              hint="Menor es mejor"
+            />
+          </>
+        )}
       </div>
 
       {error && (
@@ -369,68 +365,55 @@ export function InvoiceAnalytics() {
         </Card>
       )}
 
-      <Section
-        icon={<CalendarDays className="w-4 h-4" />}
-        title="Compra vs venta por semana"
-        subtitle="Comparación semanal de compra neta contra venta neta"
-      >
-        <WeeklyView lines={lines} weeklySales={weeklySales} loading={loading} />
-      </Section>
+      {/* One view at a time — menos ruido, más foco */}
+      <Tabs defaultValue="semanal" className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="semanal" className="gap-1.5">
+            <CalendarDays className="w-3.5 h-3.5" /> Semanal
+          </TabsTrigger>
+          <TabsTrigger value="precios" className="gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" /> Precios
+          </TabsTrigger>
+          <TabsTrigger value="consumo" className="gap-1.5">
+            <GitCompare className="w-3.5 h-3.5" /> Consumo
+          </TabsTrigger>
+          <TabsTrigger value="top" className="gap-1.5">
+            <Trophy className="w-3.5 h-3.5" /> Top insumos
+          </TabsTrigger>
+          <TabsTrigger value="facturas" className="gap-1.5">
+            <FileText className="w-3.5 h-3.5" /> Facturas
+          </TabsTrigger>
+        </TabsList>
 
-      <Section
-        icon={<TrendingUp className="w-4 h-4" />}
-        title="Precio por insumo"
-        subtitle="Evolución del costo neto unitario entre compras"
-      >
-        <PriceHistoryView lines={lines} productMap={productMap} loading={loading} />
-      </Section>
-
-      <Section
-        icon={<GitCompare className="w-4 h-4" />}
-        title="Compras vs consumo de insumos"
-        subtitle="Lo comprado frente al consumo teórico según recetas"
-      >
-        <SalesVsPurchaseView lines={lines} productMap={productMap} consumption={consumption} loading={loading} />
-      </Section>
-
-      <Section icon={<Trophy className="w-4 h-4" />} title="Top insumos" subtitle="Mayor gasto del período">
-        <TopInsumosView lines={lines} productMap={productMap} loading={loading} />
-      </Section>
-
-      <Section icon={<FileText className="w-4 h-4" />} title="Facturas del período" subtitle="Documentos confirmados">
-        <InvoicesListView invoices={invoices} loading={loading} />
-      </Section>
+        <TabsContent value="semanal" className="space-y-3">
+          <ViewIntro text="Compra neta frente a venta neta, semana a semana." />
+          <WeeklyView lines={lines} weeklySales={weeklySales} loading={loading} />
+        </TabsContent>
+        <TabsContent value="precios" className="space-y-3">
+          <ViewIntro text="Evolución del costo neto unitario de cada insumo entre compras." />
+          <PriceHistoryView lines={lines} productMap={productMap} loading={loading} />
+        </TabsContent>
+        <TabsContent value="consumo" className="space-y-3">
+          <ViewIntro text="Unidades compradas frente al consumo teórico según recetas." />
+          <SalesVsPurchaseView lines={lines} productMap={productMap} consumption={consumption} loading={loading} />
+        </TabsContent>
+        <TabsContent value="top" className="space-y-3">
+          <ViewIntro text="Insumos con mayor gasto y mayor variación de precio del período." />
+          <TopInsumosView lines={lines} productMap={productMap} loading={loading} />
+        </TabsContent>
+        <TabsContent value="facturas" className="space-y-3">
+          <ViewIntro text="Documentos confirmados en el rango. Clic en una fila para abrir el detalle." />
+          <InvoicesListView invoices={invoices} loading={loading} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
 
-function Section({
-  icon,
-  title,
-  subtitle,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-          {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
-        </div>
-        <div className="h-px flex-1 bg-border/60" />
-      </div>
-      {children}
-    </section>
-  );
+function ViewIntro({ text }: { text: string }) {
+  return <p className="text-xs text-muted-foreground">{text}</p>;
 }
+
 
 
 
