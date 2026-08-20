@@ -86,6 +86,7 @@ export function InvoiceAnalytics() {
   const { venue } = useActiveVenue();
   const [{ start, end }, setRange] = useState(defaultRange);
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
