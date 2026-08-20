@@ -899,17 +899,35 @@ function TopInsumosView({
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "positive" | "negative";
+}) {
+  const toneClass =
+    tone === "positive" ? "text-primary" : tone === "negative" ? "text-destructive" : "text-foreground";
   return (
-    <Card>
+    <Card className="border-border/60">
       <CardContent className="py-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className="text-xl font-semibold tracking-tight mt-1">{value}</div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+        <div className={`text-xl font-semibold tracking-tight mt-1 tabular-nums ${toneClass}`}>{value}</div>
+        {hint && <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{hint}</div>}
       </CardContent>
     </Card>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="py-8 text-center text-sm text-muted-foreground">{text}</div>;
+  return (
+    <Card className="border-dashed border-border/60">
+      <CardContent className="py-10 text-center text-sm text-muted-foreground">{text}</CardContent>
+    </Card>
+  );
 }
+
