@@ -176,7 +176,7 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearchKeyDown}
-          className="pl-9 pr-9 h-12 text-base bg-card border-border/50"
+          className="pl-9 pr-9 h-14 text-lg bg-card border-border/50"
         />
         {searchQuery && (
           <button
@@ -204,10 +204,10 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
                 key={category}
                 type="button"
                 className={cn(
-                  "shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-all snap-start min-h-[44px] whitespace-nowrap border",
+                  "shrink-0 px-5 py-2 text-base font-semibold rounded-md transition-all snap-start min-h-[52px] whitespace-nowrap border",
                   isSelected
                     ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                    : "bg-transparent text-foreground/80 border-border/60 hover:border-border hover:text-foreground"
                 )}
                 onClick={() => setSelectedCategory(category)}
               >
@@ -339,13 +339,13 @@ const ProductCard = React.memo(function ProductCard({
   return (
     <button
       type="button"
-      className="p-3 text-left rounded-lg border border-border/40 bg-card hover:border-primary/60 hover:bg-primary/[0.04] active:scale-[0.97] transition-all select-none min-h-[88px] flex flex-col justify-between w-full"
+      className="p-3 text-left rounded-lg border border-border/40 bg-card hover:border-primary/60 hover:bg-primary/[0.04] active:scale-[0.97] transition-all select-none min-h-[104px] flex flex-col justify-between w-full"
       onClick={() => onAddToCart(cocktail)}
     >
-      <span className="text-sm font-semibold leading-snug line-clamp-2 text-foreground">
+      <span className="text-base font-semibold leading-snug line-clamp-2 text-foreground">
         {cocktail.name}
       </span>
-      <span className="text-lg font-bold text-primary mt-1.5 tabular-nums">
+      <span className="text-xl font-bold text-primary mt-1.5 tabular-nums">
         {formatCLP(cocktail.price)}
       </span>
     </button>

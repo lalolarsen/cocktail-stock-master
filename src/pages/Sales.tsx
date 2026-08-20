@@ -1037,12 +1037,12 @@ export default function Sales() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 rounded bg-muted px-1 py-0.5 shrink-0">
-                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
-                                <Minus className="w-4 h-4" />
+                              <button onClick={() => decreaseQuantity(item.cocktail.id)} className="flex h-11 w-11 items-center justify-center rounded text-foreground/70 hover:text-foreground active:scale-95 transition-transform">
+                                <Minus className="w-5 h-5" />
                               </button>
-                              <span className="min-w-[22px] text-center text-sm font-bold tabular-nums">{item.quantity}</span>
-                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95 transition-transform">
-                                <Plus className="w-4 h-4" />
+                              <span className="min-w-[28px] text-center text-base font-bold tabular-nums">{item.quantity}</span>
+                              <button onClick={() => increaseQuantity(item.cocktail.id)} className="flex h-11 w-11 items-center justify-center rounded text-foreground/70 hover:text-foreground active:scale-95 transition-transform">
+                                <Plus className="w-5 h-5" />
                               </button>
                             </div>
                           </div>
@@ -1064,6 +1064,7 @@ export default function Sales() {
                   receiptMode={receiptMode}
                   loading={loading}
                   disabled={!hasActiveJornada}
+                  statusLabel={isPrinting ? "Imprimiendo comprobante…" : null}
                   onCharge={processSale}
                 />
               )}
