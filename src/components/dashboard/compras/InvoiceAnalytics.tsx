@@ -22,7 +22,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-batch";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { formatCLP } from "@/lib/currency";
-import { FileText, TrendingUp, CalendarDays, GitCompare, Trophy } from "lucide-react";
+import { FileText, TrendingUp, CalendarDays, GitCompare, Trophy, Send, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const TZ = "America/Santiago";
 const IVA = 1.19;
