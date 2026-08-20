@@ -262,62 +262,176 @@ export function InvoiceAnalytics() {
     }
   };
 
+  const totals = useMemo(() => {
+    const purchaseNet = lines.reduce((s, l) => s + (l.line_total_net ?? l.units_real * l.cost_unit_net), 0);
+    const purchaseTotal = invoices.reduce((s, i) => s + i.total_amount, 0);
+    const salesNet = weeklySales.reduce((s, w) => s + w.net, 0);
+    return {
+      purchaseNet: Math.round(purchaseNet),
+      purchaseTotal: Math.round(purchaseTotal),
+      salesNet: Math.round(salesNet),
+      margin: Math.round(salesNet - purchaseNet),
+      ratio: salesNet > 0 ? (purchaseNet / salesNet) * 100 : 0,
+    };
+  }, [lines, invoices, weeklySales]);
+
+  const setPreset = (days: number) => {
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - days);
+    setRange({ start: ymd(from), end: ymd(now) });
+  };
+
+  const presets = [
+    { label: "7 días", days: 7 },
+    { label: "30 días", days: 30 },
+    { label: "90 días", days: 90 },
+  ];
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <label className="text-[11px] text-muted-foreground block mb-1">Desde</label>
-          <Input type="date" value={start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} className="h-8 w-[150px]" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="rounded-xl border border-border/60 bg-gradient-to-br from-card to-card/40 p-4 sm:p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight">Resumen de compras</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {loading ? "Cargando datos…" : `${invoices.length} facturas · ${lines.length} líneas · ${start} → ${end}`}
+            </p>
+          </div>
+          <Button onClick={sendToGerencia} disabled={sending || loading} className="h-10">
+            {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Enviar a gerencia
+          </Button>
         </div>
-        <div>
-          <label className="text-[11px] text-muted-foreground block mb-1">Hasta</label>
-          <Input type="date" value={end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} className="h-8 w-[150px]" />
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex gap-1.5">
+            {presets.map((p) => (
+              <Button key={p.days} type="button" variant="outline" size="sm" className="h-9" onClick={() => setPreset(p.days)}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-end gap-2 ml-auto">
+            <div>
+              <label className="text-[11px] text-muted-foreground block mb-1">Desde</label>
+              <Input
+                type="date"
+                value={start}
+                onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
+                className="h-9 w-[150px]"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground block mb-1">Hasta</label>
+              <Input
+                type="date"
+                value={end}
+                onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
+                className="h-9 w-[150px]"
+              />
+            </div>
+          </div>
         </div>
-        <Button onClick={sendToGerencia} disabled={sending || loading} className="h-9 ml-auto">
-          {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-          Enviar a gerencia
-        </Button>
-      </div>
-      <div className="text-xs text-muted-foreground">
-        {loading ? "Cargando..." : `${invoices.length} facturas · ${lines.length} líneas`}
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {loading ? (
+            <>
+              <Skeleton className="h-[74px]" />
+              <Skeleton className="h-[74px]" />
+              <Skeleton className="h-[74px]" />
+              <Skeleton className="h-[74px]" />
+            </>
+          ) : (
+            <>
+              <Kpi label="Compras (neto)" value={formatCLP(totals.purchaseNet)} hint={`Total c/IVA ${formatCLP(totals.purchaseTotal)}`} />
+              <Kpi label="Ventas (neto)" value={formatCLP(totals.salesNet)} />
+              <Kpi
+                label="Margen estimado"
+                value={formatCLP(totals.margin)}
+                tone={totals.margin >= 0 ? "positive" : "negative"}
+              />
+              <Kpi
+                label="Compra / Venta"
+                value={totals.salesNet > 0 ? `${totals.ratio.toFixed(1)}%` : "—"}
+                hint="Menor es mejor"
+              />
+            </>
+          )}
+        </div>
       </div>
 
-      {error && <Card><CardContent className="py-4 text-sm text-destructive">{error}</CardContent></Card>}
+      {error && (
+        <Card className="border-destructive/40">
+          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      )}
 
-      <Section icon={<CalendarDays className="w-4 h-4" />} title="Compra vs venta por semana">
+      <Section
+        icon={<CalendarDays className="w-4 h-4" />}
+        title="Compra vs venta por semana"
+        subtitle="Comparación semanal de compra neta contra venta neta"
+      >
         <WeeklyView lines={lines} weeklySales={weeklySales} loading={loading} />
       </Section>
 
-      <Section icon={<TrendingUp className="w-4 h-4" />} title="Precio por insumo">
+      <Section
+        icon={<TrendingUp className="w-4 h-4" />}
+        title="Precio por insumo"
+        subtitle="Evolución del costo neto unitario entre compras"
+      >
         <PriceHistoryView lines={lines} productMap={productMap} loading={loading} />
       </Section>
 
-      <Section icon={<GitCompare className="w-4 h-4" />} title="Compras vs consumo de insumos">
+      <Section
+        icon={<GitCompare className="w-4 h-4" />}
+        title="Compras vs consumo de insumos"
+        subtitle="Lo comprado frente al consumo teórico según recetas"
+      >
         <SalesVsPurchaseView lines={lines} productMap={productMap} consumption={consumption} loading={loading} />
       </Section>
 
-      <Section icon={<Trophy className="w-4 h-4" />} title="Top insumos">
+      <Section icon={<Trophy className="w-4 h-4" />} title="Top insumos" subtitle="Mayor gasto del período">
         <TopInsumosView lines={lines} productMap={productMap} loading={loading} />
       </Section>
 
-      <Section icon={<FileText className="w-4 h-4" />} title="Facturas del período">
+      <Section icon={<FileText className="w-4 h-4" />} title="Facturas del período" subtitle="Documentos confirmados">
         <InvoicesListView invoices={invoices} loading={loading} />
       </Section>
     </div>
   );
 }
 
-function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function Section({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="space-y-2">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
-        {icon}
-        {title}
-      </h3>
+    <section className="space-y-3">
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+          {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
+        </div>
+        <div className="h-px flex-1 bg-border/60" />
+      </div>
       {children}
     </section>
   );
 }
+
 
 
 function InvoicesListView({ invoices, loading }: { invoices: InvoiceRow[]; loading: boolean }) {
@@ -785,17 +899,35 @@ function TopInsumosView({
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "positive" | "negative";
+}) {
+  const toneClass =
+    tone === "positive" ? "text-primary" : tone === "negative" ? "text-destructive" : "text-foreground";
   return (
-    <Card>
+    <Card className="border-border/60">
       <CardContent className="py-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className="text-xl font-semibold tracking-tight mt-1">{value}</div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+        <div className={`text-xl font-semibold tracking-tight mt-1 tabular-nums ${toneClass}`}>{value}</div>
+        {hint && <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{hint}</div>}
       </CardContent>
     </Card>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="py-8 text-center text-sm text-muted-foreground">{text}</div>;
+  return (
+    <Card className="border-dashed border-border/60">
+      <CardContent className="py-10 text-center text-sm text-muted-foreground">{text}</CardContent>
+    </Card>
+  );
 }
+
