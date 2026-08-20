@@ -64,6 +64,7 @@ function AppRoutes() {
   }
 
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route
         path="/"
