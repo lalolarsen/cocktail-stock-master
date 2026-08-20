@@ -243,6 +243,22 @@ export function InvoiceAnalytics() {
     };
   }, [venue?.id, start, end]);
 
+  const sendToGerencia = async () => {
+    if (!venue?.id) return;
+    setSending(true);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("send-purchasing-report", {
+        body: { venue_id: venue.id, start, end },
+      });
+      if (fnErr) throw fnErr;
+      toast.success(`Informe enviado a gerencia (${(data as any)?.sent ?? 0} destinatario(s))`);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo enviar el informe");
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
@@ -254,41 +270,52 @@ export function InvoiceAnalytics() {
           <label className="text-[11px] text-muted-foreground block mb-1">Hasta</label>
           <Input type="date" value={end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} className="h-8 w-[150px]" />
         </div>
-        <div className="text-xs text-muted-foreground ml-auto">
-          {loading ? "Cargando..." : `${invoices.length} facturas · ${lines.length} líneas`}
-        </div>
+        <Button onClick={sendToGerencia} disabled={sending || loading} className="h-9 ml-auto">
+          {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+          Enviar a gerencia
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {loading ? "Cargando..." : `${invoices.length} facturas · ${lines.length} líneas`}
       </div>
 
       {error && <Card><CardContent className="py-4 text-sm text-destructive">{error}</CardContent></Card>}
 
-      <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="w-full justify-start flex-wrap h-auto">
-          <TabsTrigger value="invoices"><FileText className="w-3.5 h-3.5 mr-1.5" />Facturas</TabsTrigger>
-          <TabsTrigger value="price"><TrendingUp className="w-3.5 h-3.5 mr-1.5" />Precio por insumo</TabsTrigger>
-          <TabsTrigger value="weekly"><CalendarDays className="w-3.5 h-3.5 mr-1.5" />Semanal compra/venta</TabsTrigger>
-          <TabsTrigger value="vs"><GitCompare className="w-3.5 h-3.5 mr-1.5" />Venta vs Compra</TabsTrigger>
-          <TabsTrigger value="top"><Trophy className="w-3.5 h-3.5 mr-1.5" />Top insumos</TabsTrigger>
-        </TabsList>
+      <Section icon={<CalendarDays className="w-4 h-4" />} title="Compra vs venta por semana">
+        <WeeklyView lines={lines} weeklySales={weeklySales} loading={loading} />
+      </Section>
 
-        <TabsContent value="invoices" className="mt-4">
-          <InvoicesListView invoices={invoices} loading={loading} />
-        </TabsContent>
-        <TabsContent value="price" className="mt-4">
-          <PriceHistoryView lines={lines} productMap={productMap} loading={loading} />
-        </TabsContent>
-        <TabsContent value="weekly" className="mt-4">
-          <WeeklyView lines={lines} weeklySales={weeklySales} loading={loading} />
-        </TabsContent>
-        <TabsContent value="vs" className="mt-4">
-          <SalesVsPurchaseView lines={lines} productMap={productMap} consumption={consumption} loading={loading} />
-        </TabsContent>
-        <TabsContent value="top" className="mt-4">
-          <TopInsumosView lines={lines} productMap={productMap} loading={loading} />
-        </TabsContent>
-      </Tabs>
+      <Section icon={<TrendingUp className="w-4 h-4" />} title="Precio por insumo">
+        <PriceHistoryView lines={lines} productMap={productMap} loading={loading} />
+      </Section>
+
+      <Section icon={<GitCompare className="w-4 h-4" />} title="Compras vs consumo de insumos">
+        <SalesVsPurchaseView lines={lines} productMap={productMap} consumption={consumption} loading={loading} />
+      </Section>
+
+      <Section icon={<Trophy className="w-4 h-4" />} title="Top insumos">
+        <TopInsumosView lines={lines} productMap={productMap} loading={loading} />
+      </Section>
+
+      <Section icon={<FileText className="w-4 h-4" />} title="Facturas del período">
+        <InvoicesListView invoices={invoices} loading={loading} />
+      </Section>
     </div>
   );
 }
+
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
+        {icon}
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 
 function InvoicesListView({ invoices, loading }: { invoices: InvoiceRow[]; loading: boolean }) {
   const navigate = useNavigate();
