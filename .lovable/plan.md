@@ -31,11 +31,14 @@ En la pestaña Productos del Catálogo:
 ## 4. Panel "Guía rápida" en el admin
 
 Nueva vista dentro del admin (grupo Avanzado del menú) con tres guías en pasos numerados:
-- **Vender**: abrir jornada, seleccionar productos, cobrar, entregar QR.
+- **Vender**: abrir jornada, seleccionar productos, cobrar y entregar el ticket impreso al cliente. Al vender ya se descuentan los insumos de la preparación; no hay paso de QR.
 - **Cerrar jornada**: conteo de caja, observación, cierre y correo de resumen.
 - **Actualizar stock desde Excel**: descargar plantilla, completar por `sku_base`, subir, validar y confirmar.
 
 Cada paso con texto corto, íconos y tipografía grande, pensado para leerse en tablet.
+
+Nota transversal: la app ya no depende de QR ni de canje en barra. El consumo se descuenta al momento de la venta según la receta del producto (`sale_items` × `cocktail_ingredients`). En la revisión de textos del POS, los mensajes de estado y la Guía rápida se elimina cualquier referencia a "canjear QR" o "retiro en barra" y se reemplaza por el flujo de ticket entregado.
+
 
 ## Detalles técnicos
 
