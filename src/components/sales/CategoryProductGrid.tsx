@@ -204,10 +204,10 @@ export function CategoryProductGrid({ cocktails, onAddToCart, jornadaId }: Categ
                 key={category}
                 type="button"
                 className={cn(
-                  "shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-all snap-start min-h-[44px] whitespace-nowrap border",
+                  "shrink-0 px-5 py-2 text-base font-semibold rounded-md transition-all snap-start min-h-[52px] whitespace-nowrap border",
                   isSelected
                     ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                    : "bg-transparent text-foreground/80 border-border/60 hover:border-border hover:text-foreground"
                 )}
                 onClick={() => setSelectedCategory(category)}
               >
