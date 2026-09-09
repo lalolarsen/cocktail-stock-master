@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
+import { sendTemplateEmail } from '../_shared/transactional-email-templates/send-email.ts'
+
 
 const IVA = 1.19
 const TZ = 'America/Santiago'
