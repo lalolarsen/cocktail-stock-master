@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788981402376,
+      "tag": "0000_repoint_jornada_email_dispatch",
+      "breakpoints": true
+    }
+  ]
+}
