@@ -9,9 +9,7 @@ project_id = "rboiblptylnsgcciutrk"
     verify_jwt = false
   [functions.extract-invoice]
     verify_jwt = false
-  [functions.handle-email-suppression]
-    verify_jwt = false
-  [functions.handle-email-unsubscribe]
+  [functions.handle-email-events]
     verify_jwt = false
   [functions.issue-document]
     verify_jwt = true
@@ -23,15 +21,16 @@ project_id = "rboiblptylnsgcciutrk"
     verify_jwt = false
   [functions.preview-transactional-email]
     verify_jwt = false
-  [functions.process-email-queue]
-    verify_jwt = true
   [functions.qz-certificate]
     verify_jwt = false
   [functions.qz-sign]
     verify_jwt = false
   [functions.send-financial-summary]
     verify_jwt = false
-  [functions.send-transactional-email]
+  [functions.send-jornada-summary]
+    verify_jwt = true
+  [functions.send-purchasing-report]
     verify_jwt = true
   [functions.setup-demo-users]
     verify_jwt = false
+

@@ -32,7 +32,6 @@ const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
 const SystemMonitoring = lazy(() => import("./pages/SystemMonitoring"));
 const Proveedores = lazy(() => import("./pages/Proveedores"));
 const DebugProducts = lazy(() => import("./pages/DebugProducts"));
-const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 
 const queryClient = new QueryClient();
 
@@ -205,7 +204,6 @@ function AppRoutes() {
         }
       />
       <Route path="/help" element={<Help />} />
-      <Route path="/unsubscribe" element={<Unsubscribe />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     </Suspense>
