@@ -270,19 +270,41 @@ Deno.serve(async (req) => {
         })),
     }
 
+    const logSend = async (
+      recipient: string,
+      status: 'sent' | 'suppressed' | 'failed',
+      errorMessage?: string,
+    ) => {
+      const { error } = await sb.from('email_send_log').insert({
+        message_id: null,
+        template_name: 'compras-summary',
+        recipient_email: recipient,
+        status,
+        error_message: errorMessage ?? null,
+      })
+      if (error) console.error('Failed to write email_send_log', status, error)
+    }
+
     let sent = 0
     for (const recipient of recipients) {
-      const { error } = await sb.functions.invoke('send-transactional-email', {
-        body: {
-          templateName: 'compras-summary',
-          recipientEmail: recipient,
-          idempotencyKey: `compras-${venueId}-${start}-${end}-${recipient}`,
+      try {
+        const result = await sendTemplateEmail('compras-summary', recipient, {
           templateData,
-        },
-      })
-      if (error) console.error('send error', recipient, error)
-      else sent++
+          idempotencyKey: `compras-${venueId}-${start}-${end}-${recipient}`,
+        })
+        if (result.sent) {
+          await logSend(recipient, 'sent')
+          sent++
+        } else {
+          await logSend(recipient, 'suppressed', 'Recipient suppressed')
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('send error', message)
+        await logSend(recipient, 'failed', message.slice(0, 1000))
+      }
     }
+
 
     return new Response(JSON.stringify({ ok: true, sent, start, end }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
