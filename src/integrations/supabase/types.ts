@@ -6260,10 +6260,6 @@ export type Database = {
         }
         Returns: Json
       }
-      delete_email: {
-        Args: { message_id: number; queue_name: string }
-        Returns: boolean
-      }
       dev_clean_venue_data: { Args: { p_venue_id: string }; Returns: Json }
       dev_expire_old_tokens: { Args: never; Returns: Json }
       dev_get_all_tables: {
@@ -6301,7 +6297,6 @@ export type Database = {
         Args: { p_jornada_id: string }
         Returns: undefined
       }
-      email_queue_dispatch: { Args: never; Returns: undefined }
       end_worker_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -6322,10 +6317,6 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
-      }
-      enqueue_email: {
-        Args: { payload: Json; queue_name: string }
-        Returns: number
       }
       enqueue_jornada_closed_notifications: {
         Args: { p_jornada_id: string }
@@ -6618,27 +6609,10 @@ export type Database = {
         Returns: string
       }
       migrate_stock_to_lots: { Args: never; Returns: Json }
-      move_to_dlq: {
-        Args: {
-          dlq_name: string
-          message_id: number
-          payload: Json
-          source_queue: string
-        }
-        Returns: number
-      }
       normalize_invoice_text: { Args: { input_text: string }; Returns: string }
       open_jornada_manual: {
         Args: { p_cash_amounts?: Json; p_nombre?: string }
         Returns: Json
-      }
-      read_email_batch: {
-        Args: { batch_size: number; queue_name: string; vt: number }
-        Returns: {
-          message: Json
-          msg_id: number
-          read_ct: number
-        }[]
       }
       record_login_attempt:
         | {
