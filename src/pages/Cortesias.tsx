@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
@@ -43,6 +43,7 @@ export default function Cortesias() {
   const [qty, setQty] = useState(1);
   const [motivo, setMotivo] = useState<string>("");
   const [issuing, setIssuing] = useState(false);
+  const issuingRef = useRef(false);
 
   const { data: cocktails = [] } = useQuery({
     queryKey: ["cortesias-cocktails"],
@@ -79,7 +80,7 @@ export default function Cortesias() {
 
   const selected = cocktails.find((c) => c.id === productId);
 
-  const reprint = (row: CourtesyRow) =>
+  const reprint = (row: CourtesyRow) => {
     printCourtesyCover({
       productName: row.product_name,
       qty: row.qty,
@@ -88,12 +89,16 @@ export default function Cortesias() {
       expiresAt: row.expires_at,
       createdAt: row.created_at,
     });
+    toast.success("Enviando cortesía a RawBT");
+  };
 
   const handleIssue = async () => {
+    if (issuingRef.current) return;
     if (!selected || !user?.id) {
       toast.error("Elige un producto");
       return;
     }
+    issuingRef.current = true;
     setIssuing(true);
     try {
       const endOfDay = new Date();
@@ -129,16 +134,24 @@ export default function Cortesias() {
         });
       }
 
-      reprint(row);
-      toast.success("Cortesía emitida e impresa");
+      toast.success("Cortesía emitida · enviando a impresora");
       setProductId("");
       setSearch("");
       setQty(1);
       setMotivo("");
       queryClient.invalidateQueries({ queryKey: ["cortesias-tablet-list"] });
-    } catch (err: any) {
-      toast.error(err.message || "No se pudo emitir la cortesía");
+      printCourtesyCover({
+        productName: row.product_name,
+        qty: row.qty,
+        code: row.code,
+        note: row.note,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+      });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "No se pudo emitir la cortesía");
     } finally {
+      issuingRef.current = false;
       setIssuing(false);
     }
   };

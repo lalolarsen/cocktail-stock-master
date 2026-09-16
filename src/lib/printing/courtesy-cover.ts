@@ -1,6 +1,7 @@
 /**
  * Physical "cover" print for courtesy items. Replaces the old QR ticket.
- * Designed for 80mm receipt printers via window.print() popup.
+ * On Android, sends ESC/POS directly to RawBT without opening print preview.
+ * Other platforms retain the browser print fallback.
  */
 export interface CourtesyCoverData {
   productName: string;
@@ -20,10 +21,62 @@ const fmtFull = (iso: string) =>
     minute: "2-digit",
   });
 
-export function printCourtesyCover(data: CourtesyCoverData): void {
+const isAndroid = () => /Android/i.test(navigator.userAgent);
+
+const ascii = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E\n]/g, "");
+
+const bytesToBase64 = (bytes: number[]) => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return window.btoa(binary);
+};
+
+function buildRawBtPayload(data: CourtesyCoverData): string {
+  const encoder = new TextEncoder();
+  const text = (value: string) => Array.from(encoder.encode(ascii(value)));
+  const bytes: number[] = [
+    0x1b, 0x40, // Initialize
+    0x1b, 0x61, 0x01, // Center
+    ...text("BERLIN VALDIVIA\n"),
+    0x1b, 0x45, 0x01, // Bold on
+    0x1d, 0x21, 0x11, // Double width + height
+    ...text("CORTESIA\n"),
+    0x1d, 0x21, 0x00,
+    ...text("$0\n"),
+    ...text("--------------------------------\n"),
+    0x1d, 0x21, 0x11,
+    ...text(`${data.qty} x ${data.productName}\n`),
+    0x1d, 0x21, 0x00,
+    ...text("--------------------------------\n"),
+  ];
+
+  if (data.note) bytes.push(...text(`Motivo: ${data.note}\n`));
+  if (data.createdAt) bytes.push(...text(`Emitido: ${fmtFull(data.createdAt)}\n`));
+  bytes.push(
+    ...text(`Ref: ${data.code}\n`),
+    0x1b, 0x45, 0x01,
+    ...text("ENTREGAR EN BARRA\n"),
+    0x1b, 0x45, 0x00,
+    ...text("\n\n\n"),
+    0x1d, 0x56, 0x42, 0x00, // Partial cut where supported
+  );
+
+  return bytesToBase64(bytes);
+}
+
+function printViaRawBt(data: CourtesyCoverData): void {
+  const payload = buildRawBtPayload(data);
+  const intent = `intent:base64,${payload}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+  window.location.assign(intent);
+}
+
+function printWithBrowser(data: CourtesyCoverData): void {
   const w = window.open("", "_blank", "width=380,height=700");
   if (!w) {
-    // eslint-disable-next-line no-console
     console.warn("[CourtesyCover] popup blocked");
     return;
   }
@@ -61,4 +114,12 @@ export function printCourtesyCover(data: CourtesyCoverData): void {
     <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>
   </body></html>`);
   w.document.close();
+}
+
+export function printCourtesyCover(data: CourtesyCoverData): void {
+  if (isAndroid()) {
+    printViaRawBt(data);
+    return;
+  }
+  printWithBrowser(data);
 }
