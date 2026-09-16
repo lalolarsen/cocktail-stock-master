@@ -345,6 +345,83 @@ export type Database = {
           },
         ]
       }
+      coatcheck_settings: {
+        Row: {
+          price_per_garment: number
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          price_per_garment?: number
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          price_per_garment?: number
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: []
+      }
+      coatcheck_tickets: {
+        Row: {
+          amount: number
+          garment_count: number
+          id: string
+          issued_at: string
+          issued_by: string | null
+          jornada_id: string | null
+          note: string | null
+          payment_method: string
+          retrieved_at: string | null
+          retrieved_by: string | null
+          status: string
+          ticket_number: number
+          unit_price: number
+          venue_id: string
+        }
+        Insert: {
+          amount?: number
+          garment_count?: number
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          jornada_id?: string | null
+          note?: string | null
+          payment_method?: string
+          retrieved_at?: string | null
+          retrieved_by?: string | null
+          status?: string
+          ticket_number: number
+          unit_price?: number
+          venue_id: string
+        }
+        Update: {
+          amount?: number
+          garment_count?: number
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          jornada_id?: string | null
+          note?: string | null
+          payment_method?: string
+          retrieved_at?: string | null
+          retrieved_by?: string | null
+          status?: string
+          ticket_number?: number
+          unit_price?: number
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coatcheck_tickets_jornada_id_fkey"
+            columns: ["jornada_id"]
+            isOneToOne: false
+            referencedRelation: "jornadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cocktail_addons: {
         Row: {
           addon_id: string
@@ -6473,6 +6550,38 @@ export type Database = {
       is_feature_enabled: { Args: { flag_key: string }; Returns: boolean }
       is_inventory_frozen: { Args: { p_venue_id: string }; Returns: boolean }
       is_product_sellable: { Args: { p_product_id: string }; Returns: boolean }
+      issue_coatcheck_ticket: {
+        Args: {
+          _garment_count: number
+          _jornada_id: string
+          _note?: string
+          _payment_method: string
+          _unit_price: number
+          _venue_id: string
+        }
+        Returns: {
+          amount: number
+          garment_count: number
+          id: string
+          issued_at: string
+          issued_by: string | null
+          jornada_id: string | null
+          note: string | null
+          payment_method: string
+          retrieved_at: string | null
+          retrieved_by: string | null
+          status: string
+          ticket_number: number
+          unit_price: number
+          venue_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "coatcheck_tickets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       list_bar_workers: {
         Args: { p_venue_id: string }
         Returns: {

@@ -8,6 +8,13 @@
       "when": 1788981402376,
       "tag": "0000_repoint_jornada_email_dispatch",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789586442844,
+      "tag": "0001_create_coatcheck",
+      "breakpoints": true
     }
   ]
 }
