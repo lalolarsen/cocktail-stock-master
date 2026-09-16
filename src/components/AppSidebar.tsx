@@ -1,4 +1,4 @@
-import { Wine, Package, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart, ChevronDown } from "lucide-react";
+import { Wine, Package, Users, Calendar, LogOut, FileText, Receipt, Ticket, Gift, Settings, BarChart3, Undo2, Bell, ShoppingCart, ChevronDown, Shirt } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -194,6 +194,40 @@ export function AppSidebar({ activeView, setActiveView, isReadOnly = false }: Ap
             </SidebarGroup>
           );
         })}
+
+        {!isGerencia && (
+          <SidebarGroup className="py-1">
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-sidebar-foreground/35 uppercase text-[9px] tracking-[0.12em] font-semibold px-2 h-5 mb-0.5">
+                Tablets
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => navigate("/cortesias")}
+                    tooltip="Tablet Cortesías"
+                    className="h-9 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
+                  >
+                    <Gift className="w-4 h-4 shrink-0" />
+                    <span className="text-[13px] flex-1 truncate">Tablet Cortesías</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => navigate("/guardarropia")}
+                    tooltip="Tablet Guardarropía"
+                    className="h-9 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
+                  >
+                    <Shirt className="w-4 h-4 shrink-0" />
+                    <span className="text-[13px] flex-1 truncate">Tablet Guardarropía</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
       </SidebarContent>
 
