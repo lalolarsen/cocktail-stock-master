@@ -31,6 +31,8 @@ const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
 const SystemMonitoring = lazy(() => import("./pages/SystemMonitoring"));
 const Proveedores = lazy(() => import("./pages/Proveedores"));
 const DebugProducts = lazy(() => import("./pages/DebugProducts"));
+const Cortesias = lazy(() => import("./pages/Cortesias"));
+const Guardarropia = lazy(() => import("./pages/Guardarropia"));
 
 const queryClient = new QueryClient();
 
@@ -191,6 +193,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["ticket_seller", "vendedor", "admin"]}>
             <Tickets />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cortesias"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Cortesias />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/guardarropia"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "gerencia", "vendedor", "ticket_seller"]}>
+            <Guardarropia />
           </ProtectedRoute>
         }
       />
