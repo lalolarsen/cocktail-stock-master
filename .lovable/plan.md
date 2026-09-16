@@ -63,8 +63,8 @@ Si el modelo de impresora no aparece en el diálogo de impresión de Android, la
 ## Opciones que necesito que decidas
 
 - **A. Tarifa de guardarropía:** precio único por prenda, sin ofertas ni descuentos por cantidad (decidido).
-- **B. Ticket de guardarropía:** una sola copia con número para el cliente, o dos copias (una para el cliente y otra que se engancha a la prenda). Recomiendo dos copias.
-- **C. Cortesías:** dejar el motivo como lista fija de nombres (como hoy: Mauricio Duque, Carlos Sinning, Gabriel Hidalgo), o lista libre editable desde Config.
+- **B. Ticket de guardarropía:** dos tickets con el mismo número, uno para el cliente y otro para pinchar en la prenda (decidido).
+- **C. Cortesías:** motivos fijos Socio, Embajador, Cortesía y Otros (decidido).
 
 ## Detalles técnicos
 
