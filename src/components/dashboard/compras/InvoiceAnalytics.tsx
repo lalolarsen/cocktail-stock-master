@@ -108,7 +108,7 @@ export function InvoiceAnalytics() {
             .from("purchase_imports")
             .select("id, document_date, supplier_name, document_number, net_subtotal, vat_amount, total_amount, status")
             .eq("venue_id", venue.id)
-            .eq("status", "CONFIRMED")
+            .in("status", ["SAVED", "CONFIRMED", "EXTRACTED"])
             .gte("document_date", start)
             .lte("document_date", end)
         );

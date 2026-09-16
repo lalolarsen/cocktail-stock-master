@@ -139,14 +139,6 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route
-        path="/admin/purchases/import"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <PurchasesImport />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/admin/proveedores/import/:id"
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
