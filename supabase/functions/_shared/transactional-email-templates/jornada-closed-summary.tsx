@@ -98,6 +98,15 @@ interface IngredientUse {
   unit: string
 }
 
+interface CoatcheckSummary {
+  total?: number
+  cash?: number
+  card?: number
+  tickets?: number
+  garments?: number
+  pending?: number
+}
+
 interface JornadaClosedProps {
   recipient_name?: string
   venue_name?: string
@@ -115,6 +124,7 @@ interface JornadaClosedProps {
   top_products?: TopProduct[]
   ingredient_usage?: IngredientUse[]
   waste_summary?: WasteSummary
+  coatcheck?: CoatcheckSummary
 }
 
 const fmtCLP = (n?: number) => '$' + Math.round(n ?? 0).toLocaleString('es-CL')
