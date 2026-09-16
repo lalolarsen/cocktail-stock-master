@@ -1,16 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { purchaseImportsTable, purchasesTable, learningProductMappingsTable } from "@/lib/db-tables";
+import { purchaseImportsTable, purchaseImportLinesTable, learningProductMappingsTable } from "@/lib/db-tables";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UploadInvoiceDialog } from "@/components/proveedores/UploadInvoiceDialog";
-import { toast } from "sonner";
-import { Plus, FileText, Eye, Loader2, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { InvoiceCaptureDialog } from "@/components/proveedores/InvoiceCaptureDialog";
+import ProductPicker from "@/components/purchase/ProductPicker";
+import { toast } from "sonner";
+import { Camera, FileText, Loader2, AlertCircle, ChevronRight, Link2 } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 
 interface PurchaseImport {
@@ -19,38 +20,25 @@ interface PurchaseImport {
   supplier_rut: string | null;
   document_number: string | null;
   document_date: string | null;
-  net_subtotal: number | null;
-  vat_amount: number | null;
   total_amount: number | null;
   status: string;
   issues_count: number;
   created_at: string;
 }
 
-const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  UPLOADED: { label: "Subido", variant: "secondary" },
-  EXTRACTING: { label: "Extrayendo...", variant: "outline" },
-  EXTRACTED: { label: "Extraído", variant: "default" },
-  REVIEW: { label: "En revisión", variant: "outline" },
-  RECONCILING: { label: "En revisión", variant: "outline" },
-  READY_TO_CONFIRM: { label: "Listo", variant: "default" },
-  CONFIRMED: { label: "Confirmado", variant: "default" },
-  REJECTED: { label: "Rechazado", variant: "destructive" },
-};
-
 export function ProveedoresPanel() {
   const { venue } = useActiveVenue();
   const navigate = useNavigate();
   const [imports, setImports] = useState<PurchaseImport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showUpload, setShowUpload] = useState(false);
+  const [showCapture, setShowCapture] = useState(false);
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!venue?.id) return;
     setLoading(true);
 
-    // Get warehouse location
     const { data: loc } = await supabase
       .from("stock_locations")
       .select("id")
@@ -58,31 +46,28 @@ export function ProveedoresPanel() {
       .eq("type", "warehouse")
       .eq("is_active", true)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (loc) setWarehouseId(loc.id);
 
-    // Get imports
-    const { data, error } = await purchaseImportsTable()
+    const { data } = await purchaseImportsTable()
       .select("*")
       .eq("venue_id", venue.id)
       .order("created_at", { ascending: false });
 
-    if (!error && data) setImports(data as unknown as PurchaseImport[]);
+    const rows = (data ?? []) as unknown as PurchaseImport[];
+    setImports(rows);
+    setPendingCount(rows.reduce((s, r) => s + (r.issues_count || 0), 0));
     setLoading(false);
-  };
+  }, [venue?.id]);
 
-  useEffect(() => { fetchData(); }, [venue?.id]);
-
-  const handleCreated = (importId: string) => {
+  useEffect(() => {
     fetchData();
-    // Navigate to detail after brief delay for extraction
-    setTimeout(() => navigate(`/admin/proveedores/import/${importId}`), 1500);
-  };
+  }, [fetchData]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-16">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -91,7 +76,7 @@ export function ProveedoresPanel() {
   if (!warehouseId) {
     return (
       <Card>
-        <CardContent className="py-8 text-center">
+        <CardContent className="py-10 text-center">
           <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No se encontró Bodega Principal activa.</p>
         </CardContent>
@@ -100,224 +85,223 @@ export function ProveedoresPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Proveedores</h2>
-          <p className="text-sm text-muted-foreground">Gestión de facturas y compras</p>
+          <h2 className="text-lg font-semibold">Facturas de proveedores</h2>
+          <p className="text-sm text-muted-foreground">Registro de compras: cantidad, producto y valor.</p>
         </div>
-        <Button onClick={() => setShowUpload(true)}>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button size="lg" className="h-12 px-6 gap-2 text-base" onClick={() => setShowCapture(true)}>
+          <Camera className="h-5 w-5" />
           Subir factura
         </Button>
       </div>
 
-      <Tabs defaultValue="imports">
+      <Tabs defaultValue="list">
         <TabsList>
-          <TabsTrigger value="imports">Importaciones</TabsTrigger>
-          <TabsTrigger value="history">Historial</TabsTrigger>
-          <TabsTrigger value="config">Configuración</TabsTrigger>
+          <TabsTrigger value="list">Historial</TabsTrigger>
+          <TabsTrigger value="pending" className="gap-2">
+            Por vincular
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-400">
+                {pendingCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="imports" className="mt-4">
+        <TabsContent value="list" className="mt-4">
           {imports.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
+              <CardContent className="py-14 text-center">
                 <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="font-medium">Sin importaciones</p>
-                <p className="text-sm text-muted-foreground mt-1">Sube una factura para comenzar</p>
+                <p className="font-medium">Sin facturas todavía</p>
+                <p className="text-sm text-muted-foreground mt-1">Toma una foto de una factura para empezar.</p>
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Proveedor</TableHead>
-                    <TableHead>Doc #</TableHead>
-                    <TableHead className="text-right">Neto</TableHead>
+                    <TableHead>Folio</TableHead>
                     <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Obs.</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead>Por vincular</TableHead>
+                    <TableHead className="w-8"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {imports.map((imp) => {
-                    const badge = STATUS_BADGES[imp.status] || { label: imp.status, variant: "secondary" as const };
-                    return (
-                      <TableRow key={imp.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/admin/proveedores/import/${imp.id}`)}>
-                        <TableCell className="text-sm">{imp.document_date || imp.created_at?.slice(0, 10)}</TableCell>
-                        <TableCell className="font-medium text-sm">{imp.supplier_name || "—"}</TableCell>
-                        <TableCell className="text-sm">{imp.document_number || "—"}</TableCell>
-                        <TableCell className="text-right text-sm">{imp.net_subtotal ? formatCLP(imp.net_subtotal) : "—"}</TableCell>
-                        <TableCell className="text-right text-sm font-medium">{imp.total_amount ? formatCLP(imp.total_amount) : "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant={badge.variant} className="text-[10px]">{badge.label}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {imp.issues_count > 0 && (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
-                              {imp.issues_count}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {imports.map((imp) => (
+                    <TableRow
+                      key={imp.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/admin/proveedores/import/${imp.id}`)}
+                    >
+                      <TableCell className="text-sm">{imp.document_date || imp.created_at?.slice(0, 10)}</TableCell>
+                      <TableCell className="font-medium text-sm">{imp.supplier_name || "—"}</TableCell>
+                      <TableCell className="text-sm">{imp.document_number || "—"}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">
+                        {imp.total_amount ? formatCLP(imp.total_amount) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {imp.issues_count > 0 ? (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-400">
+                            {imp.issues_count}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </Card>
           )}
         </TabsContent>
 
-        <TabsContent value="history" className="mt-4">
-          <HistoryTab venueId={venue?.id} />
-        </TabsContent>
-
-        <TabsContent value="config" className="mt-4">
-          <LearningTab venueId={venue?.id} />
+        <TabsContent value="pending" className="mt-4">
+          <PendingLinksTab venueId={venue?.id} onLinked={fetchData} />
         </TabsContent>
       </Tabs>
 
       {warehouseId && (
-        <UploadInvoiceDialog
-          open={showUpload}
-          onOpenChange={setShowUpload}
+        <InvoiceCaptureDialog
+          open={showCapture}
+          onOpenChange={setShowCapture}
           warehouseLocationId={warehouseId}
-          onCreated={handleCreated}
+          onSaved={fetchData}
         />
       )}
     </div>
   );
 }
 
-interface PurchaseRow {
-  id: string;
-  document_date: string | null;
-  supplier_name: string | null;
-  document_number: string | null;
-  net_subtotal: number | null;
-  vat_credit: number | null;
-  total_amount: number | null;
-}
-
-interface MappingRow {
+interface PendingLine {
   id: string;
   raw_text: string;
-  detected_multiplier: number;
-  confidence: number | null;
-  times_used: number;
-  products: { name: string } | null;
+  supplier_sku: string | null;
+  units_real: number;
+  cost_unit_net: number;
+  purchase_import_id: string;
+  purchase_imports?: { supplier_name: string | null; supplier_rut: string | null; document_date: string | null } | null;
 }
 
-function HistoryTab({ venueId }: { venueId?: string }) {
-  const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
+export function PendingLinksTab({ venueId, onLinked }: { venueId?: string; onLinked?: () => void }) {
+  const [lines, setLines] = useState<PendingLine[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!venueId) return;
-    purchasesTable()
-      .select("*")
-      .eq("venue_id", venueId)
-      .order("confirmed_at", { ascending: false })
-      .then(({ data }) => {
-        setPurchases((data ?? []) as unknown as PurchaseRow[]);
-        setLoading(false);
-      });
+    setLoading(true);
+    const { data } = await purchaseImportLinesTable()
+      .select(
+        "id, raw_text, supplier_sku, units_real, cost_unit_net, purchase_import_id, purchase_imports!inner(supplier_name, supplier_rut, document_date, venue_id)",
+      )
+      .is("product_id", null)
+      .eq("purchase_imports.venue_id", venueId)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    setLines((data ?? []) as unknown as PendingLine[]);
+    setLoading(false);
   }, [venueId]);
 
-  if (loading) return <div className="py-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>;
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  if (purchases.length === 0) {
+  const link = async (line: PendingLine, productId: string) => {
+    if (!venueId) return;
+    const { error } = await purchaseImportLinesTable()
+      .update({ product_id: productId, status: "OK", notes: "Vinculado manualmente" })
+      .eq("id", line.id);
+
+    if (error) {
+      toast.error("No se pudo vincular");
+      return;
+    }
+
+    await learningProductMappingsTable().insert({
+      venue_id: venueId,
+      product_id: productId,
+      raw_text: line.raw_text,
+      supplier_rut: line.purchase_imports?.supplier_rut ?? null,
+      supplier_sku: line.supplier_sku,
+      detected_multiplier: 1,
+      confidence: 1,
+    });
+
+    const { count } = await purchaseImportLinesTable()
+      .select("id", { count: "exact", head: true })
+      .eq("purchase_import_id", line.purchase_import_id)
+      .is("product_id", null);
+
+    await purchaseImportsTable()
+      .update({ issues_count: count ?? 0 })
+      .eq("id", line.purchase_import_id);
+
+    toast.success("Producto vinculado");
+    setLines((prev) => prev.filter((l) => l.id !== line.id));
+    onLinked?.();
+  };
+
+  if (loading) {
     return (
-      <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-        Sin compras confirmadas aún.
-      </CardContent></Card>
+      <div className="py-10 text-center">
+        <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (lines.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <Link2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+          <p className="font-medium">Todo vinculado</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Cada producto de las facturas ya está asociado al catálogo.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
+            <TableHead>Texto en la factura</TableHead>
             <TableHead>Proveedor</TableHead>
-            <TableHead>Doc #</TableHead>
-            <TableHead className="text-right">Neto</TableHead>
-            <TableHead className="text-right">Total</TableHead>
+            <TableHead className="text-right">Cant.</TableHead>
+            <TableHead className="text-right">Valor unit.</TableHead>
+            <TableHead className="w-[240px]">Producto del catálogo</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {purchases.map((p) => (
-            <TableRow key={p.id}>
-              <TableCell>{p.document_date}</TableCell>
-              <TableCell>{p.supplier_name || "—"}</TableCell>
-              <TableCell>{p.document_number || "—"}</TableCell>
-              <TableCell className="text-right">{p.net_subtotal ? formatCLP(p.net_subtotal) : "—"}</TableCell>
-              <TableCell className="text-right font-medium">{p.total_amount ? formatCLP(p.total_amount) : "—"}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Card>
-  );
-}
-
-function LearningTab({ venueId }: { venueId?: string }) {
-  const [mappings, setMappings] = useState<MappingRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!venueId) return;
-    learningProductMappingsTable()
-      .select("*, products:product_id(name)")
-      .eq("venue_id", venueId)
-      .order("times_used", { ascending: false })
-      .then(({ data }) => {
-        setMappings((data ?? []) as unknown as MappingRow[]);
-        setLoading(false);
-      });
-  }, [venueId]);
-
-  if (loading) return <div className="py-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>;
-
-  if (mappings.length === 0) {
-    return (
-      <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-        Sin datos de aprendizaje. Se generarán al confirmar importaciones.
-      </CardContent></Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-sm">Mappings aprendidos</CardTitle></CardHeader>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Texto factura</TableHead>
-            <TableHead>Producto</TableHead>
-            <TableHead>Mult.</TableHead>
-            <TableHead>Confianza</TableHead>
-            <TableHead>Usos</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {mappings.map((m) => (
-            <TableRow key={m.id}>
-              <TableCell className="text-xs max-w-[200px] truncate">{m.raw_text}</TableCell>
-              <TableCell className="text-sm">{m.products?.name || "—"}</TableCell>
-              <TableCell>{m.detected_multiplier}</TableCell>
-              <TableCell>{Math.round((m.confidence || 0) * 100)}%</TableCell>
-              <TableCell>{m.times_used}</TableCell>
+          {lines.map((l) => (
+            <TableRow key={l.id}>
+              <TableCell className="text-sm max-w-[260px] truncate">{l.raw_text || "—"}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {l.purchase_imports?.supplier_name || "—"}
+              </TableCell>
+              <TableCell className="text-right text-sm">{l.units_real}</TableCell>
+              <TableCell className="text-right text-sm">{formatCLP(Math.round(l.cost_unit_net || 0))}</TableCell>
+              <TableCell>
+                {venueId && (
+                  <ProductPicker
+                    venueId={venueId}
+                    value={null}
+                    onSelect={(productId) => productId && link(l, productId)}
+                  />
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

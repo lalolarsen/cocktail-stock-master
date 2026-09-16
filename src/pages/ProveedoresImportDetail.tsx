@@ -1,110 +1,39 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { calculateCPP, isBottle } from "@/lib/product-type";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  purchaseImportsTable,
-  purchaseImportLinesTable,
-  purchaseImportTaxesTable,
-  purchasesTable,
-  purchaseLinesTable,
-  expenseLinesTable,
-  learningProductMappingsTable,
-  specificTaxCategoriesTable,
-} from "@/lib/db-tables";
+import { purchaseImportsTable, purchaseImportLinesTable, learningProductMappingsTable } from "@/lib/db-tables";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { toast } from "sonner";
-import { formatCLP } from "@/lib/currency";
-import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, Plus, Trash2, RefreshCw, ShieldAlert } from "lucide-react";
 import ProductPicker from "@/components/purchase/ProductPicker";
-import { buildFinancialSummary, type FinancialSummary, type ImportLineInput, type ImportHeaderInput } from "@/lib/purchase-financial-engine";
+import { toast } from "sonner";
+import { ArrowLeft, Loader2, ImageIcon, FileText } from "lucide-react";
+import { formatCLP } from "@/lib/currency";
 
-interface ImportLine {
+interface ImportHeader {
   id: string;
-  line_index: number;
-  raw_text: string;
-  supplier_sku: string | null;
-  qty_invoiced: number;
-  unit_price_net: number | null;
-  line_total_net: number | null;
-  discount_pct: number | null;
-  detected_multiplier: number;
-  units_real: number;
-  cost_unit_net: number;
-  product_id: string | null;
-  classification: string;
-  tax_category_id: string | null;
-  tax_rate: number | null;
-  net_line_amount: number;
-  tax_amount: number;
-  status: string;
-  notes: string | null;
-}
-
-// Tax category code mapping for header totals
-const TAX_CODE_MAP: Record<string, string> = {
-  IABA_10: "iaba_10_total",
-  IABA_18: "iaba_18_total",
-  ILA_VINO_205: "ila_vino_total",
-  ILA_CERVEZA_205: "ila_cerveza_total",
-  ILA_DEST_315: "ila_destilados_total",
-};
-
-interface Product {
-  id: string;
-  name: string;
-  code: string;
-  category: string;
-}
-
-interface PurchaseImport {
-  id: string;
-  venue_id: string;
-  status: string;
   supplier_name: string | null;
   supplier_rut: string | null;
   document_number: string | null;
   document_date: string | null;
-  location_id: string;
-  invoice_number: string | null;
-  invoice_date: string | null;
   net_subtotal: number | null;
   total_amount: number | null;
-  vat_amount: number | null;
-  iaba_10_total: number | null;
-  iaba_18_total: number | null;
-  ila_vino_total: number | null;
-  ila_cerveza_total: number | null;
-  ila_destilados_total: number | null;
-  specific_taxes_total: number | null;
-  financial_summary: Record<string, unknown> | null;
+  status: string;
+  raw_file_url: string | null;
   created_at: string;
-  [key: string]: any;
 }
 
-interface ImportTax {
+interface Line {
   id: string;
-  purchase_import_id: string;
-  tax_type: string;
-  amount: number | null;
-  [key: string]: unknown;
-}
-
-interface TaxCategory {
-  id: string;
-  code: string;
-  name: string;
-  rate: number;
-  rate_pct: number;
-  is_active: boolean;
+  raw_text: string;
+  supplier_sku: string | null;
+  units_real: number;
+  cost_unit_net: number;
+  line_total_net: number | null;
+  product_id: string | null;
+  products?: { name: string } | null;
 }
 
 export default function ProveedoresImportDetail() {
@@ -112,922 +41,209 @@ export default function ProveedoresImportDetail() {
   const navigate = useNavigate();
   const { venue } = useActiveVenue();
 
-  const [imp, setImp] = useState<PurchaseImport | null>(null);
-  const [lines, setLines] = useState<ImportLine[]>([]);
-  const [taxes, setTaxes] = useState<ImportTax[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [taxCategories, setTaxCategories] = useState<TaxCategory[]>([]);
+  const [header, setHeader] = useState<ImportHeader | null>(null);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState(1); // 1=Summary, 2=Lines, 3=Confirm
-  const [confirming, setConfirming] = useState(false);
-  const [checks, setChecks] = useState({ reviewed: false, understood: false });
-  const [filterReview, setFilterReview] = useState(false);
 
-  const fetchAll = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
 
-    const [impRes, linesRes, taxesRes, prodsRes, taxCatRes] = await Promise.all([
-      purchaseImportsTable().select("*").eq("id", id).single(),
-      purchaseImportLinesTable().select("*").eq("purchase_import_id", id).order("line_index"),
-      purchaseImportTaxesTable().select("*").eq("purchase_import_id", id),
-      supabase.from("products").select("id, name, code, category").eq("venue_id", venue?.id || "").order("name"),
-      specificTaxCategoriesTable().select("*").eq("is_active", true),
-    ]);
+    const { data: h } = await purchaseImportsTable().select("*").eq("id", id).maybeSingle();
+    const hdr = (h ?? null) as unknown as ImportHeader | null;
+    setHeader(hdr);
 
-    if (impRes.data) setImp(impRes.data as unknown as PurchaseImport);
-    if (linesRes.data) setLines(linesRes.data as unknown as ImportLine[]);
-    if (taxesRes.data) setTaxes(taxesRes.data as unknown as ImportTax[]);
-    if (prodsRes.data) setProducts(prodsRes.data as Product[]);
-    if (taxCatRes.data) setTaxCategories(taxCatRes.data as unknown as TaxCategory[]);
+    const { data: l } = await purchaseImportLinesTable()
+      .select("id, raw_text, supplier_sku, units_real, cost_unit_net, line_total_net, product_id, products:product_id(name)")
+      .eq("purchase_import_id", id)
+      .order("line_index");
+    setLines((l ?? []) as unknown as Line[]);
+
+    if (hdr?.raw_file_url) {
+      const { data: signed } = await supabase.storage
+        .from("purchase-invoices")
+        .createSignedUrl(hdr.raw_file_url, 60 * 60);
+      setFileUrl(signed?.signedUrl ?? null);
+    }
+
     setLoading(false);
-  }, [id, venue?.id]);
+  }, [id]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  // Line editing
-  // Recalculate header tax totals from all lines
-  const recalcHeaderTaxes = async (updatedLines: ImportLine[]) => {
-    if (!id) return;
-    const totals: Record<string, number> = {
-      iaba_10_total: 0, iaba_18_total: 0,
-      ila_vino_total: 0, ila_cerveza_total: 0, ila_destilados_total: 0,
-    };
-    for (const l of updatedLines) {
-      if (l.classification === "freight" || l.classification === "other_expense") continue;
-      if (!l.tax_category_id) continue;
-      const tc = taxCategories.find((c) => c.id === l.tax_category_id);
-      if (!tc?.code) continue;
-      const headerField = TAX_CODE_MAP[tc.code];
-      if (headerField) totals[headerField] += l.tax_amount || 0;
-    }
-    const specific_taxes_total = Object.values(totals).reduce((a, b) => a + b, 0);
-    await purchaseImportsTable().update({
-      ...totals, specific_taxes_total,
-    }).eq("id", id);
-    // Refresh imp state so Summary tab reflects new totals
-    setImp((prev: any) => prev ? { ...prev, ...totals, specific_taxes_total } : prev);
-  };
+  const linkProduct = async (line: Line, productId: string, productName: string) => {
+    const { error } = await purchaseImportLinesTable()
+      .update({ product_id: productId, status: "OK", notes: "Vinculado manualmente" })
+      .eq("id", line.id);
 
-  const updateLine = async (lineId: string, updates: Partial<ImportLine>) => {
-    const line = lines.find(l => l.id === lineId);
-    if (!line) return;
-
-    const merged = { ...line, ...updates };
-    const isExpense = merged.classification === "freight" || merged.classification === "other_expense";
-
-    // Recalculate derived fields (only for inventory lines)
-    if (!isExpense) {
-      if (updates.detected_multiplier !== undefined || updates.qty_invoiced !== undefined) {
-        merged.units_real = (merged.qty_invoiced || 0) * (merged.detected_multiplier || 1);
-      }
-      if (updates.detected_multiplier !== undefined || updates.line_total_net !== undefined || updates.unit_price_net !== undefined || updates.discount_pct !== undefined || updates.qty_invoiced !== undefined) {
-        let packNet = merged.line_total_net ? merged.line_total_net / (merged.qty_invoiced || 1) : (merged.unit_price_net || 0);
-        if (merged.discount_pct && merged.discount_pct > 0) packNet *= (1 - merged.discount_pct / 100);
-        merged.cost_unit_net = merged.detected_multiplier > 0 ? Math.round((packNet / merged.detected_multiplier) * 100) / 100 : 0;
-      }
-
-      // Calculate net_line_amount and tax_amount
-      merged.net_line_amount = merged.line_total_net
-        ? merged.line_total_net
-        : merged.units_real * merged.cost_unit_net;
-
-      // Look up tax rate from selected category
-      if (merged.tax_category_id) {
-        const tc = taxCategories.find((c: any) => c.id === merged.tax_category_id);
-        if (tc && tc.rate_pct > 0) {
-          merged.tax_rate = tc.rate_pct;
-          merged.tax_amount = Math.round(merged.net_line_amount * (tc.rate_pct / 100));
-        } else {
-          merged.tax_rate = 0;
-          merged.tax_amount = 0;
-        }
-      } else {
-        merged.tax_rate = null;
-        merged.tax_amount = 0;
-      }
-    }
-
-    // Auto status for expense lines
-    if (isExpense) {
-      merged.status = "OK";
-      merged.product_id = null;
-      merged.tax_category_id = null;
-      merged.tax_rate = null;
-      merged.tax_amount = 0;
-      merged.net_line_amount = merged.line_total_net || merged.unit_price_net || 0;
-    }
-
-    const newLines = lines.map(l => l.id === lineId ? merged : l);
-    setLines(newLines);
-
-    await purchaseImportLinesTable().update({
-      product_id: merged.product_id,
-      detected_multiplier: merged.detected_multiplier,
-      units_real: merged.units_real,
-      cost_unit_net: merged.cost_unit_net,
-      classification: merged.classification,
-      status: merged.status,
-      notes: merged.notes,
-      qty_invoiced: merged.qty_invoiced,
-      unit_price_net: merged.unit_price_net,
-      line_total_net: merged.line_total_net,
-      discount_pct: merged.discount_pct,
-      tax_category_id: merged.tax_category_id,
-      tax_rate: merged.tax_rate,
-      net_line_amount: merged.net_line_amount,
-      tax_amount: merged.tax_amount,
-    }).eq("id", lineId);
-
-    // Recalculate header totals
-    await recalcHeaderTaxes(newLines);
-  };
-
-  const markLineOK = async (lineId: string) => {
-    const line = lines.find(l => l.id === lineId);
-    if (!line) return;
-    const isExpense = line.classification === "freight" || line.classification === "other_expense";
-    if (!isExpense && !line.product_id) {
-      toast.error("Asigna un producto primero"); return;
-    }
-    if (!isExpense && line.units_real <= 0) { toast.error("Unidades reales debe ser > 0"); return; }
-    if (!isExpense && line.cost_unit_net <= 0) { toast.error("Costo neto debe ser > 0"); return; }
-    await updateLine(lineId, { status: "OK" });
-    toast.success("Línea marcada OK");
-  };
-
-  const addLine = async () => {
-    if (!id) return;
-    const newLine = {
-      purchase_import_id: id,
-      line_index: lines.length,
-      raw_text: "",
-      qty_invoiced: 1,
-      detected_multiplier: 1,
-      units_real: 1,
-      cost_unit_net: 0,
-      classification: "inventory",
-      status: "REVIEW",
-    };
-    const { data, error } = await purchaseImportLinesTable().insert(newLine).select("*").single();
-    if (data) setLines(prev => [...prev, data as unknown as ImportLine]);
-  };
-
-  const deleteLine = async (lineId: string) => {
-    await purchaseImportLinesTable().delete().eq("id", lineId);
-    setLines(prev => prev.filter(l => l.id !== lineId));
-  };
-
-  // Validation
-  const inventoryLines = lines.filter(l => l.classification === "inventory");
-  const expenseLines = lines.filter(l => l.classification === "freight" || l.classification === "other_expense");
-  const reviewLines = lines.filter(l => l.status === "REVIEW");
-  const expensesTotal = expenseLines.reduce((s, l) => s + (l.line_total_net || l.unit_price_net || 0), 0);
-
-  const inventoryValid = inventoryLines.length === 0 || inventoryLines.every(l => l.product_id && l.units_real > 0 && l.cost_unit_net > 0 && l.tax_category_id);
-  const expensesValid = expenseLines.every(l => (l.line_total_net || l.unit_price_net || 0) > 0);
-
-  // Financial engine — compute summary & cuadratura
-  const financialSummary: FinancialSummary | null = useMemo(() => {
-    if (!imp || lines.length === 0) return null;
-    return buildFinancialSummary(imp as unknown as ImportHeaderInput, lines as ImportLineInput[]);
-  }, [imp, lines]);
-
-  const isBalanced = financialSummary?.validation.is_balanced ?? false;
-  const canConfirm = reviewLines.length === 0 && (inventoryLines.length > 0 || expenseLines.length > 0) && inventoryValid && expensesValid;
-
-  // Confirm
-  const handleConfirm = async () => {
-    if (!imp || !id || !venue?.id || !financialSummary) return;
-
-    // Block if cuadratura fails
-    if (!financialSummary.validation.is_balanced) {
-      toast.error(`Cuadratura no cuadra: diferencia de ${formatCLP(financialSummary.validation.difference)} (tolerancia: ${formatCLP(financialSummary.validation.tolerance)})`);
+    if (error) {
+      toast.error("No se pudo vincular");
       return;
     }
 
-    setConfirming(true);
-
-    try {
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-
-      // Create purchases record
-      const { data: purchase, error: purErr } = await purchasesTable().insert({
-        purchase_import_id: id,
+    if (venue?.id) {
+      await learningProductMappingsTable().insert({
         venue_id: venue.id,
-        location_id: imp.location_id,
-        supplier_name: imp.supplier_name,
-        supplier_rut: imp.supplier_rut,
-        document_number: imp.document_number,
-        document_date: imp.document_date,
-        net_subtotal: imp.net_subtotal,
-        vat_credit: imp.vat_amount,
-        total_amount: imp.total_amount,
-        confirmed_by: userId,
-        confirmed_at: new Date().toISOString(),
-      }).select("id").single();
-
-      if (purErr) throw purErr;
-      const purchaseId = (purchase as unknown as { id: string }).id;
-
-      // Create purchase_lines (inventory)
-      const invLines = lines.filter(l => l.classification === "inventory" && l.product_id);
-      if (invLines.length > 0) {
-        await purchaseLinesTable().insert(
-          invLines.map(l => ({
-            purchase_id: purchaseId,
-            product_id: l.product_id,
-            units_real: l.units_real,
-            cost_unit_net: l.cost_unit_net,
-            line_total_net: l.units_real * l.cost_unit_net,
-          }))
-        );
-      }
-
-      // Create expense_lines (freight/other)
-      const expLines = lines.filter(l => l.classification !== "inventory");
-      if (expLines.length > 0) {
-        await expenseLinesTable().insert(
-          expLines.map(l => ({
-            purchase_id: purchaseId,
-            expense_type: l.classification === "freight" ? "freight" : "other",
-            description: l.raw_text,
-            amount_net: l.line_total_net || (l.qty_invoiced || 0) * (l.unit_price_net || 0),
-          }))
-        );
-      }
-
-      // Create expense_lines for specific taxes (IABA/ILA) -> Estado de Resultados
-      const taxExpenseLines: Array<{ purchase_id: string; expense_type: string; description: string; amount_net: number; vat_amount: number }> = [];
-      const taxMapping = [
-        { field: "iaba_10_total", label: "IABA 10%" },
-        { field: "iaba_18_total", label: "IABA 18%" },
-        { field: "ila_vino_total", label: "ILA Vino 20,5%" },
-        { field: "ila_cerveza_total", label: "ILA Cerveza 20,5%" },
-        { field: "ila_destilados_total", label: "ILA Destilados 31,5%" },
-      ];
-      for (const tm of taxMapping) {
-        const amt = (imp[tm.field] as number) || 0;
-        if (amt > 0) {
-          taxExpenseLines.push({
-            purchase_id: purchaseId,
-            expense_type: "tax_specific",
-            description: `Impuesto específico: ${tm.label}`,
-            amount_net: amt as number,
-            vat_amount: 0,
-          });
-        }
-      }
-      if (taxExpenseLines.length > 0) {
-        await expenseLinesTable().insert(taxExpenseLines);
-      }
-
-      // Update stock for each inventory line (CPP) — bottle-aware
-      for (const line of invLines) {
-        // CRITICAL ORDER: fetch current state BEFORE modifying stock_balances
-        // to get the correct "before" stock for CPP calculation.
-        const [productRes, warehouseBalanceRes] = await Promise.all([
-          supabase.from("products").select("cost_per_unit, capacity_ml, current_stock").eq("id", line.product_id!).single(),
-          supabase.from("stock_balances").select("id, quantity")
-            .eq("product_id", line.product_id!)
-            .eq("location_id", (imp as any).location_id)
-            .maybeSingle(),
-        ]);
-
-        if (!productRes.data) continue;
-        const product = productRes.data;
-        const bottle = isBottle(product);
-        const cap = product.capacity_ml;
-
-        // line.units_real = physical bottles (or units) from the invoice
-        // line.cost_unit_net = net cost per bottle (or per unit)
-        // For stock operations, convert to base unit (ml for bottles)
-        const qtyToAdd = bottle && cap && cap > 0 ? line.units_real * cap : line.units_real;
-
-        // BEFORE stock = sync from actual balances sum BEFORE this intake
-        // We fetch all balances separately to get the real total
-        const allBalancesRes = await supabase
-          .from("stock_balances")
-          .select("quantity")
-          .eq("product_id", line.product_id!);
-        const stockBefore = (allBalancesRes.data || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0);
-
-        const oldCostPerUnit = Number(product.cost_per_unit) || 0;
-
-        // If existing cost is 0 (product with no cost base yet), treat as first intake:
-        // set old stock to 0 so new cost becomes the CPP directly (no zero dilution).
-        const effectiveOldStock = oldCostPerUnit > 0 ? stockBefore : 0;
-        const effectiveOldCost = oldCostPerUnit > 0 ? oldCostPerUnit : line.cost_unit_net;
-
-        // CPP calculation (handles ml ↔ bottle equivalents internally)
-        const rawCPP = calculateCPP({
-          product,
-          currentStock: effectiveOldStock,
-          oldCostPerUnit: effectiveOldCost,
-          addedQty: qtyToAdd,                  // ml for bottles, units for units
-          newCostPerUnit: line.cost_unit_net,  // per bottle cost (or per unit)
-        });
-
-        // CLP has no decimal places — always round to nearest integer
-        const newCPP = Math.round(rawCPP);
-        const newTotalStock = stockBefore + qtyToAdd;
-
-        // 1. Update stock_balances FIRST
-        const balance = warehouseBalanceRes.data;
-        if (balance) {
-          await supabase.from("stock_balances").update({
-            quantity: (Number(balance.quantity) || 0) + qtyToAdd,
-            updated_at: new Date().toISOString(),
-          }).eq("id", balance.id);
-        } else {
-          await supabase.from("stock_balances").insert({
-            product_id: line.product_id!,
-            location_id: (imp as any).location_id,
-            venue_id: venue.id,
-            quantity: qtyToAdd,
-          } as any);
-        }
-
-        // 2. Update product CPP + current_stock AFTER stock_balances
-        await supabase.from("products").update({
-          current_stock: newTotalStock,
-          cost_per_unit: newCPP,
-          updated_at: new Date().toISOString(),
-        }).eq("id", line.product_id!);
-      }
-
-      // Learning: upsert product mappings (prefer SKU when available)
-      for (const line of invLines) {
-        if (!line.product_id) continue;
-        const sku = (line.supplier_sku || "").trim() || null;
-        const raw = (line.raw_text || "").trim();
-        if (!sku && !raw) continue;
-
-        // Try to find existing by (venue, supplier_rut, sku) first; fallback to raw_text
-        let existingRow: { id: string; times_used: number } | null = null;
-        if (sku) {
-          const { data } = await learningProductMappingsTable()
-            .select("id, times_used")
-            .eq("venue_id", venue.id)
-            .eq("supplier_rut", imp.supplier_rut || "")
-            .eq("supplier_sku", sku)
-            .maybeSingle();
-          existingRow = (data as unknown as { id: string; times_used: number } | null) || null;
-        }
-        if (!existingRow && raw) {
-          const { data } = await learningProductMappingsTable()
-            .select("id, times_used")
-            .eq("venue_id", venue.id)
-            .eq("raw_text", raw)
-            .eq("product_id", line.product_id)
-            .maybeSingle();
-          existingRow = (data as unknown as { id: string; times_used: number } | null) || null;
-        }
-
-        if (existingRow) {
-          await learningProductMappingsTable().update({
-            times_used: (existingRow.times_used || 0) + 1,
-            detected_multiplier: line.detected_multiplier,
-            supplier_sku: sku,
-            product_id: line.product_id,
-            last_used_at: new Date().toISOString(),
-            confidence: Math.min(0.95, 0.8 + (existingRow.times_used || 0) * 0.02),
-          } as any).eq("id", existingRow.id);
-        } else {
-          await learningProductMappingsTable().insert({
-            venue_id: venue.id,
-            supplier_rut: imp.supplier_rut,
-            supplier_sku: sku,
-            raw_text: raw,
-            product_id: line.product_id,
-            detected_multiplier: line.detected_multiplier,
-          } as any);
-        }
-      }
-
-      // Update import status + persist financial summary
-      await purchaseImportsTable().update({
-        status: "CONFIRMED",
-        financial_summary: financialSummary,
-        updated_at: new Date().toISOString(),
-      }).eq("id", id);
-
-      toast.success("Compra confirmada e ingresada a Bodega Principal");
-      navigate("/admin");
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error al confirmar");
-    } finally {
-      setConfirming(false);
+        product_id: productId,
+        raw_text: line.raw_text,
+        supplier_rut: header?.supplier_rut ?? null,
+        supplier_sku: line.supplier_sku,
+        detected_multiplier: 1,
+        confidence: 1,
+      });
     }
-  };
 
-  const handleReject = async () => {
-    if (!id) return;
-    await purchaseImportsTable().update({ status: "REJECTED", updated_at: new Date().toISOString() }).eq("id", id);
-    toast.info("Importación rechazada");
-    navigate("/admin");
-  };
+    const pending = lines.filter((l) => l.id !== line.id && !l.product_id).length;
+    await purchaseImportsTable().update({ issues_count: pending }).eq("id", id);
 
-  const handleReExtract = async () => {
-    if (!id) return;
-    toast.info("Re-extrayendo...");
-    // Delete existing lines and taxes
-    await purchaseImportLinesTable().delete().eq("purchase_import_id", id);
-    await purchaseImportTaxesTable().delete().eq("purchase_import_id", id);
-    // Trigger extraction
-    const { error } = await supabase.functions.invoke("extract-invoice", {
-      body: { purchase_import_id: id },
-    });
-    if (error) toast.error("Error en re-extracción");
-    else { toast.success("Re-extracción completada"); fetchAll(); }
+    setLines((prev) =>
+      prev.map((l) => (l.id === line.id ? { ...l, product_id: productId, products: { name: productName } } : l)),
+    );
+    toast.success(`Vinculado a ${productName}`);
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
-  if (!imp) {
-    return <div className="p-6"><p>Importación no encontrada</p></div>;
+  if (!header) {
+    return (
+      <div className="p-6">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" /> Volver
+        </Button>
+        <p className="mt-6 text-sm text-muted-foreground">No se encontró la factura.</p>
+      </div>
+    );
   }
 
-  const displayedLines = filterReview ? lines.filter(l => l.status === "REVIEW") : lines;
+  const pending = lines.filter((l) => !l.product_id).length;
+  const isPdf = header.raw_file_url?.toLowerCase().endsWith(".pdf");
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-background border-b px-6 py-3">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-            <ArrowLeft className="h-5 w-5" />
+    <div className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold">Importación: {imp.supplier_name || "Sin proveedor"}</h1>
-            <p className="text-xs text-muted-foreground">Doc #{imp.document_number || "—"} · {imp.document_date || "—"}</p>
+          <div>
+            <h1 className="text-xl font-semibold">{header.supplier_name || "Factura sin proveedor"}</h1>
+            <p className="text-sm text-muted-foreground">
+              {header.document_date || header.created_at?.slice(0, 10)}
+              {header.document_number ? ` · Folio ${header.document_number}` : ""}
+            </p>
           </div>
-          <Badge variant={imp.status === "CONFIRMED" ? "default" : imp.status === "REJECTED" ? "destructive" : "secondary"}>
-            {imp.status}
+        </div>
+        {pending > 0 && (
+          <Badge variant="outline" className="text-amber-600 border-amber-400">
+            {pending} por vincular
           </Badge>
-        </div>
-      </header>
-
-      {/* Step indicators */}
-      <div className="px-6 py-3 border-b bg-muted/30">
-        <div className="flex gap-2">
-          {[{ n: 1, label: "Resumen" }, { n: 2, label: "Líneas" }, { n: 3, label: "Confirmar" }].map(s => (
-            <Button
-              key={s.n}
-              variant={step === s.n ? "default" : "outline"}
-              size="sm"
-              onClick={() => setStep(s.n)}
-              disabled={s.n === 3 && !canConfirm}
-            >
-              {s.n}. {s.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-6 space-y-4">
-        {/* STEP 1: Summary */}
-        {step === 1 && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Proveedor</p><p className="font-medium text-sm mt-1">{imp.supplier_name || "—"}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">RUT</p><p className="font-medium text-sm mt-1">{imp.supplier_rut || "—"}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Documento</p><p className="font-medium text-sm mt-1">{imp.document_number || "—"}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Fecha</p><p className="font-medium text-sm mt-1">{imp.document_date || "—"}</p></CardContent></Card>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Neto</p><p className="font-semibold mt-1">{imp.net_subtotal ? formatCLP(imp.net_subtotal) : "—"}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">IVA Crédito Fiscal</p><p className="font-semibold mt-1">{imp.vat_amount ? formatCLP(imp.vat_amount) : "—"}</p></CardContent></Card>
-              <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold mt-1">{imp.total_amount ? formatCLP(imp.total_amount) : "—"}</p></CardContent></Card>
-            </div>
-
-            {taxes.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Impuestos detectados (factura)</CardTitle></CardHeader>
-                <CardContent className="space-y-1">
-                  {taxes.map((t: any) => (
-                    <div key={t.id} className="flex justify-between text-sm">
-                      <span>{t.tax_label}</span>
-                      <span className="font-medium">{formatCLP(t.tax_amount)}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Specific taxes from lines */}
-            {(imp.specific_taxes_total > 0 || inventoryLines.some(l => l.tax_category_id)) && (
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Impuestos específicos</CardTitle></CardHeader>
-                <CardContent className="space-y-1">
-                  {[
-                    { label: "IABA 10%", field: "iaba_10_total" },
-                    { label: "IABA 18%", field: "iaba_18_total" },
-                    { label: "ILA Vino 20,5%", field: "ila_vino_total" },
-                    { label: "ILA Cerveza 20,5%", field: "ila_cerveza_total" },
-                    { label: "ILA Destilados 31,5%", field: "ila_destilados_total" },
-                  ].filter(item => (imp[item.field] || 0) > 0).map(item => (
-                    <div key={item.field} className="flex justify-between text-sm">
-                      <span>{item.label}</span>
-                      <span className="font-medium">{formatCLP(imp[item.field])}</span>
-                    </div>
-                  ))}
-                  <div className="border-t pt-1 mt-1 flex justify-between text-sm font-semibold">
-                    <span>Total Impuestos específicos</span>
-                    <span>{formatCLP(imp.specific_taxes_total || 0)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Alert: missing tax categories */}
-            {imp.specific_taxes_total > 0 && (() => {
-              const missingCount = inventoryLines.filter(l => !l.tax_category_id).length;
-              return missingCount > 0 ? (
-                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    Faltan categorías tributarias en {missingCount} línea(s). Los impuestos específicos podrían estar incompletos.
-                  </p>
-                </div>
-              ) : null;
-            })()}
-
-            {reviewLines.length > 0 ? (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  {reviewLines.length} línea(s) requieren revisión antes de confirmar.
-                </p>
-              </div>
-            ) : lines.length > 0 ? (
-              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <p className="text-sm text-green-700 dark:text-green-400">
-                  Todas las líneas están listas para confirmar.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleReExtract}><RefreshCw className="h-4 w-4 mr-1" />Re-extraer</Button>
-              <Button variant="destructive" onClick={handleReject}>Rechazar</Button>
-              <Button onClick={() => setStep(2)}>Revisar líneas →</Button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2: Lines */}
-        {step === 2 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-sm">Líneas ({lines.length})</h3>
-                {reviewLines.length > 0 && (
-                  <Badge variant="outline" className="text-amber-600">{reviewLines.length} en revisión</Badge>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setFilterReview(!filterReview)}>
-                  {filterReview ? "Ver todas" : "Solo REVIEW"}
-                </Button>
-                <Button size="sm" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Agregar fila</Button>
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">Todo ingreso se registra en Bodega Principal. La distribución a barras se hace en Reposición.</p>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8">#</TableHead>
-                    <TableHead className="w-16">Tipo</TableHead>
-                    <TableHead className="w-20">Cód.</TableHead>
-                    <TableHead className="min-w-[180px]">Texto original</TableHead>
-                    <TableHead className="w-16">Cant.</TableHead>
-                    <TableHead className="w-14">Mult.</TableHead>
-                    <TableHead className="w-20">Uds. reales</TableHead>
-                    <TableHead className="w-24">Costo/Monto neto</TableHead>
-                    <TableHead className="min-w-[160px]">Producto / Cat. gasto</TableHead>
-                    <TableHead className="min-w-[140px]">Cat. tributaria</TableHead>
-                    <TableHead className="w-20">Imp. espec.</TableHead>
-                    <TableHead className="w-28">Clasif.</TableHead>
-                    <TableHead className="w-16">Estado</TableHead>
-                    <TableHead className="w-20"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayedLines.map((line) => {
-                    const isExpense = line.classification === "freight" || line.classification === "other_expense";
-                    return (
-                    <TableRow key={line.id} className={line.status === "REVIEW" ? "bg-amber-50/50 dark:bg-amber-950/10" : ""}>
-                      <TableCell className="text-xs text-muted-foreground">{line.line_index + 1}</TableCell>
-                      <TableCell>
-                        <Badge variant={isExpense ? "secondary" : "outline"} className="text-[10px]">
-                          {isExpense ? "GASTO" : "INV"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                          {line.supplier_sku || "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={line.raw_text || ""}
-                          onChange={(e) => updateLine(line.id, { raw_text: e.target.value })}
-                          className="h-7 text-xs"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {isExpense ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <Input
-                            type="number"
-                            value={line.qty_invoiced || ""}
-                            onChange={(e) => updateLine(line.id, { qty_invoiced: parseFloat(e.target.value) || 0 })}
-                            className="h-7 text-xs w-16"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isExpense ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <Input
-                            type="number"
-                            value={line.detected_multiplier}
-                            onChange={(e) => updateLine(line.id, { detected_multiplier: parseInt(e.target.value) || 1 })}
-                            className="h-7 text-xs w-14"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs font-medium">
-                        {isExpense ? "—" : line.units_real}
-                      </TableCell>
-                      <TableCell>
-                        {isExpense ? (
-                          <Input
-                            type="number"
-                            value={line.line_total_net || line.unit_price_net || ""}
-                            onChange={(e) => updateLine(line.id, { line_total_net: parseFloat(e.target.value) || 0 })}
-                            className="h-7 text-xs w-24"
-                            placeholder="Monto neto"
-                          />
-                        ) : (
-                          <span className="text-xs">{formatCLP(line.cost_unit_net)}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isExpense ? (
-                          <span className="text-xs text-muted-foreground italic">
-                            {line.classification === "freight" ? "Flete/Transporte" : "Otro gasto"}
-                          </span>
-                        ) : (
-                          <ProductPicker
-                            venueId={venue?.id || ""}
-                            value={line.product_id}
-                            displayName={products.find(p => p.id === line.product_id)?.name}
-                            disabled={imp.status === "CONFIRMED"}
-                            onSelect={(pid, pname) => updateLine(line.id, { product_id: pid })}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isExpense ? (
-                          <span className="text-xs text-muted-foreground italic">—</span>
-                        ) : (
-                          <Select
-                            value={line.tax_category_id || "none"}
-                            onValueChange={(v) => updateLine(line.id, { tax_category_id: v === "none" ? null : v })}
-                          >
-                            <SelectTrigger className="h-7 text-xs">
-                              <SelectValue placeholder="Sin impuesto" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none" className="text-xs">Sin impuesto</SelectItem>
-                              {taxCategories.map((tc: any) => (
-                                <SelectItem key={tc.id} value={tc.id} className="text-xs">
-                                  {tc.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs font-medium">
-                        {isExpense ? "—" : line.tax_amount > 0 ? formatCLP(line.tax_amount) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={line.classification}
-                          onValueChange={(v) => updateLine(line.id, { classification: v })}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="inventory" className="text-xs">Inventario</SelectItem>
-                            <SelectItem value="freight" className="text-xs">Flete</SelectItem>
-                            <SelectItem value="other_expense" className="text-xs">Otro gasto</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        {line.status === "OK" ? (
-                          <Badge variant="default" className="text-[10px] bg-green-600">
-                            {isExpense ? "OK ✓" : "OK"}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 cursor-pointer" onClick={() => markLineOK(line.id)}>
-                            REVIEW
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {line.status === "REVIEW" && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => markLineOK(line.id)}>
-                              <CheckCircle2 className="h-3 w-3 text-green-600" />
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteLine(line.id)}>
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Totals */}
-            <Card>
-              <CardContent className="p-4 space-y-3">
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Líneas inventario</p>
-                    <p className="font-semibold">{inventoryLines.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Neto inventario</p>
-                    <p className="font-semibold">{formatCLP(inventoryLines.reduce((s, l) => s + l.units_real * l.cost_unit_net, 0))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Imp. específicos</p>
-                    <p className="font-semibold text-primary">{formatCLP(inventoryLines.reduce((s, l) => s + (l.tax_amount || 0), 0))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Gastos operacionales</p>
-                    <p className="font-semibold">{formatCLP(expensesTotal)}</p>
-                    <p className="text-[10px] text-muted-foreground">{expenseLines.length} línea(s)</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">IVA crédito fiscal</p>
-                    <p className="font-semibold">{imp.vat_amount ? formatCLP(imp.vat_amount) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">En revisión</p>
-                    <p className={`font-semibold ${reviewLines.length > 0 ? "text-amber-600" : "text-green-600"}`}>{reviewLines.length}</p>
-                  </div>
-                </div>
-                {/* Tax breakdown by category */}
-                {inventoryLines.some(l => l.tax_amount > 0) && (
-                  <div className="border-t pt-2 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Desglose impuestos específicos:</p>
-                    {taxCategories.filter((tc: any) => tc.rate_pct > 0).map((tc: any) => {
-                      const catTotal = inventoryLines.filter(l => l.tax_category_id === tc.id).reduce((s, l) => s + (l.tax_amount || 0), 0);
-                      if (catTotal === 0) return null;
-                      return (
-                        <div key={tc.id} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">{tc.name}</span>
-                          <span className="font-medium">{formatCLP(catTotal)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(1)}>← Resumen</Button>
-              <Button onClick={() => setStep(3)} disabled={!canConfirm}>
-                {canConfirm ? "Continuar a confirmación →" : 
-                  reviewLines.length > 0 ? `${reviewLines.length} líneas en REVIEW` :
-                  inventoryLines.some(l => !l.tax_category_id) ? "Falta categoría tributaria" :
-                  inventoryLines.some(l => !l.product_id) ? "Falta producto" :
-                  "Complete todos los campos"
-                }
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: Confirm */}
-        {step === 3 && financialSummary && (
-          <div className="space-y-4 max-w-lg mx-auto">
-            {/* Cuadratura alert */}
-            {!financialSummary.validation.is_balanced && (
-              <Alert variant="destructive">
-                <ShieldAlert className="h-4 w-4" />
-                <AlertTitle>Cuadratura no cuadra</AlertTitle>
-                <AlertDescription>
-                  La suma de componentes ({formatCLP(financialSummary.validation.computed_sum)}) difiere del total del documento ({formatCLP(financialSummary.validation.document_total)}) en {formatCLP(financialSummary.validation.difference)}. Tolerancia: {formatCLP(financialSummary.validation.tolerance)}.
-                  Revisa las líneas antes de confirmar.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {financialSummary.validation.is_balanced && (
-              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <p className="text-sm text-green-700 dark:text-green-400">
-                  Cuadratura OK — diferencia {formatCLP(financialSummary.validation.difference)} dentro de tolerancia.
-                </p>
-              </div>
-            )}
-
-            <Card>
-              <CardHeader><CardTitle className="text-base">Motor financiero</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {/* Inventory impact */}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Impacto inventario</p>
-                  <div className="flex justify-between text-sm"><span>Líneas</span><span className="font-medium">{financialSummary.inventory_impact.lines_count}</span></div>
-                  <div className="flex justify-between text-sm"><span>Unidades totales</span><span className="font-medium">{financialSummary.inventory_impact.total_units}</span></div>
-                  <div className="flex justify-between text-sm font-semibold"><span>Neto inventario</span><span>{formatCLP(financialSummary.inventory_impact.total_inventory_net)}</span></div>
-                </div>
-
-                <div className="border-t" />
-
-                {/* Simplified: no tax credit or specific taxes */}
-
-                {/* Operational expenses */}
-                {financialSummary.operational_expenses.total > 0 && (
-                  <>
-                    <div className="border-t" />
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Gastos operacionales</p>
-                      {financialSummary.operational_expenses.freight_total > 0 && <div className="flex justify-between text-sm"><span>Flete/Transporte</span><span>{formatCLP(financialSummary.operational_expenses.freight_total)}</span></div>}
-                      {financialSummary.operational_expenses.other_total > 0 && <div className="flex justify-between text-sm"><span>Otros gastos</span><span>{formatCLP(financialSummary.operational_expenses.other_total)}</span></div>}
-                      <div className="flex justify-between text-sm font-semibold"><span>Total gastos</span><span>{formatCLP(financialSummary.operational_expenses.total)}</span></div>
-                    </div>
-                  </>
-                )}
-
-                <div className="border-t" />
-
-                {/* Accounts payable / validation */}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cuadratura</p>
-                  <div className="flex justify-between text-sm"><span>Neto inv. + IVA + Imp. espec. + Gastos</span><span className="font-medium">{formatCLP(financialSummary.validation.computed_sum)}</span></div>
-                  <div className="flex justify-between text-sm"><span>Total documento</span><span className="font-medium">{formatCLP(financialSummary.validation.document_total)}</span></div>
-                  <div className={`flex justify-between text-sm font-semibold ${financialSummary.validation.is_balanced ? "text-green-600" : "text-destructive"}`}>
-                    <span>Diferencia</span>
-                    <span>{formatCLP(financialSummary.validation.difference)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="c1" checked={checks.reviewed} onCheckedChange={(v) => setChecks(p => ({ ...p, reviewed: !!v }))} />
-                    <label htmlFor="c1" className="text-sm">Revisé productos, cantidades y categorías tributarias</label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="c2" checked={checks.understood} onCheckedChange={(v) => setChecks(p => ({ ...p, understood: !!v }))} />
-                    <label htmlFor="c2" className="text-sm">Entiendo que esto ingresará stock a Bodega Principal</label>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setStep(2)} className="flex-1">← Volver</Button>
-                  <Button
-                    onClick={handleConfirm}
-                    disabled={!checks.reviewed || !checks.understood || confirming || !financialSummary.validation.is_balanced}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                  >
-                    {confirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Confirmar e ingresar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         )}
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Total factura</p>
+            <p className="text-2xl font-semibold mt-1">
+              {header.total_amount ? formatCLP(header.total_amount) : "—"}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Neto</p>
+            <p className="text-2xl font-semibold mt-1">
+              {header.net_subtotal ? formatCLP(header.net_subtotal) : "—"}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Productos</p>
+            <p className="text-2xl font-semibold mt-1">{lines.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-right w-20">Cant.</TableHead>
+              <TableHead>Producto en la factura</TableHead>
+              <TableHead className="text-right">Valor unitario</TableHead>
+              <TableHead className="text-right">Total línea</TableHead>
+              <TableHead className="w-[240px]">Catálogo</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
+                  No se leyeron productos en esta factura.
+                </TableCell>
+              </TableRow>
+            )}
+            {lines.map((l) => (
+              <TableRow key={l.id}>
+                <TableCell className="text-right text-sm font-medium">{l.units_real}</TableCell>
+                <TableCell className="text-sm">{l.raw_text || "—"}</TableCell>
+                <TableCell className="text-right text-sm">{formatCLP(Math.round(l.cost_unit_net || 0))}</TableCell>
+                <TableCell className="text-right text-sm font-medium">
+                  {formatCLP(Math.round(l.line_total_net ?? l.units_real * l.cost_unit_net))}
+                </TableCell>
+                <TableCell>
+                  {l.product_id ? (
+                    <span className="text-xs text-muted-foreground">{l.products?.name || "Vinculado"}</span>
+                  ) : (
+                    venue?.id && (
+                      <ProductPicker
+                        venueId={venue.id}
+                        value={null}
+                        onSelect={(productId, productName) => productId && linkProduct(l, productId, productName)}
+                      />
+                    )
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {isPdf ? <FileText className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+            Documento original
+          </div>
+          {!fileUrl ? (
+            <p className="text-sm text-muted-foreground">No disponible.</p>
+          ) : isPdf ? (
+            <a href={fileUrl} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
+              Abrir PDF
+            </a>
+          ) : (
+            <a href={fileUrl} target="_blank" rel="noreferrer">
+              <img
+                src={fileUrl}
+                alt={`Factura ${header.supplier_name || ""} ${header.document_number || ""}`}
+                className="max-h-[520px] w-auto rounded-lg border border-border object-contain"
+                loading="lazy"
+              />
+            </a>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

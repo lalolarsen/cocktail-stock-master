@@ -25,7 +25,6 @@ const Help = lazy(() => import("./pages/Help"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const SystemSettings = lazy(() => import("./pages/SystemSettings"));
 const Income = lazy(() => import("./pages/Income"));
-const PurchasesImport = lazy(() => import("./pages/PurchasesImport"));
 const ProveedoresImportDetail = lazy(() => import("./pages/ProveedoresImportDetail"));
 const PendingCatalog = lazy(() => import("./pages/PendingCatalog"));
 const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
@@ -139,14 +138,6 @@ function AppRoutes() {
           <DebugProducts />
         </ProtectedRoute>
       } />
-      <Route
-        path="/admin/purchases/import"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <PurchasesImport />
-          </ProtectedRoute>
-        }
-      />
       <Route
         path="/admin/proveedores/import/:id"
         element={

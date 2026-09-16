@@ -8,16 +8,13 @@ const corsHeaders = {
 };
 
 /**
- * INVOICE EXTRACTOR — tuned for CCU format (Comercial CCU S.A.)
- * - Captures supplier_code (SKU) per line
- * - Auto-matches by (supplier_rut, supplier_sku) first, then patterns, then raw_text memory
- * - Ignores freight (cód 9999 / "Flete de Mercaderías")
- * - Costs are NET (no IVA, no ILA/IABA)
+ * INVOICE EXTRACTOR — versión simple.
+ * Solo extrae: proveedor, documento, total, y por línea: cantidad, producto, valor unitario y total.
+ * Sin impuestos específicos, sin multiplicadores de pack, sin descuentos encadenados.
+ * Auto-vincula al catálogo por SKU del proveedor y por memoria de texto (learning_product_mappings).
  */
 
-const MIXER_PATTERNS = /\b(mixer|schweppes|canada\s*dry|ginger\s*ale|tonic|t[oó]nica|soda|sprite|coca[\s-]?cola|fanta|seven\s*up|7\s*up|agua\s*mineral|agua\s*tonica|jugo|naranja|pomelo|lim[oó]n|cachantun|cachantún|catun|watts|pepsi)\b/i;
-const REDBULL_PATTERNS = /\b(red\s*bull|redbull|red-bull|\brb\s)/i;
-const FREIGHT_PATTERNS = /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|flete\s*de\s*mercader[ií]a|servicio/i;
+const FREIGHT_PATTERNS = /flete|despacho|transporte|entrega|env[ií]o|envio|reparto|cargo\s*transporte|servicio/i;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -93,31 +90,14 @@ serve(async (req) => {
 
     const rawExtraction = await extractWithAI(base64, fileType);
 
-    // Load products for fallback pattern auto-mapping
-    const { data: allProducts } = await supabase
-      .from("products")
-      .select("id, name, category")
-      .eq("venue_id", imp.venue_id);
-
-    const mixerProduct = (allProducts || []).find(
-      (p) => p.name.toLowerCase().includes("mixer tradicional") || p.name.toLowerCase() === "mixer tradicional"
-    );
-    const redbullProduct = (allProducts || []).find(
-      (p) => p.name.toLowerCase().includes("red bull") || p.name.toLowerCase().includes("redbull")
-    );
-
-    // Filter out freight/expense lines
-    const inventoryRawLines = (rawExtraction.lines || []).filter((line: any) => {
+    // Descartar fletes y servicios
+    const productLines = (rawExtraction.lines || []).filter((line: any) => {
       const rawName = line.raw_product_name || "";
       const code = String(line.supplier_code || "").trim();
-      const isFreight =
-        line.line_type === "expense" ||
-        code === "9999" ||
-        FREIGHT_PATTERNS.test(rawName);
-      return !isFreight;
+      return !(line.line_type === "expense" || code === "9999" || FREIGHT_PATTERNS.test(rawName));
     });
 
-    // Load learning memory
+    // Memoria de vinculación aprendida
     const { data: learnings } = await supabase
       .from("learning_product_mappings")
       .select("*")
@@ -125,34 +105,20 @@ serve(async (req) => {
 
     const supplierRut = (rawExtraction.header?.provider_rut || "").trim();
 
-    const lines = inventoryRawLines.map((line: any, idx: number) => {
-      const rawName = line.raw_product_name || "";
+    const lines = productLines.map((line: any, idx: number) => {
+      const rawName = String(line.raw_product_name || "").trim();
       const supplierCode = String(line.supplier_code || "").trim() || null;
-      const mult = detectMultiplier(rawName);
       const qty = parseNum(line.qty_text);
       const unitPrice = parseNum(line.unit_price_text);
       const lineTotal = parseNum(line.line_total_text);
-      const discountPct = parseNum(line.discount_text?.replace?.("%", "") ?? line.discount_text);
 
-      const unitsReal = qty * mult;
-      // "Valor" (lineTotal) en facturas CCU YA viene neto de descuento.
-      // No aplicamos descuento extra para evitar doble resta.
-      // Fallback: si no hay lineTotal, usamos unit_price y aplicamos descuento si parece % válido (0<x<=100).
-      let packNet: number;
-      if (lineTotal > 0) {
-        packNet = lineTotal / (qty || 1);
-      } else {
-        packNet = unitPrice;
-        if (discountPct > 0 && discountPct <= 100) {
-          packNet = packNet * (1 - discountPct / 100);
-        }
-      }
-      const costUnitNet = mult > 0 ? packNet / mult : packNet;
+      // Valor unitario: preferimos el total de la línea dividido por la cantidad.
+      const unitCost = lineTotal > 0 && qty > 0 ? lineTotal / qty : unitPrice;
 
       let autoProductId: string | null = null;
       let autoNotes: string | null = null;
 
-      // 1) SKU match (highest confidence)
+      // 1) Match por SKU del proveedor
       if (supplierCode) {
         const skuMatch = (learnings || []).find((l: any) => {
           if (!l.supplier_sku) return false;
@@ -161,31 +127,20 @@ serve(async (req) => {
         });
         if (skuMatch) {
           autoProductId = skuMatch.product_id;
-          autoNotes = `Auto-match: SKU ${supplierCode}`;
+          autoNotes = `Vinculado por código ${supplierCode}`;
         }
       }
 
-      // 2) RedBull / Mixer patterns
-      if (!autoProductId) {
-        if (REDBULL_PATTERNS.test(rawName) && redbullProduct) {
-          autoProductId = redbullProduct.id;
-          autoNotes = "Auto-match: RedBull → " + redbullProduct.name;
-        } else if (MIXER_PATTERNS.test(rawName) && mixerProduct) {
-          autoProductId = mixerProduct.id;
-          autoNotes = "Auto-match: Mixer → " + mixerProduct.name;
-        }
-      }
-
-      // 3) raw_text memory
-      if (!autoProductId) {
-        const normalized = rawName.toLowerCase().trim();
+      // 2) Match por texto exacto aprendido
+      if (!autoProductId && rawName) {
+        const normalized = rawName.toLowerCase();
         const match = (learnings || []).find((l: any) => {
           if (l.supplier_rut && supplierRut && l.supplier_rut !== supplierRut) return false;
           return l.raw_text?.toLowerCase().trim() === normalized;
         });
         if (match) {
           autoProductId = match.product_id;
-          autoNotes = `Auto-match: ${match.confidence >= 0.9 ? "alta" : "media"} confianza (nombre)`;
+          autoNotes = "Vinculado por nombre aprendido";
         }
       }
 
@@ -196,11 +151,10 @@ serve(async (req) => {
         supplier_sku: supplierCode,
         qty_invoiced: qty,
         unit_price_net: unitPrice > 0 ? unitPrice : null,
-        line_total_net: lineTotal > 0 ? lineTotal : null,
-        discount_pct: discountPct > 0 ? discountPct : null,
-        detected_multiplier: mult,
-        units_real: unitsReal,
-        cost_unit_net: Math.round(costUnitNet * 100) / 100,
+        line_total_net: lineTotal > 0 ? lineTotal : Math.round(qty * unitCost) || null,
+        detected_multiplier: 1,
+        units_real: qty,
+        cost_unit_net: Math.round(unitCost * 100) / 100,
         classification: "inventory",
         status: autoProductId ? "OK" : "REVIEW",
         product_id: autoProductId,
@@ -214,7 +168,6 @@ serve(async (req) => {
 
     const netSubtotal = parseNum(rawExtraction.header?.net_total_text);
     const totalAmount = parseNum(rawExtraction.header?.gross_total_text);
-
     const issuesCount = lines.filter((l: any) => l.status === "REVIEW").length;
 
     await supabase
@@ -239,6 +192,8 @@ serve(async (req) => {
         success: true,
         lines_count: lines.length,
         issues_count: issuesCount,
+        supplier_name: rawExtraction.header?.provider_name || imp.supplier_name || null,
+        total_amount: totalAmount || null,
         auto_mapped: lines.filter((l: any) => l.product_id).length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -261,92 +216,39 @@ function parseNum(val: any): number {
   return parseFloat(s) || 0;
 }
 
-/**
- * Detect pack multiplier from product description.
- * Patterns observed in CCU invoices:
- *  - 6PFX4-LAT350 / 4PCX6-VNR330 / 6PACKX4 / 4PRX6 → N x M packs
- *  - 12PF-PET 600CC / 24PF-LAT250 → N units
- *  - PET1500X6-TR / PET1600X6-TR / LAT250X24 → trailing Xn = units
- */
-function detectMultiplier(text: string): number {
-  const t = text.toUpperCase();
-
-  // 1) PACK-of-PACK: <N>P<letra>?X<M>  e.g. 6PFX4, 4PCX6, 6PACKX4, 4PRX6, 6PZX4 (OCR puede leer F/C/Z/etc.)
-  const packOfPack = t.match(/(\d+)\s*P[A-Z]{0,4}\s*X\s*(\d+)/i);
-  if (packOfPack) {
-    const a = parseInt(packOfPack[1]);
-    const b = parseInt(packOfPack[2]);
-    if (b > 0 && b <= 30) return a * b;
-  }
-
-  // 1b) OCR-tolerant: "6PF4" / "4PR6" — OCR a veces omite la X entre letras y dígito.
-  //     Sólo aplica cuando el segundo número es muy chico (1-12 = pack típico). >12 podría ser ruido.
-  const packOcr = t.match(/(\d+)\s*P[A-Z]\s*(\d+)\b/i);
-  if (packOcr) {
-    const a = parseInt(packOcr[1]);
-    const b = parseInt(packOcr[2]);
-    if (b > 0 && b <= 12) return a * b;
-  }
-
-  // 2) Trailing X<n> in things like PET1500X6, LAT250X24, VNR330X6
-  const trailingX = t.match(/(?:PET|LAT|LATA|VNR|BOT|VID|TR)\s*\d+\s*X\s*(\d+)/i);
-  if (trailingX) return parseInt(trailingX[1]);
-
-  // 3) <N>P<letra> standalone (no X, no dígito siguiente) → N units. e.g. "12PF-PET", "12PP-PET" (OCR), "24PR-LATA"
-  const pfAlone = t.match(/(\d+)\s*P[A-Z](?!\s*X)(?!\s*\d)/i);
-  if (pfAlone) return parseInt(pfAlone[1]);
-
-  // 4) <N> UN / U / UND
-  const unMatch = t.match(/(\d+)\s*(?:UN|UND|U)\b/i);
-  if (unMatch) return parseInt(unMatch[1]);
-
-  // 5) Generic <N>X<M>: heuristic — if first > 100 it's a size (ignore), use M
-  const generic = t.match(/(\d+)\s*X\s*(\d+)/i);
-  if (generic) {
-    const a = parseInt(generic[1]);
-    const b = parseInt(generic[2]);
-    if (a > 100) return b;
-    return a * b;
-  }
-
-  // 6) trailing standalone X<n>
-  const xOnly = t.match(/\bX\s*(\d{2,})\b/i);
-  if (xOnly) return parseInt(xOnly[1]);
-
-  return 1;
-}
-
 async function extractWithAI(base64: string, fileType: string): Promise<any> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-  const prompt = `You are extracting data from a Chilean electronic invoice (Factura Electrónica). Most invoices are from CCU (Comercial CCU S.A., beverages/alcohol). Photos may be rotated, dim, or taken on dark backgrounds — interpret accordingly.
+  const prompt = `Extract data from this Chilean invoice (Factura). Photos may be rotated, dim or low quality — interpret carefully.
 
-Return ONLY JSON. No prose. No markdown.
+Return ONLY JSON. No prose, no markdown.
 
-CCU invoice line columns (left to right):
-  Código | Descripción | Grado Alcoh | UM | Cantidad | Precio Unit | % (descuento) | Descuento | Valor | [P.U.] Unidad
+Extract ONLY these things:
 
-For EACH product line extract:
-  - supplier_code: the numeric "Código" (e.g. "871240", "4714"). Critical for SKU matching.
-  - raw_product_name: full "Descripción" exactly as written (e.g. "RED BULL TRADIC LAT250X24").
-  - qty_text: "Cantidad" (typically in cases / CJ).
-  - uom_text: "UM" (CJ, UN, etc).
-  - unit_price_text: "Precio Unit" (price per case before discount).
-  - discount_text: percentage from "%" column ONLY (e.g. "11.90", "19.57"). This is the column labeled "%". NEVER use the monetary value from the "Descuento" column. Null if absent.
-  - line_total_text: "Valor" (line subtotal after discount, before taxes).
-  - line_type: "inventory" for products, "expense" for freight/services.
+HEADER
+  - provider_name: supplier name ("Razón Social" of the issuer).
+  - provider_rut: supplier RUT.
+  - document_number: invoice folio number.
+  - document_date: issue date as YYYY-MM-DD.
+  - net_total_text: NETO / SUBTOTAL (before IVA and before specific taxes).
+  - gross_total_text: TOTAL of the invoice (final amount payable).
 
-CRITICAL RULES:
-1) IGNORE lines where Código is "9999" or Descripción contains "Flete", "Despacho", "Transporte". Mark them line_type: "expense" so we discard them.
-2) Header totals:
-   - net_total_text = "SUBTOTAL" or "NETO" (BEFORE IVA and BEFORE specific taxes ILA/IABA).
-   - gross_total_text = "TOTAL FACTURA" (final total with IVA + ILA + IABA).
-   - DO NOT include IVA, ILA VIN, ILA CER, IABA in the cost — they go to gross_total only.
-3) Extract values EXACTLY as written. Use Chilean number format (1.234,56 → "1.234,56" string).
-4) If a value is unclear or missing, use null. Never guess.
+EACH PRODUCT LINE
+  - supplier_code: product code as printed ("Código"), if any.
+  - raw_product_name: description exactly as written.
+  - qty_text: quantity.
+  - unit_price_text: unit price as printed.
+  - line_total_text: the line amount ("Valor" / "Total"), already net of any discount.
+  - line_type: "inventory" for products, "expense" for freight, delivery or services.
 
-Return JSON in this exact schema:
+RULES
+1) Mark freight / despacho / transporte / servicio lines as line_type "expense" (also code 9999).
+2) Do NOT extract taxes, discounts, alcohol degrees or units of measure — they are not needed.
+3) Copy numbers exactly as written, Chilean format (e.g. "1.234,56").
+4) If a value is unclear or absent use null. Never guess.
+
+JSON schema:
 
 {
   "header": {
@@ -362,18 +264,12 @@ Return JSON in this exact schema:
       "supplier_code": null,
       "raw_product_name": null,
       "qty_text": null,
-      "uom_text": null,
       "unit_price_text": null,
-      "discount_text": null,
       "line_total_text": null,
       "line_type": "inventory"
     }
   ],
-  "warnings": [],
-  "confidence": {
-    "header": "high_or_medium_or_low",
-    "lines": "high_or_medium_or_low"
-  }
+  "confidence": { "header": "high_or_medium_or_low", "lines": "high_or_medium_or_low" }
 }`;
 
   const mimeType = fileType === "pdf" ? "application/pdf" : `image/${fileType}`;
