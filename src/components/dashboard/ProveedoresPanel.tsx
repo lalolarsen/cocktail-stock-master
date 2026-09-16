@@ -236,8 +236,6 @@ export function PendingLinksTab({ venueId, onLinked }: { venueId?: string; onLin
       confidence: 1,
     });
 
-    await supabase.rpc("noop" as any).then(() => undefined, () => undefined);
-
     const { count } = await purchaseImportLinesTable()
       .select("id", { count: "exact", head: true })
       .eq("purchase_import_id", line.purchase_import_id)
