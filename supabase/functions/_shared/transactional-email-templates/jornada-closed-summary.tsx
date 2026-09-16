@@ -326,18 +326,22 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
               <Heading as="h2" style={h2}>
                 Guardarropía
               </Heading>
-              <PaymentRow
-                label="💵 Efectivo"
-                amount={coatcheck.cash}
-                count={undefined}
-                total={coatcheck.total ?? 0}
-              />
-              <PaymentRow
-                label="💳 Tarjeta"
-                amount={coatcheck.card}
-                count={undefined}
-                total={coatcheck.total ?? 0}
-              />
+              <Row style={paymentRow}>
+                <Column style={{ width: '70%' }}>
+                  <Text style={paymentLabel}>💵 Efectivo</Text>
+                </Column>
+                <Column>
+                  <Text style={paymentAmount}>{fmtCLP(coatcheck.cash)}</Text>
+                </Column>
+              </Row>
+              <Row style={paymentRow}>
+                <Column style={{ width: '70%' }}>
+                  <Text style={paymentLabel}>💳 Tarjeta</Text>
+                </Column>
+                <Column>
+                  <Text style={paymentAmount}>{fmtCLP(coatcheck.card)}</Text>
+                </Column>
+              </Row>
               <Hr style={hrDark} />
               <Row>
                 <Column style={labelCol}>
