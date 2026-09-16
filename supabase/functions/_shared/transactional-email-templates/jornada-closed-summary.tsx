@@ -252,8 +252,10 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     top_products = [],
     ingredient_usage = [],
     waste_summary = {},
+    coatcheck = {},
     observacion_cierre = null,
   } = props
+
 
   const wasteCount = waste_summary?.count ?? 0
   const wasteCost = waste_summary?.total_cost ?? 0
@@ -317,6 +319,44 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
               </Column>
             </Row>
           </Section>
+
+          {/* GUARDARROPÍA */}
+          {(coatcheck?.tickets ?? 0) > 0 && (
+            <Section style={card}>
+              <Heading as="h2" style={h2}>
+                Guardarropía
+              </Heading>
+              <PaymentRow
+                label="💵 Efectivo"
+                amount={coatcheck.cash}
+                count={undefined}
+                total={coatcheck.total ?? 0}
+              />
+              <PaymentRow
+                label="💳 Tarjeta"
+                amount={coatcheck.card}
+                count={undefined}
+                total={coatcheck.total ?? 0}
+              />
+              <Hr style={hrDark} />
+              <Row>
+                <Column style={labelCol}>
+                  <Text style={posTotalLabel}>
+                    Total guardarropía · {coatcheck.tickets} guardas ·{' '}
+                    {coatcheck.garments} prendas
+                  </Text>
+                </Column>
+                <Column>
+                  <Text style={posTotalValue}>{fmtCLP(coatcheck.total)}</Text>
+                </Column>
+              </Row>
+              {(coatcheck.pending ?? 0) > 0 && (
+                <Text style={muted}>
+                  {coatcheck.pending} prenda(s) sin retirar al cierre.
+                </Text>
+              )}
+            </Section>
+          )}
 
           {/* PAYMENT SUMMARY */}
           <Section style={card}>
