@@ -77,7 +77,6 @@ function printViaRawBt(data: CourtesyCoverData): void {
 function printWithBrowser(data: CourtesyCoverData): void {
   const w = window.open("", "_blank", "width=380,height=700");
   if (!w) {
-    // eslint-disable-next-line no-console
     console.warn("[CourtesyCover] popup blocked");
     return;
   }

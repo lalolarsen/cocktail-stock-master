@@ -148,8 +148,8 @@ export default function Cortesias() {
         expiresAt: row.expires_at,
         createdAt: row.created_at,
       });
-    } catch (err: any) {
-      toast.error(err.message || "No se pudo emitir la cortesía");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "No se pudo emitir la cortesía");
     } finally {
       issuingRef.current = false;
       setIssuing(false);
