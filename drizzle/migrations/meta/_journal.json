@@ -15,6 +15,13 @@
       "when": 1789586442844,
       "tag": "0001_create_coatcheck",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789586630179,
+      "tag": "0002_jornada_email_coatcheck",
+      "breakpoints": true
     }
   ]
 }
