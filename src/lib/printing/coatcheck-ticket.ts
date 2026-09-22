@@ -88,14 +88,16 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
       0x1b, 0x45, 0x01,
       ...text(kind === "CLIENTE" ? "CONSERVE ESTE TICKET\n" : "PINCHAR EN LA PRENDA\n"),
       0x1b, 0x45, 0x00,
-      ...text("\n"),
+      // Espacio en blanco + linea de corte manual + corte automatico si existe guillotina
+      0x1b, 0x64, 0x04,
+      ...text("- - - - - >8 - - - - - - - - - -\n"),
+      0x1b, 0x64, 0x03,
+      0x1d, 0x56, 0x42, 0x00,
     );
   };
 
   copy("CLIENTE");
-  bytes.push(...text("--------------------------------\n"));
   copy("PRENDA");
-  bytes.push(...text("\n\n"), 0x1d, 0x56, 0x42, 0x00);
 
   return bytesToBase64(bytes);
 }
