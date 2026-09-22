@@ -87,22 +87,18 @@ export default function Auth() {
   };
 
   const routeByRoles = (roles: AppRole[]) => {
-    // Vendedor always shows mode selection (can choose between sales and tickets)
-    if (roles.includes("vendedor")) {
+    // Vendedor / ticket_seller always show mode selection
+    // (alcohol, entradas, guardarropía)
+    if (roles.includes("vendedor") || roles.includes("ticket_seller")) {
       setWorkerRoles(roles);
       setShowModeSelection(true);
       return;
     }
 
-    // Bar role deprecated: STOCKIA is now pure POS — no /bar destination
-    // (bar users without other roles will simply remain on the auth screen)
-
     if (roles.length === 1) {
       const role = roles[0];
       if (role === "admin" || role === "gerencia") {
         navigate("/admin");
-      } else if (role === "ticket_seller") {
-        navigate("/tickets");
       }
       return;
     }
@@ -119,7 +115,7 @@ export default function Auth() {
     setShowModeSelection(true);
   };
 
-  const routeByRole = (role: AppRole | "sales" | "tickets") => {
+  const routeByRole = (role: AppRole | "sales" | "tickets" | "coatcheck") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
@@ -127,8 +123,11 @@ export default function Auth() {
       navigate("/sales");
     } else if (role === "ticket_seller" || role === "tickets") {
       navigate("/tickets");
+    } else if (role === "coatcheck") {
+      navigate("/guardarropia");
     }
   };
+
 
   const normalizeRut = (input: string): string => {
     // For demo accounts, keep as-is (starts with DEMO-)
