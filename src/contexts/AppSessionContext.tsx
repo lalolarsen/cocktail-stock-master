@@ -105,6 +105,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setVenue(null);
     setVenueError(null);
     setActiveJornadaId(null);
+    setActiveJornadaName(null);
+    setActiveJornadaNumber(null);
     setJornadaLoading(false);
   }, []);
 
@@ -115,7 +117,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
       const { data, error } = await supabase
         .from("jornadas")
-        .select("id")
+        .select("id, nombre, numero_jornada")
         .eq("venue_id", DEFAULT_VENUE_ID)
         .eq("estado", "activa")
         .order("created_at", { ascending: false })
@@ -126,6 +128,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
       if (!error) {
         setActiveJornadaId(data?.id || null);
+        setActiveJornadaName(data?.nombre || null);
+        setActiveJornadaNumber(data?.numero_jornada ?? null);
       } else {
         console.error("[Jornada] Error fetching:", error);
       }
@@ -196,6 +200,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     if (!session?.user) {
       setJornadaLoading(false);
       setActiveJornadaId(null);
+      setActiveJornadaName(null);
+      setActiveJornadaNumber(null);
       if (jornadaChannelRef.current) {
         supabase.removeChannel(jornadaChannelRef.current);
         jornadaChannelRef.current = null;
@@ -251,6 +257,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     isLoading,
     refreshSession,
     activeJornadaId,
+    activeJornadaName,
+    activeJornadaNumber,
     hasActiveJornada: !!activeJornadaId,
     jornadaLoading,
   };
