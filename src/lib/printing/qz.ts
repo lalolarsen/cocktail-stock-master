@@ -237,6 +237,10 @@ export function buildCoverCss(paperWidth: PaperWidth): string {
     .venue-name { font-size: 18pt; font-weight: 900; text-align: center; margin-bottom: 6px; }
     .sep { margin: 4px 0; white-space: pre; text-align: center; font-size: 9pt; }
     .cover-kind { text-align: center; font-size: 28pt; font-weight: 900; letter-spacing: 6px; margin: 8px 0 6px; padding: 6px 0; border-top: 3px solid #000; border-bottom: 3px solid #000; }
+    .jornada-block { text-align: center; margin: 6px 0; padding: 4px 0; border-top: 2px dashed #000; border-bottom: 2px dashed #000; }
+    .jornada-num { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
+    .jornada-name { font-size: 13pt; font-weight: bold; }
+    .jornada-warn { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
     .cover-sale { text-align: center; font-size: 14pt; font-weight: bold; margin-top: 6px; }
     .cover-datetime { text-align: center; font-size: 12pt; margin-bottom: 4px; }
     .courtesy-stamp { text-align: center; font-size: 22pt; font-weight: 900; padding: 6px; border: 3px solid #000; margin: 8px 0; letter-spacing: 3px; }
