@@ -323,8 +323,8 @@ function TerminalDialog({
 
   const canSave = name.trim().length >= 3 && posType && !(posType === "bar_redemption" && !locationId) && !(autoRedeem && !barLocationId);
 
-  // Show hybrid section for alcohol_sales and ticket_sales (not bar_redemption)
-  const showHybridSection = posType !== "bar_redemption";
+  // Hybrid mode only applies to POS that move alcohol stock
+  const showHybridSection = posType === "alcohol_sales" || posType === "ticket_sales";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -360,7 +360,7 @@ function TerminalDialog({
                 const val = v as POSType;
                 setPosType(val);
                 if (val !== "bar_redemption") setLocationId(null);
-                if (val === "bar_redemption") { setAutoRedeem(false); setBarLocationId(null); }
+                if (val === "bar_redemption" || val === "coatcheck") { setAutoRedeem(false); setBarLocationId(null); }
               }}
               className="space-y-2"
             >
