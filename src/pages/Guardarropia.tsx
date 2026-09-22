@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Shirt,
+  Backpack,
   Printer,
   Loader2,
   Minus,
@@ -18,14 +19,14 @@ import {
   Banknote,
   CreditCard,
   AlertTriangle,
-  Settings,
-  Check,
+  Monitor,
 } from "lucide-react";
-import { printCoatcheckTicket } from "@/lib/printing/coatcheck-ticket";
+import { printCoatcheckTicket, ITEM_LABELS, CoatcheckItemType } from "@/lib/printing/coatcheck-ticket";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
 
 const clp = (n: number) => "$" + Math.round(n).toLocaleString("es-CL");
+const POS_KEY = "selectedCoatcheckPosId";
 
 type Ticket = {
   id: string;
@@ -34,34 +35,71 @@ type Ticket = {
   amount: number;
   payment_method: string;
   status: string;
+  item_type: string | null;
   issued_at: string;
   retrieved_at: string | null;
 };
 
+type Terminal = { id: string; name: string };
+
 export default function Guardarropia() {
-  const { activeJornadaId, hasActiveJornada, jornadaLoading, hasRole, user } = useAppSession();
+  const {
+    activeJornadaId,
+    hasActiveJornada,
+    jornadaLoading,
+    user,
+    activeJornadaName,
+    activeJornadaNumber,
+  } = useAppSession();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const isAdmin = hasRole("admin");
 
+  const [posId, setPosId] = useState<string | null>(() => localStorage.getItem(POS_KEY));
   const [tab, setTab] = useState<"guardar" | "retirar">("guardar");
-  const [garments, setGarments] = useState(1);
+  const [itemType, setItemType] = useState<CoatcheckItemType>("garment");
+  const [qty, setQty] = useState(1);
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [editingPrice, setEditingPrice] = useState(false);
-  const [priceDraft, setPriceDraft] = useState("");
 
-  const { data: price = 0 } = useQuery({
-    queryKey: ["coatcheck-price"],
+  const { data: terminals = [], isLoading: loadingTerminals } = useQuery({
+    queryKey: ["coatcheck-terminals"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pos_terminals")
+        .select("id, name")
+        .eq("is_active", true)
+        .eq("pos_type", "coatcheck")
+        .order("name");
+      if (error) throw error;
+      return (data || []) as Terminal[];
+    },
+  });
+
+  useEffect(() => {
+    if (!posId && terminals.length === 1) {
+      setPosId(terminals[0].id);
+      localStorage.setItem(POS_KEY, terminals[0].id);
+    }
+    if (posId && terminals.length > 0 && !terminals.some((t) => t.id === posId)) {
+      setPosId(null);
+      localStorage.removeItem(POS_KEY);
+    }
+  }, [terminals, posId]);
+
+  const { data: prices = { backpack: 2000, garment: 1000 } } = useQuery({
+    queryKey: ["coatcheck-prices"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("coatcheck_settings")
-        .select("price_per_garment")
+        .select("price_backpack, price_garment")
         .eq("venue_id", DEFAULT_VENUE_ID)
         .maybeSingle();
       if (error) throw error;
-      return data?.price_per_garment ?? 0;
+      return {
+        backpack: data?.price_backpack ?? 2000,
+        garment: data?.price_garment ?? 1000,
+      };
     },
   });
 
@@ -71,7 +109,9 @@ export default function Guardarropia() {
       if (!activeJornadaId) return [];
       const { data, error } = await supabase
         .from("coatcheck_tickets")
-        .select("id, ticket_number, garment_count, amount, payment_method, status, issued_at, retrieved_at")
+        .select(
+          "id, ticket_number, garment_count, amount, payment_method, status, item_type, issued_at, retrieved_at",
+        )
         .eq("jornada_id", activeJornadaId)
         .order("ticket_number", { ascending: false });
       if (error) throw error;
@@ -97,17 +137,19 @@ export default function Guardarropia() {
     };
   }, [tickets, active]);
 
-  const amount = garments * price;
+  const unitPrice = itemType === "backpack" ? prices.backpack : prices.garment;
+  const amount = qty * unitPrice;
 
   const handleIssue = async () => {
-    if (!activeJornadaId) return;
+    if (!activeJornadaId || saving) return;
     setSaving(true);
     try {
-      const { data, error } = await supabase.rpc("issue_coatcheck_ticket", {
+      const { data, error } = await supabase.rpc("issue_coatcheck_ticket_v2", {
         _venue_id: DEFAULT_VENUE_ID,
         _jornada_id: activeJornadaId,
-        _garment_count: garments,
-        _unit_price: price,
+        _item_type: itemType,
+        _garment_count: qty,
+        _unit_price: unitPrice,
         _payment_method: payment,
         _note: null,
       });
@@ -119,11 +161,14 @@ export default function Guardarropia() {
         garmentCount: row.garment_count,
         amount: row.amount,
         paymentMethod: row.payment_method,
+        itemType,
         issuedAt: row.issued_at,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       });
 
       toast.success(`Guarda N° ${row.ticket_number} cobrada`);
-      setGarments(1);
+      setQty(1);
       queryClient.invalidateQueries({ queryKey: ["coatcheck-tickets", activeJornadaId] });
     } catch (err: any) {
       toast.error(err.message || "No se pudo registrar la guarda");
@@ -149,25 +194,7 @@ export default function Guardarropia() {
     queryClient.invalidateQueries({ queryKey: ["coatcheck-tickets", activeJornadaId] });
   };
 
-  const savePrice = async () => {
-    const value = Math.round(Number(priceDraft));
-    if (!Number.isFinite(value) || value < 0) {
-      toast.error("Precio inválido");
-      return;
-    }
-    const { error } = await supabase
-      .from("coatcheck_settings")
-      .upsert({ venue_id: DEFAULT_VENUE_ID, price_per_garment: value, updated_at: new Date().toISOString() });
-    if (error) {
-      toast.error("No se pudo guardar el precio");
-      return;
-    }
-    setEditingPrice(false);
-    queryClient.invalidateQueries({ queryKey: ["coatcheck-price"] });
-    toast.success("Precio actualizado");
-  };
-
-  if (jornadaLoading) {
+  if (jornadaLoading || loadingTerminals) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-7 h-7 animate-spin text-primary" />
@@ -185,6 +212,55 @@ export default function Guardarropia() {
     );
   }
 
+  if (!posId) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex flex-col items-center justify-center gap-5">
+        <div className="text-center space-y-1">
+          <Monitor className="w-12 h-12 text-primary mx-auto" />
+          <h1 className="text-2xl font-bold">Elige la caja</h1>
+          <p className="text-muted-foreground text-sm">Selecciona la caja de guardarropía de esta tablet.</p>
+        </div>
+        {terminals.length === 0 ? (
+          <Card className="p-6 max-w-md text-center space-y-2">
+            <p className="font-medium">No hay cajas de guardarropía</p>
+            <p className="text-sm text-muted-foreground">
+              Pide a administración que cree una caja de tipo Guardarropía en Barras y POS.
+            </p>
+          </Card>
+        ) : (
+          <div className="w-full max-w-md space-y-3">
+            {terminals.map((t) => (
+              <Button
+                key={t.id}
+                variant="outline"
+                className="w-full h-20 text-lg justify-start gap-3"
+                onClick={() => {
+                  setPosId(t.id);
+                  localStorage.setItem(POS_KEY, t.id);
+                }}
+              >
+                <Monitor className="w-6 h-6 text-primary" />
+                {t.name}
+              </Button>
+            ))}
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          className="h-12"
+          onClick={async () => {
+            await supabase.auth.signOut();
+            navigate("/auth", { replace: true });
+          }}
+        >
+          Cerrar sesión
+        </Button>
+      </div>
+    );
+  }
+
+  const terminalName = terminals.find((t) => t.id === posId)?.name ?? "Guardarropía";
+
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 space-y-5">
       <header className="flex items-center justify-between gap-3">
@@ -194,54 +270,24 @@ export default function Guardarropia() {
           </div>
           <div>
             <h1 className="text-2xl font-bold leading-tight">Guardarropía</h1>
-            <p className="text-sm text-muted-foreground">{clp(price)} por prenda</p>
+            <p className="text-sm text-muted-foreground">
+              {terminalName} · {clp(prices.backpack)} mochila · {clp(prices.garment)} prenda
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-14 px-4"
-              onClick={() => {
-                setPriceDraft(String(price));
-                setEditingPrice((v) => !v);
-              }}
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="lg"
-            className="h-14 px-5 text-base gap-2"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/auth", { replace: true });
-            }}
-          >
-            <Lock className="w-5 h-5" />
-            Bloquear
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="lg"
+          className="h-14 px-5 text-base gap-2"
+          onClick={async () => {
+            await supabase.auth.signOut();
+            navigate("/auth", { replace: true });
+          }}
+        >
+          <Lock className="w-5 h-5" />
+          Bloquear
+        </Button>
       </header>
-
-      {editingPrice && (
-        <Card className="p-4 flex items-center gap-3">
-          <span className="text-sm font-semibold text-muted-foreground">Precio por prenda</span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            className="h-14 text-lg max-w-40"
-            value={priceDraft}
-            onChange={(e) => setPriceDraft(e.target.value)}
-          />
-          <Button size="lg" className="h-14 gap-2" onClick={savePrice}>
-            <Check className="w-5 h-5" />
-            Guardar
-          </Button>
-        </Card>
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="p-4">
@@ -271,7 +317,7 @@ export default function Guardarropia() {
               tab === t ? "border-primary bg-primary/10 text-primary" : "bg-card"
             }`}
           >
-            {t === "guardar" ? "Guardar prenda" : `Entregar (${active.length})`}
+            {t === "guardar" ? "Guardar" : `Entregar (${active.length})`}
           </button>
         ))}
       </div>
@@ -279,17 +325,45 @@ export default function Guardarropia() {
       {tab === "guardar" ? (
         <Card className="p-4 sm:p-5 space-y-5">
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-muted-foreground">Cantidad de prendas</p>
-            <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                className="h-16 w-16"
-                onClick={() => setGarments((g) => Math.max(1, g - 1))}
+            <p className="text-sm font-semibold text-muted-foreground">¿Qué está guardando?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => {
+                  setItemType("backpack");
+                  setQty(1);
+                }}
+                className={`h-24 rounded-xl border flex flex-col items-center justify-center gap-1 transition ${
+                  itemType === "backpack" ? "border-primary bg-primary/10 text-primary" : "bg-card"
+                }`}
               >
+                <Backpack className="w-7 h-7" />
+                <span className="text-base font-semibold">Mochila / bolso</span>
+                <span className="text-sm opacity-80">{clp(prices.backpack)}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setItemType("garment");
+                  setQty(1);
+                }}
+                className={`h-24 rounded-xl border flex flex-col items-center justify-center gap-1 transition ${
+                  itemType === "garment" ? "border-primary bg-primary/10 text-primary" : "bg-card"
+                }`}
+              >
+                <Shirt className="w-7 h-7" />
+                <span className="text-base font-semibold">Prenda de ropa</span>
+                <span className="text-sm opacity-80">{clp(prices.garment)}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-muted-foreground">Cantidad</p>
+            <div className="flex items-center gap-4">
+              <Button variant="outline" className="h-16 w-16" onClick={() => setQty((g) => Math.max(1, g - 1))}>
                 <Minus className="w-6 h-6" />
               </Button>
-              <span className="text-4xl font-bold w-16 text-center">{garments}</span>
-              <Button variant="outline" className="h-16 w-16" onClick={() => setGarments((g) => g + 1)}>
+              <span className="text-4xl font-bold w-16 text-center">{qty}</span>
+              <Button variant="outline" className="h-16 w-16" onClick={() => setQty((g) => g + 1)}>
                 <Plus className="w-6 h-6" />
               </Button>
               <div className="ml-auto text-right">
@@ -321,17 +395,12 @@ export default function Guardarropia() {
             </div>
           </div>
 
-          <Button
-            size="lg"
-            className="w-full h-20 text-xl font-bold gap-3"
-            disabled={saving}
-            onClick={handleIssue}
-          >
+          <Button size="lg" className="w-full h-20 text-xl font-bold gap-3" disabled={saving} onClick={handleIssue}>
             {saving ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}
             Cobrar e imprimir
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Salen dos tickets con el mismo número: uno para el cliente y otro para pinchar en la prenda.
+            Cada tipo lleva su propio número. Salen dos copias: una para el cliente y otra para pinchar.
           </p>
         </Card>
       ) : (
@@ -351,14 +420,16 @@ export default function Guardarropia() {
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : filteredActive.length === 0 ? (
-            <p className="text-center text-muted-foreground py-10">Sin prendas por entregar</p>
+            <p className="text-center text-muted-foreground py-10">Sin guardas por entregar</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {filteredActive.map((t) => (
                 <div key={t.id} className="flex items-center gap-3 p-4 rounded-xl border bg-card">
                   <span className="text-3xl font-black w-16 text-center">{t.ticket_number}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-base font-semibold">{t.garment_count} prenda(s)</p>
+                    <p className="text-base font-semibold">
+                      {t.garment_count} × {ITEM_LABELS[(t.item_type as CoatcheckItemType) || "garment"]}
+                    </p>
                     <Badge variant="outline" className="text-xs">
                       {t.payment_method === "cash" ? "Efectivo" : "Tarjeta"} · {clp(t.amount)}
                     </Badge>

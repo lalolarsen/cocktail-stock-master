@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { purchaseImportsTable, purchaseImportLinesTable, learningProductMappingsTable } from "@/lib/db-tables";
@@ -6,12 +6,12 @@ import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InvoiceCaptureDialog } from "@/components/proveedores/InvoiceCaptureDialog";
 import ProductPicker from "@/components/purchase/ProductPicker";
 import { toast } from "sonner";
-import { Camera, FileText, Loader2, AlertCircle, ChevronRight, Link2 } from "lucide-react";
+import { Camera, FileText, Loader2, AlertCircle, ChevronRight, Link2, Search } from "lucide-react";
 import { formatCLP } from "@/lib/currency";
 
 interface PurchaseImport {
@@ -34,6 +34,7 @@ export function ProveedoresPanel() {
   const [showCapture, setShowCapture] = useState(false);
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [search, setSearch] = useState("");
 
   const fetchData = useCallback(async () => {
     if (!venue?.id) return;
@@ -64,6 +65,16 @@ export function ProveedoresPanel() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return imports;
+    return imports.filter(
+      (i) =>
+        (i.supplier_name || "").toLowerCase().includes(q) ||
+        (i.document_number || "").toLowerCase().includes(q),
+    );
+  }, [imports, search]);
 
   if (loading) {
     return (
@@ -110,7 +121,7 @@ export function ProveedoresPanel() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="list" className="mt-4">
+        <TabsContent value="list" className="mt-4 space-y-3">
           {imports.length === 0 ? (
             <Card>
               <CardContent className="py-14 text-center">
@@ -120,48 +131,54 @@ export function ProveedoresPanel() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Proveedor</TableHead>
-                    <TableHead>Folio</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Por vincular</TableHead>
-                    <TableHead className="w-8"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {imports.map((imp) => (
-                    <TableRow
+            <>
+              <div className="relative max-w-sm">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-11 pl-9"
+                  placeholder="Buscar por proveedor o folio"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              {filtered.length === 0 ? (
+                <Card>
+                  <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                    Ninguna factura coincide con la búsqueda.
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {filtered.map((imp) => (
+                    <Card
                       key={imp.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer transition-colors hover:border-primary/40"
                       onClick={() => navigate(`/admin/proveedores/import/${imp.id}`)}
                     >
-                      <TableCell className="text-sm">{imp.document_date || imp.created_at?.slice(0, 10)}</TableCell>
-                      <TableCell className="font-medium text-sm">{imp.supplier_name || "—"}</TableCell>
-                      <TableCell className="text-sm">{imp.document_number || "—"}</TableCell>
-                      <TableCell className="text-right text-sm font-medium">
-                        {imp.total_amount ? formatCLP(imp.total_amount) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {imp.issues_count > 0 ? (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-400">
-                            {imp.issues_count}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{imp.supplier_name || "Sin proveedor"}</p>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {imp.document_date || imp.created_at?.slice(0, 10)}
+                            {imp.document_number ? ` · Folio ${imp.document_number}` : ""}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-semibold">{imp.total_amount ? formatCLP(imp.total_amount) : "—"}</p>
+                          {imp.issues_count > 0 ? (
+                            <span className="text-xs text-amber-600">{imp.issues_count} por vincular</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Todo vinculado</span>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </CardContent>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
-            </Card>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -273,39 +290,34 @@ export function PendingLinksTab({ venueId, onLinked }: { venueId?: string; onLin
   }
 
   return (
-    <Card className="overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Texto en la factura</TableHead>
-            <TableHead>Proveedor</TableHead>
-            <TableHead className="text-right">Cant.</TableHead>
-            <TableHead className="text-right">Valor unit.</TableHead>
-            <TableHead className="w-[240px]">Producto del catálogo</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {lines.map((l) => (
-            <TableRow key={l.id}>
-              <TableCell className="text-sm max-w-[260px] truncate">{l.raw_text || "—"}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {l.purchase_imports?.supplier_name || "—"}
-              </TableCell>
-              <TableCell className="text-right text-sm">{l.units_real}</TableCell>
-              <TableCell className="text-right text-sm">{formatCLP(Math.round(l.cost_unit_net || 0))}</TableCell>
-              <TableCell>
-                {venueId && (
-                  <ProductPicker
-                    venueId={venueId}
-                    value={null}
-                    onSelect={(productId) => productId && link(l, productId)}
-                  />
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Card>
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
+        {lines.length} producto(s) esperando que elijas el insumo del catálogo.
+      </p>
+      {lines.map((l) => (
+        <Card key={l.id}>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium break-words">{l.raw_text || "—"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {l.purchase_imports?.supplier_name || "Sin proveedor"} · {l.units_real} ×{" "}
+                  {formatCLP(Math.round(l.cost_unit_net || 0))}
+                </p>
+              </div>
+            </div>
+            {venueId && (
+              <div className="min-w-[240px] max-w-sm">
+                <ProductPicker
+                  venueId={venueId}
+                  value={null}
+                  onSelect={(productId) => productId && link(l, productId)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }

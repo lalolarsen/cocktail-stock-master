@@ -50,7 +50,7 @@ interface StockLocation {
   created_at: string;
 }
 
-type POSType = "alcohol_sales" | "ticket_sales" | "bar_redemption";
+type POSType = "alcohol_sales" | "ticket_sales" | "bar_redemption" | "coatcheck";
 
 interface POSTerminal {
   id: string;
@@ -74,12 +74,14 @@ const POS_TYPE_LABELS: Record<POSType, string> = {
   alcohol_sales: "Alcohol · Caja",
   ticket_sales: "Tickets · Caja",
   bar_redemption: "Barra · Sin caja",
+  coatcheck: "Guardarropía · Caja",
 };
 
 const POS_TYPE_DESCRIPTIONS: Record<POSType, string> = {
   alcohol_sales: "Registra ventas de bar y participa en arqueo.",
   ticket_sales: "Registra entradas y participa en arqueo.",
   bar_redemption: "Solo redime QRs (no maneja efectivo).",
+  coatcheck: "Cobra mochilas y prendas, y participa en arqueo.",
 };
 
 const FILTER_CHIPS: { key: FilterKey; label: string }[] = [

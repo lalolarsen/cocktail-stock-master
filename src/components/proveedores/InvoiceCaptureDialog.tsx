@@ -171,6 +171,10 @@ export function InvoiceCaptureDialog({ open, onOpenChange, warehouseLocationId, 
             >
               <ImageIcon className="h-6 w-6" /> Elegir foto guardada
             </Button>
+
+            <Button variant="ghost" className="w-full h-12" onClick={close}>
+              Cancelar
+            </Button>
           </div>
         )}
 
@@ -223,8 +227,19 @@ export function InvoiceCaptureDialog({ open, onOpenChange, warehouseLocationId, 
                 {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
                 Listo
               </Button>
-              <Button variant="ghost" className="w-full h-12 gap-2" onClick={retake} disabled={saving}>
+              <Button variant="outline" className="w-full h-12 gap-2" onClick={retake} disabled={saving}>
                 <RotateCcw className="h-4 w-4" /> Tomar otra foto
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full h-12"
+                disabled={saving}
+                onClick={async () => {
+                  await retake();
+                  close();
+                }}
+              >
+                Cancelar
               </Button>
             </div>
           </div>
