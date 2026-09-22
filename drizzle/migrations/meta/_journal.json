@@ -36,6 +36,13 @@
       "when": 1790109319039,
       "tag": "0004_relax_pos_location_check",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790109549646,
+      "tag": "0005_pos_terminals_venue_default",
+      "breakpoints": true
     }
   ]
 }
