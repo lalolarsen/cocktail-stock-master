@@ -329,9 +329,10 @@ export default function Auth() {
   };
 
 
-  const handleModeSelect = (role: AppRole | "sales" | "tickets") => {
+  const handleModeSelect = (role: AppRole | "sales" | "tickets" | "coatcheck") => {
     routeByRole(role);
   };
+
 
   // Mode selection screen
   if (showModeSelection) {
@@ -386,6 +387,21 @@ export default function Auth() {
                 </div>
               </Button>
             )}
+
+            {(workerRoles.includes("vendedor") || workerRoles.includes("ticket_seller")) && (
+              <Button
+                variant="outline"
+                className="w-full h-16 justify-start gap-4 text-left"
+                onClick={() => handleModeSelect("coatcheck")}
+              >
+                <Package className="h-6 w-6 text-info" />
+                <div>
+                  <div className="font-medium">Caja Guardarropía</div>
+                  <div className="text-xs text-muted-foreground">Mochilas y prendas</div>
+                </div>
+              </Button>
+            )}
+
 
             {/* Bar role deprecated: STOCKIA is now pure POS (cover + receipt). */}
 
