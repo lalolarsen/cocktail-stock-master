@@ -31,10 +31,13 @@ type CourtesyRow = {
   note: string | null;
   expires_at: string;
   created_at: string;
+  courtesy_redemptions?: {
+    jornadas?: { nombre: string | null; numero_jornada: number | null } | null;
+  }[] | null;
 };
 
 export default function Cortesias() {
-  const { user, activeJornadaId, hasActiveJornada, jornadaLoading } = useAppSession();
+  const { user, activeJornadaId, activeJornadaName, activeJornadaNumber, hasActiveJornada, jornadaLoading } = useAppSession();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -63,7 +66,7 @@ export default function Cortesias() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("courtesy_qr")
-        .select("id, code, product_name, qty, note, expires_at, created_at")
+        .select("id, code, product_name, qty, note, expires_at, created_at, courtesy_redemptions(jornadas(nombre, numero_jornada))")
         .eq("venue_id", DEFAULT_VENUE_ID)
         .order("created_at", { ascending: false })
         .limit(15);
@@ -81,6 +84,8 @@ export default function Cortesias() {
   const selected = cocktails.find((c) => c.id === productId);
 
   const reprint = (row: CourtesyRow) => {
+    // La reimpresión conserva la jornada original de la cortesía
+    const rowJornada = row.courtesy_redemptions?.[0]?.jornadas;
     printCourtesyCover({
       productName: row.product_name,
       qty: row.qty,
@@ -88,6 +93,8 @@ export default function Cortesias() {
       note: row.note,
       expiresAt: row.expires_at,
       createdAt: row.created_at,
+      jornadaName: rowJornada?.nombre ?? activeJornadaName,
+      jornadaNumber: rowJornada?.numero_jornada ?? activeJornadaNumber,
     });
     toast.success("Enviando cortesía a RawBT");
   };
@@ -147,6 +154,8 @@ export default function Cortesias() {
         note: row.note,
         expiresAt: row.expires_at,
         createdAt: row.created_at,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "No se pudo emitir la cortesía");
