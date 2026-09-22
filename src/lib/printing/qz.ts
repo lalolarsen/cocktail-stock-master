@@ -84,6 +84,25 @@ export interface ReceiptData {
   isCourtesy?: boolean;
   /** Motivo de cortesía (opcional) */
   courtesyReason?: string;
+  /** Jornada a la que pertenece la venta */
+  jornadaName?: string | null;
+  jornadaNumber?: number | null;
+}
+
+function jornadaBlockHtml(data: ReceiptData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  return `
+      <div class="jornada-block">
+        ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
+        ${data.jornadaName ? `<div class="jornada-name">${data.jornadaName}</div>` : ""}
+        <div class="jornada-warn">Válido solo esta jornada</div>
+      </div>`;
+}
+
+function jornadaLineHtml(data: ReceiptData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  const num = data.jornadaNumber ? `Jornada #${data.jornadaNumber}` : "Jornada";
+  return `<div class="meta">${num}${data.jornadaName ? ` · ${data.jornadaName}` : ""}</div>`;
 }
 
 /** Fixed venue title for all receipts */
@@ -132,6 +151,7 @@ export function buildCoverHtml(data: ReceiptData, paperWidth: PaperWidth): strin
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="cover-kind">${titleLabel}</div>
+      ${jornadaBlockHtml(data)}
       <div class="cover-sale">Venta N° ${data.saleNumber}</div>
       <div class="cover-datetime">${data.dateTime}</div>
       <div class="sep">${dash}</div>
@@ -174,6 +194,7 @@ export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidt
       <div class="meta">${data.posName}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
       <div class="meta">${data.dateTime}</div>
+      ${jornadaLineHtml(data)}
       ${sellerLine}
       <div class="sep">${sep}</div>
       <div class="items-list">${itemsHtml}</div>
