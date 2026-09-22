@@ -137,8 +137,8 @@ function printWithBrowser(data: CoatcheckTicketData): void {
       @page { size: 80mm auto; margin: 4mm; }
       * { box-sizing: border-box; color: #000 !important; }
       body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; margin: 0; padding: 6px 4px; width: 72mm; text-align: center; }
-      .copy { padding: 6px 0 10px; }
-      .copy + .copy { border-top: 2px dashed #000; margin-top: 10px; }
+      .copy { padding: 6px 0 24px; border-bottom: 2px dashed #000; }
+      .copy + .copy { margin-top: 24px; }
       .brand { font-size: 10px; letter-spacing: 2px; font-weight: 700; }
       .kind { font-size: 12px; font-weight: 800; letter-spacing: 2px; margin-top: 4px; }
       .number { font-size: 72px; font-weight: 900; line-height: 1; margin: 6px 0 8px; }
