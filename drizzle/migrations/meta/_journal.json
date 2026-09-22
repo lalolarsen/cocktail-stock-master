@@ -29,6 +29,13 @@
       "when": 1790102439087,
       "tag": "0003_coatcheck_two_prices_and_pos_type",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790109319039,
+      "tag": "0004_relax_pos_location_check",
+      "breakpoints": true
     }
   ]
 }
