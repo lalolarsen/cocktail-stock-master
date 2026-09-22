@@ -360,7 +360,7 @@ function TerminalDialog({
                 const val = v as POSType;
                 setPosType(val);
                 if (val !== "bar_redemption") setLocationId(null);
-                if (val === "bar_redemption") { setAutoRedeem(false); setBarLocationId(null); }
+                if (val === "bar_redemption" || val === "coatcheck") { setAutoRedeem(false); setBarLocationId(null); }
               }}
               className="space-y-2"
             >
