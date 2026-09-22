@@ -88,14 +88,16 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
       0x1b, 0x45, 0x01,
       ...text(kind === "CLIENTE" ? "CONSERVE ESTE TICKET\n" : "PINCHAR EN LA PRENDA\n"),
       0x1b, 0x45, 0x00,
-      ...text("\n"),
+      // Espacio en blanco + linea de corte manual + corte automatico si existe guillotina
+      0x1b, 0x64, 0x04,
+      ...text("- - - - - >8 - - - - - - - - - -\n"),
+      0x1b, 0x64, 0x03,
+      0x1d, 0x56, 0x42, 0x00,
     );
   };
 
   copy("CLIENTE");
-  bytes.push(...text("--------------------------------\n"));
   copy("PRENDA");
-  bytes.push(...text("\n\n"), 0x1d, 0x56, 0x42, 0x00);
 
   return bytesToBase64(bytes);
 }
@@ -135,8 +137,8 @@ function printWithBrowser(data: CoatcheckTicketData): void {
       @page { size: 80mm auto; margin: 4mm; }
       * { box-sizing: border-box; color: #000 !important; }
       body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; margin: 0; padding: 6px 4px; width: 72mm; text-align: center; }
-      .copy { padding: 6px 0 10px; }
-      .copy + .copy { border-top: 2px dashed #000; margin-top: 10px; }
+      .copy { padding: 6px 0 24px; border-bottom: 2px dashed #000; }
+      .copy + .copy { margin-top: 24px; }
       .brand { font-size: 10px; letter-spacing: 2px; font-weight: 700; }
       .kind { font-size: 12px; font-weight: 800; letter-spacing: 2px; margin-top: 4px; }
       .number { font-size: 72px; font-weight: 900; line-height: 1; margin: 6px 0 8px; }
