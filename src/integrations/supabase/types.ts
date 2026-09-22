@@ -347,16 +347,22 @@ export type Database = {
       }
       coatcheck_settings: {
         Row: {
+          price_backpack: number | null
+          price_garment: number | null
           price_per_garment: number
           updated_at: string
           venue_id: string
         }
         Insert: {
+          price_backpack?: number | null
+          price_garment?: number | null
           price_per_garment?: number
           updated_at?: string
           venue_id: string
         }
         Update: {
+          price_backpack?: number | null
+          price_garment?: number | null
           price_per_garment?: number
           updated_at?: string
           venue_id?: string
@@ -370,6 +376,7 @@ export type Database = {
           id: string
           issued_at: string
           issued_by: string | null
+          item_type: string | null
           jornada_id: string | null
           note: string | null
           payment_method: string
@@ -386,6 +393,7 @@ export type Database = {
           id?: string
           issued_at?: string
           issued_by?: string | null
+          item_type?: string | null
           jornada_id?: string | null
           note?: string | null
           payment_method?: string
@@ -402,6 +410,7 @@ export type Database = {
           id?: string
           issued_at?: string
           issued_by?: string | null
+          item_type?: string | null
           jornada_id?: string | null
           note?: string | null
           payment_method?: string
@@ -6556,6 +6565,41 @@ export type Database = {
           id: string
           issued_at: string
           issued_by: string | null
+          item_type: string | null
+          jornada_id: string | null
+          note: string | null
+          payment_method: string
+          retrieved_at: string | null
+          retrieved_by: string | null
+          status: string
+          ticket_number: number
+          unit_price: number
+          venue_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "coatcheck_tickets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      issue_coatcheck_ticket_v2: {
+        Args: {
+          _garment_count: number
+          _item_type: string
+          _jornada_id: string
+          _note?: string
+          _payment_method: string
+          _unit_price: number
+          _venue_id: string
+        }
+        Returns: {
+          amount: number
+          garment_count: number
+          id: string
+          issued_at: string
+          issued_by: string | null
+          item_type: string | null
           jornada_id: string | null
           note: string | null
           payment_method: string

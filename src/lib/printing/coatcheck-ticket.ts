@@ -1,16 +1,21 @@
 /**
  * Guardarropía: imprime dos tickets con el mismo número.
  * - Copia CLIENTE (se entrega a la persona)
- * - Copia PRENDA (se pincha en la prenda)
- * Diseñado para impresoras térmicas de 80mm vía window.print().
+ * - Copia PRENDA (se pincha en la prenda / bolso)
+ * En Android envía ESC/POS directo a RawBT (sin vista previa).
  */
+export type CoatcheckItemType = "backpack" | "garment";
+
 export interface CoatcheckTicketData {
   ticketNumber: number;
   garmentCount: number;
   amount: number;
   paymentMethod: string;
+  itemType: CoatcheckItemType;
   issuedAt?: string | null;
   note?: string | null;
+  jornadaName?: string | null;
+  jornadaNumber?: number | null;
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -19,6 +24,11 @@ const PAYMENT_LABELS: Record<string, string> = {
   debit: "Tarjeta",
   credit: "Tarjeta",
   transfer: "Transferencia",
+};
+
+export const ITEM_LABELS: Record<CoatcheckItemType, string> = {
+  backpack: "Mochila / bolso",
+  garment: "Prenda de ropa",
 };
 
 const fmtTime = (iso: string) =>
@@ -31,8 +41,64 @@ const fmtTime = (iso: string) =>
 
 const clp = (n: number) => "$" + Math.round(n).toLocaleString("es-CL");
 
-const safe = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const safe = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const isAndroid = () => /Android/i.test(navigator.userAgent);
+
+const ascii = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E\n]/g, "");
+
+const bytesToBase64 = (bytes: number[]) => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return window.btoa(binary);
+};
+
+function buildRawBtPayload(data: CoatcheckTicketData): string {
+  const encoder = new TextEncoder();
+  const text = (value: string) => Array.from(encoder.encode(ascii(value)));
+  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
+
+  const copy = (kind: "CLIENTE" | "PRENDA") => {
+    bytes.push(
+      ...text("BERLIN VALDIVIA\n"),
+      0x1b, 0x45, 0x01,
+      ...text("GUARDARROPIA\n"),
+      ...text(`COPIA ${kind}\n`),
+      0x1b, 0x45, 0x00,
+      ...text("--------------------------------\n"),
+      0x1d, 0x21, 0x22,
+      ...text(`${data.ticketNumber}\n`),
+      0x1d, 0x21, 0x00,
+      ...text(`${data.garmentCount} x ${ITEM_LABELS[data.itemType]}\n`),
+    );
+    if (kind === "CLIENTE") {
+      bytes.push(
+        ...text(`${clp(data.amount)} - ${PAYMENT_LABELS[data.paymentMethod] || data.paymentMethod}\n`),
+      );
+    }
+    if (data.jornadaNumber) bytes.push(...text(`Jornada #${data.jornadaNumber}\n`));
+    if (data.jornadaName) bytes.push(...text(`${data.jornadaName}\n`));
+    if (data.note) bytes.push(...text(`${data.note}\n`));
+    if (data.issuedAt) bytes.push(...text(`${fmtTime(data.issuedAt)}\n`));
+    bytes.push(
+      0x1b, 0x45, 0x01,
+      ...text(kind === "CLIENTE" ? "CONSERVE ESTE TICKET\n" : "PINCHAR EN LA PRENDA\n"),
+      0x1b, 0x45, 0x00,
+      ...text("\n"),
+    );
+  };
+
+  copy("CLIENTE");
+  bytes.push(...text("--------------------------------\n"));
+  copy("PRENDA");
+  bytes.push(...text("\n\n"), 0x1d, 0x56, 0x42, 0x00);
+
+  return bytesToBase64(bytes);
+}
 
 function copyHtml(data: CoatcheckTicketData, kind: "CLIENTE" | "PRENDA"): string {
   return `
@@ -40,17 +106,23 @@ function copyHtml(data: CoatcheckTicketData, kind: "CLIENTE" | "PRENDA"): string
       <div class="brand">STOCKIA · GUARDARROPÍA</div>
       <div class="kind">COPIA ${kind}</div>
       <div class="number">${data.ticketNumber}</div>
-      <div class="row">Prendas: <b>${data.garmentCount}</b></div>
-      ${kind === "CLIENTE"
-        ? `<div class="row">Pagado: <b>${clp(data.amount)}</b> · ${safe(PAYMENT_LABELS[data.paymentMethod] || data.paymentMethod)}</div>`
-        : ""}
+      <div class="row"><b>${data.garmentCount} × ${ITEM_LABELS[data.itemType]}</b></div>
+      ${
+        kind === "CLIENTE"
+          ? `<div class="row">Pagado: <b>${clp(data.amount)}</b> · ${safe(
+              PAYMENT_LABELS[data.paymentMethod] || data.paymentMethod,
+            )}</div>`
+          : ""
+      }
+      ${data.jornadaNumber ? `<div class="row">Jornada #${data.jornadaNumber}</div>` : ""}
+      ${data.jornadaName ? `<div class="row">${safe(data.jornadaName)}</div>` : ""}
       ${data.note ? `<div class="note">${safe(data.note)}</div>` : ""}
       <div class="meta">${data.issuedAt ? fmtTime(data.issuedAt) : ""}</div>
       <div class="footer">${kind === "CLIENTE" ? "CONSERVE ESTE TICKET PARA RETIRAR" : "PINCHAR EN LA PRENDA"}</div>
     </div>`;
 }
 
-export function printCoatcheckTicket(data: CoatcheckTicketData): void {
+function printWithBrowser(data: CoatcheckTicketData): void {
   const w = window.open("", "_blank", "width=380,height=800");
   if (!w) {
     // eslint-disable-next-line no-console
@@ -78,4 +150,14 @@ export function printCoatcheckTicket(data: CoatcheckTicketData): void {
     <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>
   </body></html>`);
   w.document.close();
+}
+
+export function printCoatcheckTicket(data: CoatcheckTicketData): void {
+  if (isAndroid()) {
+    window.location.assign(
+      `intent:base64,${buildRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
+    );
+    return;
+  }
+  printWithBrowser(data);
 }

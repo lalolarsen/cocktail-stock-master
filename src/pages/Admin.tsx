@@ -15,6 +15,7 @@ import CourtesyQR from "@/pages/CourtesyQR";
 import CourtesyQRSimple from "@/pages/CourtesyQRSimple";
 import { VoidRequestsPanel } from "@/components/dashboard/VoidRequestsPanel";
 import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
+import { CoatcheckSettingsCard } from "@/components/settings/CoatcheckSettingsCard";
 import { AnalyticsPanel } from "@/components/dashboard/AnalyticsPanel";
 
 import { AppSidebar } from "@/components/AppSidebar";
@@ -160,7 +161,12 @@ export default function Admin() {
             {activeView === "proveedores" && !isReadOnly && <ComprasPanel />}
             {activeView === "analytics" && <AnalyticsPanel />}
             {activeView === "courtesy-qr" && (isReadOnly ? <CourtesyQRSimple /> : <CourtesyQR />)}
-            {activeView === "settings" && <ReceiptSettingsCard />}
+            {activeView === "settings" && (
+              <div className="space-y-4 sm:space-y-6">
+                <ReceiptSettingsCard />
+                {!isReadOnly && <CoatcheckSettingsCard />}
+              </div>
+            )}
             {activeView === "voids" && <VoidRequestsPanel />}
           </div>
         </main>
