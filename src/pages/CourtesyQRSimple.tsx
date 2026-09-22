@@ -46,7 +46,7 @@ type CourtesyRow = {
 };
 
 export default function CourtesyQRSimple() {
-  const { user, activeJornadaId } = useAppSession();
+  const { user, activeJornadaId, activeJornadaName, activeJornadaNumber } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
 
@@ -163,6 +163,8 @@ export default function CourtesyQRSimple() {
         note: row.note,
         expiresAt: row.expires_at,
         createdAt: row.created_at,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       });
     } catch (err: any) {
       toast.error(err.message || "Error al emitir cortesía");
@@ -179,6 +181,8 @@ export default function CourtesyQRSimple() {
       note: row.note,
       expiresAt: row.expires_at,
       createdAt: row.created_at,
+      jornadaName: activeJornadaName,
+      jornadaNumber: activeJornadaNumber,
     });
   };
 
