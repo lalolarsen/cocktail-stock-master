@@ -119,7 +119,7 @@ function PrinterConfigPopover({
 // BarLocation removed - bar is determined at redemption time, not at sale
 
 export default function Sales() {
-  const { activeJornadaId, hasActiveJornada } = useAppSession();
+  const { activeJornadaId, hasActiveJornada, activeJornadaName, activeJornadaNumber } = useAppSession();
   const { receiptMode, isLoading: isLoadingConfig } = useReceiptConfig();
   const { venue } = useActiveVenue();
   const [pointOfSale, setPointOfSale] = useState("");
@@ -618,6 +618,8 @@ export default function Sales() {
           items: cartItemsForQR,
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
+          jornadaName: activeJornadaName,
+          jornadaNumber: activeJornadaNumber,
         };
         // Fire-and-forget with toast feedback
         autoPrintReceipt(receiptData, sale.id).then((result) => {
@@ -1135,6 +1137,8 @@ export default function Sales() {
                                     items,
                                     total: sale.total_amount,
                                     paymentMethod: sale.payment_method || "card",
+                                    jornadaName: activeJornadaName,
+                                    jornadaNumber: activeJornadaNumber,
                                   };
                                   printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
                                 }}

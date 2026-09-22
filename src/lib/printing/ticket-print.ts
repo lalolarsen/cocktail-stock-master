@@ -40,6 +40,27 @@ export interface TicketSalePrintData {
   entryTokens: TicketTokenPiece[];
   /** covers individuales */
   coverTokens: TicketTokenPiece[];
+  /** jornada a la que pertenece la venta (se imprime en cada pieza) */
+  jornadaName?: string | null;
+  jornadaNumber?: number | null;
+}
+
+/** Bloque de jornada impreso en entradas y covers */
+function jornadaBlock(data: TicketSalePrintData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  return `
+      <div class="jornada-block">
+        ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
+        ${data.jornadaName ? `<div class="jornada-name">${data.jornadaName}</div>` : ""}
+        <div class="jornada-warn">Válido solo esta jornada</div>
+      </div>`;
+}
+
+/** Línea corta de jornada para el comprobante del vendedor */
+function jornadaLine(data: TicketSalePrintData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  const num = data.jornadaNumber ? `Jornada #${data.jornadaNumber}` : "Jornada";
+  return `<div class="meta">${num}${data.jornadaName ? ` · ${data.jornadaName}` : ""}</div>`;
 }
 
 const SEP = {
@@ -67,6 +88,10 @@ function buildCss(paperWidth: PaperWidth): string {
     .ticket-name { text-align: center; font-size: 22pt; font-weight: 900; margin: 8px 0; word-break: break-word; line-height: 1.15; }
     .ticket-correlative { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 6px; }
     .ticket-instruction { text-align: center; font-size: 12pt; margin-top: 10px; padding: 8px; border: 2px dashed #000; font-weight: bold; }
+    .jornada-block { text-align: center; margin: 6px 0; padding: 4px 0; border-top: 2px dashed #000; border-bottom: 2px dashed #000; }
+    .jornada-num { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
+    .jornada-name { font-size: 13pt; font-weight: bold; }
+    .jornada-warn { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
     .sale-meta { text-align: center; font-size: 11pt; margin-top: 8px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
     .stockia-footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
@@ -96,6 +121,7 @@ function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
       <div class="meta">${data.posName}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
       <div class="meta">${data.dateTime}</div>
+      ${jornadaLine(data)}
       <div class="sep">${sep}</div>
       <div>${items}</div>
       <div class="sep">${dash}</div>
@@ -109,12 +135,13 @@ function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
 
 /* ── 2. Entrada individual (sin QR) ── */
 function buildEntryHtml(
+  data: TicketSalePrintData,
   piece: TicketTokenPiece,
   index: number,
   total: number,
-  saleNumber: string,
   pw: PaperWidth,
 ): string {
+  const saleNumber = data.saleNumber;
   const sep = SEP[pw];
 
   return `
@@ -122,6 +149,7 @@ function buildEntryHtml(
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="ticket-kind">ENTRADA</div>
+      ${jornadaBlock(data)}
       <div class="ticket-name">${piece.ticket_type}</div>
       <div class="ticket-correlative">${index} / ${total}</div>
       <div class="ticket-instruction">Entrega este ticket en el acceso</div>
@@ -132,7 +160,8 @@ function buildEntryHtml(
 }
 
 /* ── 3. Cover individual (sin QR) ── */
-function buildCoverHtml(piece: TicketTokenPiece, saleNumber: string, pw: PaperWidth): string {
+function buildCoverHtml(data: TicketSalePrintData, piece: TicketTokenPiece, pw: PaperWidth): string {
+  const saleNumber = data.saleNumber;
   const sep = SEP[pw];
 
   return `
@@ -140,6 +169,7 @@ function buildCoverHtml(piece: TicketTokenPiece, saleNumber: string, pw: PaperWi
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="ticket-kind">COVER</div>
+      ${jornadaBlock(data)}
       <div class="ticket-name">${piece.cocktail_name || "Cover"}</div>
       <div class="ticket-correlative">${piece.ticket_type}</div>
       <div class="ticket-instruction">Entrega este cover en la barra</div>
@@ -170,12 +200,12 @@ export async function printTicketSale(
     if (options.includeQrPieces !== false) {
       for (let idx = 0; idx < totalEntries; idx++) {
         pieces.push(
-          buildEntryHtml(data.entryTokens[idx], idx + 1, totalEntries, data.saleNumber, paperWidth),
+          buildEntryHtml(data, data.entryTokens[idx], idx + 1, totalEntries, paperWidth),
         );
       }
 
       for (const cover of data.coverTokens) {
-        pieces.push(buildCoverHtml(cover, data.saleNumber, paperWidth));
+        pieces.push(buildCoverHtml(data, cover, paperWidth));
       }
     }
 

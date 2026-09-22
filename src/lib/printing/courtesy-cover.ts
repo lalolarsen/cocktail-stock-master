@@ -10,6 +10,8 @@ export interface CourtesyCoverData {
   note?: string | null;
   expiresAt?: string | null; // ISO
   createdAt?: string | null; // ISO
+  jornadaName?: string | null;
+  jornadaNumber?: number | null;
 }
 
 const fmtFull = (iso: string) =>
@@ -47,6 +49,12 @@ function buildRawBtPayload(data: CourtesyCoverData): string {
     ...text("CORTESIA\n"),
     0x1d, 0x21, 0x00,
     ...text("$0\n"),
+    ...text("--------------------------------\n"),
+    0x1b, 0x45, 0x01,
+    ...text(data.jornadaNumber ? `JORNADA #${data.jornadaNumber}\n` : ""),
+    ...text(data.jornadaName ? `${data.jornadaName}\n` : ""),
+    0x1b, 0x45, 0x00,
+    ...text("Valido solo esta jornada\n"),
     ...text("--------------------------------\n"),
     0x1d, 0x21, 0x11,
     ...text(`${data.qty} x ${data.productName}\n`),
@@ -95,6 +103,9 @@ function printWithBrowser(data: CourtesyCoverData): void {
       .qty { font-size: 20px; font-weight: 800; margin: 2px 0 10px; }
       .sep { border-top: 2px dashed #000; margin: 8px 0; }
       .note { font-style: italic; font-size: 13px; margin: 6px 4px; word-wrap: break-word; }
+      .jornada-num { font-size: 16px; font-weight: 900; letter-spacing: 1px; }
+      .jornada-name { font-size: 15px; font-weight: 700; }
+      .jornada-warn { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
       .code { font-family: "Courier New", monospace; font-size: 12px; letter-spacing: 2px; margin-top: 8px; }
       .meta { font-size: 10px; color: #333; margin-top: 4px; }
       .footer { font-size: 11px; font-weight: 700; margin-top: 10px; letter-spacing: 1px; }
@@ -103,12 +114,15 @@ function printWithBrowser(data: CourtesyCoverData): void {
     <div class="tag">CORTESÍA</div>
     <div class="amount">$0</div>
     <div class="sep"></div>
+    ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
+    ${data.jornadaName ? `<div class="jornada-name">${safe(data.jornadaName)}</div>` : ""}
+    <div class="jornada-warn">Válido solo esta jornada</div>
+    <div class="sep"></div>
     <div class="product">${safe(data.productName)}</div>
     <div class="qty">× ${data.qty}</div>
     <div class="sep"></div>
     ${data.note ? `<div class="note">"${safe(data.note)}"</div>` : ""}
     <div class="meta">${data.createdAt ? "Emitido: " + fmtFull(data.createdAt) : ""}</div>
-    ${data.expiresAt ? `<div class="meta">Válido hasta: ${fmtFull(data.expiresAt)}</div>` : ""}
     <div class="code">Ref: ${safe(data.code)}</div>
     <div class="footer">ENTREGAR EN BARRA</div>
     <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>

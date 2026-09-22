@@ -110,7 +110,7 @@ type Step = "select-pos" | "select-tickets" | "success";
 export default function Tickets() {
   const navigate = useNavigate();
   const { logDemoEvent, isDemoMode } = useDemoLogging();
-  const { activeJornadaId } = useAppSession();
+  const { activeJornadaId, activeJornadaName, activeJornadaNumber } = useAppSession();
   const { venue } = useActiveVenue();
   const [reprintingId, setReprintingId] = useState<string | null>(null);
 
@@ -334,6 +334,8 @@ export default function Tickets() {
         paymentMethod: sale.payment_method,
         entryTokens,
         coverTokens,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       };
       await printTicketSale(printData, paperWidth, { includeQrPieces: false });
       toast.success("Reimprimiendo comprobante " + sale.ticket_number);
@@ -596,6 +598,8 @@ export default function Tickets() {
         paymentMethod: paymentMethod!,
         entryTokens,
         coverTokens,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       };
 
       await printTicketSale(printData, paperWidth);

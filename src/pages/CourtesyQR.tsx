@@ -63,7 +63,7 @@ const SOCIOS = [
 ];
 
 export default function CourtesyQR() {
-  const { user, hasRole, activeJornadaId } = useAppSession();
+  const { user, hasRole, activeJornadaId, activeJornadaName, activeJornadaNumber } = useAppSession();
   const { venue } = useActiveVenue();
   const queryClient = useQueryClient();
   const isAdmin = hasRole("admin");
@@ -237,6 +237,8 @@ export default function CourtesyQR() {
         note: row.note,
         expiresAt: row.expires_at,
         createdAt: row.created_at,
+        jornadaName: activeJornadaName,
+        jornadaNumber: activeJornadaNumber,
       });
     } catch (err: any) {
       toast.error(err.message || "Error al emitir cortesía");
@@ -253,6 +255,8 @@ export default function CourtesyQR() {
       note: row.note,
       expiresAt: row.expires_at,
       createdAt: row.created_at,
+      jornadaName: activeJornadaName,
+      jornadaNumber: activeJornadaNumber,
     });
   };
 

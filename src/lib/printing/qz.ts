@@ -84,6 +84,25 @@ export interface ReceiptData {
   isCourtesy?: boolean;
   /** Motivo de cortesía (opcional) */
   courtesyReason?: string;
+  /** Jornada a la que pertenece la venta */
+  jornadaName?: string | null;
+  jornadaNumber?: number | null;
+}
+
+function jornadaBlockHtml(data: ReceiptData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  return `
+      <div class="jornada-block">
+        ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
+        ${data.jornadaName ? `<div class="jornada-name">${data.jornadaName}</div>` : ""}
+        <div class="jornada-warn">Válido solo esta jornada</div>
+      </div>`;
+}
+
+function jornadaLineHtml(data: ReceiptData): string {
+  if (!data.jornadaName && !data.jornadaNumber) return "";
+  const num = data.jornadaNumber ? `Jornada #${data.jornadaNumber}` : "Jornada";
+  return `<div class="meta">${num}${data.jornadaName ? ` · ${data.jornadaName}` : ""}</div>`;
 }
 
 /** Fixed venue title for all receipts */
@@ -132,6 +151,7 @@ export function buildCoverHtml(data: ReceiptData, paperWidth: PaperWidth): strin
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="cover-kind">${titleLabel}</div>
+      ${jornadaBlockHtml(data)}
       <div class="cover-sale">Venta N° ${data.saleNumber}</div>
       <div class="cover-datetime">${data.dateTime}</div>
       <div class="sep">${dash}</div>
@@ -174,6 +194,7 @@ export function buildCashierReceiptHtml(data: ReceiptData, paperWidth: PaperWidt
       <div class="meta">${data.posName}</div>
       <div class="meta">Venta: ${data.saleNumber}</div>
       <div class="meta">${data.dateTime}</div>
+      ${jornadaLineHtml(data)}
       ${sellerLine}
       <div class="sep">${sep}</div>
       <div class="items-list">${itemsHtml}</div>
@@ -216,6 +237,10 @@ export function buildCoverCss(paperWidth: PaperWidth): string {
     .venue-name { font-size: 18pt; font-weight: 900; text-align: center; margin-bottom: 6px; }
     .sep { margin: 4px 0; white-space: pre; text-align: center; font-size: 9pt; }
     .cover-kind { text-align: center; font-size: 28pt; font-weight: 900; letter-spacing: 6px; margin: 8px 0 6px; padding: 6px 0; border-top: 3px solid #000; border-bottom: 3px solid #000; }
+    .jornada-block { text-align: center; margin: 6px 0; padding: 4px 0; border-top: 2px dashed #000; border-bottom: 2px dashed #000; }
+    .jornada-num { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
+    .jornada-name { font-size: 13pt; font-weight: bold; }
+    .jornada-warn { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
     .cover-sale { text-align: center; font-size: 14pt; font-weight: bold; margin-top: 6px; }
     .cover-datetime { text-align: center; font-size: 12pt; margin-bottom: 4px; }
     .courtesy-stamp { text-align: center; font-size: 22pt; font-weight: 900; padding: 6px; border: 3px solid #000; margin: 8px 0; letter-spacing: 3px; }
