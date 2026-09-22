@@ -35,6 +35,8 @@ interface AppSessionContextValue {
   refreshSession: () => Promise<void>;
   /** Active jornada */
   activeJornadaId: string | null;
+  activeJornadaName: string | null;
+  activeJornadaNumber: number | null;
   hasActiveJornada: boolean;
   jornadaLoading: boolean;
 }
@@ -56,6 +58,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   // Active jornada state
   const [activeJornadaId, setActiveJornadaId] = useState<string | null>(null);
+  const [activeJornadaName, setActiveJornadaName] = useState<string | null>(null);
+  const [activeJornadaNumber, setActiveJornadaNumber] = useState<number | null>(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
   const jornadaChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
