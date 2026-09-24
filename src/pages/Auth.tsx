@@ -98,7 +98,7 @@ export default function Auth() {
     if (roles.length === 1) {
       const role = roles[0];
       if (role === "admin" || role === "gerencia") {
-        navigate("/admin");
+        routeByRole(role);
       }
       return;
     }
@@ -117,6 +117,11 @@ export default function Auth() {
 
   const routeByRole = (role: AppRole | "sales" | "tickets" | "coatcheck") => {
     localStorage.setItem(LAST_MODE_KEY, role);
+    const nextParam = new URLSearchParams(window.location.search).get("next");
+    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+      navigate(nextParam);
+      return;
+    }
     if (role === "admin" || role === "gerencia") {
       navigate("/admin");
     } else if (role === "vendedor" || role === "sales") {
