@@ -33,6 +33,7 @@ const Proveedores = lazy(() => import("./pages/Proveedores"));
 const DebugProducts = lazy(() => import("./pages/DebugProducts"));
 const Cortesias = lazy(() => import("./pages/Cortesias"));
 const Guardarropia = lazy(() => import("./pages/Guardarropia"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,7 @@ function AppRoutes() {
         }
       />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
       <Route path="/dev-auth" element={<DevAuth />} />
       <Route path="/no-jornada" element={<NoJornada />} />
       <Route
