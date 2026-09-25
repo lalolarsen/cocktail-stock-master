@@ -5,8 +5,16 @@
 - Solo sale un cover por cada cover incluido. Si ese tipo de entrada no trae cover, no se imprime nada.
 - En tablet (RawBT) los covers salen directo, sin vista previa, igual que Guardarropía: un solo envío, con espacio y una línea para cortar a mano entre covers.
 - En PC se imprimen solo los covers con el navegador.
-- "Reimprimir" en Recientes sigue la misma regla (solo covers; si no hay, avisa "Esta venta no tiene covers").
-- Cada cover mantiene número/nombre de jornada y "Válido solo esta jornada".
+- **Sin reimpresión de covers**: se quita el botón "Reimprimir" en Recientes para ventas de entradas.
+- **Respaldo para que nunca se quede sin imprimir**:
+  - La venta queda marcada como "cover pendiente" hasta que la impresión se envía bien.
+  - Si el envío a la impresora falla, aparece un aviso grande en pantalla con un botón "Imprimir cover pendiente", que solo funciona una vez por venta.
+  - Al volver a la caja se revisan las ventas con cover pendiente y se muestran para imprimirlas.
+  - Cada cover lleva su número único, así nunca pueden salir dos iguales válidos.
+- **Cover más claro para evitar errores**:
+  - Nombre de la jornada en letras grandes y en negrita, arriba del cover.
+  - Franja destacada "VÁLIDO SOLO ESTA JORNADA" con la fecha de la noche.
+  - Número de jornada y número de cover visibles, y el trago/opción del cover en grande.
 
 ## 2. Reportes de cierre mejorados
 Aplica al correo de cierre y al PDF de cierre que se descarga en Jornadas. Secciones:
@@ -21,7 +29,8 @@ Aplica al correo de cierre y al PDF de cierre que se descarga en Jornadas. Secci
 
 ## Detalles técnicos
 - `src/lib/printing/ticket-print.ts`: `printTicketSale` imprime solo `coverTokens`; retorna sin hacer nada si está vacío. Nuevo payload ESC/POS para Android vía `intent:base64` (reutilizar `isAndroid` de `coatcheck-ticket.ts`), con feed + línea de corte + comando de corte por cover.
-- `src/pages/Tickets.tsx`: `autoPrintSale` y `reprintSale` sin entradas sintéticas; reimpresión incluye covers.
+- `src/pages/Tickets.tsx`: `autoPrintSale` sin entradas sintéticas; se elimina `reprintSale` y su botón. Cola local de "covers pendientes" (guardada en la tablet) que se limpia al enviar bien y se muestra al abrir la caja; reintento único por venta.
+- Covers (RawBT y navegador): nombre de jornada grande, franja "VÁLIDO SOLO ESTA JORNADA" con fecha, número de cover.
 - `supabase/functions/send-jornada-summary` + `jornada-closed-summary.tsx`: agregar desglose por caja incluyendo `coatcheck`, detalle mochila/prenda (`item_type`), rango de números, cortesías por producto/emisor/canjeadas, entradas por tipo y covers.
 - `JornadaDownloadMenu.tsx` + `jornada-cashier-report.ts`: sumar Guardarropía (`coatcheck_tickets`), cajas por tipo y cortesías al PDF.
 - Redeploy de la función de correo. Sin cambios en base de datos.
