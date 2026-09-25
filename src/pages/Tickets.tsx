@@ -501,7 +501,7 @@ export default function Tickets() {
       await printWithSafety({
         saleNumber: sale.ticket_number,
         posName: selectedPosName,
-        dateTime: format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }),
+        dateTime: new Date().toLocaleString("es-CL", { timeZone: "America/Santiago", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).replace(",", ""),
         items: cart.map(it => ({ name: it.ticketType.name, quantity: it.quantity, price: it.ticketType.price })),
         total: sale.total,
         paymentMethod: paymentMethod!,

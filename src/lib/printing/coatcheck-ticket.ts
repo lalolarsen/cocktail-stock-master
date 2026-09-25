@@ -33,6 +33,7 @@ export const ITEM_LABELS: Record<CoatcheckItemType, string> = {
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString("es-CL", {
+    timeZone: "America/Santiago",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
