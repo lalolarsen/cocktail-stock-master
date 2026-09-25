@@ -141,10 +141,10 @@ export function TicketReceiptDialog({ open, onClose, saleResult, cartItems, onRe
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
-          <Button onClick={handleReprint} disabled={reprinting}>
+          {onReprint && <Button onClick={handleReprint} disabled={reprinting}>
             <Printer className="h-4 w-4 mr-2" />
             {reprinting ? "Imprimiendo…" : "Reimprimir"}
-          </Button>
+          </Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
