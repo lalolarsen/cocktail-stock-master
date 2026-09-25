@@ -50,17 +50,11 @@ function jornadaBlock(data: TicketSalePrintData): string {
   if (!data.jornadaName && !data.jornadaNumber) return "";
   return `
       <div class="jornada-block">
-        ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
         ${data.jornadaName ? `<div class="jornada-name">${data.jornadaName}</div>` : ""}
-        <div class="jornada-warn">Válido solo esta jornada</div>
+        ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
+        <div class="jornada-warn">VÁLIDO SOLO ESTA JORNADA</div>
+        <div class="jornada-date">${data.dateTime}</div>
       </div>`;
-}
-
-/** Línea corta de jornada para el comprobante del vendedor */
-function jornadaLine(data: TicketSalePrintData): string {
-  if (!data.jornadaName && !data.jornadaNumber) return "";
-  const num = data.jornadaNumber ? `Jornada #${data.jornadaNumber}` : "Jornada";
-  return `<div class="meta">${num}${data.jornadaName ? ` · ${data.jornadaName}` : ""}</div>`;
 }
 
 const SEP = {
@@ -88,10 +82,11 @@ function buildCss(paperWidth: PaperWidth): string {
     .ticket-name { text-align: center; font-size: 22pt; font-weight: 900; margin: 8px 0; word-break: break-word; line-height: 1.15; }
     .ticket-correlative { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 6px; }
     .ticket-instruction { text-align: center; font-size: 12pt; margin-top: 10px; padding: 8px; border: 2px dashed #000; font-weight: bold; }
-    .jornada-block { text-align: center; margin: 6px 0; padding: 4px 0; border-top: 2px dashed #000; border-bottom: 2px dashed #000; }
-    .jornada-num { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
-    .jornada-name { font-size: 13pt; font-weight: bold; }
-    .jornada-warn { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
+    .jornada-block { text-align: center; margin: 8px 0; padding: 6px 0; border: 3px solid #000; }
+    .jornada-name { font-size: 22pt; font-weight: 900; line-height: 1.1; word-break: break-word; }
+    .jornada-num { font-size: 14pt; font-weight: 900; letter-spacing: 1px; margin-top: 2px; }
+    .jornada-warn { font-size: 14pt; font-weight: 900; margin-top: 6px; padding: 4px 0; background: #000; color: #fff !important; }
+    .jornada-date { font-size: 11pt; font-weight: bold; margin-top: 4px; }
     .sale-meta { text-align: center; font-size: 11pt; margin-top: 8px; }
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
     .stockia-footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
@@ -99,63 +94,6 @@ function buildCss(paperWidth: PaperWidth): string {
       @page { margin: 0; size: ${paperWidth} auto; }
       body { margin: 2mm; }
     }
-  `;
-}
-
-/* ── 1. Comprobante del vendedor ── */
-function buildReceiptHtml(data: TicketSalePrintData, pw: PaperWidth): string {
-  const sep = SEP[pw];
-  const dash = DASH[pw];
-  const items = data.items
-    .map(
-      (i) =>
-        `<div class="item-line">${i.quantity}x ${i.name}  $${i.price.toLocaleString("es-CL")}</div>`,
-    )
-    .join("");
-  const paymentLabel = data.paymentMethod === "cash" ? "Efectivo" : "Tarjeta";
-
-  return `
-    <div class="receipt">
-      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
-      <div class="sep">${sep}</div>
-      <div class="meta">${data.posName}</div>
-      <div class="meta">Venta: ${data.saleNumber}</div>
-      <div class="meta">${data.dateTime}</div>
-      ${jornadaLine(data)}
-      <div class="sep">${sep}</div>
-      <div>${items}</div>
-      <div class="sep">${dash}</div>
-      <div class="total-line">TOTAL: $${data.total.toLocaleString("es-CL")}</div>
-      <div class="payment">Pago: ${paymentLabel}</div>
-      <div class="footer">Comprobante del vendedor</div>
-      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
-    </div>
-  `;
-}
-
-/* ── 2. Entrada individual (sin QR) ── */
-function buildEntryHtml(
-  data: TicketSalePrintData,
-  piece: TicketTokenPiece,
-  index: number,
-  total: number,
-  pw: PaperWidth,
-): string {
-  const saleNumber = data.saleNumber;
-  const sep = SEP[pw];
-
-  return `
-    <div class="receipt">
-      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
-      <div class="sep">${sep}</div>
-      <div class="ticket-kind">ENTRADA</div>
-      ${jornadaBlock(data)}
-      <div class="ticket-name">${piece.ticket_type}</div>
-      <div class="ticket-correlative">${index} / ${total}</div>
-      <div class="ticket-instruction">Entrega este ticket en el acceso</div>
-      <div class="sale-meta">Venta N° ${saleNumber}</div>
-      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
-    </div>
   `;
 }
 
@@ -173,46 +111,82 @@ function buildCoverHtml(data: TicketSalePrintData, piece: TicketTokenPiece, pw: 
       <div class="ticket-name">${piece.cocktail_name || "Cover"}</div>
       <div class="ticket-correlative">${piece.ticket_type}</div>
       <div class="ticket-instruction">Entrega este cover en la barra</div>
-      <div class="sale-meta">Venta N° ${saleNumber}</div>
+      <div class="sale-meta">Cover N° ${piece.short_code || piece.token.slice(0, 8).toUpperCase()} · Venta ${saleNumber}</div>
       <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
     </div>
   `;
 }
 
+/* ── RawBT (tablets Android) ── */
+const isAndroid = () => typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+
+const ascii = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
+
+function buildCoversRawBtPayload(data: TicketSalePrintData): string {
+  const encoder = new TextEncoder();
+  const text = (v: string) => Array.from(encoder.encode(ascii(v)));
+  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
+  data.coverTokens.forEach((cover) => {
+    const code = cover.short_code || cover.token.slice(0, 8).toUpperCase();
+    bytes.push(
+      ...text("BERLIN VALDIVIA\n"),
+      0x1d, 0x21, 0x11, 0x1b, 0x45, 0x01,
+      ...text("COVER\n"),
+      0x1d, 0x21, 0x00,
+      ...text("================================\n"),
+    );
+    if (data.jornadaName) bytes.push(0x1d, 0x21, 0x11, ...text(`${data.jornadaName}\n`), 0x1d, 0x21, 0x00);
+    if (data.jornadaNumber) bytes.push(...text(`JORNADA #${data.jornadaNumber}\n`));
+    bytes.push(
+      0x1d, 0x42, 0x01,
+      ...text(" VALIDO SOLO ESTA JORNADA \n"),
+      0x1d, 0x42, 0x00,
+      ...text(`${data.dateTime}\n`),
+      ...text("================================\n"),
+      0x1d, 0x21, 0x11,
+      ...text(`${cover.cocktail_name || "Cover"}\n`),
+      0x1d, 0x21, 0x00, 0x1b, 0x45, 0x00,
+      ...text(`${cover.ticket_type}\n`),
+      0x1b, 0x45, 0x01,
+      ...text("ENTREGA ESTE COVER EN LA BARRA\n"),
+      0x1b, 0x45, 0x00,
+      ...text(`Cover N ${code} - Venta ${data.saleNumber}\n`),
+      0x1b, 0x64, 0x04,
+      ...text("- - - - - >8 - - - - - - - - - -\n"),
+      0x1b, 0x64, 0x03,
+      0x1d, 0x56, 0x42, 0x00,
+    );
+  });
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return window.btoa(binary);
+}
+
 /**
- * Imprime todas las piezas como jobs independientes (iframe propio cada uno):
- * comprobante → entradas → covers. Sin QRs.
- *
- * `options.includeQrPieces` se conserva por compatibilidad: si es `false`,
- * solo se imprime el comprobante; si es `true` o no se especifica, se
- * imprimen también las entradas y covers (ahora sin QR).
+ * Imprime SOLO los covers de la venta (sin comprobante ni entradas).
+ * Si la venta no tiene covers no imprime nada.
+ * En Android se envía directo a RawBT (sin vista previa).
  */
 export async function printTicketSale(
   data: TicketSalePrintData,
   paperWidth: PaperWidth = "80mm",
-  options: { includeQrPieces?: boolean } = {},
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
   try {
-    const css = buildCss(paperWidth);
-    const pieces: string[] = [buildReceiptHtml(data, paperWidth)];
-    const totalEntries = data.entryTokens.length;
+    if (!data.coverTokens.length) return { success: true, skipped: true };
 
-    if (options.includeQrPieces !== false) {
-      for (let idx = 0; idx < totalEntries; idx++) {
-        pieces.push(
-          buildEntryHtml(data, data.entryTokens[idx], idx + 1, totalEntries, paperWidth),
-        );
-      }
-
-      for (const cover of data.coverTokens) {
-        pieces.push(buildCoverHtml(data, cover, paperWidth));
-      }
+    if (isAndroid()) {
+      window.location.assign(
+        `intent:base64,${buildCoversRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
+      );
+      return { success: true };
     }
 
+    const css = buildCss(paperWidth);
     let lastError: string | undefined;
     let anySuccess = false;
-    for (const piece of pieces) {
-      const result = await printOneDocument(piece, css);
+    for (const cover of data.coverTokens) {
+      const result = await printOneDocument(buildCoverHtml(data, cover, paperWidth), css);
       if (result.success) anySuccess = true;
       else lastError = result.error;
     }
