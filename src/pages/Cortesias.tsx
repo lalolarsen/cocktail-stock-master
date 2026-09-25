@@ -20,8 +20,10 @@ import {
 import { printCourtesyCover } from "@/lib/printing/courtesy-cover";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
+import { AdminBackButton } from "@/components/AdminBackButton";
+import { fetchAllRows } from "@/lib/supabase-batch";
 
-const MOTIVOS = ["Socio", "Embajador", "Cortesía", "Otros"] as const;
+const MOTIVOS = ["Socio", "Embajador", "Cumpleaños", "DJ", "Devoluciones", "Otros"] as const;
 
 type CourtesyRow = {
   id: string;
@@ -61,6 +63,28 @@ export default function Cortesias() {
     },
   });
 
+  const { data: topIds = [] } = useQuery({
+    queryKey: ["cortesias-top-cocktails"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 30 * 86400000).toISOString();
+      const rows = await fetchAllRows<{ cocktail_id: string; quantity: number; sales: { is_cancelled: boolean | null } | null }>(() =>
+        supabase
+          .from("sale_items")
+          .select("cocktail_id, quantity, sales!inner(is_cancelled)")
+          .eq("venue_id", DEFAULT_VENUE_ID)
+          .gte("created_at", since)
+          .order("id")
+      );
+      const totals = new Map<string, number>();
+      for (const r of rows) {
+        if (r.sales?.is_cancelled) continue;
+        totals.set(r.cocktail_id, (totals.get(r.cocktail_id) || 0) + (r.quantity || 0));
+      }
+      return [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+    },
+  });
+
   const { data: issued = [], isLoading } = useQuery({
     queryKey: ["cortesias-tablet-list"],
     queryFn: async () => {
@@ -80,6 +104,11 @@ export default function Cortesias() {
     if (!q) return cocktails;
     return cocktails.filter((c) => c.name.toLowerCase().includes(q));
   }, [cocktails, search]);
+
+  const topCocktails = useMemo(
+    () => topIds.map((id) => cocktails.find((c) => c.id === id)).filter(Boolean) as { id: string; name: string }[],
+    [topIds, cocktails]
+  );
 
   const selected = cocktails.find((c) => c.id === productId);
 
@@ -195,6 +224,8 @@ export default function Cortesias() {
             <p className="text-sm text-muted-foreground">Cover físico, sin QR</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <AdminBackButton size="lg" className="h-14 px-5 text-base" />
         <Button
           variant="outline"
           size="lg"
@@ -207,6 +238,7 @@ export default function Cortesias() {
           <Lock className="w-5 h-5" />
           Bloquear
         </Button>
+        </div>
       </header>
 
       <Card className="p-4 sm:p-5 space-y-5">
@@ -222,6 +254,22 @@ export default function Cortesias() {
             </div>
           ) : (
             <>
+              {!search.trim() && topCocktails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">Más pedidos</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {topCocktails.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setProductId(c.id)}
+                        className="h-20 px-3 rounded-xl border-2 border-primary/40 bg-primary/5 text-left text-base font-semibold hover:border-primary active:scale-[0.98] transition"
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="relative">
                 <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input

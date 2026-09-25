@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AdminBackButton } from "@/components/AdminBackButton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
@@ -245,6 +246,8 @@ export default function Guardarropia() {
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <AdminBackButton size="lg" className="h-14 px-5 text-base" />
         <Button
           variant="outline"
           size="lg"
@@ -257,6 +260,7 @@ export default function Guardarropia() {
           <Lock className="w-5 h-5" />
           Bloquear
         </Button>
+        </div>
       </header>
 
       <div className="grid grid-cols-3 gap-3">
