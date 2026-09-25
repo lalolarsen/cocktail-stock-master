@@ -159,7 +159,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
       return;
     }
     if (!newWorker.pin || newWorker.pin.length < 6) {
-      toast.error("PIN debe tener al menos 4 dígitos");
+      toast.error("PIN debe tener al menos 6 dígitos");
       return;
     }
     if (newWorker.roles.length === 0) {
@@ -322,7 +322,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
 
   const resetPin = async () => {
     if (!selectedWorker || !newPin || newPin.length < 6) {
-      toast.error("PIN debe tener al menos 4 dígitos");
+      toast.error("PIN debe tener al menos 6 dígitos");
       return;
     }
     setSaving(true);
