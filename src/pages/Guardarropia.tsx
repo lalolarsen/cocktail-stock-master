@@ -355,7 +355,7 @@ export default function Guardarropia() {
             Cobrar e imprimir
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Salen dos copias con el mismo número: cliente y cajero.
+            Sale un comprobante de control para el trabajador.
           </p>
         </Card>
     </div>
