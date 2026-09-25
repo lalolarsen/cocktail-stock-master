@@ -16,6 +16,7 @@ export interface CourtesyCoverData {
 
 const fmtFull = (iso: string) =>
   new Date(iso).toLocaleString("es-CL", {
+    timeZone: "America/Santiago",
     day: "2-digit",
     month: "short",
     year: "numeric",
