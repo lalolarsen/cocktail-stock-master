@@ -104,8 +104,18 @@ interface CoatcheckSummary {
   card?: number
   tickets?: number
   garments?: number
-  pending?: number
+  backpack_qty?: number
+  backpack_amount?: number
+  backpack_first?: number | null
+  backpack_last?: number | null
+  garment_qty?: number
+  garment_amount?: number
+  garment_first?: number | null
+  garment_last?: number | null
 }
+
+interface NamedQty { name: string; quantity: number; total?: number }
+interface CourtesyProduct { product_name: string; issued: number; redeemed: number }
 
 interface JornadaClosedProps {
   recipient_name?: string
@@ -125,6 +135,9 @@ interface JornadaClosedProps {
   ingredient_usage?: IngredientUse[]
   waste_summary?: WasteSummary
   coatcheck?: CoatcheckSummary
+  ticket_detail?: NamedQty[]
+  cover_detail?: NamedQty[]
+  courtesy_products?: CourtesyProduct[]
 }
 
 const fmtCLP = (n?: number) => '$' + Math.round(n ?? 0).toLocaleString('es-CL')
@@ -253,6 +266,9 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
     ingredient_usage = [],
     waste_summary = {},
     coatcheck = {},
+    ticket_detail = [],
+    cover_detail = [],
+    courtesy_products = [],
     observacion_cierre = null,
   } = props
 
@@ -305,7 +321,7 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
           {/* KPIs HERO */}
           <Section style={heroCard}>
             <Row>
-              <KpiTile label="Ventas brutas" value={fmtCLP(total_gross)} accent />
+              <KpiTile label="Total noche" value={fmtCLP(total_gross)} accent />
               <KpiTile label="Transacciones" value={totalTx.toString()} />
               <KpiTile label="Ticket promedio" value={fmtCLP(avgTicket)} />
             </Row>
@@ -324,8 +340,25 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
           {(coatcheck?.tickets ?? 0) > 0 && (
             <Section style={card}>
               <Heading as="h2" style={h2}>
-                Guardarropía
+                Caja Guardarropía
               </Heading>
+              <Row style={paymentRow}>
+                <Column style={{ width: '70%' }}>
+                  <Text style={paymentLabel}>🎒 Mochilas / bolsos · {coatcheck.backpack_qty ?? 0}{coatcheck.backpack_first != null ? ` · N° ${coatcheck.backpack_first}–${coatcheck.backpack_last}` : ''}</Text>
+                </Column>
+                <Column>
+                  <Text style={paymentAmount}>{fmtCLP(coatcheck.backpack_amount)}</Text>
+                </Column>
+              </Row>
+              <Row style={paymentRow}>
+                <Column style={{ width: '70%' }}>
+                  <Text style={paymentLabel}>🧥 Prendas · {coatcheck.garment_qty ?? 0}{coatcheck.garment_first != null ? ` · N° ${coatcheck.garment_first}–${coatcheck.garment_last}` : ''}</Text>
+                </Column>
+                <Column>
+                  <Text style={paymentAmount}>{fmtCLP(coatcheck.garment_amount)}</Text>
+                </Column>
+              </Row>
+              <Hr style={hrDark} />
               <Row style={paymentRow}>
                 <Column style={{ width: '70%' }}>
                   <Text style={paymentLabel}>💵 Efectivo</Text>
@@ -345,20 +378,66 @@ const JornadaClosedSummaryEmail = (props: JornadaClosedProps) => {
               <Hr style={hrDark} />
               <Row>
                 <Column style={labelCol}>
-                  <Text style={posTotalLabel}>
-                    Total guardarropía · {coatcheck.tickets} guardas ·{' '}
-                    {coatcheck.garments} prendas
-                  </Text>
+                  <Text style={posTotalLabel}>Total guardarropía · {coatcheck.tickets} comprobantes</Text>
                 </Column>
                 <Column>
                   <Text style={posTotalValue}>{fmtCLP(coatcheck.total)}</Text>
                 </Column>
               </Row>
-              {(coatcheck.pending ?? 0) > 0 && (
-                <Text style={muted}>
-                  {coatcheck.pending} prenda(s) sin retirar al cierre.
-                </Text>
+            </Section>
+          )}
+
+          {/* ENTRADAS */}
+          {ticket_detail.length > 0 && (
+            <Section style={card}>
+              <Heading as="h2" style={h2}>
+                Entradas vendidas
+              </Heading>
+              {ticket_detail.map((t, i) => (
+                <Row key={i} style={paymentRow}>
+                  <Column style={{ width: '70%' }}>
+                    <Text style={paymentLabel}>{t.quantity} × {t.name}</Text>
+                  </Column>
+                  <Column>
+                    <Text style={paymentAmount}>{fmtCLP(t.total)}</Text>
+                  </Column>
+                </Row>
+              ))}
+              {cover_detail.length > 0 && (
+                <>
+                  <Hr style={hrDark} />
+                  <Text style={posTotalLabel}>Covers entregados</Text>
+                  {cover_detail.map((c, i) => (
+                    <Row key={i} style={paymentRow}>
+                      <Column style={{ width: '70%' }}>
+                        <Text style={paymentLabel}>{c.name}</Text>
+                      </Column>
+                      <Column>
+                        <Text style={paymentAmount}>{c.quantity}</Text>
+                      </Column>
+                    </Row>
+                  ))}
+                </>
               )}
+            </Section>
+          )}
+
+          {/* CORTESÍAS POR PRODUCTO */}
+          {courtesy_products.length > 0 && (
+            <Section style={card}>
+              <Heading as="h2" style={h2}>
+                Cortesías por producto
+              </Heading>
+              {courtesy_products.map((c, i) => (
+                <Row key={i} style={paymentRow}>
+                  <Column style={{ width: '70%' }}>
+                    <Text style={paymentLabel}>{c.product_name}</Text>
+                  </Column>
+                  <Column>
+                    <Text style={paymentAmount}>{c.redeemed} / {c.issued} canjeadas</Text>
+                  </Column>
+                </Row>
+              ))}
             </Section>
           )}
 

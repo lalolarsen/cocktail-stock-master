@@ -35,14 +35,55 @@ export function JornadaDownloadMenu({
   const handlePOS = async () => {
     setBusy("pos");
     try {
-      const [salesRes, ticketSalesRes, posRes, jornadaRes, courtesyRedRes] = await Promise.all([
+      const [salesRes, ticketSalesRes, posRes, jornadaRes, courtesyRedRes, ccRes] = await Promise.all([
         supabase.from("sales").select("total_amount, payment_method, point_of_sale, pos_id, is_cancelled").eq("jornada_id", jornadaId).eq("is_cancelled", false),
         supabase.from("ticket_sales").select("total, payment_method, pos_id").eq("jornada_id", jornadaId).eq("payment_status", "paid"),
         supabase.from("pos_terminals").select("id, name"),
         supabase.from("jornadas").select("observacion_cierre, opened_at, closed_at").eq("id", jornadaId).maybeSingle(),
         supabase.from("courtesy_redemptions").select("courtesy_id, result, redeemed_at").eq("jornada_id", jornadaId),
+        supabase.from("coatcheck_tickets").select("ticket_number, garment_count, amount, payment_method, item_type, status").eq("jornada_id", jornadaId).neq("status", "cancelled"),
       ]);
       if (salesRes.error) throw salesRes.error;
+      const cc = (ccRes.data || []) as Array<{ ticket_number: number; garment_count: number; amount: number; payment_method: string; item_type: string | null }>;
+      const ccPart = (k: "backpack" | "garment") => {
+        const rows = cc.filter(t => (t.item_type === "backpack" ? "backpack" : "garment") === k);
+        const nums = rows.map(r => r.ticket_number);
+        return {
+          qty: rows.reduce((s, r) => s + (r.garment_count || 0), 0),
+          amount: rows.reduce((s, r) => s + Number(r.amount || 0), 0),
+          range: nums.length ? `${Math.min(...nums)}-${Math.max(...nums)}` : null,
+        };
+      };
+      const ccB = ccPart("backpack"), ccG = ccPart("garment");
+      const ccTotal = cc.reduce((s, r) => s + Number(r.amount || 0), 0);
+      const ccCash = cc.filter(r => r.payment_method === "cash").reduce((s, r) => s + Number(r.amount || 0), 0);
+
+      // Entradas por tipo y covers
+      const tsIdsRes = await supabase.from("ticket_sales").select("id").eq("jornada_id", jornadaId).eq("payment_status", "paid");
+      const tsIds = (tsIdsRes.data || []).map(r => r.id);
+      let ticketTypes: { name: string; qty: number; total: number }[] = [];
+      let coverTypes: { name: string; qty: number }[] = [];
+      if (tsIds.length > 0) {
+        const [itRes, tokRes] = await Promise.all([
+          supabase.from("ticket_sale_items").select("quantity, line_total, ticket_types(name)").in("ticket_sale_id", tsIds),
+          supabase.from("pickup_tokens").select("status, cocktails:cover_cocktail_id(name)").in("ticket_sale_id", tsIds),
+        ]);
+        const tm = new Map<string, { name: string; qty: number; total: number }>();
+        for (const it of (itRes.data || []) as any[]) {
+          const n = it.ticket_types?.name || "Entrada";
+          const cur = tm.get(n) || { name: n, qty: 0, total: 0 };
+          cur.qty += it.quantity || 0; cur.total += Number(it.line_total || 0);
+          tm.set(n, cur);
+        }
+        ticketTypes = [...tm.values()].sort((a, b) => b.qty - a.qty);
+        const cm = new Map<string, number>();
+        for (const t of (tokRes.data || []) as any[]) {
+          if (t.status === "cancelled") continue;
+          const n = t.cocktails?.name || "Cover";
+          cm.set(n, (cm.get(n) || 0) + 1);
+        }
+        coverTypes = [...cm.entries()].map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+      }
       const sales = salesRes.data || [];
       const ticketSales = ticketSalesRes.data || [];
       const posMapNames = new Map((posRes.data || []).map((p) => [p.id, p.name]));
@@ -83,7 +124,7 @@ export function JornadaDownloadMenu({
           .sort((a, b) => a.time.localeCompare(b.time));
       }
 
-      if (sales.length === 0 && ticketSales.length === 0) {
+      if (sales.length === 0 && ticketSales.length === 0 && cc.length === 0) {
         toast.info("No hay ventas en esta jornada");
         return;
       }
@@ -131,12 +172,18 @@ export function JornadaDownloadMenu({
       })).sort((a, b) => b.total - a.total);
       printPOSSalesReport({
         jornadaNumber, fecha, horario, posSummary,
-        grandTotal: posSummary.reduce((s, p) => s + p.total, 0),
-        grandCash: posSummary.reduce((s, p) => s + p.cashTotal + (p.ticketCashTotal ?? 0), 0),
-        grandCard: posSummary.reduce((s, p) => s + p.cardTotal + (p.ticketCardTotal ?? 0), 0),
+        grandTotal: posSummary.reduce((s, p) => s + p.total, 0) + ccTotal,
+        grandCash: posSummary.reduce((s, p) => s + p.cashTotal + (p.ticketCashTotal ?? 0), 0) + ccCash,
+        grandCard: posSummary.reduce((s, p) => s + p.cardTotal + (p.ticketCardTotal ?? 0), 0) + (ccTotal - ccCash),
         grandOther: posSummary.reduce((s, p) => s + p.otherTotal + (p.ticketOtherTotal ?? 0), 0),
-        grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0),
+        grandCount: posSummary.reduce((s, p) => s + p.totalCount, 0) + cc.length,
         observacionCierre,
+        coatcheck: {
+          total: ccTotal, cash: ccCash, card: ccTotal - ccCash, tickets: cc.length,
+          backpackQty: ccB.qty, backpackAmount: ccB.amount, backpackRange: ccB.range,
+          garmentQty: ccG.qty, garmentAmount: ccG.amount, garmentRange: ccG.range,
+        },
+        tickets: { types: ticketTypes, covers: coverTypes },
         courtesy: {
           issued: issuedCount,
           redeemed: okReds.length,
