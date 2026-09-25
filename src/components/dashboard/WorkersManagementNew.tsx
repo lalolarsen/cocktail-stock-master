@@ -184,9 +184,17 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
         },
       });
 
-      // Edge function returned non-2xx: data still contains our custom error message
+      // Edge function returned non-2xx: the custom message lives in the response body
       if (response.error) {
-        const customMsg = (response.data as { error?: string } | null)?.error;
+        let customMsg = (response.data as { error?: string } | null)?.error;
+        const ctx = (response.error as { context?: Response }).context;
+        if (!customMsg && ctx && typeof ctx.json === "function") {
+          try {
+            customMsg = (await ctx.clone().json())?.error;
+          } catch {
+            /* ignore */
+          }
+        }
         throw new Error(customMsg || response.error.message);
       }
       if (!response.data?.success) throw new Error(response.data?.error || "Error desconocido");
