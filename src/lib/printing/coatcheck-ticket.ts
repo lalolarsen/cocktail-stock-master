@@ -1,7 +1,7 @@
 /**
  * Guardarropía: imprime dos tickets con el mismo número.
  * - Copia CLIENTE (se entrega a la persona)
- * - Copia PRENDA (se pincha en la prenda / bolso)
+ * - Copia CAJERO (control interno)
  * En Android envía ESC/POS directo a RawBT (sin vista previa).
  */
 export type CoatcheckItemType = "backpack" | "garment";
@@ -62,7 +62,7 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
   const text = (value: string) => Array.from(encoder.encode(ascii(value)));
   const bytes: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
 
-  const copy = (kind: "CLIENTE" | "PRENDA") => {
+  const copy = (kind: "CLIENTE" | "CAJERO") => {
     bytes.push(
       ...text("BERLIN VALDIVIA\n"),
       0x1b, 0x45, 0x01,
@@ -86,7 +86,7 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
     if (data.issuedAt) bytes.push(...text(`${fmtTime(data.issuedAt)}\n`));
     bytes.push(
       0x1b, 0x45, 0x01,
-      ...text(kind === "CLIENTE" ? "CONSERVE ESTE TICKET\n" : "PINCHAR EN LA PRENDA\n"),
+      ...text(kind === "CLIENTE" ? "CONSERVE ESTE TICKET\n" : "CONTROL CAJERO\n"),
       0x1b, 0x45, 0x00,
       // Espacio en blanco + linea de corte manual + corte automatico si existe guillotina
       0x1b, 0x64, 0x04,
@@ -97,12 +97,12 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
   };
 
   copy("CLIENTE");
-  copy("PRENDA");
+  copy("CAJERO");
 
   return bytesToBase64(bytes);
 }
 
-function copyHtml(data: CoatcheckTicketData, kind: "CLIENTE" | "PRENDA"): string {
+function copyHtml(data: CoatcheckTicketData, kind: "CLIENTE" | "CAJERO"): string {
   return `
     <div class="copy">
       <div class="brand">STOCKIA · GUARDARROPÍA</div>
@@ -120,7 +120,7 @@ function copyHtml(data: CoatcheckTicketData, kind: "CLIENTE" | "PRENDA"): string
       ${data.jornadaName ? `<div class="row">${safe(data.jornadaName)}</div>` : ""}
       ${data.note ? `<div class="note">${safe(data.note)}</div>` : ""}
       <div class="meta">${data.issuedAt ? fmtTime(data.issuedAt) : ""}</div>
-      <div class="footer">${kind === "CLIENTE" ? "CONSERVE ESTE TICKET PARA RETIRAR" : "PINCHAR EN LA PRENDA"}</div>
+      <div class="footer">${kind === "CLIENTE" ? "CONSERVE ESTE TICKET" : "CONTROL CAJERO"}</div>
     </div>`;
 }
 
@@ -148,7 +148,7 @@ function printWithBrowser(data: CoatcheckTicketData): void {
       .footer { font-size: 11px; font-weight: 700; margin-top: 8px; letter-spacing: 1px; }
     </style></head><body>
     ${copyHtml(data, "CLIENTE")}
-    ${copyHtml(data, "PRENDA")}
+    ${copyHtml(data, "CAJERO")}
     <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>
   </body></html>`);
   w.document.close();
