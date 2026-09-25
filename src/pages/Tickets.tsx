@@ -576,6 +576,7 @@ export default function Tickets() {
             <Button onClick={confirmPosSelection} disabled={!selectedPosId || posTerminals.length === 0} className="w-full" size="lg">
               Comenzar a Vender
             </Button>
+            <AdminBackButton size="default" className="w-full" />
             <Button variant="outline" onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }} className="w-full gap-2">
               <LogOut className="h-4 w-4" /> Cerrar Sesión
             </Button>
@@ -599,6 +600,7 @@ export default function Tickets() {
             <AlertDescription>Un administrador debe abrir una jornada para vender entradas.</AlertDescription>
           </Alert>
           <Card className="p-6">
+            <AdminBackButton size="default" className="w-full" />
             <Button variant="outline" onClick={async () => { await supabase.auth.signOut(); navigate("/auth"); }} className="w-full gap-2">
               <LogOut className="h-4 w-4" /> Cerrar Sesión
             </Button>
