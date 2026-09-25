@@ -90,7 +90,7 @@ export function CreateWorkerDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="new-pin" className="text-sm font-medium">
-                  PIN (mín. 4 dígitos) *
+                  PIN (mín. 6 dígitos) *
                 </Label>
                 <Input
                   id="new-pin"

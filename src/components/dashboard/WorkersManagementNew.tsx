@@ -158,8 +158,8 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
       toast.error("RUT inválido. Debe tener entre 7 y 9 dígitos.");
       return;
     }
-    if (!newWorker.pin || newWorker.pin.length < 4) {
-      toast.error("PIN debe tener al menos 4 dígitos");
+    if (!newWorker.pin || newWorker.pin.length < 6) {
+      toast.error("PIN debe tener al menos 6 dígitos");
       return;
     }
     if (newWorker.roles.length === 0) {
@@ -184,9 +184,17 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
         },
       });
 
-      // Edge function returned non-2xx: data still contains our custom error message
+      // Edge function returned non-2xx: the custom message lives in the response body
       if (response.error) {
-        const customMsg = (response.data as { error?: string } | null)?.error;
+        let customMsg = (response.data as { error?: string } | null)?.error;
+        const ctx = (response.error as { context?: Response }).context;
+        if (!customMsg && ctx && typeof ctx.json === "function") {
+          try {
+            customMsg = (await ctx.clone().json())?.error;
+          } catch {
+            /* ignore */
+          }
+        }
         throw new Error(customMsg || response.error.message);
       }
       if (!response.data?.success) throw new Error(response.data?.error || "Error desconocido");
@@ -313,8 +321,8 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
   };
 
   const resetPin = async () => {
-    if (!selectedWorker || !newPin || newPin.length < 4) {
-      toast.error("PIN debe tener al menos 4 dígitos");
+    if (!selectedWorker || !newPin || newPin.length < 6) {
+      toast.error("PIN debe tener al menos 6 dígitos");
       return;
     }
     setSaving(true);
@@ -680,7 +688,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
             <Input
               type="password"
               inputMode="numeric"
-              placeholder="Nuevo PIN (mínimo 4 dígitos)"
+              placeholder="Nuevo PIN (mínimo 6 dígitos)"
               value={newPin}
               onChange={(e) => setNewPin(e.target.value)}
               maxLength={6}
