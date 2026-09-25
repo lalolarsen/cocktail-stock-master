@@ -1,19 +1,28 @@
-# Entradas: imprimir solo lo necesario y rápido en tablet
+# Entradas: solo cover + reportes de cierre completos
 
-## Qué cambia
-- Por cada venta de entradas sale el comprobante y, **solo si la entrada incluye cover**, un cover por cada uno. Se dejan de imprimir las piezas de "entrada" sueltas. Aplica igual en tablet y en PC.
-- En las tablets (Android con RawBT) la caja de entradas imprime directo, sin vista previa, igual que Guardarropía: todo sale en un solo envío, con espacio y una línea marcada para cortar a mano entre cada pieza.
-- En PC se mantiene la impresión actual del navegador, pero solo con comprobante y covers.
-- Reimprimir desde "Recientes" sigue el mismo criterio (comprobante + covers si los hay), también directo en tablet.
+## 1. Impresión de entradas (tablet y PC)
+- Al vender entradas **no se imprime comprobante ni pieza de entrada**.
+- Solo sale un cover por cada cover incluido. Si ese tipo de entrada no trae cover, no se imprime nada.
+- En tablet (RawBT) los covers salen directo, sin vista previa, igual que Guardarropía: un solo envío, con espacio y una línea para cortar a mano entre covers.
+- En PC se imprimen solo los covers con el navegador.
+- "Reimprimir" en Recientes sigue la misma regla (solo covers; si no hay, avisa "Esta venta no tiene covers").
+- Cada cover mantiene número/nombre de jornada y "Válido solo esta jornada".
 
-## Qué no cambia
-- Ventas, covers en la base de datos, jornada impresa en cada cover ("Válido solo esta jornada").
+## 2. Reportes de cierre mejorados
+Aplica al correo de cierre y al PDF de cierre que se descarga en Jornadas. Secciones:
+- **Resumen general**: total de la noche = Alcohol + Entradas + Guardarropía, con efectivo / tarjeta.
+- **Por caja**: cada caja por separado (Alcohol, Entradas, Guardarropía, Caja remota), con cantidad de ventas, efectivo, tarjeta y total.
+- **Entradas**: por tipo de entrada, cantidad y monto; covers entregados por opción.
+- **Guardarropía**: mochilas y prendas por separado (cantidad y monto), efectivo/tarjeta, números de comprobante del primero al último.
+- **Cortesías**: emitidas y canjeadas, por producto y por quién las emitió, con el costo teórico.
+- **Consumo de insumos** (basado en ventas + cortesías), como hoy.
+- **Arqueo de caja** y observaciones del cierre, como hoy.
+- Diseño más limpio: títulos claros, montos destacados y secciones que se ocultan si no tuvieron movimiento.
 
 ## Detalles técnicos
-- `src/lib/printing/ticket-print.ts`:
-  - Nuevo `buildRawBtPayload(data)` ESC/POS: comprobante (ítems, total, pago, jornada) + cover grande por cada `coverTokens`, con avance de papel, línea de corte y comando de corte al final de cada pieza.
-  - `printTicketSale`: si es Android, enviar `intent:base64,...;scheme=rawbt;...` y retornar; si no, flujo por iframe actual.
-  - Dejar de agregar piezas de entrada (`entryTokens`) al imprimir.
-- `src/pages/Tickets.tsx`: `autoPrintSale` y `reprintSale` dejan de construir entradas sintéticas; la reimpresión pasa a incluir covers.
-- Reutilizar el helper `isAndroid` / codificación ya usados en `coatcheck-ticket.ts`.
-- Sin cambios en base de datos.
+- `src/lib/printing/ticket-print.ts`: `printTicketSale` imprime solo `coverTokens`; retorna sin hacer nada si está vacío. Nuevo payload ESC/POS para Android vía `intent:base64` (reutilizar `isAndroid` de `coatcheck-ticket.ts`), con feed + línea de corte + comando de corte por cover.
+- `src/pages/Tickets.tsx`: `autoPrintSale` y `reprintSale` sin entradas sintéticas; reimpresión incluye covers.
+- `supabase/functions/send-jornada-summary` + `jornada-closed-summary.tsx`: agregar desglose por caja incluyendo `coatcheck`, detalle mochila/prenda (`item_type`), rango de números, cortesías por producto/emisor/canjeadas, entradas por tipo y covers.
+- `JornadaDownloadMenu.tsx` + `jornada-cashier-report.ts`: sumar Guardarropía (`coatcheck_tickets`), cajas por tipo y cortesías al PDF.
+- Redeploy de la función de correo. Sin cambios en base de datos.
+- Verificar con una jornada real: generar el PDF y previsualizar el correo.
