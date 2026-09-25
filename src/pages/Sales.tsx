@@ -780,7 +780,8 @@ export default function Sales() {
             </Button>
           </Card>
 
-          <div className="text-center">
+          <div className="flex justify-center gap-2">
+            <AdminBackButton variant="ghost" size="default" />
             <Button variant="ghost" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               Salir
