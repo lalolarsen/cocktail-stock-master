@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { AdminBackButton } from "@/components/AdminBackButton";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -924,6 +925,7 @@ export default function Sales() {
               >
                 <Download className="w-4 h-4" />
               </Button>
+              <AdminBackButton variant="ghost" />
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4" />
               </Button>

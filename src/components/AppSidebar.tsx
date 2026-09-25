@@ -68,7 +68,6 @@ const ADMIN_SECTIONS: MenuSection[] = [
       { title: "Trabajadores", value: "workers", icon: Users },
       { title: "Tickets", value: "tickets", icon: Ticket },
       { title: "Anulaciones", value: "voids", icon: Undo2 },
-      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
@@ -96,7 +95,6 @@ const GERENCIA_SECTIONS: MenuSection[] = [
     label: "Avanzado",
     collapsible: true,
     items: [
-      { title: "Cortesías", value: "courtesy-qr", icon: Gift },
       { title: "Notificaciones", value: "notifications", icon: Bell },
       { title: "Configuración", value: "settings", icon: Settings },
     ],
