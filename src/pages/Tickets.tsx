@@ -112,7 +112,36 @@ export default function Tickets() {
   const { logDemoEvent, isDemoMode } = useDemoLogging();
   const { activeJornadaId, activeJornadaName, activeJornadaNumber } = useAppSession();
   const { venue } = useActiveVenue();
-  const [reprintingId, setReprintingId] = useState<string | null>(null);
+  const PENDING_KEY = "pendingCoverPrints";
+  const [pendingPrints, setPendingPrints] = useState<TicketSalePrintData[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pendingCoverPrints") || "[]"); } catch { return []; }
+  });
+  const savePending = (list: TicketSalePrintData[]) => {
+    setPendingPrints(list);
+    localStorage.setItem(PENDING_KEY, JSON.stringify(list));
+  };
+  const readPending = (): TicketSalePrintData[] => {
+    try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; }
+  };
+  /** Imprime covers con respaldo: queda pendiente hasta que el envío sale bien. */
+  const printWithSafety = async (data: TicketSalePrintData) => {
+    if (!data.coverTokens.length) return;
+    savePending([...readPending().filter(p => p.saleNumber !== data.saleNumber), data]);
+    const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
+    const res = await printTicketSale(data, paperWidth);
+    if (res.success) {
+      savePending(readPending().filter(p => p.saleNumber !== data.saleNumber));
+    } else {
+      toast.error("No se pudo imprimir el cover. Usa 'Imprimir cover pendiente'.");
+    }
+  };
+  /** Reintento único: se saca de la cola antes de imprimir. */
+  const printPending = async (data: TicketSalePrintData) => {
+    savePending(readPending().filter(p => p.saleNumber !== data.saleNumber));
+    const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
+    const res = await printTicketSale(data, paperWidth);
+    if (!res.success) toast.error("Falló de nuevo. Avisa a administración (venta " + data.saleNumber + ").");
+  };
 
   const [step, setStep] = useState<Step>("select-pos");
   const [loading, setLoading] = useState(true);
@@ -253,97 +282,6 @@ export default function Tickets() {
       setRecentSales(withCovers);
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  /* ─── Reprint a past sale by id ─── */
-  const reprintSale = async (saleId: string) => {
-    setReprintingId(saleId);
-    try {
-      const [saleRes, itemsRes, tokensRes] = await Promise.all([
-        supabase
-          .from("ticket_sales")
-          .select("id, ticket_number, total, payment_method, created_at")
-          .eq("id", saleId)
-          .single(),
-        supabase
-          .from("ticket_sale_items")
-          .select("quantity, unit_price, ticket_type_id, ticket_types(name)")
-          .eq("ticket_sale_id", saleId),
-        supabase
-          .from("pickup_tokens")
-          .select("token, short_code, metadata, cover_cocktail_id, cocktails:cover_cocktail_id(name)")
-          .eq("ticket_sale_id", saleId),
-      ]);
-      if (saleRes.error) throw saleRes.error;
-      if (itemsRes.error) throw itemsRes.error;
-      if (tokensRes.error) throw tokensRes.error;
-
-      const sale = saleRes.data;
-      const items = (itemsRes.data || []).map((it: any) => ({
-        name: it.ticket_types?.name || "Entrada",
-        quantity: it.quantity,
-        price: it.unit_price,
-      }));
-
-      const allTokens = (tokensRes.data || []) as any[];
-      // entries vs covers via metadata.kind (fallback: covers if has cocktail)
-      const entryTokens: TicketSalePrintData["entryTokens"] = [];
-      const coverTokens: TicketSalePrintData["coverTokens"] = [];
-      for (const t of allTokens) {
-        const kind = t.metadata?.kind;
-        const ticketTypeName = t.metadata?.ticket_type_name || "Entrada";
-        if (kind === "cover" || t.cover_cocktail_id) {
-          coverTokens.push({
-            token: t.token,
-            short_code: t.short_code || null,
-            ticket_type: ticketTypeName,
-            cocktail_name: t.cocktails?.name || null,
-          });
-        } else {
-          entryTokens.push({
-            token: t.token,
-            short_code: t.short_code || null,
-            ticket_type: ticketTypeName,
-          });
-        }
-      }
-
-      // Fallback: synthesize entry pieces if backend didn't emit entry tokens
-      if (entryTokens.length === 0) {
-        for (const it of itemsRes.data || []) {
-          for (let i = 0; i < (it.quantity || 0); i++) {
-            entryTokens.push({
-              token: sale.ticket_number,
-              short_code: null,
-              ticket_type: (it as any).ticket_types?.name || "Entrada",
-            });
-          }
-        }
-      }
-
-      const paperKey = getPreferredPaperWidthStorageKey();
-      const paperWidth = (localStorage.getItem(paperKey) as PaperWidth) || "80mm";
-
-      const printData: TicketSalePrintData = {
-        saleNumber: sale.ticket_number,
-        posName: selectedPosName,
-        dateTime: format(new Date(sale.created_at), "dd/MM/yyyy HH:mm", { locale: es }),
-        items,
-        total: sale.total,
-        paymentMethod: sale.payment_method,
-        entryTokens,
-        coverTokens,
-        jornadaName: activeJornadaName,
-        jornadaNumber: activeJornadaNumber,
-      };
-      await printTicketSale(printData, paperWidth, { includeQrPieces: false });
-      toast.success("Reimprimiendo comprobante " + sale.ticket_number);
-    } catch (err: any) {
-      console.error("Reprint error:", err);
-      toast.error(err.message || "Error al reimprimir");
-    } finally {
-      setReprintingId(null);
     }
   };
 
@@ -552,60 +490,28 @@ export default function Tickets() {
 
   const autoPrintSale = async (sale: SaleResult) => {
     try {
-      // Build entry tokens (1 per ticket unit)
-      // Note: backend currently issues only cover tokens; entries don't have separate access tokens.
-      // So we print covers + comprobante. If future schema adds entry tokens, expand here.
-      const paperKey = getPreferredPaperWidthStorageKey();
-      const paperWidth = (localStorage.getItem(paperKey) as PaperWidth) || "80mm";
-
-      const items = cart.map(it => ({
-        name: it.ticketType.name,
-        quantity: it.quantity,
-        price: it.ticketType.price,
-      }));
-
-      // Generate one synthetic "entry piece" per ticket sold (uses the cover token if available, else
-      // we still print a header-only ticket without QR for access). Strategy: for each ticket unit,
-      // emit a piece. If that unit has a cover, reuse its token as access QR; otherwise just header.
-      // Simpler & correct: print a comprobante + 1 access piece per unit (without QR, just ticket
-      // number + ticket type), and then 1 cover piece per cover token.
-      const entryTokens: TicketSalePrintData["entryTokens"] = [];
-      for (const it of cart) {
-        for (let i = 0; i < it.quantity; i++) {
-          // Use a tokenized entry only if there's no cover (so access is via the cover ticket).
-          // For simplicity we always emit an entry piece using the sale ticket_number as fallback.
-          entryTokens.push({
-            token: sale.ticket_number,
-            short_code: null,
-            ticket_type: it.ticketType.name,
-          });
-        }
-      }
-
       const coverTokens: TicketSalePrintData["coverTokens"] = (sale.cover_tokens || []).map(t => ({
         token: t.token,
         short_code: t.short_code || null,
         ticket_type: t.ticket_type,
         cocktail_name: t.cocktail_name || null,
       }));
-
-      const printData: TicketSalePrintData = {
+      if (!coverTokens.length) return; // sin cover: no se imprime nada
+      await printWithSafety({
         saleNumber: sale.ticket_number,
         posName: selectedPosName,
         dateTime: format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }),
-        items,
+        items: cart.map(it => ({ name: it.ticketType.name, quantity: it.quantity, price: it.ticketType.price })),
         total: sale.total,
         paymentMethod: paymentMethod!,
-        entryTokens,
+        entryTokens: [],
         coverTokens,
         jornadaName: activeJornadaName,
         jornadaNumber: activeJornadaNumber,
-      };
-
-      await printTicketSale(printData, paperWidth);
+      });
     } catch (err) {
       console.error("Auto-print failed:", err);
-      toast.warning("Venta OK, pero la impresión falló. Usa 'Reimprimir'.");
+      toast.error("Venta OK, pero el cover no se imprimió. Usa 'Imprimir cover pendiente'.");
     }
   };
 
@@ -615,12 +521,6 @@ export default function Tickets() {
     setShowReceipt(false);
     setPaymentMethod(undefined);
     setStep("select-tickets");
-  };
-
-  const handleReprint = async () => {
-    if (!saleResult) return;
-    await autoPrintSale(saleResult);
-    toast.success("Reimprimiendo");
   };
 
   /* ─── Renders ─── */
@@ -739,7 +639,6 @@ export default function Tickets() {
           open={showReceipt}
           onClose={() => setShowReceipt(false)}
           saleResult={saleResult ? { ...saleResult, __cartItems: receiptCart } : null}
-          onReprint={handleReprint}
         />
       </>
     );
@@ -1035,20 +934,6 @@ export default function Tickets() {
                             </Badge>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 shrink-0"
-                          onClick={() => reprintSale(sale.id)}
-                          disabled={reprintingId === sale.id}
-                          title="Reimprimir solo comprobante"
-                        >
-                          {reprintingId === sale.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Printer className="h-3 w-3" />
-                          )}
-                        </Button>
                       </div>
                     ))}
                   </div>
