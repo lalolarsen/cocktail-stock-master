@@ -5,8 +5,16 @@
 - Solo sale un cover por cada cover incluido. Si ese tipo de entrada no trae cover, no se imprime nada.
 - En tablet (RawBT) los covers salen directo, sin vista previa, igual que Guardarropía: un solo envío, con espacio y una línea para cortar a mano entre covers.
 - En PC se imprimen solo los covers con el navegador.
-- "Reimprimir" en Recientes sigue la misma regla (solo covers; si no hay, avisa "Esta venta no tiene covers").
-- Cada cover mantiene número/nombre de jornada y "Válido solo esta jornada".
+- **Sin reimpresión de covers**: se quita el botón "Reimprimir" en Recientes para ventas de entradas.
+- **Respaldo para que nunca se quede sin imprimir**:
+  - La venta queda marcada como "cover pendiente" hasta que la impresión se envía bien.
+  - Si el envío a la impresora falla, aparece un aviso grande en pantalla con un botón "Imprimir cover pendiente", que solo funciona una vez por venta.
+  - Al volver a la caja se revisan las ventas con cover pendiente y se muestran para imprimirlas.
+  - Cada cover lleva su número único, así nunca pueden salir dos iguales válidos.
+- **Cover más claro para evitar errores**:
+  - Nombre de la jornada en letras grandes y en negrita, arriba del cover.
+  - Franja destacada "VÁLIDO SOLO ESTA JORNADA" con la fecha de la noche.
+  - Número de jornada y número de cover visibles, y el trago/opción del cover en grande.
 
 ## 2. Reportes de cierre mejorados
 Aplica al correo de cierre y al PDF de cierre que se descarga en Jornadas. Secciones:
