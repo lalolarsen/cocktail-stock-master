@@ -158,7 +158,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
       toast.error("RUT inválido. Debe tener entre 7 y 9 dígitos.");
       return;
     }
-    if (!newWorker.pin || newWorker.pin.length < 4) {
+    if (!newWorker.pin || newWorker.pin.length < 6) {
       toast.error("PIN debe tener al menos 4 dígitos");
       return;
     }
@@ -321,7 +321,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
   };
 
   const resetPin = async () => {
-    if (!selectedWorker || !newPin || newPin.length < 4) {
+    if (!selectedWorker || !newPin || newPin.length < 6) {
       toast.error("PIN debe tener al menos 4 dígitos");
       return;
     }
@@ -688,7 +688,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
             <Input
               type="password"
               inputMode="numeric"
-              placeholder="Nuevo PIN (mínimo 4 dígitos)"
+              placeholder="Nuevo PIN (mínimo 6 dígitos)"
               value={newPin}
               onChange={(e) => setNewPin(e.target.value)}
               maxLength={6}
