@@ -4,9 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Shirt,
   Backpack,
@@ -14,14 +12,13 @@ import {
   Loader2,
   Minus,
   Plus,
-  Search,
   Lock,
   Banknote,
   CreditCard,
   AlertTriangle,
   Monitor,
 } from "lucide-react";
-import { printCoatcheckTicket, ITEM_LABELS, CoatcheckItemType } from "@/lib/printing/coatcheck-ticket";
+import { printCoatcheckTicket, CoatcheckItemType } from "@/lib/printing/coatcheck-ticket";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
 
@@ -55,12 +52,10 @@ export default function Guardarropia() {
   const navigate = useNavigate();
 
   const [posId, setPosId] = useState<string | null>(() => localStorage.getItem(POS_KEY));
-  const [tab, setTab] = useState<"guardar" | "retirar">("guardar");
   const [itemType, setItemType] = useState<CoatcheckItemType>("garment");
   const [qty, setQty] = useState(1);
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState("");
 
   const { data: terminals = [], isLoading: loadingTerminals } = useQuery({
     queryKey: ["coatcheck-terminals"],
@@ -120,22 +115,14 @@ export default function Guardarropia() {
     enabled: !!activeJornadaId,
   });
 
-  const active = useMemo(() => tickets.filter((t) => t.status === "issued"), [tickets]);
-  const filteredActive = useMemo(() => {
-    const q = search.trim();
-    if (!q) return active;
-    return active.filter((t) => String(t.ticket_number).includes(q));
-  }, [active, search]);
-
   const totals = useMemo(() => {
     const issued = tickets.filter((t) => t.status !== "cancelled");
     return {
       total: issued.reduce((s, t) => s + t.amount, 0),
       cash: issued.filter((t) => t.payment_method === "cash").reduce((s, t) => s + t.amount, 0),
       card: issued.filter((t) => t.payment_method !== "cash").reduce((s, t) => s + t.amount, 0),
-      pending: active.length,
     };
-  }, [tickets, active]);
+  }, [tickets]);
 
   const unitPrice = itemType === "backpack" ? prices.backpack : prices.garment;
   const amount = qty * unitPrice;
@@ -175,23 +162,6 @@ export default function Guardarropia() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleRetrieve = async (t: Ticket) => {
-    const { error } = await supabase
-      .from("coatcheck_tickets")
-      .update({
-        status: "retrieved",
-        retrieved_at: new Date().toISOString(),
-        retrieved_by: user?.id ?? null,
-      })
-      .eq("id", t.id);
-    if (error) {
-      toast.error("No se pudo marcar como entregada");
-      return;
-    }
-    toast.success(`Guarda N° ${t.ticket_number} entregada`);
-    queryClient.invalidateQueries({ queryKey: ["coatcheck-tickets", activeJornadaId] });
   };
 
   if (jornadaLoading || loadingTerminals) {
@@ -289,7 +259,7 @@ export default function Guardarropia() {
         </Button>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Card className="p-4">
           <p className="text-xs text-muted-foreground">Recaudado</p>
           <p className="text-xl font-bold">{clp(totals.total)}</p>
@@ -302,27 +272,8 @@ export default function Guardarropia() {
           <p className="text-xs text-muted-foreground">Tarjeta</p>
           <p className="text-xl font-bold">{clp(totals.card)}</p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground">Sin retirar</p>
-          <p className="text-xl font-bold">{totals.pending}</p>
-        </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {(["guardar", "retirar"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`h-16 rounded-xl border text-lg font-semibold transition ${
-              tab === t ? "border-primary bg-primary/10 text-primary" : "bg-card"
-            }`}
-          >
-            {t === "guardar" ? "Guardar" : `Entregar (${active.length})`}
-          </button>
-        ))}
-      </div>
-
-      {tab === "guardar" ? (
         <Card className="p-4 sm:p-5 space-y-5">
           <div className="space-y-3">
             <p className="text-sm font-semibold text-muted-foreground">¿Qué está guardando?</p>
@@ -400,49 +351,9 @@ export default function Guardarropia() {
             Cobrar e imprimir
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Cada tipo lleva su propio número. Salen dos copias: una para el cliente y otra para pinchar.
+            Salen dos copias con el mismo número: cliente y cajero.
           </p>
         </Card>
-      ) : (
-        <div className="space-y-3">
-          <div className="relative">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-14 pl-11 text-lg"
-              inputMode="numeric"
-              placeholder="Buscar por número"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          {isLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredActive.length === 0 ? (
-            <p className="text-center text-muted-foreground py-10">Sin guardas por entregar</p>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {filteredActive.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 p-4 rounded-xl border bg-card">
-                  <span className="text-3xl font-black w-16 text-center">{t.ticket_number}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-semibold">
-                      {t.garment_count} × {ITEM_LABELS[(t.item_type as CoatcheckItemType) || "garment"]}
-                    </p>
-                    <Badge variant="outline" className="text-xs">
-                      {t.payment_method === "cash" ? "Efectivo" : "Tarjeta"} · {clp(t.amount)}
-                    </Badge>
-                  </div>
-                  <Button size="lg" className="h-14 px-5" onClick={() => handleRetrieve(t)}>
-                    Entregar
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
