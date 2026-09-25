@@ -654,6 +654,19 @@ export default function Tickets() {
         <div className="flex flex-col lg:flex-row min-h-screen">
           {/* Left grid */}
           <div className="flex-1 lg:w-[70%] p-4 space-y-4">
+            {pendingPrints.length > 0 && (
+              <Card className="p-4 border-destructive bg-destructive/10 space-y-2">
+                <p className="font-bold text-destructive">Covers sin imprimir ({pendingPrints.length})</p>
+                {pendingPrints.map(p => (
+                  <div key={p.saleNumber} className="flex items-center justify-between gap-2">
+                    <span className="text-sm">Venta {p.saleNumber} · {p.coverTokens.length} cover(s)</span>
+                    <Button size="lg" variant="destructive" className="h-12 gap-2" onClick={() => printPending(p)}>
+                      <Printer className="h-5 w-5" /> Imprimir cover pendiente
+                    </Button>
+                  </div>
+                ))}
+              </Card>
+            )}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Ticket className="h-7 w-7 text-primary" />
