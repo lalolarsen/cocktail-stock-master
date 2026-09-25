@@ -40,6 +40,14 @@ interface POSSalesData {
     redeemed: number;
     items?: { time: string; product: string; qty: number; note?: string | null }[];
   };
+  /** Caja Guardarropía */
+  coatcheck?: {
+    total: number; cash: number; card: number; tickets: number;
+    backpackQty: number; backpackAmount: number; backpackRange?: string | null;
+    garmentQty: number; garmentAmount: number; garmentRange?: string | null;
+  };
+  /** Entradas por tipo y covers entregados */
+  tickets?: { types: { name: string; qty: number; total: number }[]; covers: { name: string; qty: number }[] };
 }
 
 const fmt = (n: number) => `$${n.toLocaleString("es-CL")}`;
@@ -125,9 +133,39 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="sep">${dash}</div>`
     : "";
 
+  const cc = data.coatcheck;
+  const coatcheckBlock = cc && cc.tickets > 0
+    ? `
+      <div class="pos-block">
+        <div class="pos-name">GUARDARROPÍA</div>
+        <table class="items"><tbody>
+          <tr><td class="item-name">Mochilas/bolsos (${cc.backpackQty})${cc.backpackRange ? ` N° ${cc.backpackRange}` : ""}</td><td class="item-price">${fmt(cc.backpackAmount)}</td></tr>
+          <tr><td class="item-name">Prendas (${cc.garmentQty})${cc.garmentRange ? ` N° ${cc.garmentRange}` : ""}</td><td class="item-price">${fmt(cc.garmentAmount)}</td></tr>
+          <tr><td class="item-name">Efectivo</td><td class="item-price">${fmt(cc.cash)}</td></tr>
+          <tr><td class="item-name">Tarjeta</td><td class="item-price">${fmt(cc.card)}</td></tr>
+        </tbody></table>
+        <div class="pos-total"><span>${cc.tickets} comprobantes</span><span class="pos-total-amount">${fmt(cc.total)}</span></div>
+        <div class="sep">${dash}</div>
+      </div>`
+    : "";
+
+  const tk = data.tickets;
+  const ticketsDetail = tk && tk.types.length > 0
+    ? `
+      <div class="section-title">ENTRADAS</div>
+      <div class="sep">${dash}</div>
+      <table class="items"><tbody>
+        ${tk.types.map(t => `<tr><td class="item-name">${t.qty} × ${escape(t.name)}</td><td class="item-price">${fmt(t.total)}</td></tr>`).join("")}
+      </tbody></table>
+      ${tk.covers.length > 0 ? `<div class="subsection">COVERS ENTREGADOS</div><table class="items"><tbody>
+        ${tk.covers.map(c => `<tr><td class="item-name">${escape(c.name)}</td><td class="item-price">${c.qty}</td></tr>`).join("")}
+      </tbody></table>` : ""}
+      <div class="sep">${dash}</div>`
+    : "";
+
   return `
     <div class="receipt">
-      <div class="venue-name">REPORTE DE VENTAS</div>
+      <div class="venue-name">REPORTE DE CIERRE</div>
       <div class="sep">${sep}</div>
       <div class="meta">Jornada #${data.jornadaNumber}</div>
       <div class="meta">${data.fecha}</div>
@@ -136,6 +174,7 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="section-title">DESGLOSE POR POS</div>
       <div class="sep">${dash}</div>
       ${posBlocks}
+      ${coatcheckBlock}
       <div class="section-title">RESUMEN GENERAL</div>
       <div class="sep">${dash}</div>
       <table class="items"><tbody>
@@ -156,6 +195,7 @@ function buildReportHtml(data: POSSalesData): string {
       <div class="total-line">TOTAL: ${fmt(data.grandTotal)}</div>
       <div class="meta">${data.grandCount} ventas</div>
       <div class="sep">${sep}</div>
+      ${ticketsDetail}
       ${courtesyBlock}
       ${observacionBlock}
       <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
