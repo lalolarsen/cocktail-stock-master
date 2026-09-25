@@ -29,7 +29,8 @@ Aplica al correo de cierre y al PDF de cierre que se descarga en Jornadas. Secci
 
 ## Detalles técnicos
 - `src/lib/printing/ticket-print.ts`: `printTicketSale` imprime solo `coverTokens`; retorna sin hacer nada si está vacío. Nuevo payload ESC/POS para Android vía `intent:base64` (reutilizar `isAndroid` de `coatcheck-ticket.ts`), con feed + línea de corte + comando de corte por cover.
-- `src/pages/Tickets.tsx`: `autoPrintSale` y `reprintSale` sin entradas sintéticas; reimpresión incluye covers.
+- `src/pages/Tickets.tsx`: `autoPrintSale` sin entradas sintéticas; se elimina `reprintSale` y su botón. Cola local de "covers pendientes" (guardada en la tablet) que se limpia al enviar bien y se muestra al abrir la caja; reintento único por venta.
+- Covers (RawBT y navegador): nombre de jornada grande, franja "VÁLIDO SOLO ESTA JORNADA" con fecha, número de cover.
 - `supabase/functions/send-jornada-summary` + `jornada-closed-summary.tsx`: agregar desglose por caja incluyendo `coatcheck`, detalle mochila/prenda (`item_type`), rango de números, cortesías por producto/emisor/canjeadas, entradas por tipo y covers.
 - `JornadaDownloadMenu.tsx` + `jornada-cashier-report.ts`: sumar Guardarropía (`coatcheck_tickets`), cajas por tipo y cortesías al PDF.
 - Redeploy de la función de correo. Sin cambios en base de datos.
