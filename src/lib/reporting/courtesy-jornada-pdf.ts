@@ -1,154 +1,86 @@
 /**
- * Generates a PDF report of all courtesy QR redemption attempts for a jornada.
- * Includes successful and failed attempts with full audit detail.
+ * Reporte de Cortesías por jornada (PDF, plantilla unificada).
+ * Fuente: courtesy_redemptions (jornada_id) + courtesy_qr.
  */
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { supabase } from "@/integrations/supabase/client";
+import { addKpis, addSignature, addTable, createReport, finishReport, reportFileName } from "./pdf-template";
 
-export interface CourtesyRedemptionRow {
-  redeemedAt: string;          // ISO
-  product: string;
-  qty: number;
-  note: string | null;
-  code: string;
-  redeemedBy: string;          // worker name or short uid
-  posSource: string;           // "Barra" | "POS Híbrido" | "—"
-  result: "success" | "fail";
-  reason: string | null;
-}
-
-export interface CourtesyJornadaPdfData {
-  jornadaNumber: number;
-  fecha: string;
-  horario: string;
-  venueName?: string;
-  issued: number;
-  rows: CourtesyRedemptionRow[];
-}
+export const SOCIO_PREFIX = "Socio: ";
 
 const fmtTime = new Intl.DateTimeFormat("es-CL", {
-  timeZone: "America/Santiago",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
+  timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hour12: false,
 });
 
-function reasonLabel(reason: string | null): string {
-  switch (reason) {
-    case "already_redeemed": return "Ya canjeado";
-    case "expired": return "Expirado";
-    case "cancelled": return "Cancelado";
-    case "not_found": return "No encontrado";
-    case "empty_code": return "Código vacío";
-    default: return reason || "—";
-  }
+function parseNote(note: string | null): { motivo: string; socio: string | null } {
+  if (!note) return { motivo: "Sin motivo", socio: null };
+  if (note.startsWith(SOCIO_PREFIX)) return { motivo: "Socio", socio: note.slice(SOCIO_PREFIX.length).trim() || null };
+  return { motivo: note, socio: null };
 }
 
-export function generateCourtesyJornadaPDF(data: CourtesyJornadaPdfData): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-
-  // Header
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text("Reporte de Cortesías", pageWidth / 2, 40, { align: "center" });
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Jornada #${data.jornadaNumber}`, pageWidth / 2, 58, { align: "center" });
-  doc.text(`${data.fecha} · ${data.horario}`, pageWidth / 2, 72, { align: "center" });
-  if (data.venueName) {
-    doc.text(data.venueName, pageWidth / 2, 86, { align: "center" });
-  }
-
-  // KPIs
-  const ok = data.rows.filter(r => r.result === "success");
-  const fail = data.rows.filter(r => r.result === "fail");
-  const totalQty = ok.reduce((s, r) => s + (Number(r.qty) || 0), 0);
-  const byBar = ok.filter(r => r.posSource === "Barra").length;
-  const byHybrid = ok.filter(r => r.posSource === "POS Híbrido").length;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Resumen", 40, 110);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const kpiLines = [
-    `QR emitidos en la jornada: ${data.issued}`,
-    `Canjes exitosos: ${ok.length}  ·  Unidades entregadas: ${totalQty}`,
-    `Canales: Barra ${byBar}  ·  POS Híbrido ${byHybrid}`,
-    `Intentos fallidos (auditoría): ${fail.length}`,
-  ];
-  kpiLines.forEach((l, i) => doc.text(l, 40, 128 + i * 14));
-
-  // Table — successful redemptions
-  const successBody = ok.map(r => [
-    fmtTime.format(new Date(r.redeemedAt)),
-    r.product,
-    String(r.qty),
-    r.note || "—",
-    r.code,
-    r.redeemedBy,
-    r.posSource,
+export async function downloadCourtesyJornadaReport(jornadaId: string): Promise<"ok" | "empty"> {
+  const [jRes, redRes] = await Promise.all([
+    supabase.from("jornadas").select("numero_jornada, fecha, hora_apertura, hora_cierre").eq("id", jornadaId).single(),
+    supabase.from("courtesy_redemptions").select("courtesy_id, redeemed_at, redeemed_by, result")
+      .eq("jornada_id", jornadaId).eq("result", "success").order("redeemed_at"),
   ]);
+  if (jRes.error) throw jRes.error;
+  if (redRes.error) throw redRes.error;
+  const reds = (redRes.data || []).filter((r) => r.courtesy_id);
+  if (reds.length === 0) return "empty";
 
-  autoTable(doc, {
-    startY: 200,
-    head: [["Hora", "Producto", "Cant.", "Observación", "Código", "Canjeado por", "POS"]],
-    body: successBody.length > 0 ? successBody : [["—", "Sin canjes exitosos en esta jornada", "", "", "", "", ""]],
-    styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
-    headStyles: { fillColor: [0, 230, 118], textColor: [0, 0, 0], fontStyle: "bold" },
-    columnStyles: {
-      0: { cellWidth: 45 },
-      1: { cellWidth: 130 },
-      2: { cellWidth: 35, halign: "center" },
-      3: { cellWidth: 130 },
-      4: { cellWidth: 70 },
-      5: { cellWidth: 75 },
-      6: { cellWidth: 60 },
-    },
-    didDrawPage: () => {
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("Canjes exitosos", 40, 190);
-    },
+  const ids = [...new Set(reds.map((r) => r.courtesy_id as string))];
+  const [qrRes, profRes] = await Promise.all([
+    supabase.from("courtesy_qr").select("id, product_name, qty, note, created_by").in("id", ids),
+    supabase.from("profiles").select("id, full_name"),
+  ]);
+  const qrMap = new Map((qrRes.data || []).map((q) => [q.id, q]));
+  const names = new Map((profRes.data || []).map((p) => [p.id, p.full_name || "—"]));
+
+  const rows = reds.map((r) => {
+    const q = qrMap.get(r.courtesy_id as string);
+    const { motivo, socio } = parseNote(q?.note ?? null);
+    return {
+      time: fmtTime.format(new Date(r.redeemed_at)),
+      product: q?.product_name || "—",
+      qty: Number(q?.qty) || 1,
+      motivo, socio,
+      by: names.get(q?.created_by || r.redeemed_by || "") || "—",
+    };
   });
 
-  // Table — failed attempts (audit)
-  if (fail.length > 0) {
-    const lastY = (doc as any).lastAutoTable?.finalY ?? 240;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Intentos fallidos", 40, lastY + 30);
+  const units = rows.reduce((s, r) => s + r.qty, 0);
+  const byMotivo = new Map<string, { n: number; u: number }>();
+  rows.forEach((r) => {
+    const c = byMotivo.get(r.motivo) || { n: 0, u: 0 };
+    c.n++; c.u += r.qty; byMotivo.set(r.motivo, c);
+  });
+  const bySocio = new Map<string, number>();
+  rows.filter((r) => r.socio).forEach((r) => bySocio.set(r.socio!, (bySocio.get(r.socio!) || 0) + r.qty));
 
-    const failBody = fail.map(r => [
-      fmtTime.format(new Date(r.redeemedAt)),
-      r.code || "—",
-      reasonLabel(r.reason),
-      r.redeemedBy,
-      r.posSource,
-    ]);
-    autoTable(doc, {
-      startY: lastY + 38,
-      head: [["Hora", "Código", "Motivo", "Intentado por", "POS"]],
-      body: failBody,
-      styles: { fontSize: 8, cellPadding: 4 },
-      headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255], fontStyle: "bold" },
-      columnStyles: {
-        0: { cellWidth: 50 },
-        1: { cellWidth: 90 },
-        2: { cellWidth: 110 },
-        3: { cellWidth: 130 },
-        4: { cellWidth: 70 },
-      },
-    });
+  const j = jRes.data;
+  const ctx = createReport({
+    title: "Reporte de Cortesías",
+    jornadaNumber: j.numero_jornada,
+    fecha: j.fecha,
+    horario: `${j.hora_apertura?.slice(0, 5) || "--:--"} – ${j.hora_cierre?.slice(0, 5) || "--:--"}`,
+  });
+  addKpis(ctx, [
+    { label: "Cortesías", value: String(rows.length) },
+    { label: "Unidades", value: String(units) },
+    { label: "Socios", value: String(bySocio.size) },
+    { label: "Motivos", value: String(byMotivo.size) },
+  ]);
+  addTable(ctx, "Por motivo", ["Motivo", "Cortesías", "Unidades"],
+    [...byMotivo.entries()].sort((a, b) => b[1].u - a[1].u).map(([m, c]) => [m, c.n, c.u]),
+    { rightCols: [1, 2], foot: ["Total", rows.length, units] });
+  if (bySocio.size) {
+    addTable(ctx, "Por socio", ["Socio", "Unidades"],
+      [...bySocio.entries()].sort((a, b) => b[1] - a[1]), { rightCols: [1] });
   }
-
-  // Footer
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text(`Generado: ${new Date().toLocaleString("es-CL")}`, pageWidth / 2, pageHeight - 20, { align: "center" });
-
-  doc.save(`cortesias_jornada_${data.jornadaNumber}.pdf`);
+  addTable(ctx, "Detalle", ["Hora", "Producto", "Cant.", "Motivo", "Emitido por"],
+    rows.map((r) => [r.time, r.product, r.qty, r.socio ? `Socio: ${r.socio}` : r.motivo, r.by]),
+    { rightCols: [2] });
+  addSignature(ctx, "Responsable");
+  finishReport(ctx, reportFileName(j.numero_jornada, "cortesias"));
+  return "ok";
 }

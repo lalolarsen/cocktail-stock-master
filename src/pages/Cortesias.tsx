@@ -23,8 +23,12 @@ import { useNavigate } from "react-router-dom";
 import { AdminBackButton } from "@/components/AdminBackButton";
 import { TabletHelpButton } from "@/components/TabletHelpButton";
 import { fetchAllRows } from "@/lib/supabase-batch";
+import { Download } from "lucide-react";
+import { z } from "zod";
+import { downloadCourtesyJornadaReport, SOCIO_PREFIX } from "@/lib/reporting/courtesy-jornada-pdf";
 
 const MOTIVOS = ["Socio", "Embajador", "Cumpleaños", "DJ", "Devoluciones", "Otros"] as const;
+const socioSchema = z.string().trim().min(2).max(60);
 
 type CourtesyRow = {
   id: string;
@@ -48,8 +52,11 @@ export default function Cortesias() {
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState(1);
   const [motivo, setMotivo] = useState<string>("");
+  const [socioName, setSocioName] = useState("");
   const [issuing, setIssuing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const issuingRef = useRef(false);
+  const socioValid = motivo !== "Socio" || socioSchema.safeParse(socioName).success;
 
   const { data: cocktails = [] } = useQuery({
     queryKey: ["cortesias-cocktails"],
@@ -135,6 +142,11 @@ export default function Cortesias() {
       toast.error("Elige un producto");
       return;
     }
+    if (!socioValid) {
+      toast.error("Escribe el nombre del socio");
+      return;
+    }
+    const note = motivo === "Socio" ? `${SOCIO_PREFIX}${socioName.trim()}` : motivo || null;
     issuingRef.current = true;
     setIssuing(true);
     try {
@@ -151,7 +163,7 @@ export default function Cortesias() {
           max_uses: 1,
           used_count: 1,
           status: "redeemed",
-          note: motivo || null,
+          note,
           created_by: user.id,
           venue_id: DEFAULT_VENUE_ID,
         })
@@ -176,6 +188,7 @@ export default function Cortesias() {
       setSearch("");
       setQty(1);
       setMotivo("");
+      setSocioName("");
       queryClient.invalidateQueries({ queryKey: ["cortesias-tablet-list"] });
       printCourtesyCover({
         productName: row.product_name,
@@ -226,6 +239,27 @@ export default function Cortesias() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="lg"
+          className="h-14 px-5 text-base gap-2"
+          disabled={downloading || !activeJornadaId}
+          onClick={async () => {
+            if (!activeJornadaId) return;
+            setDownloading(true);
+            try {
+              const r = await downloadCourtesyJornadaReport(activeJornadaId);
+              if (r === "empty") toast.info("Aún no hay cortesías en esta jornada");
+            } catch {
+              toast.error("No se pudo descargar el resumen");
+            } finally {
+              setDownloading(false);
+            }
+          }}
+        >
+          {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+          Resumen
+        </Button>
         <TabletHelpButton screen="cortesias" size="lg" className="h-14 px-5 text-base" />
         <AdminBackButton size="lg" className="h-14 px-5 text-base" />
         <Button
@@ -331,12 +365,26 @@ export default function Cortesias() {
               </button>
             ))}
           </div>
+          {motivo === "Socio" && (
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">Nombre del socio (obligatorio)</p>
+              <Input
+                className="h-14 text-base"
+                placeholder="Ej: Juan Pérez"
+                maxLength={60}
+                value={socioName}
+                onChange={(e) => setSocioName(e.target.value)}
+                autoFocus
+              />
+              {!socioValid && <p className="text-xs text-destructive">Escribe el nombre del socio para poder emitir.</p>}
+            </div>
+          )}
         </div>
 
         <Button
           size="lg"
           className="w-full h-20 text-xl font-bold gap-3"
-          disabled={!selected || issuing}
+          disabled={!selected || issuing || !socioValid}
           onClick={handleIssue}
         >
           {issuing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}
