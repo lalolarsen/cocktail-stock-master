@@ -282,11 +282,11 @@ export function JornadaDownloadMenu({
         <DropdownMenuLabel className="text-xs">Reportes operativos</DropdownMenuLabel>
         <DropdownMenuItem onClick={handlePOS} disabled={!!busy}>
           <Printer className="h-3.5 w-3.5 mr-2" />
-          POS térmico
+          Resumen de cajas (térmico)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleCount} disabled={!!busy}>
           <ListChecks className="h-3.5 w-3.5 mr-2" />
-          Conteo de productos
+          Productos vendidos (PDF)
         </DropdownMenuItem>
         {onRedeem && (
           <DropdownMenuItem onClick={onRedeem} disabled={!!busy}>
