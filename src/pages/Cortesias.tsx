@@ -21,6 +21,7 @@ import { printCourtesyCover } from "@/lib/printing/courtesy-cover";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
 import { AdminBackButton } from "@/components/AdminBackButton";
+import { TabletHelpButton } from "@/components/TabletHelpButton";
 import { fetchAllRows } from "@/lib/supabase-batch";
 
 const MOTIVOS = ["Socio", "Embajador", "Cumpleaños", "DJ", "Devoluciones", "Otros"] as const;
@@ -225,6 +226,7 @@ export default function Cortesias() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+        <TabletHelpButton screen="cortesias" size="lg" className="h-14 px-5 text-base" />
         <AdminBackButton size="lg" className="h-14 px-5 text-base" />
         <Button
           variant="outline"
