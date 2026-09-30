@@ -79,6 +79,17 @@ export function ReportsPanel() {
   const [prevMonthTotal, setPrevMonthTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedJornada, setExpandedJornada] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "cerrada" | "activa">("all");
+  const visibleJornadas = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jornadas.filter((j) => {
+      if (statusFilter === "cerrada" && j.estado !== "cerrada") return false;
+      if (statusFilter === "activa" && j.estado === "cerrada") return false;
+      if (!q) return true;
+      return String(j.numero_jornada).includes(q.replace("#", "")) || (j.nombre || "").toLowerCase().includes(q);
+    });
+  }, [jornadas, search, statusFilter]);
   const [loadingSales, setLoadingSales] = useState<string | null>(null);
 
   const [monthFilter, setMonthFilter] = useState<string>(() => {
@@ -318,9 +329,35 @@ export function ReportsPanel() {
 
           {/* Jornadas list */}
           <section className="space-y-2">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Jornadas</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Jornadas <span className="font-normal">({visibleJornadas.length})</span>
+              </h2>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-md border border-border overflow-hidden text-xs">
+                  {(["all", "cerrada", "activa"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setStatusFilter(s)}
+                      className={`px-3 h-9 transition ${statusFilter === s ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {s === "all" ? "Todas" : s === "cerrada" ? "Cerradas" : "Abiertas"}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar # o nombre"
+                  className="h-9 w-40 rounded-md border border-border bg-card px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
-              {jornadas.map((report) => (
+              {visibleJornadas.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">Ninguna jornada coincide con el filtro</p>
+              )}
+              {visibleJornadas.map((report) => (
                 <JornadaRow
                   key={report.id}
                   report={report}
