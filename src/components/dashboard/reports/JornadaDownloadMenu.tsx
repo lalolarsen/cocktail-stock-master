@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
 import { generateProductSalesPDF, type POSProductBreakdown } from "@/lib/reporting/product-sales-pdf";
-import { generateCourtesyJornadaPDF, type CourtesyRedemptionRow } from "@/lib/reporting/courtesy-jornada-pdf";
+import { downloadCourtesyJornadaReport } from "@/lib/reporting/courtesy-jornada-pdf";
 
 interface Props {
   jornadaId: string;
@@ -232,7 +232,7 @@ export function JornadaDownloadMenu({
         return { posName, products, totalUnits: products.reduce((s, p) => s + p.quantity, 0) };
       }).sort((a, b) => b.totalUnits - a.totalUnits);
       generateProductSalesPDF({ jornadaNumber, fecha, horario, posSections, grandTotalUnits: posSections.reduce((s, p) => s + p.totalUnits, 0) });
-      toast.success("Reporte de conteo enviado a impresión");
+      toast.success("Reporte de productos descargado");
     } catch (err) {
       console.error(err);
       toast.error("Error al generar reporte de conteo");
@@ -244,66 +244,12 @@ export function JornadaDownloadMenu({
   const handleCourtesyPDF = async () => {
     setBusy("courtesy");
     try {
-      const [redRes, jornadaRes] = await Promise.all([
-        supabase
-          .from("courtesy_redemptions")
-          .select("courtesy_id, result, reason, redeemed_at, redeemed_by, pos_source")
-          .eq("jornada_id", jornadaId)
-          .order("redeemed_at", { ascending: true }),
-        supabase
-          .from("jornadas")
-          .select("opened_at, closed_at")
-          .eq("id", jornadaId)
-          .maybeSingle(),
-      ]);
-      if (redRes.error) throw redRes.error;
-      const reds = (redRes.data || []) as Array<{
-        courtesy_id: string | null; result: string; reason: string | null;
-        redeemed_at: string; redeemed_by: string | null; pos_source: string | null;
-      }>;
-
-      const courtesyIds = [...new Set(reds.map(r => r.courtesy_id).filter((x): x is string => !!x))];
-
-      const qrRowsRes: any = courtesyIds.length > 0
-        ? await supabase.from("courtesy_qr").select("id, code, product_name, qty, note").in("id", courtesyIds)
-        : { data: [], error: null };
-      const qrMap = new Map<string, any>((qrRowsRes.data || []).map((q: any) => [q.id, q]));
-
-      const jMeta = jornadaRes.data as { opened_at?: string | null; closed_at?: string | null } | null;
-      let issuedCount = 0;
-      if (jMeta?.opened_at) {
-        const fromIso = jMeta.opened_at;
-        const toIso = jMeta.closed_at || new Date().toISOString();
-        const { count } = await supabase
-          .from("courtesy_qr").select("id", { count: "exact", head: true })
-          .gte("created_at", fromIso).lte("created_at", toIso);
-        issuedCount = count ?? 0;
-      }
-
-      const posLabel = (s: string | null) => s === "bar" ? "Barra" : s === "hybrid_pos" ? "POS Híbrido" : "—";
-
-      const rows: CourtesyRedemptionRow[] = reds.map(r => {
-        const qr = r.courtesy_id ? qrMap.get(r.courtesy_id) : null;
-        return {
-          redeemedAt: r.redeemed_at,
-          product: qr?.product_name || "—",
-          qty: Number(qr?.qty) || 1,
-          note: qr?.note ?? null,
-          code: qr?.code || "—",
-          redeemedBy: r.redeemed_by ? r.redeemed_by.slice(0, 8) : "—",
-          posSource: posLabel(r.pos_source),
-          result: r.result === "success" ? "success" : "fail",
-          reason: r.reason,
-        };
-      });
-
-      generateCourtesyJornadaPDF({
-        jornadaNumber, fecha, horario, issued: issuedCount, rows,
-      });
-      toast.success("PDF de cortesías generado");
+      const r = await downloadCourtesyJornadaReport(jornadaId);
+      if (r === "empty") toast.info("No hay cortesías en esta jornada");
+      else toast.success("Reporte de cortesías descargado");
     } catch (err) {
       console.error(err);
-      toast.error("Error al generar PDF de cortesías");
+      toast.error("Error al generar reporte de cortesías");
     } finally {
       setBusy(null);
     }
