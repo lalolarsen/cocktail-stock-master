@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AdminBackButton } from "@/components/AdminBackButton";
+import { TabletHelpButton } from "@/components/TabletHelpButton";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -697,6 +698,7 @@ export default function Tickets() {
                 >
                   <Download className="h-4 w-4" /> <span className="hidden sm:inline">Resultados</span>
                 </Button>
+                <TabletHelpButton screen="tickets" />
                 <AdminBackButton />
                 <Button
                   variant="outline" size="sm"
