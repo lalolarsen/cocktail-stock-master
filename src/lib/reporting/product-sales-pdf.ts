@@ -1,8 +1,7 @@
 /**
- * Generates a printable 80mm thermal receipt report of products sold per POS terminal.
- * Uses print-js with the same styling as the POS sales report.
+ * Reporte de productos vendidos por caja (PDF, plantilla unificada).
  */
-import printJS from "print-js";
+import { addKpis, addSignature, addTable, createReport, finishReport, reportFileName } from "./pdf-template";
 
 export interface ProductSaleRow {
   cocktailName: string;
@@ -25,91 +24,20 @@ export interface ProductSalesReportData {
   grandTotalUnits: number;
 }
 
-const sep = "================================================";
-const dash = "------------------------------------------------";
-
-function buildHtml(data: ProductSalesReportData): string {
-  const posBlocks = data.posSections
-    .map((pos) => {
-      const productRows = pos.products
-        .map(
-          (p) => `
-          <tr>
-            <td class="prod-qty">${p.quantity}</td>
-            <td class="prod-name">${p.cocktailName}</td>
-          </tr>`
-        )
-        .join("");
-
-      return `
-        <div class="pos-block">
-          <div class="pos-name">${pos.posName}</div>
-          <div class="sep">${dash}</div>
-          <table class="products"><tbody>
-            <tr class="prod-header">
-              <td class="prod-qty">Cant</td>
-              <td class="prod-name">Producto</td>
-            </tr>
-            ${productRows}
-          </tbody></table>
-          <div class="pos-total">${pos.totalUnits} unidades</div>
-          <div class="sep">${sep}</div>
-        </div>`;
-    })
-    .join("");
-
-  return `
-    <div class="receipt">
-      <div class="venue-name">CONTEO DE PRODUCTOS</div>
-      <div class="sep">${sep}</div>
-      <div class="meta">Jornada #${data.jornadaNumber}</div>
-      <div class="meta">${data.fecha}</div>
-      <div class="meta">${data.horario}</div>
-      <div class="sep">${sep}</div>
-
-      <div class="section-title">DESGLOSE POR POS</div>
-      <div class="sep">${dash}</div>
-      ${posBlocks}
-
-      <div class="section-title">TOTAL GENERAL</div>
-      <div class="sep">${dash}</div>
-      <div class="total-line">${data.grandTotalUnits} UNIDADES</div>
-      <div class="sep">${sep}</div>
-      <div class="footer">Generado: ${new Date().toLocaleString("es-CL")}</div>
-    </div>
-  `;
-}
-
-function buildCss(): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; color: #000 !important; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 11pt; color: #000; background: #fff; }
-    .receipt { width: 100%; padding: 0 2px; color: #000; }
-    .venue-name { font-size: 16pt; font-weight: bold; margin-bottom: 4px; text-align: center; color: #000; }
-    .sep { margin: 3px 0; white-space: pre; text-align: center; color: #000; font-size: 8pt; }
-    .meta { text-align: center; font-size: 10pt; color: #000; }
-    .section-title { text-align: center; font-size: 13pt; font-weight: bold; margin: 6px 0 2px; color: #000; }
-    .products { width: 100%; border-collapse: collapse; }
-    .products td { padding: 2px 0; vertical-align: top; color: #000; }
-    .prod-header td { font-size: 9pt; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 3px; margin-bottom: 2px; }
-    .prod-qty { width: 36px; text-align: center; font-size: 14pt; font-weight: bold; color: #000; }
-    .prod-name { text-align: left; font-size: 11pt; font-weight: bold; color: #000; }
-    .prod-price { text-align: right; white-space: nowrap; padding-left: 4px; font-size: 10pt; color: #000; }
-    .total-line { font-size: 14pt; font-weight: bold; text-align: center; margin: 4px 0; color: #000; }
-    .pos-block { margin: 4px 0; }
-    .pos-name { font-size: 13pt; font-weight: bold; margin: 6px 0 2px; text-align: center; color: #000; text-decoration: underline; }
-    .pos-total { display: flex; justify-content: space-between; font-size: 11pt; font-weight: bold; margin: 4px 0; color: #000; }
-    .pos-total-amount { font-weight: bold; }
-    .footer { text-align: center; margin-top: 10px; font-size: 8pt; color: #000; }
-    @media print {
-      @page { margin: 0; size: 80mm auto; }
-      body { margin: 2mm; }
-    }
-  `;
-}
-
 export function generateProductSalesPDF(data: ProductSalesReportData): void {
-  const html = buildHtml(data);
-  const css = buildCss();
-  printJS({ printable: html, type: "raw-html", style: css });
+  const ctx = createReport({ title: "Productos vendidos", jornadaNumber: data.jornadaNumber, fecha: data.fecha, horario: data.horario });
+  const all = new Map<string, number>();
+  data.posSections.forEach((p) => p.products.forEach((r) => all.set(r.cocktailName, (all.get(r.cocktailName) || 0) + r.quantity)));
+  addKpis(ctx, [
+    { label: "Unidades", value: String(data.grandTotalUnits) },
+    { label: "Productos distintos", value: String(all.size) },
+    { label: "Cajas", value: String(data.posSections.length) },
+  ]);
+  addTable(ctx, "Total por producto", ["Producto", "Unidades"],
+    [...all.entries()].sort((a, b) => b[1] - a[1]), { rightCols: [1], foot: ["Total", data.grandTotalUnits] });
+  data.posSections.forEach((p) =>
+    addTable(ctx, p.posName, ["Producto", "Unidades"],
+      p.products.map((r) => [r.cocktailName, r.quantity]), { rightCols: [1], foot: ["Total", p.totalUnits] }));
+  addSignature(ctx, "Responsable");
+  finishReport(ctx, reportFileName(data.jornadaNumber, "productos"));
 }
