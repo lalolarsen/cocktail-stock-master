@@ -114,11 +114,13 @@ export function ReportsPanel() {
     setLoading(true);
     try {
       const [year, month] = monthFilter.split("-").map(Number);
+      const prevDate = new Date(year, month - 2, 1);
 
-      const { data, error } = await supabase.rpc("get_monthly_jornadas_summary", {
-        p_year: year,
-        p_month: month,
-      });
+      // Mes actual y anterior en paralelo (carga más rápida)
+      const [{ data, error }, { data: prev }] = await Promise.all([
+        supabase.rpc("get_monthly_jornadas_summary", { p_year: year, p_month: month }),
+        supabase.rpc("get_monthly_jornadas_summary", { p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
+      ]);
       if (error) throw error;
 
       const reports: JornadaReport[] = (data || []).map((row: any) => ({
@@ -143,12 +145,6 @@ export function ReportsPanel() {
       }));
       setJornadas(reports);
 
-      // Previous month total (single lightweight call)
-      const prevDate = new Date(year, month - 2, 1);
-      const { data: prev } = await supabase.rpc("get_monthly_jornadas_summary", {
-        p_year: prevDate.getFullYear(),
-        p_month: prevDate.getMonth() + 1,
-      });
       const prevTotal = (prev || []).reduce((s: number, r: any) => s + Number(r.total_sales || 0), 0);
       setPrevMonthTotal(prevTotal);
     } catch (error) {
@@ -159,11 +155,11 @@ export function ReportsPanel() {
     }
   }, [monthFilter]);
 
-  const fetchJornadaSales = async (jornadaId: string) => {
+  const fetchJornadaSales = async (jornadaId: string, all = false): Promise<SaleDetail[]> => {
     setLoadingSales(jornadaId);
     try {
       const liveReport = await fetchJornadaLiveReport(jornadaId);
-      const salesSlice = liveReport.combinedSales.slice(0, PAGE_SIZE);
+      const salesSlice = all ? liveReport.combinedSales : liveReport.combinedSales.slice(0, PAGE_SIZE);
       const sellerIds = [...new Set(salesSlice.map((s) => s.sellerId).filter(Boolean))] as string[];
       const { data: profilesData } = sellerIds.length
         ? await supabase.from("profiles").select("id, full_name, email").in("id", sellerIds)
@@ -182,9 +178,11 @@ export function ReportsPanel() {
         seller_name: profilesMap.get(sale.sellerId || "")?.full_name || profilesMap.get(sale.sellerId || "")?.email || "Desconocido",
       }));
 
-      setJornadas((prev) => prev.map((j) => (j.id === jornadaId ? { ...j, sales: salesWithNames } : j)));
+      if (!all) setJornadas((prev) => prev.map((j) => (j.id === jornadaId ? { ...j, sales: salesWithNames } : j)));
+      return salesWithNames;
     } catch (error) {
       console.error("Error fetching sales:", error);
+      return [];
     } finally {
       setLoadingSales(null);
     }
@@ -200,11 +198,14 @@ export function ReportsPanel() {
     }
   };
 
-  const handleExportJornadaCSV = (report: JornadaReport) => {
-    if (!report.sales || report.sales.length === 0) {
-      toast.info("Expande la jornada y espera la carga de ventas antes de exportar.");
+  const handleExportJornadaCSV = async (report: JornadaReport) => {
+    // Descarga todas las ventas sin necesidad de expandir la jornada
+    const sales = await fetchJornadaSales(report.id, true);
+    if (sales.length === 0) {
+      toast.info("No hay ventas en esta jornada");
       return;
     }
+    report = { ...report, sales };
     const headers = ["Número", "Fecha", "Vendedor", "POS", "Categoría", "Método Pago", "Total", "Estado"];
     const rows = report.sales.map((sale) => [
       sale.sale_number,
