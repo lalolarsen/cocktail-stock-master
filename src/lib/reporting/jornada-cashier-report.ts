@@ -18,6 +18,7 @@ export interface CashierReportData {
   cardCount: number;
   grandTotal: number;
   grandCount: number;
+  extraLines?: { label: string; value: string }[];
 }
 
 const escape = (s: string) =>
@@ -76,6 +77,7 @@ export function downloadCashierReport(data: CashierReportData): void {
     <div class="row total-row"><span class="lbl">TOTAL</span><span class="val">${formatCLP(data.grandTotal)}</span></div>
     <div class="right">${data.grandCount} ventas</div>
     <hr />
+    ${data.extraLines?.length ? `<div class="center section">DETALLE</div><hr />${data.extraLines.map(l => `<div class="row"><span class="lbl">${escape(l.label)}</span><span class="val">${escape(l.value)}</span></div>`).join("")}<hr />` : ""}
 
     <div class="sign-block">
       <div>Firma cajero:</div>

@@ -18,8 +18,10 @@ import {
   CreditCard,
   AlertTriangle,
   Monitor,
+  Download,
 } from "lucide-react";
 import { printCoatcheckTicket, CoatcheckItemType } from "@/lib/printing/coatcheck-ticket";
+import { downloadCashierReport } from "@/lib/reporting/jornada-cashier-report";
 import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
 
@@ -248,6 +250,42 @@ export default function Guardarropia() {
         </div>
         <div className="flex items-center gap-2">
         <AdminBackButton size="lg" className="h-14 px-5 text-base" />
+        <Button
+          variant="outline"
+          size="lg"
+          className="h-14 px-5 text-base gap-2"
+          title="Descargar resultados de jornada"
+          onClick={async () => {
+            if (!activeJornadaId) return toast.error("No hay jornada activa");
+            const { data: j } = await supabase.from("jornadas").select("numero_jornada, fecha").eq("id", activeJornadaId).single();
+            const ok = tickets.filter((t) => t.status !== "cancelled");
+            const cash = ok.filter((t) => t.payment_method === "cash");
+            const card = ok.filter((t) => t.payment_method !== "cash");
+            const sum = (a: Ticket[]) => a.reduce((s, t) => s + t.amount, 0);
+            const cnt = (a: Ticket[]) => a.reduce((s, t) => s + (t.garment_count || 1), 0);
+            const bp = ok.filter((t) => t.item_type === "backpack");
+            const gm = ok.filter((t) => t.item_type !== "backpack");
+            const nums = ok.map((t) => t.ticket_number).sort((a, b) => a - b);
+            downloadCashierReport({
+              venueName: "Berlín Valdivia",
+              posName: terminalName,
+              jornadaNumber: j?.numero_jornada || activeJornadaNumber || 0,
+              fecha: j?.fecha || new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" }),
+              downloadTime: new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" }),
+              cashTotal: sum(cash), cashCount: cash.length,
+              cardTotal: sum(card), cardCount: card.length,
+              grandTotal: sum(ok), grandCount: ok.length,
+              extraLines: [
+                { label: `Mochilas (${cnt(bp)})`, value: clp(sum(bp)) },
+                { label: `Prendas (${cnt(gm)})`, value: clp(sum(gm)) },
+                { label: "Comprobantes", value: nums.length ? `#${nums[0]} - #${nums[nums.length - 1]}` : "-" },
+              ],
+            });
+          }}
+        >
+          <Download className="w-5 h-5" />
+          Resumen
+        </Button>
         <Button
           variant="outline"
           size="lg"
