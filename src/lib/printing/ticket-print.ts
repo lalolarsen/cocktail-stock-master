@@ -97,6 +97,22 @@ function buildCss(paperWidth: PaperWidth): string {
   `;
 }
 
+/* ── Comprobante de entrada para el cliente (solo PC) ── */
+function buildEntryHtml(data: TicketSalePrintData, piece: TicketTokenPiece, index: number, total: number): string {
+  return `
+    <div class="receipt">
+      <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
+      <div class="ticket-kind">ENTRADA</div>
+      ${jornadaBlock(data)}
+      <div class="ticket-name">${piece.ticket_type}</div>
+      <div class="ticket-correlative">Entrada ${index} de ${total}</div>
+      <div class="ticket-instruction">Comprobante del cliente · Presentar en acceso</div>
+      <div class="sale-meta">Venta ${data.saleNumber}</div>
+      <div class="stockia-footer">${STOCKIA_PRINT_FOOTER}</div>
+    </div>
+  `;
+}
+
 /* ── 3. Cover individual (sin QR) ── */
 function buildCoverHtml(data: TicketSalePrintData, piece: TicketTokenPiece, pw: PaperWidth): string {
   const saleNumber = data.saleNumber;
@@ -173,9 +189,11 @@ export async function printTicketSale(
   paperWidth: PaperWidth = "80mm",
 ): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
   try {
-    if (!data.coverTokens.length) return { success: true, skipped: true };
+    const android = isAndroid();
+    const entries = android ? [] : data.entryTokens || [];
+    if (!data.coverTokens.length && !entries.length) return { success: true, skipped: true };
 
-    if (isAndroid()) {
+    if (android) {
       window.location.assign(
         `intent:base64,${buildCoversRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
       );
@@ -185,6 +203,11 @@ export async function printTicketSale(
     const css = buildCss(paperWidth);
     let lastError: string | undefined;
     let anySuccess = false;
+    for (let i = 0; i < entries.length; i++) {
+      const result = await printOneDocument(buildEntryHtml(data, entries[i], i + 1, entries.length), css);
+      if (result.success) anySuccess = true;
+      else lastError = result.error;
+    }
     for (const cover of data.coverTokens) {
       const result = await printOneDocument(buildCoverHtml(data, cover, paperWidth), css);
       if (result.success) anySuccess = true;

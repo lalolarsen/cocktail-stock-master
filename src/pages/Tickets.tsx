@@ -126,7 +126,7 @@ export default function Tickets() {
   };
   /** Imprime covers con respaldo: queda pendiente hasta que el envío sale bien. */
   const printWithSafety = async (data: TicketSalePrintData) => {
-    if (!data.coverTokens.length) return;
+    if (!data.coverTokens.length && !(data.entryTokens?.length)) return;
     savePending([...readPending().filter(p => p.saleNumber !== data.saleNumber), data]);
     const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
     const res = await printTicketSale(data, paperWidth);
@@ -497,7 +497,11 @@ export default function Tickets() {
         ticket_type: t.ticket_type,
         cocktail_name: t.cocktail_name || null,
       }));
-      if (!coverTokens.length) return; // sin cover: no se imprime nada
+      const onTablet = /Android/i.test(navigator.userAgent);
+      const entryTokens: TicketSalePrintData["entryTokens"] = onTablet ? [] : cart.flatMap(it =>
+        Array.from({ length: it.quantity }, () => ({ token: sale.ticket_sale_id, ticket_type: it.ticketType.name })),
+      );
+      if (!coverTokens.length && !entryTokens.length) return;
       await printWithSafety({
         saleNumber: sale.ticket_number,
         posName: selectedPosName,
@@ -505,7 +509,7 @@ export default function Tickets() {
         items: cart.map(it => ({ name: it.ticketType.name, quantity: it.quantity, price: it.ticketType.price })),
         total: sale.total,
         paymentMethod: paymentMethod!,
-        entryTokens: [],
+        entryTokens,
         coverTokens,
         jornadaName: activeJornadaName,
         jornadaNumber: activeJornadaNumber,
