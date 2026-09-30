@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, FileText, Printer, Loader2, ChevronDown, ListChecks, QrCode, Mail, Gift } from "lucide-react";
+import { Download, FileText, Printer, Loader2, ChevronDown, ListChecks, Mail, Gift } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { printPOSSalesReport, type POSSalesData } from "@/lib/printing/pos-sales-report";
@@ -23,12 +23,10 @@ interface Props {
   isClosed: boolean;
   hasFinancial: boolean;
   onCSV: () => void;
-  onEERR?: () => void;
-  onRedeem?: () => void;
 }
 
 export function JornadaDownloadMenu({
-  jornadaId, jornadaNumber, fecha, horario, isClosed, hasFinancial, onCSV, onEERR, onRedeem,
+  jornadaId, jornadaNumber, fecha, horario, isClosed, hasFinancial: _hasFinancial, onCSV,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -288,12 +286,6 @@ export function JornadaDownloadMenu({
           <ListChecks className="h-3.5 w-3.5 mr-2" />
           Productos vendidos (PDF)
         </DropdownMenuItem>
-        {onRedeem && (
-          <DropdownMenuItem onClick={onRedeem} disabled={!!busy}>
-            <QrCode className="h-3.5 w-3.5 mr-2" />
-            QRs canjeados
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem onClick={handleCourtesyPDF} disabled={!!busy}>
           <Gift className="h-3.5 w-3.5 mr-2" />
           Cortesías (PDF)
@@ -306,12 +298,10 @@ export function JornadaDownloadMenu({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs">Datos / Contabilidad</DropdownMenuLabel>
-        {isClosed && (
-          <DropdownMenuItem onClick={onCSV}>
-            <FileText className="h-3.5 w-3.5 mr-2" />
-            CSV de ventas
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem onClick={onCSV} disabled={!!busy}>
+          <FileText className="h-3.5 w-3.5 mr-2" />
+          CSV de ventas
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
