@@ -93,6 +93,10 @@ export function addTable(
     footStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [248, 248, 248] },
     columnStyles,
+    // Alinear también encabezado y total con las columnas numéricas
+    didParseCell: (d) => {
+      if ((opts.rightCols || []).includes(d.column.index)) d.cell.styles.halign = "right";
+    },
   });
   ctx.y = ((ctx.doc as any).lastAutoTable?.finalY ?? ctx.y) + 24;
 }
