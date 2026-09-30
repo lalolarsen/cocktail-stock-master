@@ -188,6 +188,7 @@ export default function Cortesias() {
       setSearch("");
       setQty(1);
       setMotivo("");
+      setSocioName("");
       queryClient.invalidateQueries({ queryKey: ["cortesias-tablet-list"] });
       printCourtesyCover({
         productName: row.product_name,
