@@ -24,7 +24,57 @@ export interface CashierReportData {
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+const ascii = (v: string) =>
+  v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
+
+const W = 32;
+const line = (l: string, r: string) => {
+  const a = ascii(l), b = ascii(r);
+  const space = Math.max(1, W - a.length - b.length);
+  return a.length + b.length + 1 > W ? `${a}\n${" ".repeat(Math.max(0, W - b.length))}${b}\n` : `${a}${" ".repeat(space)}${b}\n`;
+};
+
+function buildRawBtPayload(data: CashierReportData): string {
+  const enc = new TextEncoder();
+  const t = (s: string) => Array.from(enc.encode(ascii(s)));
+  const sep = "--------------------------------\n";
+  const B1 = [0x1b, 0x45, 0x01], B0 = [0x1b, 0x45, 0x00];
+  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01,
+    ...B1, ...t("RESULTADOS JORNADA\n"), ...B0, ...t(sep),
+    ...t(`${data.venueName}\n`), ...t(`Caja: ${data.posName}\n`),
+    ...t(`Jornada #${data.jornadaNumber}\n`), ...t(`${data.fecha}\n`), ...t(sep),
+    ...B1, ...t("RESUMEN FINANCIERO\n"), ...B0,
+    0x1b, 0x61, 0x00, ...t(sep),
+    ...t(line(`Efectivo (${data.cashCount})`, formatCLP(data.cashTotal))),
+    ...t(line(`Tarjeta (${data.cardCount})`, formatCLP(data.cardTotal))),
+    ...t(sep), ...B1, ...t(line("TOTAL", formatCLP(data.grandTotal))), ...B0,
+    ...t(line("", `${data.grandCount} ventas`)), ...t(sep),
+  ];
+  if (data.extraLines?.length) {
+    bytes.push(...B1, ...t("DETALLE\n"), ...B0);
+    for (const l of data.extraLines) bytes.push(...t(line(l.label, l.value)));
+    bytes.push(...t(sep));
+  }
+  bytes.push(
+    ...t("\nFirma cajero:\n\n________________________________\n"),
+    ...t("Nombre:\n\n________________________________\n"),
+    ...t("RUT (opcional):\n\n________________________________\n\n"),
+    0x1b, 0x61, 0x01, ...t(`Generado: ${data.downloadTime}\n`),
+    0x1b, 0x64, 0x05, 0x1d, 0x56, 0x42, 0x00,
+  );
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return window.btoa(bin);
+}
+
 export function downloadCashierReport(data: CashierReportData): void {
+  if (/Android/i.test(navigator.userAgent)) {
+    window.location.assign(
+      `intent:base64,${buildRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
+    );
+    return;
+  }
+
 
   const html = `
 <!DOCTYPE html>
