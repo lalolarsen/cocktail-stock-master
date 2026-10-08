@@ -1,3 +1,5 @@
+import { sendToRawBt } from "@/lib/printing/rawbt";
+import { dismissFallback, showManualFallback } from "@/lib/printing/print-tracker";
 /**
  * Imprime el reporte de cajero (resultados de jornada) usando impresión HTML
  * con el mismo formato que los tickets QR (80mm @page) para garantizar centrado
@@ -69,9 +71,13 @@ function buildRawBtPayload(data: CashierReportData): string {
 
 export function downloadCashierReport(data: CashierReportData): void {
   if (/Android/i.test(navigator.userAgent)) {
-    window.location.assign(
-      `intent:base64,${buildRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
-    );
+    const payload = buildRawBtPayload(data);
+    const send = async () => {
+      const outcome = await sendToRawBt(payload);
+      if (outcome === "not_sent") showManualFallback("Resumen de jornada", send);
+      else dismissFallback();
+    };
+    void send();
     return;
   }
 

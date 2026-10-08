@@ -34,6 +34,12 @@ export function subscribeFallback(fn: (s: FallbackState | null) => void) {
   fn(fallback);
   return () => listeners.delete(fn);
 }
+/** Aviso sin registro en auditoría (p. ej. resumen de jornada). */
+export function showManualFallback(label: string, retry: () => Promise<void>) {
+  const attempts = fallback?.label === label ? fallback.attempts + 1 : 1;
+  fallback = { label, attempts, retry };
+  emit();
+}
 export function dismissFallback() {
   fallback = null;
   emit();
