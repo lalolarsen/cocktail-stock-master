@@ -2858,14 +2858,19 @@ export type Database = {
           error_message: string | null
           id: string
           job_type: string
+          jornada_id: string | null
+          kind: string
           payload: Json
           pickup_token_id: string | null
           pos_id: string | null
           print_status: string
           printed_at: string | null
           printer_name: string | null
+          ref_key: string | null
           sale_id: string | null
+          source: string | null
           user_id: string
+          user_name: string | null
           venue_id: string
         }
         Insert: {
@@ -2874,14 +2879,19 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_type?: string
+          jornada_id?: string | null
+          kind?: string
           payload?: Json
           pickup_token_id?: string | null
           pos_id?: string | null
           print_status?: string
           printed_at?: string | null
           printer_name?: string | null
+          ref_key?: string | null
           sale_id?: string | null
+          source?: string | null
           user_id: string
+          user_name?: string | null
           venue_id: string
         }
         Update: {
@@ -2890,14 +2900,19 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_type?: string
+          jornada_id?: string | null
+          kind?: string
           payload?: Json
           pickup_token_id?: string | null
           pos_id?: string | null
           print_status?: string
           printed_at?: string | null
           printer_name?: string | null
+          ref_key?: string | null
           sale_id?: string | null
+          source?: string | null
           user_id?: string
+          user_name?: string | null
           venue_id?: string
         }
         Relationships: [
@@ -6698,6 +6713,17 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      register_reprint: {
+        Args: {
+          _jornada_id: string
+          _payload: Json
+          _pos_id: string
+          _ref_key: string
+          _source: string
+          _venue_id: string
+        }
+        Returns: string
       }
       reject_emergency_request: {
         Args: { p_request_id: string; p_review_notes?: string }

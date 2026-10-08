@@ -1,0 +1,2 @@
+- Tablet printing goes only through RawBT via `src/lib/printing/rawbt.ts` (`sendToRawBt` detects whether Android left the page) and `trackedPrint` in `print-tracker.ts`; why: Chrome silently blocks the RawBT intent after network waits, so every print is logged in `print_jobs` and falls back to a tap-to-print banner.
+- One-time reprints are enforced server-side by `register_reprint` (kind='reprint' rows; admin/gerencia unlimited); why: prevents handing out extra covers.

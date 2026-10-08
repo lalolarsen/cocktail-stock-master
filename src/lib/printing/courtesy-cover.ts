@@ -12,6 +12,7 @@ export interface CourtesyCoverData {
   createdAt?: string | null; // ISO
   jornadaName?: string | null;
   jornadaNumber?: number | null;
+  reprint?: boolean;
 }
 
 const fmtFull = (iso: string) =>
@@ -24,7 +25,7 @@ const fmtFull = (iso: string) =>
     minute: "2-digit",
   });
 
-const isAndroid = () => /Android/i.test(navigator.userAgent);
+import { isAndroid, sendToRawBt, type RawBtOutcome } from "./rawbt";
 
 const ascii = (value: string) =>
   value
@@ -50,6 +51,7 @@ function buildRawBtPayload(data: CourtesyCoverData): string {
     ...text("CORTESIA\n"),
     0x1d, 0x21, 0x00,
     ...text("$0\n"),
+    ...text(data.reprint ? "*** REIMPRESION ***\n" : ""),
     ...text("--------------------------------\n"),
     0x1b, 0x45, 0x01,
     ...text(data.jornadaNumber ? `JORNADA #${data.jornadaNumber}\n` : ""),
@@ -77,11 +79,6 @@ function buildRawBtPayload(data: CourtesyCoverData): string {
   return bytesToBase64(bytes);
 }
 
-function printViaRawBt(data: CourtesyCoverData): void {
-  const payload = buildRawBtPayload(data);
-  const intent = `intent:base64,${payload}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
-  window.location.assign(intent);
-}
 
 function printWithBrowser(data: CourtesyCoverData): void {
   const w = window.open("", "_blank", "width=380,height=700");
@@ -114,6 +111,7 @@ function printWithBrowser(data: CourtesyCoverData): void {
     <div class="brand">STOCKIA</div>
     <div class="tag">CORTESÍA</div>
     <div class="amount">$0</div>
+    ${data.reprint ? '<div class="jornada-num">*** REIMPRESIÓN ***</div>' : ""}
     <div class="sep"></div>
     ${data.jornadaNumber ? `<div class="jornada-num">JORNADA #${data.jornadaNumber}</div>` : ""}
     ${data.jornadaName ? `<div class="jornada-name">${safe(data.jornadaName)}</div>` : ""}
@@ -131,10 +129,8 @@ function printWithBrowser(data: CourtesyCoverData): void {
   w.document.close();
 }
 
-export function printCourtesyCover(data: CourtesyCoverData): void {
-  if (isAndroid()) {
-    printViaRawBt(data);
-    return;
-  }
+export async function printCourtesyCover(data: CourtesyCoverData): Promise<RawBtOutcome | "browser"> {
+  if (isAndroid()) return sendToRawBt(buildRawBtPayload(data));
   printWithBrowser(data);
+  return "browser";
 }

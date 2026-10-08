@@ -80,6 +80,13 @@ export function TabletHelpButton({ screen, size = "sm", variant = "outline", cla
           </Section>
           <Section icon={AlertTriangle} title="2. Si aún no imprime">
             <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Si aparece el <strong>aviso amarillo</strong>, toca <strong>IMPRIMIR AHORA</strong>. La venta ya está
+                guardada, no se vuelve a cobrar.
+              </li>
+              <li>
+                Si el papel salió mal o se perdió, usa <strong>Reimprimir (1 vez)</strong> en la lista de la noche.
+              </li>
               <li>Apaga y enciende la impresora, espera 10 segundos e intenta de nuevo.</li>
               <li>
                 Si sigue sin funcionar, <strong>avisa al administrador</strong>. No cambies ajustes dentro de la

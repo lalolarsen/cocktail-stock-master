@@ -22,6 +22,9 @@ import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import { useNavigate } from "react-router-dom";
 import { AdminBackButton } from "@/components/AdminBackButton";
 import { TabletHelpButton } from "@/components/TabletHelpButton";
+import { PrintFallbackBanner } from "@/components/printing/PrintFallbackBanner";
+import { ReprintButton } from "@/components/printing/ReprintButton";
+import { trackedPrint, fetchReprints } from "@/lib/printing/print-tracker";
 import { fetchAllRows } from "@/lib/supabase-batch";
 import { Download } from "lucide-react";
 import { z } from "zod";
@@ -120,10 +123,10 @@ export default function Cortesias() {
 
   const selected = cocktails.find((c) => c.id === productId);
 
-  const reprint = (row: CourtesyRow) => {
+  const coverData = (row: CourtesyRow, reprint = false) => {
     // La reimpresión conserva la jornada original de la cortesía
     const rowJornada = row.courtesy_redemptions?.[0]?.jornadas;
-    printCourtesyCover({
+    return {
       productName: row.product_name,
       qty: row.qty,
       code: row.code,
@@ -132,9 +135,15 @@ export default function Cortesias() {
       createdAt: row.created_at,
       jornadaName: rowJornada?.nombre ?? activeJornadaName,
       jornadaNumber: rowJornada?.numero_jornada ?? activeJornadaNumber,
-    });
-    toast.success("Enviando cortesía a RawBT");
+      reprint,
+    };
   };
+
+  const { data: reprints = {}, refetch: refetchReprints } = useQuery({
+    queryKey: ["courtesy-reprints", issued.map((r) => r.id).join(",")],
+    queryFn: () => fetchReprints("courtesy", issued.map((r) => r.id)),
+    enabled: issued.length > 0,
+  });
 
   const handleIssue = async () => {
     if (issuingRef.current) return;
@@ -190,15 +199,12 @@ export default function Cortesias() {
       setMotivo("");
       setSocioName("");
       queryClient.invalidateQueries({ queryKey: ["cortesias-tablet-list"] });
-      printCourtesyCover({
-        productName: row.product_name,
-        qty: row.qty,
-        code: row.code,
-        note: row.note,
-        expiresAt: row.expires_at,
-        createdAt: row.created_at,
-        jornadaName: activeJornadaName,
-        jornadaNumber: activeJornadaNumber,
+      void trackedPrint({
+        source: "courtesy",
+        refKey: row.id,
+        label: `Cortesía ${row.product_name} × ${row.qty}`,
+        jornadaId: activeJornadaId,
+        print: () => printCourtesyCover(coverData(row)),
       });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "No se pudo emitir la cortesía");
@@ -410,15 +416,21 @@ export default function Cortesias() {
                   </p>
                   {row.note && <p className="text-xs text-muted-foreground">{row.note}</p>}
                 </div>
-                <Button variant="outline" size="lg" className="h-12 gap-2" onClick={() => reprint(row)}>
-                  <Printer className="w-4 h-4" />
-                  Reimprimir
-                </Button>
+                <ReprintButton
+                  source="courtesy"
+                  refKey={row.id}
+                  label={`cortesía ${row.product_name}`}
+                  jornadaId={activeJornadaId}
+                  info={reprints[row.id]}
+                  print={() => printCourtesyCover(coverData(row, true))}
+                  onDone={() => void refetchReprints()}
+                />
               </div>
             ))}
           </div>
         )}
       </section>
+      <PrintFallbackBanner />
     </div>
   );
 }

@@ -15,6 +15,7 @@ export interface CoatcheckTicketData {
   note?: string | null;
   jornadaName?: string | null;
   jornadaNumber?: number | null;
+  reprint?: boolean;
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -43,7 +44,7 @@ const clp = (n: number) => "$" + Math.round(n).toLocaleString("es-CL");
 
 const safe = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const isAndroid = () => /Android/i.test(navigator.userAgent);
+import { isAndroid, sendToRawBt, type RawBtOutcome } from "./rawbt";
 
 const ascii = (value: string) =>
   value
@@ -68,6 +69,7 @@ function buildRawBtPayload(data: CoatcheckTicketData): string {
       0x1b, 0x45, 0x01,
       ...text("GUARDARROPIA\n"),
       ...text("CONTROL TRABAJADOR\n"),
+      ...text(data.reprint ? "*** REIMPRESION ***\n" : ""),
       0x1b, 0x45, 0x00,
       ...text("--------------------------------\n"),
       0x1d, 0x21, 0x22,
@@ -100,6 +102,7 @@ function copyHtml(data: CoatcheckTicketData): string {
     <div class="copy">
       <div class="brand">STOCKIA · GUARDARROPÍA</div>
       <div class="kind">CONTROL TRABAJADOR</div>
+      ${data.reprint ? '<div class="kind">*** REIMPRESIÓN ***</div>' : ""}
       <div class="number">${data.ticketNumber}</div>
       <div class="row"><b>${data.garmentCount} × ${ITEM_LABELS[data.itemType]}</b></div>
       <div class="row">Pagado: <b>${clp(data.amount)}</b> · ${safe(
@@ -142,12 +145,8 @@ function printWithBrowser(data: CoatcheckTicketData): void {
   w.document.close();
 }
 
-export function printCoatcheckTicket(data: CoatcheckTicketData): void {
-  if (isAndroid()) {
-    window.location.assign(
-      `intent:base64,${buildRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
-    );
-    return;
-  }
+export async function printCoatcheckTicket(data: CoatcheckTicketData): Promise<RawBtOutcome | "browser"> {
+  if (isAndroid()) return sendToRawBt(buildRawBtPayload(data));
   printWithBrowser(data);
+  return "browser";
 }
