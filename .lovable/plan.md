@@ -9,6 +9,41 @@ En tablets la app entrega el comprobante a RawBT con un "salto" a la app de impr
 3. **Envío directo por Bluetooth desde el navegador (Web Bluetooth)** — sin RawBT, pero la compatibilidad con impresoras SD-… no está garantizada y requiere emparejar en cada sesión.
 4. **Recomendada: combinación 2 + reimpresión única controlada + registro de impresión.**
 
+## Flujo paso a paso (lo que vive el trabajador en la tablet)
+
+```text
+1. Trabajador toca "Cobrar e imprimir"
+        |
+2. La app guarda la venta
+        |
+3. La app envía a la impresora (automático)
+        |
+   ¿Se abrió RawBT en 2 segundos?
+     SÍ -> sale el papel -> la venta queda "Impresa" (verde). Fin.
+     NO -> 4.
+        |
+4. Aparece un aviso amarillo grande en pantalla:
+   "La impresión no se envió. [ IMPRIMIR AHORA ]"
+   (la venta ya está guardada; no se vuelve a cobrar)
+        |
+5. Trabajador toca IMPRIMIR AHORA -> sale el papel -> "Impresa".
+   Si aún no sale: el aviso muestra "Revise Bluetooth / impresora SD-..."
+   (enlace a Ayuda) y la venta queda "Pendiente" (amarilla).
+```
+
+Reimpresión después (papel cortado, se atascó, cliente lo perdió):
+
+```text
+1. En la tablet: "Últimas ventas" -> tocar la venta -> ver detalle
+2. Detalle muestra: número, productos, hora y estado de impresión
+3. Botón "Reimprimir (1 vez)" -> confirma -> sale papel con la palabra REIMPRESIÓN
+4. El botón queda desactivado: "Reimpreso por Juan a las 01:42"
+5. Si se necesita otra: un administrador ingresa su PIN para autorizarla
+```
+
+Lo que ve el administrador:
+- En el reporte de jornada: cantidad de ventas pendientes de impresión y reimpresiones por caja y por trabajador.
+
 ## Propuesta (recomendada)
 1. **Intento automático + respaldo con un toque**: tras cobrar, la app intenta imprimir. Si en ~2 s la tablet no salió hacia RawBT (la página sigue visible), aparece un aviso grande "No se envió la impresión — Tocar para imprimir". Ese toque nunca es bloqueado.
 2. **Reimpresión única**: en el detalle de cada venta/cortesía/guardarropía de la jornada, botón "Reimprimir (1 vez)". Queda marcado como **REIMPRESIÓN** en el papel, con quién y a qué hora; luego se desactiva. Un administrador puede autorizar reimpresiones adicionales.
