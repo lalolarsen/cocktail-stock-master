@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { AdminBackButton } from "@/components/AdminBackButton";
 import { TabletHelpButton } from "@/components/TabletHelpButton";
+import { PrintFallbackBanner } from "@/components/printing/PrintFallbackBanner";
+import { ReprintButton } from "@/components/printing/ReprintButton";
+import { trackedPrint, fetchReprints, type PrintKind, type PrintOutcome, type ReprintInfo } from "@/lib/printing/print-tracker";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -125,24 +128,41 @@ export default function Tickets() {
   const readPending = (): TicketSalePrintData[] => {
     try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; }
   };
+  const [lastPrint, setLastPrint] = useState<TicketSalePrintData | null>(null);
+  const [lastReprint, setLastReprint] = useState<ReprintInfo | undefined>(undefined);
+  const runTicketPrint = async (data: TicketSalePrintData): Promise<PrintOutcome> => {
+    const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
+    const res = await printTicketSale(data, paperWidth);
+    if (res.skipped) return "skipped";
+    if (res.notSent) return "not_sent";
+    if (!res.success) return "not_sent";
+    return /Android/i.test(navigator.userAgent) ? "sent" : "browser";
+  };
   /** Imprime covers con respaldo: queda pendiente hasta que el envío sale bien. */
-  const printWithSafety = async (data: TicketSalePrintData) => {
+  const printTracked = async (data: TicketSalePrintData, kind: PrintKind) => {
     if (!data.coverTokens.length && !(data.entryTokens?.length)) return;
     savePending([...readPending().filter(p => p.saleNumber !== data.saleNumber), data]);
-    const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
-    const res = await printTicketSale(data, paperWidth);
-    if (res.success) {
-      savePending(readPending().filter(p => p.saleNumber !== data.saleNumber));
-    } else {
-      toast.error("No se pudo imprimir el cover. Usa 'Imprimir cover pendiente'.");
-    }
+    const outcome = await trackedPrint({
+      source: "ticket",
+      refKey: data.saleNumber,
+      label: `Venta ${data.saleNumber} · ${data.coverTokens.length} cover(s)`,
+      jornadaId: activeJornadaId,
+      posId: selectedPosId || null,
+      print: async () => {
+        const o = await runTicketPrint(data);
+        if (o !== "not_sent") savePending(readPending().filter(p => p.saleNumber !== data.saleNumber));
+        return o;
+      },
+    }, kind);
+    return outcome;
   };
-  /** Reintento único: se saca de la cola antes de imprimir. */
+  const printWithSafety = async (data: TicketSalePrintData) => {
+    setLastPrint(data);
+    setLastReprint(undefined);
+    await printTracked(data, "auto");
+  };
   const printPending = async (data: TicketSalePrintData) => {
-    savePending(readPending().filter(p => p.saleNumber !== data.saleNumber));
-    const paperWidth = (localStorage.getItem(getPreferredPaperWidthStorageKey()) as PaperWidth) || "80mm";
-    const res = await printTicketSale(data, paperWidth);
-    if (!res.success) toast.error("Falló de nuevo. Avisa a administración (venta " + data.saleNumber + ").");
+    await printTracked(data, "manual");
   };
 
   const [step, setStep] = useState<Step>("select-pos");
@@ -637,6 +657,23 @@ export default function Tickets() {
                 <p className="text-sm text-muted-foreground">{saleResult.cover_tokens.length} QR de cover generados</p>
               )}
             </div>
+            {lastPrint && lastPrint.saleNumber === saleResult.ticket_number && lastPrint.coverTokens.length > 0 && (
+              <div className="flex justify-center">
+                <ReprintButton
+                  source="ticket"
+                  refKey={lastPrint.saleNumber}
+                  label={`venta ${lastPrint.saleNumber}`}
+                  jornadaId={activeJornadaId}
+                  posId={selectedPosId || null}
+                  info={lastReprint}
+                  print={() => runTicketPrint({ ...lastPrint, reprint: true })}
+                  onDone={async () => {
+                    const m = await fetchReprints("ticket", [lastPrint.saleNumber]);
+                    setLastReprint(m[lastPrint.saleNumber]);
+                  }}
+                />
+              </div>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setShowReceipt(true)}>Ver QRs</Button>
               <Button className="flex-1" onClick={handleNewSale}>Nueva Venta</Button>
@@ -648,6 +685,7 @@ export default function Tickets() {
           onClose={() => setShowReceipt(false)}
           saleResult={saleResult ? { ...saleResult, __cartItems: receiptCart } : null}
         />
+        <PrintFallbackBanner />
       </>
     );
   }
