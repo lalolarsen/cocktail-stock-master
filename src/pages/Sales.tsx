@@ -1,3 +1,4 @@
+import { PrintFallbackBanner } from "@/components/printing/PrintFallbackBanner";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AdminBackButton } from "@/components/AdminBackButton";
 import { TabletHelpButton } from "@/components/TabletHelpButton";
@@ -1212,6 +1213,7 @@ export default function Sales() {
           onSuccess={() => setVoidSaleId(null)}
         />
       </>
+      <PrintFallbackBanner />
     </VenueGuard>
   );
 }

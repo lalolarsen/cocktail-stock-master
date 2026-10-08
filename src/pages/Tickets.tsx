@@ -1004,6 +1004,7 @@ export default function Tickets() {
           </div>
         </div>
       </div>
+      <PrintFallbackBanner />
     </VenueGuard>
   );
 }
