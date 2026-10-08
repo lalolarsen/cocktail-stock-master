@@ -92,7 +92,7 @@ function buildCss(paperWidth: PaperWidth): string {
     .footer { text-align: center; margin-top: 10px; font-size: 11pt; }
     .stockia-footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 2px solid #000; font-size: 11pt; font-weight: 900; letter-spacing: 0.3px; }
     @media print {
-      @page { margin: 0; size: ${paperWidth} auto; }
+      @page { margin: 0; }
       body { margin: 2mm; }
     }
   `;

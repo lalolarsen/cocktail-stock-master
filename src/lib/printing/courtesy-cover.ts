@@ -91,7 +91,7 @@ function printWithBrowser(data: CourtesyCoverData): void {
 
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cortesía</title>
     <style>
-      @page { size: 80mm auto; margin: 4mm; }
+      @page { margin: 4mm; }
       * { box-sizing: border-box; color: #000 !important; }
       body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; margin: 0; padding: 6px 4px; width: 72mm; text-align: center; }
       .brand { font-size: 11px; letter-spacing: 3px; font-weight: 700; }

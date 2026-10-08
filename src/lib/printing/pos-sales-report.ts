@@ -228,7 +228,7 @@ function buildReportCss(): string {
     .closing-notes { margin: 1px 0 1px 4px; color: #000; word-wrap: break-word; white-space: pre-wrap; font-style: italic; }
     .footer { text-align: center; margin-top: 10px; font-size: 8pt; color: #000; }
     @media print {
-      @page { margin: 0; size: 80mm auto; }
+      @page { margin: 0; }
       html, body { width: 80mm; margin: 0; padding: 0; }
       body { padding: 1mm 2mm 4mm 2mm; }
     }
