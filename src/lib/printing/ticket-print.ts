@@ -43,6 +43,7 @@ export interface TicketSalePrintData {
   /** jornada a la que pertenece la venta (se imprime en cada pieza) */
   jornadaName?: string | null;
   jornadaNumber?: number | null;
+  reprint?: boolean;
 }
 
 /** Bloque de jornada impreso en entradas y covers */
@@ -123,6 +124,7 @@ function buildCoverHtml(data: TicketSalePrintData, piece: TicketTokenPiece, pw: 
       <div class="venue-name">${RECEIPT_VENUE_TITLE}</div>
       <div class="sep">${sep}</div>
       <div class="ticket-kind">COVER</div>
+      ${data.reprint ? '<div class="ticket-correlative">*** REIMPRESIÓN ***</div>' : ""}
       ${jornadaBlock(data)}
       <div class="ticket-name">${piece.cocktail_name || "Cover"}</div>
       <div class="ticket-correlative">${piece.ticket_type}</div>
@@ -134,7 +136,7 @@ function buildCoverHtml(data: TicketSalePrintData, piece: TicketTokenPiece, pw: 
 }
 
 /* ── RawBT (tablets Android) ── */
-const isAndroid = () => typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+import { isAndroid, sendToRawBt } from "./rawbt";
 
 const ascii = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
@@ -150,6 +152,7 @@ function buildCoversRawBtPayload(data: TicketSalePrintData): string {
       0x1d, 0x21, 0x11, 0x1b, 0x45, 0x01,
       ...text("COVER\n"),
       0x1d, 0x21, 0x00,
+      ...text(data.reprint ? "*** REIMPRESION ***\n" : ""),
       ...text("================================\n"),
     );
     if (data.jornadaName) bytes.push(0x1d, 0x21, 0x11, ...text(`${data.jornadaName}\n`), 0x1d, 0x21, 0x00);
@@ -187,17 +190,15 @@ function buildCoversRawBtPayload(data: TicketSalePrintData): string {
 export async function printTicketSale(
   data: TicketSalePrintData,
   paperWidth: PaperWidth = "80mm",
-): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+): Promise<{ success: boolean; error?: string; skipped?: boolean; notSent?: boolean }> {
   try {
     const android = isAndroid();
     const entries = android ? [] : data.entryTokens || [];
     if (!data.coverTokens.length && !entries.length) return { success: true, skipped: true };
 
     if (android) {
-      window.location.assign(
-        `intent:base64,${buildCoversRawBtPayload(data)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
-      );
-      return { success: true };
+      const outcome = await sendToRawBt(buildCoversRawBtPayload(data));
+      return outcome === "sent" ? { success: true } : { success: false, notSent: true, error: "RawBT no se abrió" };
     }
 
     const css = buildCss(paperWidth);

@@ -35,7 +35,7 @@ const fmtTime = (iso: string) =>
 export function ReprintButton({ source, refKey, label, jornadaId, posId, info, print, onDone, className }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const { roles } = useUserRole() as { roles?: string[] };
+  const { roles } = useUserRole();
   const isSupervisor = !!roles?.some((r) => r === "admin" || r === "gerencia");
   const blocked = !!info && !isSupervisor;
 
