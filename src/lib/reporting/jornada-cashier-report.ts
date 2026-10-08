@@ -89,7 +89,7 @@ export function downloadCashierReport(data: CashierReportData): void {
     <meta charset="utf-8" />
     <title>Jornada ${data.jornadaNumber} - ${escape(data.posName)}</title>
     <style>
-      @page { size: 80mm auto; margin: 5mm; }
+      @page { margin: 5mm; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body {
