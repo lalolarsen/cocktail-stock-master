@@ -6,7 +6,7 @@ En tablets la app entrega el comprobante a RawBT con un "salto" a la app de impr
 ## Alternativas evaluadas
 1. **Solo botón de reimpresión** — simple, pero el trabajador no sabe cuándo falló y puede duplicar.
 2. **Imprimir con el toque del usuario (botón "Imprimir" tras guardar)** — elimina el bloqueo de Chrome, pero suma un toque por venta.
-3. **Envío directo por Bluetooth desde el navegador (Web Bluetooth)** — sin RawBT, pero la compatibilidad con impresoras SD-… no está garantizada y requiere emparejar en cada sesión.
+3. **Descartada: conectar la impresora sin RawBT** — RawBT es la única forma de unir tablet e impresora, así que todas las opciones siguen enviando a RawBT; solo cambia cuándo y cómo la app se lo entrega.
 4. **Recomendada: combinación 2 + reimpresión única controlada + registro de impresión.**
 
 ## Flujo paso a paso (lo que vive el trabajador en la tablet)
@@ -52,7 +52,7 @@ Lo que ve el administrador:
 5. **Ayuda**: el botón Ayuda agrega "Si no imprime: toque el aviso amarillo o use Reimprimir en el detalle".
 
 ## Detalles técnicos
-- Nueva tabla `print_jobs` (venue_id, jornada_id, source: ticket|courtesy|coatcheck, ref_id, kind: auto|manual|reprint, status, user_id, created_at) con RLS por venue; `reprint_count` validado en servidor (función SECURITY DEFINER que permite 1 reimpresión salvo rol admin).
+- Reutilizar la tabla existente `print_jobs` (ampliar con source/kind/jornada si falta), RLS por venue; límite de 1 reimpresión validado en servidor (función SECURITY DEFINER; admin autoriza más).
 - `src/lib/printing/rawbt.ts` unificado: `sendToRawBt(payload)` detecta éxito por `visibilitychange`/`blur` en 2 s; devuelve `sent | not_sent`. Lo usan `ticket-print.ts`, `courtesy-cover.ts`, `coatcheck-ticket.ts`, `jornada-cashier-report.ts`.
 - Payload se construye antes de la espera de red cuando es posible; si no, se ofrece el toque de respaldo.
 - Componente `PrintFallbackBanner` y botón `ReprintButton` en Tickets, Cortesías y Guardarropía (lista de últimas ventas/detalle); payload de reimpresión con leyenda "REIMPRESIÓN".
