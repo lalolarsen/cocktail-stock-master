@@ -278,7 +278,10 @@ export default function Guardarropia() {
           title="Descargar resultados de jornada"
           onClick={async () => {
             if (!activeJornadaId) return toast.error("No hay jornada activa");
-            const { data: j } = await supabase.from("jornadas").select("numero_jornada, fecha").eq("id", activeJornadaId).single();
+            const [{ data: j }, ps] = await Promise.all([
+              supabase.from("jornadas").select("numero_jornada, fecha").eq("id", activeJornadaId).single(),
+              fetchPrintSummary(activeJornadaId, posId),
+            ]);
             const ok = tickets.filter((t) => t.status !== "cancelled");
             const cash = ok.filter((t) => t.payment_method === "cash");
             const card = ok.filter((t) => t.payment_method !== "cash");
@@ -300,6 +303,8 @@ export default function Guardarropia() {
                 { label: `Mochilas (${cnt(bp)})`, value: clp(sum(bp)) },
                 { label: `Prendas (${cnt(gm)})`, value: clp(sum(gm)) },
                 { label: "Comprobantes", value: nums.length ? `#${nums[0]} - #${nums[nums.length - 1]}` : "-" },
+                { label: "Reimpresiones", value: String(ps.reprints) },
+                { label: "Sin imprimir", value: String(ps.pending) },
               ],
             });
           }}
