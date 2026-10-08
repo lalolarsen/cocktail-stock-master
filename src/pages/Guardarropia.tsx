@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminBackButton } from "@/components/AdminBackButton";
 import { TabletHelpButton } from "@/components/TabletHelpButton";
+import { PrintFallbackBanner } from "@/components/printing/PrintFallbackBanner";
+import { ReprintButton } from "@/components/printing/ReprintButton";
+import { trackedPrint, fetchReprints, fetchPrintSummary } from "@/lib/printing/print-tracker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppSession } from "@/contexts/AppSessionContext";
@@ -128,6 +131,24 @@ export default function Guardarropia() {
     };
   }, [tickets]);
 
+  const recent = useMemo(() => tickets.filter((t) => t.status !== "cancelled").slice(0, 10), [tickets]);
+  const { data: reprints = {}, refetch: refetchReprints } = useQuery({
+    queryKey: ["coatcheck-reprints", recent.map((t) => t.id).join(",")],
+    queryFn: () => fetchReprints("coatcheck", recent.map((t) => t.id)),
+    enabled: recent.length > 0,
+  });
+  const ticketPrintData = (t: Ticket, reprint = false) => ({
+    ticketNumber: t.ticket_number,
+    garmentCount: t.garment_count,
+    amount: t.amount,
+    paymentMethod: t.payment_method,
+    itemType: (t.item_type as CoatcheckItemType) || "garment",
+    issuedAt: t.issued_at,
+    jornadaName: activeJornadaName,
+    jornadaNumber: activeJornadaNumber,
+    reprint,
+  });
+
   const unitPrice = itemType === "backpack" ? prices.backpack : prices.garment;
   const amount = qty * unitPrice;
 
@@ -147,15 +168,13 @@ export default function Guardarropia() {
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as Ticket;
 
-      printCoatcheckTicket({
-        ticketNumber: row.ticket_number,
-        garmentCount: row.garment_count,
-        amount: row.amount,
-        paymentMethod: row.payment_method,
-        itemType,
-        issuedAt: row.issued_at,
-        jornadaName: activeJornadaName,
-        jornadaNumber: activeJornadaNumber,
+      void trackedPrint({
+        source: "coatcheck",
+        refKey: row.id,
+        label: `Guarda N° ${row.ticket_number}`,
+        jornadaId: activeJornadaId,
+        posId,
+        print: () => printCoatcheckTicket({ ...ticketPrintData(row), itemType }),
       });
 
       toast.success(`Guarda N° ${row.ticket_number} cobrada`);
@@ -398,6 +417,39 @@ export default function Guardarropia() {
             Sale un comprobante de control para el trabajador.
           </p>
         </Card>
+
+      <section className="space-y-2 pb-40">
+        <p className="text-sm font-semibold text-muted-foreground">Últimas guardas</p>
+        {recent.length === 0 ? (
+          <p className="text-muted-foreground py-4 text-center">Aún no hay guardas cobradas</p>
+        ) : (
+          recent.map((t) => (
+            <div key={t.id} className="flex items-center gap-3 p-4 rounded-xl border bg-card">
+              <span className="text-2xl font-bold w-14 text-center">{t.ticket_number}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">
+                  {t.garment_count} × {t.item_type === "backpack" ? "Mochila / bolso" : "Prenda"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {clp(t.amount)} · {t.payment_method === "cash" ? "Efectivo" : "Tarjeta"} ·{" "}
+                  {new Date(t.issued_at).toLocaleTimeString("es-CL", { timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              <ReprintButton
+                source="coatcheck"
+                refKey={t.id}
+                label={`guarda N° ${t.ticket_number}`}
+                jornadaId={activeJornadaId}
+                posId={posId}
+                info={reprints[t.id]}
+                print={() => printCoatcheckTicket(ticketPrintData(t, true))}
+                onDone={() => void refetchReprints()}
+              />
+            </div>
+          ))
+        )}
+      </section>
+      <PrintFallbackBanner />
     </div>
   );
 }
