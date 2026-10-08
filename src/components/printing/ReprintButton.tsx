@@ -42,7 +42,7 @@ export function ReprintButton({ source, refKey, label, jornadaId, posId, info, p
   const doReprint = async () => {
     setBusy(true);
     // Imprimir primero, dentro del toque, para que Chrome no bloquee RawBT.
-    const printing = trackedPrint({ source, refKey, label: `${label} (reimpresión)`, jornadaId, posId, print }, "reprint");
+    const printing = trackedPrint({ source, refKey, label: `${label} (reimpresión)`, jornadaId, posId, print }, "reprint_attempt");
     const reg = await registerReprint({ source, refKey, label, jornadaId, posId });
     await printing;
     setBusy(false);

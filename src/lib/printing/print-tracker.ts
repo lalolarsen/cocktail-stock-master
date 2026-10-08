@@ -7,7 +7,7 @@ import { DEFAULT_VENUE_ID } from "@/lib/venue";
 import type { RawBtOutcome } from "./rawbt";
 
 export type PrintSource = "ticket" | "courtesy" | "coatcheck";
-export type PrintKind = "auto" | "manual" | "reprint";
+export type PrintKind = "auto" | "manual" | "reprint" | "reprint_attempt";
 /** "browser" = PC con ventana de impresión (no se puede confirmar) */
 export type PrintOutcome = RawBtOutcome | "browser" | "skipped";
 
