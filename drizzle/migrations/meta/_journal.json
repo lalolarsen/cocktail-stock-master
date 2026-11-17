@@ -57,6 +57,13 @@
       "when": 1791489897303,
       "tag": "0007_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794940879536,
+      "tag": "0008_harden_rls_and_function_search_paths",
+      "breakpoints": true
     }
   ]
 }
