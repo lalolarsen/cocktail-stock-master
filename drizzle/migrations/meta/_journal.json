@@ -64,6 +64,13 @@
       "when": 1794940879536,
       "tag": "0008_harden_rls_and_function_search_paths",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795220918672,
+      "tag": "0009_optimize_ticket_cover_and_sale_item_lookups",
+      "breakpoints": true
     }
   ]
 }

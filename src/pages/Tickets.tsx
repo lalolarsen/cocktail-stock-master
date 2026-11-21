@@ -5,6 +5,7 @@ import { PrintFallbackBanner } from "@/components/printing/PrintFallbackBanner";
 import { ReprintButton } from "@/components/printing/ReprintButton";
 import { trackedPrint, fetchReprints, type PrintKind, type PrintOutcome, type ReprintInfo } from "@/lib/printing/print-tracker";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchTicketCoverCounts } from "@/lib/ticket-cover-counts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -285,22 +286,15 @@ export default function Tickets() {
       if (selectedPosId) q = q.eq("pos_id", selectedPosId);
       const { data, error } = await q;
       if (error) throw error;
-      const withCovers = await Promise.all(
-        (data || []).map(async (sale: any) => {
-          const { count } = await supabase
-            .from("pickup_tokens")
-            .select("*", { count: "exact", head: true })
-            .eq("ticket_sale_id", sale.id);
-          return {
+      const coverCounts = await fetchTicketCoverCounts((data || []).map(sale => sale.id));
+      const withCovers = (data || []).map(sale => ({
             id: sale.id,
             ticket_number: sale.ticket_number,
             created_at: sale.created_at,
             total: sale.total || 0,
             payment_method: sale.payment_method || "cash",
-            cover_count: count || 0,
-          };
-        })
-      );
+            cover_count: coverCounts.get(sale.id) ?? 0,
+      }));
       setRecentSales(withCovers);
     } catch (err) {
       console.error(err);
