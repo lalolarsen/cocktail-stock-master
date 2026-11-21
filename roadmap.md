@@ -1,5 +1,9 @@
 # Roadmap
 
+- [x] Corregir recuperación de sesión, cambio de trabajador y validaciones de acceso.
+- [x] Probar acceso con RUT/PIN y PIN actualizado, recuperación, cambio de trabajador, cajas y descargas PDF/CSV sin cobros reales; corregir fallos encontrados.
+- [x] Cambiar PIN realmente desde Administración y verificar rechazo de vendedores; 9 pruebas automatizadas aprobadas.
+
 - [x] Verify the approved Tiny → Mini resize and resource pressure.
 - [x] Add indexes for ticket cover counts and sale-item joins.
 - [x] Batch ticket-history cover counts; test count accuracy and signed-in history.

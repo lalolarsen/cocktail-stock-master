@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { User, Session } from "@supabase/supabase-js";
 import { DEFAULT_VENUE_ID, DEFAULT_VENUE_NAME, DEFAULT_VENUE_SLUG, DEFAULT_VENUE_DISPLAY } from "@/lib/venue";
 import { supabase } from "@/integrations/supabase/client";
+import { withAuthTimeout, isSameUserSessionEvent } from "@/lib/auth-flow";
 
 export type AppRole = "admin" | "vendedor" | "gerencia" | "bar" | "ticket_seller" | "developer";
 
@@ -62,13 +63,18 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const [activeJornadaNumber, setActiveJornadaNumber] = useState<number | null>(null);
   const [jornadaLoading, setJornadaLoading] = useState(true);
   const jornadaChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const authRevision = useRef(0);
+  const verifiedUserId = useRef<string | null>(null);
 
-  const fetchUserData = useCallback(async (userId: string) => {
+  const fetchUserData = useCallback(async (userId: string, revision = authRevision.current) => {
     try {
-      const [workerRolesResult, userRolesResult] = await Promise.all([
+      const [workerRolesResult, userRolesResult] = await withAuthTimeout(Promise.all([
         supabase.from("worker_roles").select("role").eq("worker_id", userId),
         supabase.from("user_roles").select("role").eq("user_id", userId),
-      ]);
+      ]));
+      if (revision !== authRevision.current) return;
+      if (workerRolesResult.error) throw workerRolesResult.error;
+      if (userRolesResult.error) throw userRolesResult.error;
 
       let fetchedRoles: AppRole[] = [];
       if (!workerRolesResult.error && workerRolesResult.data && workerRolesResult.data.length > 0) {
@@ -90,6 +96,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       });
       setVenueError(null);
     } catch (error) {
+      if (revision !== authRevision.current) return;
       console.error("Error fetching user data:", error);
       setRole(null);
       setRoles([]);
@@ -98,6 +105,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   }, []);
 
   const clearState = useCallback(() => {
+    verifiedUserId.current = null;
     setUser(null);
     setSession(null);
     setRole(null);
@@ -140,44 +148,60 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     }
   }, []);
 
-  const initializeSession = useCallback(async () => {
+  const initializeSession = useCallback(async (newSession?: Session | null, revision = authRevision.current) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchUserData(session.user.id);
+      const restored = newSession === undefined
+        ? (await withAuthTimeout(supabase.auth.getSession())).data.session
+        : newSession;
+      if (revision !== authRevision.current) return;
+      if (restored?.user) {
+        const { data, error } = await withAuthTimeout(supabase.auth.getUser());
+        if (revision !== authRevision.current) return;
+        if (error || !data.user) throw error ?? new Error("Sesión inválida");
+        setSession(restored);
+        setUser(data.user);
+        verifiedUserId.current = data.user.id;
+        await fetchUserData(data.user.id, revision);
+      } else {
+        clearState();
       }
     } catch (error) {
+      if (revision !== authRevision.current) return;
       console.error("Error initializing session:", error);
       clearState();
     } finally {
-      setIsLoading(false);
+      if (revision === authRevision.current) setIsLoading(false);
     }
   }, [fetchUserData, clearState]);
 
   const refreshSession = useCallback(async () => {
-    if (user?.id) {
-      await fetchUserData(user.id);
-    }
-  }, [user?.id, fetchUserData]);
+    await initializeSession();
+  }, [initializeSession]);
 
   useEffect(() => {
     let isMounted = true;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
+      (event, newSession) => {
         if (!isMounted) return;
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
+        // Bootstrap below handles INITIAL_SESSION. Never run auth calls inside
+        // this callback: the auth client still holds its session lock here.
+        if (event === "INITIAL_SESSION") return;
+        if (isSameUserSessionEvent(event, verifiedUserId.current, newSession?.user.id)) {
+          setSession(newSession);
+          return;
+        }
+        const revision = ++authRevision.current;
         if (newSession?.user) {
+          setIsLoading(true);
           setTimeout(() => {
             if (isMounted) {
-              fetchUserData(newSession.user.id);
+              void initializeSession(newSession, revision);
             }
           }, 0);
         } else {
           clearState();
+          setIsLoading(false);
         }
       }
     );
@@ -186,6 +210,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
     return () => {
       isMounted = false;
+      authRevision.current++;
       subscription.unsubscribe();
     };
   }, [initializeSession, fetchUserData, clearState]);

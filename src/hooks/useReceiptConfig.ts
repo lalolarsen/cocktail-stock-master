@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { DEFAULT_VENUE_ID } from "@/lib/venue";
 
 export type ReceiptMode = "hybrid" | "unified" | "external";
 
@@ -27,8 +28,9 @@ export function useReceiptConfig(): ReceiptConfig {
       const { data, error: fetchError } = await supabase
         .from("invoicing_config")
         .select("id, receipt_mode, active_provider")
+        .eq("venue_id", DEFAULT_VENUE_ID)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
@@ -42,6 +44,10 @@ export function useReceiptConfig(): ReceiptConfig {
         setId(data.id);
         setReceiptMode((data.receipt_mode as ReceiptMode) || "external");
         setActiveProvider(data.active_provider || "mock");
+      } else {
+        setId("");
+        setReceiptMode("external");
+        setActiveProvider("mock");
       }
     } catch (err: any) {
       console.error("Error fetching receipt config:", err);

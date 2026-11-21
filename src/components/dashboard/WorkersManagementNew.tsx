@@ -181,6 +181,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
           pin: newWorker.pin,
           full_name: newWorker.full_name,
           role: primaryRole,
+          roles: newWorker.roles,
         },
       });
 
@@ -200,11 +201,6 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
       if (!response.data?.success) throw new Error(response.data?.error || "Error desconocido");
 
       const userId = response.data.user_id;
-      if (newWorker.roles.length > 1) {
-        for (const role of newWorker.roles.slice(1)) {
-          await supabase.from("worker_roles").insert({ worker_id: userId, role });
-        }
-      }
 
       await supabase.rpc("log_admin_action", {
         p_action: "create_worker",
@@ -327,6 +323,17 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
     }
     setSaving(true);
     try {
+      const response = await supabase.functions.invoke("reset-worker-pin", {
+        body: { worker_id: selectedWorker.id, pin: newPin },
+      });
+      if (response.error || !response.data?.success) {
+        let message = response.data?.error;
+        const context = (response.error as { context?: Response } | null)?.context;
+        if (!message && context) {
+          try { message = (await context.clone().json()).error; } catch { /* use safe fallback */ }
+        }
+        throw new Error(message || "No pudimos cambiar el PIN. Intenta nuevamente.");
+      }
       await supabase.rpc("log_admin_action", {
         p_action: "reset_pin",
         p_target_worker_id: selectedWorker.id,
@@ -337,7 +344,7 @@ export function WorkersManagementNew({ isReadOnly = false, viewerRole }: Workers
       setNewPin("");
     } catch (error) {
       console.error("Error resetting PIN:", error);
-      toast.error("Error al resetear PIN");
+      toast.error(error instanceof Error ? error.message : "Error al resetear PIN");
     } finally {
       setSaving(false);
     }

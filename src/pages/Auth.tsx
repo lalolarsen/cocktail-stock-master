@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { Loader2, Wine, ShoppingCart, Shield, Eye, Sparkles, Ticket, Package, ClipboardCheck } from "lucide-react";
 import { AppRole } from "@/hooks/useUserRole";
 import stockiaLogoFull from "@/assets/stockia-logo-full-white.png";
+import { useAppSession } from "@/contexts/AppSessionContext";
+import { withAuthTimeout, isInvalidCredentials } from "@/lib/auth-flow";
 
 const LAST_MODE_KEY = "stockia_last_mode";
 
@@ -29,9 +31,10 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showModeSelection, setShowModeSelection] = useState(false);
   const [workerRoles, setWorkerRoles] = useState<AppRole[]>([]);
-  const [workerData, setWorkerData] = useState<WorkerData | null>(null);
   const [hasStaleSession, setHasStaleSession] = useState(false);
   const navigate = useNavigate();
+  const { user, refreshSession, isLoading: sessionLoading } = useAppSession();
+  const submitting = useRef(false);
 
   // Sanitize PIN: strip invisible/whitespace/control chars that Android keyboards
   // and password managers sometimes inject. Prevents phantom "PIN incorrecto".
@@ -42,10 +45,8 @@ export default function Auth() {
     // If the user explicitly landed on /auth, do NOT auto-route them.
     // Instead surface a "Cambiar de trabajador" prompt so the previous
     // session can't ghost-block a new login on shared POS terminals.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setHasStaleSession(true);
-    });
-  }, []);
+    setHasStaleSession(!!user);
+  }, [user?.id]);
 
   const handleSwitchWorker = async () => {
     try {
@@ -54,6 +55,9 @@ export default function Auth() {
       // ignore — even if signOut fails we still want a clean form
     }
     setHasStaleSession(false);
+    setShowModeSelection(false);
+    setWorkerRoles([]);
+    localStorage.removeItem(LAST_MODE_KEY);
     setRutCode("");
     setPin("");
   };
@@ -64,20 +68,22 @@ export default function Auth() {
 
   const fetchWorkerRoles = async (userId: string): Promise<AppRole[]> => {
     // First try worker_roles table
-    const { data: workerRoles } = await supabase
+    const { data: workerRoles, error: workerError } = await withAuthTimeout(supabase
       .from("worker_roles")
       .select("role")
-      .eq("worker_id", userId);
+      .eq("worker_id", userId));
+    if (workerError) throw workerError;
 
     if (workerRoles && workerRoles.length > 0) {
       return workerRoles.map(r => r.role as AppRole);
     }
 
     // Fallback to user_roles table
-    const { data: userRoles } = await supabase
+    const { data: userRoles, error: userError } = await withAuthTimeout(supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", userId);
+      .eq("user_id", userId));
+    if (userError) throw userError;
 
     if (userRoles && userRoles.length > 0) {
       return userRoles.map(r => r.role as AppRole);
@@ -87,6 +93,10 @@ export default function Auth() {
   };
 
   const routeByRoles = (roles: AppRole[]) => {
+    if (!roles.some(role => ["admin", "gerencia", "vendedor", "ticket_seller"].includes(role))) {
+      toast.error("Tu cuenta no tiene un modo de trabajo habilitado. Pide al administrador revisar tus permisos.");
+      return;
+    }
     // Vendedor / ticket_seller always show mode selection
     // (alcohol, entradas, guardarropía)
     if (roles.includes("vendedor") || roles.includes("ticket_seller")) {
@@ -118,7 +128,7 @@ export default function Auth() {
   const routeByRole = (role: AppRole | "sales" | "tickets" | "coatcheck") => {
     localStorage.setItem(LAST_MODE_KEY, role);
     const nextParam = new URLSearchParams(window.location.search).get("next");
-    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") && nextParam.split(/[?#]/)[0] !== "/auth") {
       navigate(nextParam);
       return;
     }
@@ -153,6 +163,7 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
 
     const normalizedRut = normalizeRut(rutCode);
     const cleanPin = sanitizePin(pin);
@@ -168,27 +179,15 @@ export default function Auth() {
     }
 
     setLoading(true);
+    submitting.current = true;
 
     try {
-      // Check lock status (8 fails / 10 min, resets on successful login)
-      const { data: lockStatus } = await supabase.rpc("get_lock_status", {
-        p_rut_code: normalizedRut,
-        p_venue_id: null
-      });
-      const lock = Array.isArray(lockStatus) ? lockStatus[0] : lockStatus;
-
-      if (lock?.is_locked) {
-        const mins = Math.max(1, lock.minutes_remaining ?? 10);
-        toast.error(`Cuenta bloqueada temporalmente. Intenta en ${mins} min o pide desbloqueo en Admin → Trabajadores.`);
-        setLoading(false);
-        return;
-      }
-
       // Get worker by RUT
-      const { data: workers, error: workerError } = await supabase.rpc("get_worker_by_rut", {
+      const { data: workers, error: workerError } = await withAuthTimeout(supabase.rpc("get_worker_by_rut", {
         p_rut_code: normalizedRut,
         p_venue_id: null
-      });
+      }));
+      if (workerError) throw new Error("No pudimos consultar tu cuenta. Revisa la conexión e intenta nuevamente.");
 
       if (workerError || !workers || workers.length === 0) {
         // RUT inexistente: NO contamos como intento fallido para no llenar el contador
@@ -198,6 +197,18 @@ export default function Auth() {
       }
 
       const worker = workers[0] as WorkerData;
+
+      const { data: lockStatus, error: lockError } = await withAuthTimeout(supabase.rpc("get_lock_status", {
+        p_rut_code: normalizedRut,
+        p_venue_id: worker.venue_id,
+      }));
+      if (lockError) throw new Error("No pudimos verificar el acceso. Intenta nuevamente.");
+      const lock = Array.isArray(lockStatus) ? lockStatus[0] : lockStatus;
+      if (lock?.is_locked) {
+        const mins = Math.max(1, lock.minutes_remaining ?? 10);
+        toast.error(`Cuenta bloqueada temporalmente. Intenta en ${mins} min o pide desbloqueo en Admin → Trabajadores.`);
+        return;
+      }
 
       if (!worker.is_active) {
         toast.error("Tu cuenta está desactivada. Contacta al administrador.");
@@ -218,22 +229,22 @@ export default function Auth() {
       let authData: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
       let signInError: any = null;
       try {
-        const res = await supabase.auth.signInWithPassword({
+        const res = await withAuthTimeout(supabase.auth.signInWithPassword({
           email: authEmail,
           password: cleanPin,
-        });
+        }));
         authData = res.data;
         signInError = res.error;
       } catch (netErr) {
         // Fetch failure / thrown exception (network, CORS, proxy). Do NOT count as fail.
         console.error("[Auth] network error during signIn:", netErr);
-        await supabase.rpc("record_login_attempt", {
+        void supabase.rpc("record_login_attempt", {
           p_rut_code: normalizedRut,
           p_venue_id: worker.venue_id,
           p_success: false,
           p_user_agent: navigator.userAgent,
           p_failure_reason: "network",
-        });
+        }).then(({ error }) => { if (error) console.error("Error recording login attempt:", error); });
         toast.error("Sin conexión con el servidor. Verifica la red del POS e intenta de nuevo.");
         setLoading(false);
         return;
@@ -245,13 +256,13 @@ export default function Auth() {
 
         // Rate limit: NOT a credential failure — don't count toward lockout.
         if (status === 429 || msg.includes("rate") || msg.includes("too many")) {
-          await supabase.rpc("record_login_attempt", {
+          void supabase.rpc("record_login_attempt", {
             p_rut_code: normalizedRut,
             p_venue_id: worker.venue_id,
             p_success: false,
             p_user_agent: navigator.userAgent,
             p_failure_reason: "rate_limit",
-          });
+          }).then(({ error }) => { if (error) console.error("Error recording login attempt:", error); });
           toast.error("Muchos intentos en poco tiempo. Espera 30 segundos y vuelve a probar.");
           setLoading(false);
           return;
@@ -259,26 +270,33 @@ export default function Auth() {
 
         // Any other non-400 → treat as transient/network, don't count.
         if (status && status !== 400 && status !== 401 && status !== 403) {
-          await supabase.rpc("record_login_attempt", {
+          void supabase.rpc("record_login_attempt", {
             p_rut_code: normalizedRut,
             p_venue_id: worker.venue_id,
             p_success: false,
             p_user_agent: navigator.userAgent,
             p_failure_reason: "network",
-          });
+          }).then(({ error }) => { if (error) console.error("Error recording login attempt:", error); });
           toast.error(`Error temporal del servidor (${status}). Intenta nuevamente.`);
           setLoading(false);
           return;
         }
 
-        // Real invalid credentials → counts toward lockout.
-        await supabase.rpc("record_login_attempt", {
+        if (!isInvalidCredentials(signInError)) {
+          toast.error(signInError.code === "email_not_confirmed"
+            ? "Esta cuenta necesita confirmación. Pide al administrador revisar el acceso."
+            : "No fue posible iniciar sesión. Intenta nuevamente o pide al administrador revisar tu cuenta.");
+          return;
+        }
+
+        // Only an explicitly invalid password counts toward lockout.
+        await withAuthTimeout(supabase.rpc("record_login_attempt", {
           p_rut_code: normalizedRut,
           p_venue_id: worker.venue_id,
           p_success: false,
           p_user_agent: navigator.userAgent,
           p_failure_reason: "invalid_pin",
-        });
+        }));
         const remaining = Math.max(0, 8 - ((lock?.failed_count ?? 0) + 1));
         if (remaining <= 0) {
           toast.error("PIN incorrecto. Cuenta bloqueada por 10 minutos.");
@@ -296,39 +314,36 @@ export default function Auth() {
       }
 
       // Record successful login
-      await supabase.rpc("record_login_attempt", {
+      const { error: attemptError } = await withAuthTimeout(supabase.rpc("record_login_attempt", {
         p_rut_code: normalizedRut,
         p_venue_id: worker.venue_id,
         p_success: true,
-        p_user_agent: navigator.userAgent
-      });
+        p_user_agent: navigator.userAgent,
+        p_failure_reason: null,
+      }));
+      if (attemptError) console.error("Error recording successful login:", attemptError);
 
       // Record in login_history
-      await supabase.from("login_history").insert({
+      void supabase.from("login_history").insert({
         user_id: authData.user.id,
         user_agent: navigator.userAgent,
         venue_id: worker.venue_id,
-      });
+      }).then(({ error }) => { if (error) console.error("Error recording login history:", error); });
 
       // Fetch roles and route
-      const roles = worker.roles || [];
+      await refreshSession();
+      const roles = await fetchWorkerRoles(authData.user.id);
       if (roles.length === 0) {
-        // Fallback fetch
-        const fetchedRoles = await fetchWorkerRoles(authData.user.id);
-        if (fetchedRoles.length > 0) {
-          routeByRoles(fetchedRoles);
-        } else {
-          toast.error("No tienes roles asignados. Contacta al administrador.");
-          await supabase.auth.signOut();
-        }
+        toast.error("No tienes roles asignados. Contacta al administrador.");
+        await supabase.auth.signOut();
       } else {
-        setWorkerData(worker);
         routeByRoles(roles);
       }
     } catch (error: any) {
       console.error("Login error:", error);
-      toast.error("Error al iniciar sesión");
+      toast.error(error?.message || "Error al iniciar sesión");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -458,6 +473,20 @@ export default function Auth() {
         {hasStaleSession && (
           <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground space-y-2">
             <p>Este equipo tiene una sesión activa de otro trabajador.</p>
+            <Button type="button" size="sm" className="w-full" disabled={loading || sessionLoading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await refreshSession();
+                  const { data, error } = await withAuthTimeout(supabase.auth.getUser());
+                  if (error || !data.user) throw new Error("La sesión venció. Ingresa nuevamente con tu RUT y PIN.");
+                  routeByRoles(await fetchWorkerRoles(data.user.id));
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "No pudimos recuperar tu sesión.");
+                } finally { setLoading(false); }
+              }}>
+              Continuar con mi sesión
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -503,7 +532,7 @@ export default function Auth() {
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               required
-              maxLength={6}
+              maxLength={128}
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}

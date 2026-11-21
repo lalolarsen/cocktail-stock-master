@@ -53,24 +53,13 @@ function RouteFallback() {
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAppSession();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Cargando...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route
         path="/"
         element={
-          isAuthenticated ? (
+          isLoading ? <RouteFallback /> : isAuthenticated ? (
             <Navigate to="/admin" replace />
           ) : (
             <Navigate to="/auth" replace />

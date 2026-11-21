@@ -23,7 +23,7 @@ export function useDemoMode() {
         .from("venues")
         .select("id, name, is_demo")
         .eq("slug", "demo-distock")
-        .single();
+        .maybeSingle();
 
       if (venue) {
         setDemoVenue(venue);
@@ -34,7 +34,7 @@ export function useDemoMode() {
             .from("profiles")
             .select("venue_id")
             .eq("id", user.id)
-            .single();
+            .maybeSingle();
           
           setIsDemoMode(profile?.venue_id === venue.id);
         }
