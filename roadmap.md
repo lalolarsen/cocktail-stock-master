@@ -1,8 +1,8 @@
 # Roadmap
 
-- [ ] Verify the approved Tiny → Mini resize and resource pressure.
-- [ ] Add indexes for ticket cover counts and sale-item joins.
-- [ ] Batch ticket-history cover counts; test count accuracy and signed-in history.
+- [x] Verify the approved Tiny → Mini resize and resource pressure.
+- [x] Add indexes for ticket cover counts and sale-item joins.
+- [x] Batch ticket-history cover counts; test count accuracy and signed-in history.
 
 - [x] Reemplazar la vista previa de cortesías por impresión directa con RawBT.
 - [x] Permitir reimpresión sin crear otra cortesía.
