@@ -1,5 +1,5 @@
 /**
- * Printing module – browser-based via print-js.
+ * Printing module – serialized browser jobs on PC, single RawBT intent on Android.
  *
  * STOCKIA POS (post-QR pivot): cada venta imprime DOS piezas físicas
  *   1) COVER del cliente — formato grande, detalle de productos legible.
@@ -12,7 +12,9 @@
  * don't need import changes.
  */
 
-import printJS from "print-js";
+import { printBrowserDocument, printBrowserBatch } from "./browser-print";
+import { isAndroid, sendToRawBt } from "./rawbt";
+import { buildAlcoholRawBtPayload } from "./alcohol-rawbt";
 import { STOCKIA_PRINT_FOOTER } from "@/lib/branding";
 
 export type PaperWidth = "58mm" | "80mm";
@@ -269,24 +271,12 @@ export function printRaw(
   data: ReceiptData,
   paperWidth: PaperWidth = "80mm",
 ): Promise<{ success: boolean; error?: string }> {
-  warmupPrintJs();
-  try {
-    const html = buildCashierReceiptHtml(data, paperWidth);
-    const css = buildCashierReceiptCss(paperWidth);
-
-    printJS({
-      printable: html,
-      type: "raw-html",
-      style: css,
-      onError: (err: unknown) => console.error("[PrintJS] Error:", err),
-    });
-
-    return Promise.resolve({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Error de impresión";
-    console.error("[PrintJS] Error:", error);
-    return Promise.resolve({ success: false, error: message });
+  if (isAndroid()) {
+    return sendToRawBt(buildAlcoholRawBtPayload(data, true)).then((outcome) => ({
+      success: outcome === "sent", error: outcome === "not_sent" ? "RawBT no se abrió" : undefined,
+    }));
   }
+  return printBrowserDocument(buildCashierReceiptHtml(data, paperWidth), buildCashierReceiptCss(paperWidth));
 }
 
 // ── Sale documents coordinator ──
@@ -297,56 +287,7 @@ export function printRaw(
  * impresiones encadenadas sobre el iframe compartido de print-js.
  */
 export function printOneDocument(html: string, css: string): Promise<{ success: boolean; error?: string }> {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return Promise.resolve({ success: false, error: "No window" });
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (result: { success: boolean; error?: string }) => {
-      if (settled) return;
-      settled = true;
-      try { iframe.parentNode?.removeChild(iframe); } catch { /* ignore */ }
-      resolve(result);
-    };
-
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.style.visibility = "hidden";
-
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${html}</body></html>`;
-
-    iframe.onload = () => {
-      try {
-        const win = iframe.contentWindow;
-        if (!win) {
-          done({ success: false, error: "iframe sin contentWindow" });
-          return;
-        }
-        const onAfterPrint = () => {
-          win.removeEventListener("afterprint", onAfterPrint);
-          setTimeout(() => done({ success: true }), 250);
-        };
-        win.addEventListener("afterprint", onAfterPrint);
-        setTimeout(() => done({ success: true }), 8000);
-
-        win.focus();
-        win.print();
-      } catch (err) {
-        console.error("[Print] Error:", err);
-        done({ success: false, error: err instanceof Error ? err.message : String(err) });
-      }
-    };
-
-    iframe.srcdoc = doc;
-    document.body.appendChild(iframe);
-  });
+  return printBrowserDocument(html, css);
 }
 
 /**
@@ -363,22 +304,12 @@ export async function printSaleDocuments(
   paperWidth: PaperWidth = "80mm",
   _isHybrid: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
-  const coverHtml = buildCoverHtml(data, paperWidth);
-  const coverCss = buildCoverCss(paperWidth);
-
-  const receiptHtml = buildCashierReceiptHtml(data, paperWidth);
-  const receiptCss = buildCashierReceiptCss(paperWidth);
-
-  // 1) Cover del cliente
-  const coverResult = await printOneDocument(coverHtml, coverCss);
-
-  // 2) Comprobante del vendedor
-  const receiptResult = await printOneDocument(receiptHtml, receiptCss);
-
-  if (!coverResult.success && !receiptResult.success) {
-    return { success: false, error: coverResult.error || receiptResult.error };
+  if (isAndroid()) {
+    const outcome = await sendToRawBt(buildAlcoholRawBtPayload(data));
+    return { success: outcome === "sent", error: outcome === "not_sent" ? "RawBT no se abrió" : undefined };
   }
-  if (!coverResult.success) return coverResult;
-  if (!receiptResult.success) return receiptResult;
-  return { success: true };
+  return printBrowserBatch(
+    [buildCoverHtml(data, paperWidth), buildCashierReceiptHtml(data, paperWidth)],
+    `${buildCashierReceiptCss(paperWidth)}\n${buildCoverCss(paperWidth)}`,
+  );
 }

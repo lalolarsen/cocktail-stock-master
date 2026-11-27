@@ -1,5 +1,6 @@
+import { printBrowserDocument } from "@/lib/printing/browser-print";
 import { sendToRawBt } from "@/lib/printing/rawbt";
-import { dismissFallback, showManualFallback } from "@/lib/printing/print-tracker";
+import { clearManualFallback, showManualFallback } from "@/lib/printing/print-tracker";
 /**
  * Imprime el reporte de cajero (resultados de jornada) usando impresión HTML
  * con el mismo formato que los tickets QR (80mm @page) para garantizar centrado
@@ -24,7 +25,7 @@ export interface CashierReportData {
 }
 
 const escape = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
 
 const ascii = (v: string) =>
   v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
@@ -75,7 +76,7 @@ export function downloadCashierReport(data: CashierReportData): void {
     const send = async () => {
       const outcome = await sendToRawBt(payload);
       if (outcome === "not_sent") showManualFallback("Resumen de jornada", send);
-      else dismissFallback();
+      else clearManualFallback("Resumen de jornada");
     };
     void send();
     return;
@@ -146,30 +147,14 @@ export function downloadCashierReport(data: CashierReportData): void {
 
     <div class="footer">Generado: ${escape(data.downloadTime)}</div>
 
-    <script>
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          window.print();
-          setTimeout(function () { window.close(); }, 400);
-        }, 150);
-      });
-    </script>
   </body>
 </html>`;
 
-  const w = window.open("", "_blank", "width=420,height=700");
-  if (!w) {
-    // Fallback: descargar como HTML si el popup está bloqueado
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `jornada_${data.jornadaNumber}_${data.posName.replace(/\s+/g, "_")}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    return;
-  }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const send = async () => {
+    const result = await printBrowserDocument(parsed.body.innerHTML, parsed.querySelector("style")?.textContent || "");
+    if (!result.success) showManualFallback("Resumen de jornada", send);
+    else clearManualFallback("Resumen de jornada");
+  };
+  void send();
 }

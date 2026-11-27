@@ -34,7 +34,7 @@ import { useAppSession } from "@/contexts/AppSessionContext";
 import { useReceiptConfig } from "@/hooks/useReceiptConfig";
 import { useAutoPrintReceipt } from "@/hooks/useAutoPrintReceipt";
 import type { ReceiptData } from "@/lib/printing/qz";
-import { buildCashierReceiptHtml, buildCashierReceiptCss, printOneDocument, getPreferredPaperWidthStorageKey } from "@/lib/printing/qz";
+import { printRaw, getPreferredPaperWidthStorageKey } from "@/lib/printing/qz";
 import type { PaperWidth } from "@/lib/printing/qz";
 import { useActiveVenue } from "@/hooks/useActiveVenue";
 import { VenueGuard } from "@/components/VenueGuard";
@@ -617,7 +617,7 @@ export default function Sales() {
           saleNumber,
           venueName: venue?.name || "Venue",
           posName: currentPos?.name || "POS",
-          dateTime: new Date().toLocaleString("es-CL"),
+          dateTime: new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" }),
           items: cartItemsForQR,
           total: totalAmount,
           paymentMethod: dbPaymentMethod,
@@ -627,7 +627,7 @@ export default function Sales() {
         // Fire-and-forget with toast feedback
         autoPrintReceipt(receiptData, sale.id).then((result) => {
           if (result.success) {
-            toast.success("Impreso OK", { duration: 2000 });
+            toast.success("Impresión abierta; verifica el papel", { duration: 2000 });
           } else {
             toast.error(`Impresión falló: ${result.error}`, {
               action: {
@@ -1146,7 +1146,9 @@ export default function Sales() {
                                     jornadaName: activeJornadaName,
                                     jornadaNumber: activeJornadaNumber,
                                   };
-                                  printOneDocument(buildCashierReceiptHtml(rd, pw), buildCashierReceiptCss(pw));
+                                  void printRaw("", rd, pw).then(result => {
+                                    if (!result.success) toast.error(result.error || "No se pudo imprimir");
+                                  });
                                 }}
                                 title="Reimprimir solo comprobante"
                               >

@@ -53,7 +53,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
       saleNumber: "CAJ-TEST-001",
       venueName: venueName || "STOCKIA",
       posName: "Prueba",
-      dateTime: new Date().toLocaleString("es-CL"),
+      dateTime: new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" }),
       items: [
         { name: "Producto de prueba", quantity: 1, price: 1000 },
         { name: "Otro producto", quantity: 2, price: 2500 },
@@ -66,7 +66,7 @@ export function PrintingPanel({ venueName, venueId, posId }: PrintingPanelProps)
     try {
       const result = await printRaw("", testData, paperWidth);
       if (result.success) {
-        toast.success("Ticket enviado a la impresora");
+        toast.success("Impresión abierta; confirma que salió el papel");
       } else {
         toast.error(result.error || "Error de impresión");
       }

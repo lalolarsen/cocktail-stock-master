@@ -45,6 +45,7 @@ const clp = (n: number) => "$" + Math.round(n).toLocaleString("es-CL");
 const safe = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 import { isAndroid, sendToRawBt, type RawBtOutcome } from "./rawbt";
+import { printBrowserDocument } from "./browser-print";
 
 const ascii = (value: string) =>
   value
@@ -116,15 +117,8 @@ function copyHtml(data: CoatcheckTicketData): string {
     </div>`;
 }
 
-function printWithBrowser(data: CoatcheckTicketData): void {
-  const w = window.open("", "_blank", "width=380,height=800");
-  if (!w) {
-    // eslint-disable-next-line no-console
-    console.warn("[CoatcheckTicket] popup blocked");
-    return;
-  }
-
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Guardarropía ${data.ticketNumber}</title>
+function printWithBrowser(data: CoatcheckTicketData) {
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Guardarropía ${data.ticketNumber}</title>
     <style>
       @page { margin: 4mm; }
       * { box-sizing: border-box; color: #000 !important; }
@@ -140,13 +134,13 @@ function printWithBrowser(data: CoatcheckTicketData): void {
       .footer { font-size: 11px; font-weight: 700; margin-top: 8px; letter-spacing: 1px; }
     </style></head><body>
     ${copyHtml(data)}
-    <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>
-  </body></html>`);
-  w.document.close();
+  </body></html>`;
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  return printBrowserDocument(parsed.body.innerHTML, parsed.querySelector("style")?.textContent || "");
 }
 
 export async function printCoatcheckTicket(data: CoatcheckTicketData): Promise<RawBtOutcome | "browser"> {
   if (isAndroid()) return sendToRawBt(buildRawBtPayload(data));
-  printWithBrowser(data);
-  return "browser";
+  const result = await printWithBrowser(data);
+  return result.success ? "browser" : "not_sent";
 }

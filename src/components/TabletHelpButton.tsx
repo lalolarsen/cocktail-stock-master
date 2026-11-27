@@ -1,4 +1,8 @@
-import { HelpCircle, Bluetooth, AlertTriangle, Ban, ListChecks } from "lucide-react";
+import { useState } from "react";
+import { HelpCircle, Bluetooth, AlertTriangle, Ban, ListChecks, Printer, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { printRaw } from "@/lib/printing/qz";
+import { isAndroid } from "@/lib/printing/rawbt";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,6 +58,20 @@ function Section({ icon: Icon, title, children }: { icon: typeof HelpCircle; tit
 
 export function TabletHelpButton({ screen, size = "sm", variant = "outline", className }: Props) {
   const usage = USAGE[screen];
+  const [testing, setTesting] = useState(false);
+  const testPrint = async () => {
+    setTesting(true);
+    try {
+      const result = await printRaw("", {
+        saleNumber: "PRUEBA SIN VENTA", venueName: "Berlín Valdivia", posName: usage.title,
+        dateTime: new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" }),
+        items: [{ name: "PRUEBA DE IMPRESION - SIN VALIDEZ", quantity: 1, price: 0 }],
+        total: 0, paymentMethod: "cash",
+      });
+      if (result.success) toast.success("Prueba abierta. Comprueba que salió el papel.");
+      else toast.error(result.error || "No se pudo abrir la impresión. Revisa la conexión.");
+    } finally { setTesting(false); }
+  };
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -65,8 +83,20 @@ export function TabletHelpButton({ screen, size = "sm", variant = "outline", cla
         <DialogHeader>
           <DialogTitle className="text-2xl">Ayuda</DialogTitle>
         </DialogHeader>
+        <Button variant="outline" onClick={testPrint} disabled={testing} className="w-full gap-2">
+          {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+          Imprimir prueba sin venta
+        </Button>
         <div className="space-y-6">
-          <Section icon={Bluetooth} title="1. Si no imprime, revisa el Bluetooth">
+          {!isAndroid() && <Section icon={Printer} title="1. Revisar impresora en PC">
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>En la impresión, selecciona la impresora de esta caja, no Guardar como PDF.</li>
+              <li>Revisa que esté encendida, conectada por USB y con papel.</li>
+              <li>Si hay trabajos pendientes en Windows, avisa al administrador antes de reintentar.</li>
+              <li>No vuelvas a cobrar la venta para imprimirla.</li>
+            </ol>
+          </Section>}
+          {isAndroid() && <Section icon={Bluetooth} title="1. Si no imprime, revisa el Bluetooth">
             <ol className="list-decimal pl-5 space-y-1">
               <li>Desliza desde arriba de la pantalla y revisa que el Bluetooth esté encendido (ícono azul).</li>
               <li>
@@ -77,7 +107,7 @@ export function TabletHelpButton({ screen, size = "sm", variant = "outline", cla
               <li>Revisa que la impresora esté encendida, con papel y la tapa cerrada.</li>
               <li>Vuelve a la app e intenta de nuevo.</li>
             </ol>
-          </Section>
+          </Section>}
           <Section icon={AlertTriangle} title="2. Si aún no imprime">
             <ul className="list-disc pl-5 space-y-1">
               <li>

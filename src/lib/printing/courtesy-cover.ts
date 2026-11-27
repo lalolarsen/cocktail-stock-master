@@ -26,6 +26,7 @@ const fmtFull = (iso: string) =>
   });
 
 import { isAndroid, sendToRawBt, type RawBtOutcome } from "./rawbt";
+import { printBrowserDocument } from "./browser-print";
 
 const ascii = (value: string) =>
   value
@@ -80,16 +81,11 @@ function buildRawBtPayload(data: CourtesyCoverData): string {
 }
 
 
-function printWithBrowser(data: CourtesyCoverData): void {
-  const w = window.open("", "_blank", "width=380,height=700");
-  if (!w) {
-    console.warn("[CourtesyCover] popup blocked");
-    return;
-  }
+function printWithBrowser(data: CourtesyCoverData) {
   const safe = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cortesía</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cortesía</title>
     <style>
       @page { margin: 4mm; }
       * { box-sizing: border-box; color: #000 !important; }
@@ -124,13 +120,13 @@ function printWithBrowser(data: CourtesyCoverData): void {
     <div class="meta">${data.createdAt ? "Emitido: " + fmtFull(data.createdAt) : ""}</div>
     <div class="code">Ref: ${safe(data.code)}</div>
     <div class="footer">ENTREGAR EN BARRA</div>
-    <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300);};</script>
-  </body></html>`);
-  w.document.close();
+  </body></html>`;
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  return printBrowserDocument(parsed.body.innerHTML, parsed.querySelector("style")?.textContent || "");
 }
 
 export async function printCourtesyCover(data: CourtesyCoverData): Promise<RawBtOutcome | "browser"> {
   if (isAndroid()) return sendToRawBt(buildRawBtPayload(data));
-  printWithBrowser(data);
-  return "browser";
+  const result = await printWithBrowser(data);
+  return result.success ? "browser" : "not_sent";
 }

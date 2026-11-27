@@ -9,7 +9,8 @@
  * El cliente entrega físicamente las piezas al staff (acceso / barra).
  */
 
-import { printOneDocument, type PaperWidth } from "./qz";
+import { type PaperWidth } from "./qz";
+import { printBrowserBatch } from "./browser-print";
 import { STOCKIA_PRINT_FOOTER } from "@/lib/branding";
 
 const RECEIPT_VENUE_TITLE = "Berlín Valdivia";
@@ -201,21 +202,11 @@ export async function printTicketSale(
       return outcome === "sent" ? { success: true } : { success: false, notSent: true, error: "RawBT no se abrió" };
     }
 
-    const css = buildCss(paperWidth);
-    let lastError: string | undefined;
-    let anySuccess = false;
-    for (let i = 0; i < entries.length; i++) {
-      const result = await printOneDocument(buildEntryHtml(data, entries[i], i + 1, entries.length), css);
-      if (result.success) anySuccess = true;
-      else lastError = result.error;
-    }
-    for (const cover of data.coverTokens) {
-      const result = await printOneDocument(buildCoverHtml(data, cover, paperWidth), css);
-      if (result.success) anySuccess = true;
-      else lastError = result.error;
-    }
-    if (!anySuccess) return { success: false, error: lastError || "Error de impresión" };
-    return { success: true, error: lastError };
+    const pieces = [
+      ...entries.map((entry, i) => buildEntryHtml(data, entry, i + 1, entries.length)),
+      ...data.coverTokens.map((cover) => buildCoverHtml(data, cover, paperWidth)),
+    ];
+    return await printBrowserBatch(pieces, buildCss(paperWidth));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error de impresión";
     console.error("[printTicketSale] error:", error);

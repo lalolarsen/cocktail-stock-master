@@ -41,15 +41,24 @@ export function ReprintButton({ source, refKey, label, jornadaId, posId, info, p
 
   const doReprint = async () => {
     setBusy(true);
-    // Imprimir primero, dentro del toque, para que Chrome no bloquee RawBT.
-    const printing = trackedPrint({ source, refKey, label: `${label} (reimpresión)`, jornadaId, posId, print }, "reprint_attempt");
-    const reg = await registerReprint({ source, refKey, label, jornadaId, posId });
-    await printing;
-    setBusy(false);
-    setOpen(false);
-    if (!reg.ok) toast.error(reg.limit ? "Ya se reimprimió. Pide a un administrador." : "No se pudo registrar la reimpresión");
-    else toast.success("Reimpresión enviada");
-    onDone?.();
+    try {
+      // Authorize before paper is issued. If Chrome blocks the post-network
+      // intent, the existing manual fallback retries this authorized job only.
+      const reg = await registerReprint({ source, refKey, label, jornadaId, posId });
+      if (!reg.ok) {
+        toast.error(reg.limit ? "Ya se reimprimió. Pide a un administrador." : "No se pudo registrar la reimpresión");
+        return;
+      }
+      const outcome = await trackedPrint({ source, refKey, label: `${label} (reimpresión)`, jornadaId, posId, print }, "reprint_attempt");
+      if (outcome === "not_sent") toast.warning("Reimpresión pendiente. Toca IMPRIMIR AHORA, sin volver a cobrar.");
+      else toast.success("Reimpresión abierta; comprueba el papel");
+      onDone?.();
+    } catch {
+      toast.error("No se pudo autorizar la reimpresión. Intenta nuevamente.");
+    } finally {
+      setBusy(false);
+      setOpen(false);
+    }
   };
 
   if (blocked) {

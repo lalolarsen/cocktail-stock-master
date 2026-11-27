@@ -2,7 +2,9 @@
  * Generate a receipt-sized HTML report of jornada sales broken down by POS
  * and payment method. Uses the same 80mm receipt styling as QR tickets.
  */
-import printJS from "print-js";
+import { printBrowserDocument } from "./browser-print";
+import { isAndroid, sendToRawBt } from "./rawbt";
+import { clearManualFallback, showManualFallback } from "./print-tracker";
 
 
 interface POSSalesData {
@@ -238,7 +240,26 @@ function buildReportCss(): string {
 export function printPOSSalesReport(data: POSSalesData): void {
   const html = buildReportHtml(data);
   const css = buildReportCss();
-  printJS({ printable: html, type: "raw-html", style: css });
+  const label = `Reporte de cierre #${data.jornadaNumber}`;
+  const send = async () => {
+    let success: boolean;
+    if (isAndroid()) {
+      const parsed = new DOMParser().parseFromString(html, "text/html");
+      parsed.querySelectorAll("tr").forEach((row) => {
+        row.replaceWith(`${Array.from(row.children).map((cell) => cell.textContent?.trim() || "").join("  ")}\n`);
+      });
+      parsed.querySelectorAll("div").forEach((block) => block.append("\n"));
+      const text = (parsed.body.textContent || "").split("\n").map((line) => line.trim()).filter(Boolean).join("\n")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
+      const bytes = [0x1b, 0x40, ...new TextEncoder().encode(`${text}\n`), 0x1b, 0x64, 0x05, 0x1d, 0x56, 0x42, 0x00];
+      success = await sendToRawBt(btoa(bytes.map((byte) => String.fromCharCode(byte)).join(""))) === "sent";
+    } else {
+      success = (await printBrowserDocument(html, css)).success;
+    }
+    if (success) clearManualFallback(label);
+    else showManualFallback(label, send);
+  };
+  void send();
 }
 
 export type { POSSalesData };

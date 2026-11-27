@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isAndroid } from "@/lib/printing/rawbt";
 import { dismissFallback, subscribeFallback, type FallbackState } from "@/lib/printing/print-tracker";
 
 /** Aviso amarillo grande cuando la impresión no llegó a RawBT. */
@@ -21,18 +22,19 @@ export function PrintFallbackBanner() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-7 h-7 shrink-0" />
           <div className="flex-1">
-            <p className="text-lg font-bold leading-tight">La impresión no se envió</p>
+            <p className="text-lg font-bold leading-tight">Revisa la impresión</p>
             <p className="text-sm">{state.label} · ya está guardada, no se vuelve a cobrar.</p>
             {state.attempts > 1 && (
               <p className="text-sm font-semibold mt-1">
-                Sigue sin salir: revise que el Bluetooth esté encendido y la impresora "SD-…" conectada, con papel y
-                encendida (botón Ayuda).
+                {isAndroid()
+                  ? 'Revisa el Bluetooth y la impresora "SD-…", encendida y con papel (botón Ayuda).'
+                  : "Revisa la impresora seleccionada y la cola de Windows antes de reintentar."}
               </p>
             )}
           </div>
-          <button aria-label="Cerrar aviso" onClick={dismissFallback} className="p-1">
+          <Button variant="ghost" size="icon" aria-label="Cerrar aviso" onClick={dismissFallback} className="shrink-0">
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
         <Button
           size="lg"

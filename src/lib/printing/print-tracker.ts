@@ -27,6 +27,8 @@ export interface FallbackState {
   retry: () => Promise<void>;
 }
 let fallback: FallbackState | null = null;
+const pending: FallbackState[] = [];
+const activePrints = new Map<string, Promise<PrintOutcome>>();
 const listeners = new Set<(s: FallbackState | null) => void>();
 const emit = () => listeners.forEach((l) => l(fallback));
 export function subscribeFallback(fn: (s: FallbackState | null) => void) {
@@ -36,12 +38,21 @@ export function subscribeFallback(fn: (s: FallbackState | null) => void) {
 }
 /** Aviso sin registro en auditoría (p. ej. resumen de jornada). */
 export function showManualFallback(label: string, retry: () => Promise<void>) {
-  const attempts = fallback?.label === label ? fallback.attempts + 1 : 1;
-  fallback = { label, attempts, retry };
+  const previous = pending.find((item) => item.label === label);
+  if (previous) { previous.attempts++; previous.retry = retry; }
+  else pending.push({ label, attempts: 1, retry });
+  fallback = pending[0] || null;
+  emit();
+}
+export function clearManualFallback(label: string) {
+  const index = pending.findIndex((item) => item.label === label);
+  if (index >= 0) pending.splice(index, 1);
+  fallback = pending[0] || null;
   emit();
 }
 export function dismissFallback() {
-  fallback = null;
+  pending.shift();
+  fallback = pending[0] || null;
   emit();
 }
 
@@ -51,7 +62,7 @@ async function insertJob(opts: TrackedPrintOptions, kind: PrintKind, outcome: Pr
     const uid = auth.session?.user.id;
     if (!uid) return;
     const status = outcome === "not_sent" ? "not_sent" : outcome === "sent" ? "sent" : outcome;
-    await supabase.from("print_jobs").insert({
+    const { error } = await supabase.from("print_jobs").insert({
       venue_id: DEFAULT_VENUE_ID,
       pos_id: opts.posId || null,
       user_id: uid,
@@ -66,6 +77,7 @@ async function insertJob(opts: TrackedPrintOptions, kind: PrintKind, outcome: Pr
       kind,
       jornada_id: opts.jornadaId || null,
     });
+    if (error) console.warn("[print-tracker] log failed", error.message);
   } catch (e) {
     console.warn("[print-tracker] log failed", e);
   }
@@ -75,24 +87,22 @@ async function insertJob(opts: TrackedPrintOptions, kind: PrintKind, outcome: Pr
  * Imprime y registra. Si RawBT no se abrió, muestra el aviso amarillo
  * "IMPRIMIR AHORA" (ese toque del trabajador nunca es bloqueado por Chrome).
  */
-export async function trackedPrint(opts: TrackedPrintOptions, kind: PrintKind = "auto"): Promise<PrintOutcome> {
-  const outcome = await opts.print();
-  if (outcome === "skipped") return outcome;
-  void insertJob(opts, kind, outcome);
-  if (outcome === "not_sent") {
-    const prevAttempts = fallback?.label === opts.label ? fallback.attempts : 0;
-    fallback = {
-      label: opts.label,
-      attempts: prevAttempts + 1,
-      retry: async () => {
-        await trackedPrint(opts, "manual");
-      },
-    };
-    emit();
-  } else if (fallback?.label === opts.label) {
-    dismissFallback();
-  }
-  return outcome;
+export function trackedPrint(opts: TrackedPrintOptions, kind: PrintKind = "auto"): Promise<PrintOutcome> {
+  const key = `${opts.source}:${opts.refKey}`;
+  const existing = activePrints.get(key);
+  if (existing) return existing;
+  const work = (async () => {
+    let outcome: PrintOutcome;
+    try { outcome = await opts.print(); }
+    catch (error) { console.warn("[print-tracker] print failed", error); outcome = "not_sent"; }
+    if (outcome === "skipped") return outcome;
+    void insertJob(opts, kind, outcome);
+    if (outcome === "not_sent") showManualFallback(opts.label, async () => { await trackedPrint(opts, "manual"); });
+    else clearManualFallback(opts.label);
+    return outcome;
+  })().finally(() => { activePrints.delete(key); });
+  activePrints.set(key, work);
+  return work;
 }
 
 /* ── Reimpresión única ── */
